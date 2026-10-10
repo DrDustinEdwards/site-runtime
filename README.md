@@ -3,8 +3,8 @@
 The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-homes-2026-10-06.md). This repository was
 `DrDustinEdwards/security-headers` and was renamed on 2026-10-08, keeping its history and tags; `v0.1.0` and `v0.1.1` are the
 package under its old name, `@dustinedwards/security-headers`. Today it holds the security headers (the root export and
-`./headers`, `./csp`, `./check`, `./oshp`, `./owasp`) and the rate limiter (`./rate-limit`, `./rate-limit/durable-object`). The
-health format, the Access check and the email helper are to move in later, each as its own subpath and its own pull request.
+`./headers`, `./csp`, `./check`, `./oshp`, `./owasp`) the rate limiter (`./rate-limit`, `./rate-limit/durable-object`) and the members model (`./members`).
+The health format, the Access check and the email helper are to move in later, each as its own subpath and its own pull request.
 
 ## Security headers
 
@@ -157,8 +157,56 @@ refused request on the Durable Object costs a request and a row read, no write.
 **Tests.** `npm test` runs `test/rate-limit.test.mjs`: window edges, a spent rule counting nothing, Retry-After, the fail-closed
 and fail-open paths, and the path matcher on an in-memory SQLite (`node:sqlite`). CI runs it on every pull request.
 
+## Members
+
+The rules every app with staff shares (capsid docs/design/design-identity-roles.md; Dustin's rulings of 2026-10-09, "people
+and roles across the family"). Each app keeps its own `members` and `member_audit` tables and its own titles; this module
+holds the rules, with no I/O and no dependencies, so they are tested once.
+
+Code checks permissions, never titles. A title is a named bundle of permissions on a layer:
+
+| Layer | Title | Set by |
+| --- | --- | --- |
+| 0 | `primary_owner`, Dustin only | `PRIMARY_OWNER_EMAIL`, deployment configuration; never a row |
+| 1 | `owner` | the Primary Owner, on the members page |
+| 2 | the app's leads | layers 0 and 1 |
+| 3 | the app's members | layers 0 to 2 |
+
+```js
+import { defineTitles, resolveActor, can, checkChange, defaultEndDate, auditRow, allowList } from "@dustinedwards/site-runtime/members";
+
+const catalog = defineTitles({
+  permissions: ["read", "use_lot", "record_run", "read_all_runs", "edit_inventory", "draft_procedure"],
+  titles: [
+    { id: "lab_manager", label: "Lab manager", layer: 2, expires: true, permissions: ["read", "use_lot", "record_run", "read_all_runs", "edit_inventory", "draft_procedure", "manage_members"] },
+    { id: "lab_worker", label: "Lab worker", layer: 3, expires: true, permissions: ["read", "use_lot", "record_run"] },
+  ],
+});
+const actor = resolveActor(accessEmail, rowFromD1, { catalog, primaryOwnerEmail: env.PRIMARY_OWNER_EMAIL, nowMs: Date.now() });
+if (!can(actor, "edit_inventory")) return notFound();
+```
+
+- `resolveActor` reads the person's row, which the app loads uncached on every request, so a removal or an expiry takes effect
+  on the next click. No row, a removed or expired row, or an unknown title returns null. The Primary Owner needs no row, and a
+  row cannot lower them.
+- `checkChange(actor, change, context)` is the one place the two rules live: **you manage only people below your own layer**,
+  and **you grant nothing you do not hold**. It also refuses any change aimed at the Primary Owner's email, a title change
+  without a one-line reason, and an end date past the title's default (shortening is allowed). Owners and the Primary Owner
+  hold every permission the app defines and never expire.
+- `defaultEndDate` is the first of the app's term end dates after today (after the current end date, to renew). It refuses when
+  the Owner has not entered a future date yet, rather than inventing one. A row is valid through the whole of its end date in
+  UTC; `reviewOpen` is true from three weeks before it.
+- `auditRow` is the `member_audit` row, written in the same batch as the change, with `cloudflare: "pending"` until the sync
+  answers. `allowList(rows)` is the email list the app's Access group should hold; the sync itself is Capsid's (ruling 1:
+  Capsid is the only holder of the Cloudflare token).
+
+**Tests.** `test/members.test.mjs`. Each rule was planted broken once and seen to fail a test: a lead granting their own layer,
+a bundle wider than the granter's, an Owner removing or demoting the Primary Owner (by an `owner` row and by a stray row under
+his email), a peer managed, a removed or expired row admitted, the expiry boundary moved a day, an end date lengthened, a
+two-line reason.
+
 ## Publishing it
 
 A git dependency cannot point at a subfolder of a monorepo, and the sites that adopt it are other repositories (some private),
 so it is published as its own small repository, now `DrDustinEdwards/site-runtime`, and installed by tag like capsomer and
-d1-dump: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.2.0"`. The reason and the exact steps are in the pull request that introduced this layout.
+d1-dump: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.3.0"`. The reason and the exact steps are in the pull request that introduced this layout.

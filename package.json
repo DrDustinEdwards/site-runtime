@@ -1,8 +1,8 @@
 {
   "name": "@dustinedwards/site-runtime",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "The portfolio sites' shared runtime. Today: OWASP Secure Headers Project defaults, a Content-Security-Policy built from a per-site list of what a site loads, the check a site runs in CI to prove its responses carry them, and one exact rate limiter on a SQLite Durable Object.",
+  "description": "The portfolio sites' shared runtime. Today: OWASP Secure Headers Project defaults, a Content-Security-Policy built from a per-site list of what a site loads, the check a site runs in CI to prove its responses carry them, and one exact rate limiter on a SQLite Durable Object, and the members model: layers, permission bundles and end dates for an app with staff.",
   "type": "module",
   "exports": {
     ".": {
@@ -36,6 +36,10 @@
     "./rate-limit/durable-object": {
       "types": "./rate-limit/durable-object.d.mts",
       "default": "./rate-limit/durable-object.mjs"
+    },
+    "./members": {
+      "types": "./members/index.d.mts",
+      "default": "./members/index.mjs"
     }
   },
   "bin": {
@@ -57,6 +61,7 @@
     "oshp-tests-suite.yml",
     "update-owasp.mjs",
     "rate-limit",
+    "members",
     "bin",
     "README.md"
   ],
