@@ -13,7 +13,7 @@ Content-Security-Policy built from a short per-site list of what the site loads,
 responses carry them. Ruled by Dustin (capsid/decisions.md, "shared functions across the sites", point 5; D6, 2026-10-04):
 adopt it for every site.
 
-No dependencies, plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 20+.
+No dependencies, plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24.
 
 ## Source
 
