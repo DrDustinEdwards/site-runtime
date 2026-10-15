@@ -25,6 +25,14 @@ export function hitRules(sql: Sql, rules: Rule[], nowMs: number): Hit;
  */
 export function idleDeadline(rules: Rule[], nowMs: number): number;
 /**
+ * Forgets the windows that have ended and says when the rest end, or null when nothing is left. An
+ * alarm that fires early, or against a clock that moved, leaves a live window alone.
+ * @param {Sql} sql
+ * @param {number} nowMs
+ * @returns {number | null}
+ */
+export function purgeExpired(sql: Sql, nowMs: number): number | null;
+/**
  * The counting, apart from the Durable Object so a test can run it on any SQLite. Fixed windows aligned
  * to the epoch, one row per window length. All rules are checked first and none is counted when any is
  * spent, so a refused request costs a read and no write. No `await` anywhere: a Durable Object sequence

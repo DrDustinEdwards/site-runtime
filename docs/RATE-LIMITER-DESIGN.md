@@ -1,6 +1,6 @@
 # One rate limiter: design (job_3ef2123d7ec6, D7.1)
 
-Status: DESIGN ONLY. Nothing is built. The job says to stop for the seat here and build after approval. The decisions the seat has to make are at the end.
+Status: BUILT. The module is in rate-limit/ and tested by test/rate-limit.test.mjs (README, "Rate limiter"). This is the design as written before the build; the decisions for the seat at the end are not recorded here.
 
 Dustin's D7: one shared limiter; each site sets its own limits and whether it fails open or closed; a dropped request answers 429, never a success code; limits come from the worst legitimate burst.
 
