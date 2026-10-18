@@ -69,8 +69,8 @@ headers.set(name, value);
 
 The fixed parts are the same for every site: `default-src 'self'`, `object-src 'none'`, `base-uri 'none'`,
 `form-action 'self'`, `frame-ancestors 'none'`. Scripts are `'self'`, the site's hashes or nonce, its listed hosts and, on
-request, the Cloudflare Web Analytics beacon. A script source of `*`, a bare scheme, `'unsafe-inline'` or `'unsafe-eval'` is
-refused, and a policy with no report sink is refused.
+request, the Cloudflare Web Analytics beacon. A script source of `*` (or `https://*` and the like), a bare scheme, or
+`'unsafe-inline'` or `'unsafe-eval'` in any case is refused, and a policy with no report sink is refused.
 
 **The beacon.** Cloudflare's edge injects `/beacon.min.js/v31...` into a proxied site's pages, so the script source is the
 host with a path prefix, not the bare file: `https://static.cloudflareinsights.com/beacon.min.js` and the same followed by `/`
@@ -88,8 +88,8 @@ OSHP has one: its validator, `subprojects/validator/tests_suite.yml` in the proj
 [venom](https://github.com/ovh/venom) test plan that GETs a target and asserts on its headers. Its README
 (`subprojects/validator/README.md`) says it is kept in step with the latest recommendation. `oshp-tests-suite.yml` is a verbatim
 copy. Venom is a Go binary that needs a live URL, so `runOshpSuite` runs the same assertions on a response's headers in Node,
-in CI, with no network, implementing only the operators the suite uses and throwing on any other. `test/security-headers-package.test.mjs`
-runs it against the package's output and holds the run to the one result the package intends: the suite fails exactly the test
+in CI, with no network, implementing only the operators the suite uses and throwing on any other. `test/oshp-suite.test.mjs`
+here (and `test/security-headers-package.test.mjs` in dustinedwards-info) runs it against the package's output and holds the run to the one result the package intends: the suite fails exactly the test
 cases for the headers listed above as skipped, and passes the rest, so a change to the defaults or to the suite shows up as a
 changed set of failures.
 
@@ -101,7 +101,8 @@ changed set of failures.
 - Every header in the set, at least as strict: HSTS at least the set's age, a strict Referrer-Policy, framing refused, every
   feature the set denies denied.
 - An **enforced** Content-Security-Policy. A Report-Only policy alone fails: it blocks nothing.
-- A script source list with no `'unsafe-inline'`, no `'unsafe-eval'`, and no `*` or bare scheme.
+- A script source list with no `'unsafe-inline'` or `'unsafe-eval'` in any case, and no `*`, host-source whose host is `*`
+  (`https://*`), or bare scheme.
 - `object-src 'none'`, `base-uri 'none'` or `'self'`, `frame-ancestors` set, and a report sink (`report-uri` or `report-to`).
 
 `style-src-attr 'unsafe-inline'` is allowed: several sites emit inline style attributes, and styles cannot run code.

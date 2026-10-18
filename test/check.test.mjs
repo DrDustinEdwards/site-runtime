@@ -156,6 +156,48 @@ test("scripts: 'unsafe-inline', 'unsafe-eval', a wildcard or a bare scheme fail"
   assert.deepEqual(failed(withScripts("'self' https://js.example.com https://*.example.com")), []);
 });
 
+test("scripts: an unsafe keyword fails in any case, since browsers match keywords case-insensitively", () => {
+  const withScripts = (/** @type {string} */ sources) => response({ "Content-Security-Policy": GOOD_POLICY.replace("script-src 'self'", `script-src ${sources}`) });
+  assert.deepEqual(failed(withScripts("'self' 'UNSAFE-INLINE'")), ["scripts: no 'unsafe-inline'"]);
+  assert.deepEqual(failed(withScripts("'self' 'Unsafe-Eval'")), ["scripts: no 'unsafe-eval'"]);
+});
+
+test("scripts: a host-source whose host is * fails as a wildcard, with or without scheme, port or path", () => {
+  const withScripts = (/** @type {string} */ sources) => response({ "Content-Security-Policy": GOOD_POLICY.replace("script-src 'self'", `script-src ${sources}`) });
+  for (const broad of ["https://*", "https://*:443", "*:*", "https://*/js/"]) {
+    assert.equal(failure(withScripts(`'self' ${broad}`), /wildcard or bare scheme/).detail, `allows ${broad}`);
+  }
+  assert.deepEqual(failed(withScripts("'self' https://*.example.com:443/js/ https://js.example.com/*")), []);
+});
+
+test("every check is reported, passing or failing: the count does not depend on the verdicts", () => {
+  const standard = Object.keys(STANDARD_SECURITY_HEADERS).length;
+  const bad = response({
+    "Content-Security-Policy": "script-src * 'unsafe-inline' 'unsafe-eval'; object-src 'self'; base-uri *",
+    "X-Frame-Options": "allowall",
+  });
+  const results = checkSecurityHeaders(bad);
+  assert.equal(results.length, standard + 9);
+  assert.deepEqual(failures(results).map((r) => r.name), [
+    "X-Frame-Options refuses framing",
+    "scripts: no 'unsafe-inline'",
+    "scripts: no 'unsafe-eval'",
+    "scripts: no wildcard or bare scheme source",
+    "object-src is 'none'",
+    "base-uri is 'none' or 'self'",
+    "frame-ancestors is set",
+    "violations are reported somewhere (report-uri or report-to)",
+  ]);
+  assert.equal(checkSecurityHeaders(response(), { cloudflareWebAnalytics: true }).length, standard + 11);
+  assert.equal(checkSecurityHeaders(response({ "Content-Security-Policy": "object-src 'none'" })).length, standard + 6, "with no scripts directive the three script checks do not run");
+});
+
+test("the policy is read only from the enforced header: a sound Report-Only beside a weak enforced one does not help", () => {
+  const headers = response({ "Content-Security-Policy": "default-src *; report-uri /r", "Content-Security-Policy-Report-Only": GOOD_POLICY });
+  assert.ok(failed(headers).includes("scripts: no wildcard or bare scheme source"));
+  assert.ok(failed(headers).includes("base-uri is 'none' or 'self'"));
+});
+
 test("without script-src, the scripts and objects checks read default-src", () => {
   assert.deepEqual(failed(response({ "Content-Security-Policy": "default-src 'none'; base-uri 'self'; frame-ancestors 'none'; report-to csp" })), []);
   const loose = response({ "Content-Security-Policy": "default-src 'self' 'unsafe-inline'; base-uri 'self'; frame-ancestors 'none'; report-to csp" });

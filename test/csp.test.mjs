@@ -158,6 +158,68 @@ test("a script source that would allow any script is refused", () => {
   assert.doesNotThrow(() => buildContentSecurityPolicy({ ...SINK, sources: { script: ["https://js.example.com", "https://*.example.com"] } }));
 });
 
+test("an unsafe keyword is refused in any case, since browsers match keywords case-insensitively", () => {
+  for (const host of ["'UNSAFE-INLINE'", "'Unsafe-Inline'", "'UNSAFE-EVAL'", "'unsafe-Eval'"]) {
+    assert.throws(() => buildContentSecurityPolicy({ ...SINK, sources: { script: [host] } }), /is not an acceptable script source/, `accepted ${host}`);
+  }
+});
+
+test("a host-source whose host is * matches every host and is refused, with or without scheme, port or path", () => {
+  for (const host of ["https://*", "HTTP://*", "https://*:443", "https://*:*", "*:*", "*:8080", "https://*/", "https://*/js/app.js", "wss://*"]) {
+    assert.throws(() => buildContentSecurityPolicy({ ...SINK, sources: { script: [host] } }), /is not an acceptable script source: name the host/, `accepted ${host}`);
+  }
+  for (const host of ["https://*.example.com", "https://*.example.com:443/js/", "https://js.example.com/*"]) {
+    assert.doesNotThrow(() => buildContentSecurityPolicy({ ...SINK, sources: { script: [host] } }), host);
+  }
+});
+
+test("only script sources are held to the script rules: other kinds may list a scheme", () => {
+  const policy = directives({ ...SINK, sources: { img: ["https:", "data:", "blob:"], media: ["blob:"], connect: ["wss:"] } });
+  assert.deepEqual(policy.get("img-src"), ["'self'", "https:", "data:", "blob:"]);
+  assert.deepEqual(policy.get("media-src"), ["'self'", "blob:"]);
+  assert.deepEqual(policy.get("connect-src"), ["'self'", "wss:"]);
+  assert.deepEqual(policy.get("script-src"), ["'self'"]);
+});
+
+test("the refusal names the offending source", () => {
+  assert.throws(() => buildContentSecurityPolicy({ ...SINK, sources: { script: ["https://js.example.com", "data:"] } }), /^Error: data: is not an acceptable script source/);
+});
+
+test("script-src puts the nonce first, then hashes, then 'self', then hosts, then the beacon", () => {
+  const nonce = "abcdefghijklmnop";
+  const policy = directives({ ...SINK, nonce, scriptHashes: [HASH, "sha384-abc"], cloudflareWebAnalytics: true, sources: { script: ["https://js.example.com"] } });
+  assert.deepEqual(policy.get("script-src"), [`'nonce-${nonce}'`, `'${HASH}'`, "'sha384-abc'", "'self'", "https://js.example.com", ...CLOUDFLARE_WEB_ANALYTICS.script]);
+  const styles = directives({ ...SINK, nonce, styleHashes: [HASH], sources: { style: ["https://css.example.com"] } });
+  assert.deepEqual(styles.get("style-src"), ["'self'", `'nonce-${nonce}'`, `'${HASH}'`, "https://css.example.com"]);
+});
+
+test("the fixed directives are written in one order, with extras after them and the sinks last", () => {
+  const { value } = buildContentSecurityPolicy({
+    reportUri: "/r",
+    reportTo: "csp",
+    styleAttributesInline: true,
+    extraDirectives: ["upgrade-insecure-requests"],
+    sources: { media: ["https://m.example.com"], frame: ["https://f.example.com"] },
+  });
+  assert.equal(
+    value,
+    "default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; font-src 'self'; img-src 'self'; " +
+      "media-src 'self' https://m.example.com; connect-src 'self'; frame-src 'self' https://f.example.com; object-src 'none'; " +
+      "base-uri 'none'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests; report-uri /r; report-to csp",
+  );
+});
+
+test("reportOnly false names the enforced header", () => {
+  assert.equal(buildContentSecurityPolicy({ ...SINK, reportOnly: false }).name, "Content-Security-Policy");
+});
+
+test("a nonce must be a whole base64 value: anything round it is refused", () => {
+  for (const nonce of ["'abcdefghijklmnop", "abcdefghijklmnop'", " abcdefghijklmnop", "abcdefghijklmnop\n"]) {
+    assert.throws(() => buildContentSecurityPolicy({ ...SINK, nonce }), /the nonce is not a base64 value/, `accepted ${JSON.stringify(nonce)}`);
+  }
+  assert.doesNotThrow(() => buildContentSecurityPolicy({ ...SINK, nonce: generateNonce() }));
+});
+
 test("a source with a space, semicolon or comma, or not a string, is refused in every kind and in the sinks", () => {
   for (const kind of ["script", "style", "img", "font", "connect", "frame", "media"]) {
     for (const bad of ["", "https://a.example.com https://b.example.com", "https://a.example.com;script-src", "a,b", 7]) {
