@@ -1,0 +1,33 @@
+name: code-map
+
+# After each push to main, devkit's shared code-map workflow measures this repository's modules and functions and
+# publishes code-map.json to the code-map branch, where the Capsid system explorer reads it. Never a gate on a pull request.
+# There is no lockfile and no tsconfig: the map installs only typescript and reads the .mjs files as plain modules.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One run at a time, so an older push's map never lands after a newer one.
+concurrency:
+  group: code-map
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  code-map:
+    # A called workflow holds no more than this job grants: the write lets it push code-map.json to the code-map branch.
+    permissions:
+      contents: write
+    uses: DrDustinEdwards/devkit/.github/workflows/code-map.yml@a1018140eb451058a14c726b96e367e6413dce50
+    with:
+      npm-cache: false
+      install: npm i --no-save typescript@5.9.3
+      include: .
+      exclude: docs/ test/
+      # Node's test runner does not create the destination folder.
+      coverage-command: mkdir -p coverage && node --test --experimental-test-coverage --test-reporter=lcov --test-reporter-destination=coverage/lcov.info "test/*.test.mjs"
+      coverage-file: coverage/lcov.info
