@@ -3,8 +3,9 @@
 The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-homes-2026-10-06.md). This repository was
 `DrDustinEdwards/security-headers` and was renamed on 2026-10-08, keeping its history and tags; `v0.1.0` and `v0.1.1` are the
 package under its old name, `@dustinedwards/security-headers`. Today it holds the security headers (the root export and
-`./headers`, `./csp`, `./check`, `./oshp`, `./owasp`) the rate limiter (`./rate-limit`, `./rate-limit/durable-object`) and the members model (`./members`).
-The health format, the Access check and the email helper are to move in later, each as its own subpath and its own pull request.
+`./headers`, `./csp`, `./check`, `./oshp`, `./owasp`) the rate limiter (`./rate-limit`, `./rate-limit/durable-object`), the members model (`./members`) and the Access for SaaS
+sign-in (`./access-login`). The health format, the Access header check and the email helper are to move in later, each as its
+own subpath and its own pull request.
 
 ## Security headers
 
@@ -223,8 +224,43 @@ a bundle wider than the granter's, an Owner removing or demoting the Primary Own
 his email), a peer managed, a removed or expired row admitted, the expiry boundary moved a day, an end date lengthened, a
 two-line reason.
 
+## The Access sign-in
+
+Every MCP server in the family signs a person in through Cloudflare Access for SaaS (OIDC), one login for all of them
+(2026-10-18). Carrel, Foxing Admin and Dustin Edwards Admin each carried the same four functions until 2026-10-20, two
+checking the ID token with WebCrypto and one with jose. `./access-login` is the one copy:
+
+```js
+import { accessSaas, newSignIn, authorizationUrl, finishSignIn } from "@dustinedwards/site-runtime/access-login";
+
+// After consent: the verifier and nonce go in the provider's upstream state, server-side.
+const signIn = newSignIn();
+const { state, headers } = await env.OAUTH_PROVIDER.beginUpstream(approved.request, { data: signIn, headers: approved.headers });
+return redirect(await authorizationUrl(saas, { redirectUri: `${origin}/callback`, state, ...signIn }), headers);
+// On /callback:
+const { request: original, data } = await env.OAUTH_PROVIDER.finishUpstream(request);
+const signedIn = await finishSignIn(saas, { code, redirectUri: `${origin}/callback`, verifier: data.verifier, nonce: data.nonce });
+if (!signedIn.ok || !isAdministrator(signedIn.email)) return refuse(original);
+```
+
+- The state of a sign-in in flight is not kept here: `@cloudflare/workers-oauth-provider`'s `beginUpstream` and
+  `finishUpstream` hold it server-side, bind it to the browser and spend it once. Never put the verifier or the nonce
+  in a cookie.
+- Every endpoint derives from `ACCESS_TEAM_DOMAIN` (`https://<team>.cloudflareaccess.com`) and the SaaS app's client id.
+  A missing setting makes `accessSaas` null, and the door stays shut.
+- PKCE (S256) and an OIDC nonce on every sign-in.
+- The ID token is checked with WebCrypto against the SaaS app's keys, with no JWT library. It must be RS256, from the
+  right issuer, for this audience, and within expiry and not-before (60 seconds of skew allowed). The nonce must match,
+  `email_verified` must not be false, and an email must be present. An unknown kid refetches once, so a key rotation
+  does not lock the door.
+- Who may sign in is the caller's to decide; the module admits nobody by itself.
+
+**Tests.** `test/access-login.test.mjs` runs against a key pair made in the test and a fake token endpoint. Each of these
+checks was removed once and seen to fail a test: the signature, issuer, expiry, algorithm, nonce and `email_verified`
+checks.
+
 ## Publishing it
 
 A git dependency cannot point at a subfolder of a monorepo, and the sites that adopt it are other repositories (some private),
 so it is published as its own small repository, now `DrDustinEdwards/site-runtime`, and installed by tag like capsomer and
-d1-dump: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.4.0"`. The reason and the exact steps are in the pull request that introduced this layout.
+d1-dump: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.5.0"`. The reason and the exact steps are in the pull request that introduced this layout.
