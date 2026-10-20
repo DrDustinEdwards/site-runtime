@@ -83,6 +83,21 @@ blocked beacon on germomics (#35), capsomer (#20), foxhound (#20), carrel (#18) 
 An edge-cached response must not: every reader would share one nonce for the cache lifetime, so its inline scripts are trusted by
 hash (`scriptHash`).
 
+
+## The report sink
+
+Every policy needs a sink, and every site receives its reports with the same function (`./csp-report`), not its own:
+
+```js
+import { receiveCspReport } from "@dustinedwards/site-runtime/csp-report";
+if (url.pathname === "/csp-report") return receiveCspReport(request, { headers: SECURITY_HEADERS, allow: (r) => myLimiter(r) });
+```
+
+A POST always gets 204 (an error status makes browsers send the report again). The body is read to 16 KB and no further;
+at most 10 violations are logged, one JSON line each, with every URL cut to its origin and path, and no address, user
+agent or cookie. `allow` is the site's rate limiter, asked before the body is read; `allowOrigin` names the one origin
+that may report from another host (the CORS preflight). Nothing is stored.
+
 ## The test suite
 
 OSHP has one: its validator, `subprojects/validator/tests_suite.yml` in the project repository, a

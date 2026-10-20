@@ -17,6 +17,10 @@
       "types": "./csp.d.mts",
       "default": "./csp.mjs"
     },
+    "./csp-report": {
+      "types": "./csp-report.d.mts",
+      "default": "./csp-report.mjs"
+    },
     "./check": {
       "types": "./check.d.mts",
       "default": "./check.mjs"
@@ -52,6 +56,8 @@
     "headers.d.mts",
     "csp.mjs",
     "csp.d.mts",
+    "csp-report.mjs",
+    "csp-report.d.mts",
     "check.mjs",
     "check.d.mts",
     "oshp-suite.mjs",
