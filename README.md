@@ -226,41 +226,38 @@ two-line reason.
 
 ## The Access sign-in
 
-Every MCP server and app in the family that signs a person in does it through Cloudflare Access for SaaS (OIDC), one
-login for all of them (2026-10-18). Four servers each carried their own copy of the round trip until 2026-10-20; the two
-admin MCPs kept the sign-in state, the PKCE verifier and the nonce in an unsigned cookie. `./access-login` is the one copy:
+Every MCP server in the family signs a person in through Cloudflare Access for SaaS (OIDC), one login for all of them
+(2026-10-18). Carrel, Foxing Admin and Dustin Edwards Admin each carried the same four functions until 2026-10-20, two
+checking the ID token with WebCrypto and one with jose. `./access-login` is the one copy:
 
 ```js
-import { accessSaas, startAccessLogin, completeAccessLogin, clearStateCookie } from "@dustinedwards/site-runtime/access-login";
+import { accessSaas, newSignIn, authorizationUrl, finishSignIn } from "@dustinedwards/site-runtime/access-login";
 
-const flow = {
-  callbackPath: "/callback", stateCookie: "mcp_login", cookiePath: "/callback", kvPrefix: "login:",
-  restartHint: "Start the authorization again from your client.",
-  deniedMessage: "Access denied: this account is not the administrator.",
-};
-// After consent: keep what the callback needs, server-side, and send the browser to Access.
-return startAccessLogin(request, { saas: accessSaas(env), store: env.OAUTH_KV, flow, stored: JSON.stringify({ req, scopes }) });
+// After consent: the verifier and nonce go in the provider's upstream state, server-side.
+const signIn = newSignIn();
+const { state, headers } = await env.OAUTH_PROVIDER.beginUpstream(approved.request, { data: signIn, headers: approved.headers });
+return redirect(await authorizationUrl(saas, { redirectUri: `${origin}/callback`, state, ...signIn }), headers);
 // On /callback:
-const result = await completeAccessLogin(request, {
-  saas: accessSaas(env), store: env.OAUTH_KV, flow, parse: JSON.parse,
-  isAllowed: (email) => email.toLowerCase() === env.ADMIN_EMAIL?.toLowerCase(),
-});
-if (!result.ok) return result.response;
+const { request: original, data } = await env.OAUTH_PROVIDER.finishUpstream(request);
+const signedIn = await finishSignIn(saas, { code, redirectUri: `${origin}/callback`, verifier: data.verifier, nonce: data.nonce });
+if (!signedIn.ok || !isAdministrator(signedIn.email)) return refuse(original);
 ```
 
-- The state is kept in the caller's store (a KV namespace) for ten minutes and used once. The browser holds only a random
-  binding value, whose SHA-256 digest the stored state keeps, so a person holding the callback URL cannot finish another
-  browser's sign-in. A cookie that does not match leaves the state for its own browser.
-- PKCE (S256) and an OIDC nonce on every sign-in, both kept on the server. The state is consumed after the token exchange,
-  so a passing Access error does not burn it; Access honours a code once.
-- The ID token is checked with WebCrypto against the SaaS app's keys (RS256): issuer, audience, expiry and not-before with
-  60 seconds of skew, the nonce, `email_verified` not false, and an email present. An unknown kid refetches once, so a key
-  rotation does not lock the door. There is no JWT library.
-- Who may sign in is the caller's `isAllowed`; the module admits nobody by itself. A missing setting closes the door (503).
+- The state of a sign-in in flight is not kept here: `@cloudflare/workers-oauth-provider`'s `beginUpstream` and
+  `finishUpstream` hold it server-side, bind it to the browser and spend it once. Never put the verifier or the nonce
+  in a cookie.
+- Every endpoint derives from `ACCESS_TEAM_DOMAIN` (`https://<team>.cloudflareaccess.com`) and the SaaS app's client id.
+  A missing setting makes `accessSaas` null, and the door stays shut.
+- PKCE (S256) and an OIDC nonce on every sign-in.
+- The ID token is checked with WebCrypto against the SaaS app's keys, with no JWT library. It must be RS256, from the
+  right issuer, for this audience, and within expiry and not-before (60 seconds of skew allowed). The nonce must match,
+  `email_verified` must not be false, and an email must be present. An unknown kid refetches once, so a key rotation
+  does not lock the door.
+- Who may sign in is the caller's to decide; the module admits nobody by itself.
 
-**Tests.** `test/access-login.test.mjs`, against a key pair made in the test, a fake token endpoint and an in-memory
-store. The binding check, the nonce check, the issuer check and the signature check were each removed once and seen to
-fail a test.
+**Tests.** `test/access-login.test.mjs` runs against a key pair made in the test and a fake token endpoint. Each of these
+checks was removed once and seen to fail a test: the signature, issuer, expiry, algorithm, nonce and `email_verified`
+checks.
 
 ## Publishing it
 

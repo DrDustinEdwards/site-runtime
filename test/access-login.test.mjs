@@ -1,9 +1,9 @@
-// The Access for SaaS sign-in: settings, the ID token checks, and the whole round trip against a fake store, a
+// The Access for SaaS sign-in: settings, the authorization URL, the ID token checks, and the code exchange against a
 // fake token endpoint and a key pair made here. PLANT tests are the ones that fail if the guard they name is removed.
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, test } from "node:test";
 
-import { accessSaas, clearStateCookie, completeAccessLogin, NOT_CONFIGURED, startAccessLogin, STATE_TTL_SECONDS, verifyIdToken } from "../access-login.mjs";
+import { accessSaas, authorizationUrl, finishSignIn, newSignIn, verifyIdToken } from "../access-login.mjs";
 
 const ENV = {
   ACCESS_TEAM_DOMAIN: "https://sample.cloudflareaccess.com/",
@@ -103,52 +103,48 @@ describe("verifyIdToken", () => {
   });
 });
 
-// A store that keeps what it is given, as a KV namespace would.
-function memoryStore() {
-  /** @type {Map<string, string>} */
-  const map = new Map();
-  /** @type {number[]} */
-  const ttls = [];
-  return {
-    map,
-    ttls,
-    get: async (/** @type {string} */ k) => map.get(k) ?? null,
-    put: async (/** @type {string} */ k, /** @type {string} */ v, /** @type {{ expirationTtl: number }} */ o) => {
-      map.set(k, v);
-      ttls.push(o.expirationTtl);
-    },
-    delete: async (/** @type {string} */ k) => {
-      map.delete(k);
-    },
-  };
-}
+describe("newSignIn and authorizationUrl", () => {
+  test("each sign-in gets its own verifier and nonce, and the verifier is 43 URL-safe characters", () => {
+    const a = newSignIn();
+    const b = newSignIn();
+    assert.notEqual(a.verifier, b.verifier);
+    assert.notEqual(a.nonce, b.nonce);
+    assert.match(a.verifier, /^[A-Za-z0-9_-]{43}$/);
+  });
 
-const FLOW = {
-  callbackPath: "/callback",
-  stateCookie: "sample_login",
-  cookiePath: "/callback",
-  kvPrefix: "login:",
-  restartHint: "Start again from your client.",
-  deniedMessage: "access denied: not the administrator",
-};
-const ORIGIN = "https://mcp.example.com";
+  test("the URL carries the client, the redirect, the state, the nonce and the S256 challenge, never the verifier", async () => {
+    const { verifier, nonce } = newSignIn();
+    const url = new URL(await authorizationUrl(saas, { redirectUri: "https://mcp.example.com/callback", state: "s1", verifier, nonce }));
+    assert.equal(url.origin + url.pathname, saas.authorizationUrl);
+    assert.equal(url.searchParams.get("client_id"), "client-1");
+    assert.equal(url.searchParams.get("redirect_uri"), "https://mcp.example.com/callback");
+    assert.equal(url.searchParams.get("response_type"), "code");
+    assert.equal(url.searchParams.get("scope"), "openid email profile");
+    assert.equal(url.searchParams.get("state"), "s1");
+    assert.equal(url.searchParams.get("nonce"), nonce);
+    assert.equal(url.searchParams.get("code_challenge_method"), "S256");
+    const challenge = b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
+    assert.equal(url.searchParams.get("code_challenge"), challenge);
+    assert.ok(!url.href.includes(verifier));
+  });
+});
 
-describe("the sign-in round trip", () => {
+describe("finishSignIn", () => {
   const realFetch = globalThis.fetch;
   /** @type {URLSearchParams[]} */
   let exchanges = [];
-  /** @type {(body: URLSearchParams) => Promise<Response>} */
+  /** @type {() => Promise<Response>} */
   let tokenEndpoint;
+  const input = { code: "c1", redirectUri: "https://mcp.example.com/callback", verifier: "v1", nonce: "n1" };
 
   beforeEach(() => {
     exchanges = [];
-    tokenEndpoint = async (body) => Response.json({ id_token: await sign(claims({ nonce: lastNonce })) });
+    tokenEndpoint = async () => Response.json({ id_token: await sign(claims()) });
     globalThis.fetch = /** @type {typeof fetch} */ (
-      async (input, init) => {
-        assert.equal(String(input), saas.tokenUrl);
-        const body = new URLSearchParams(String(init?.body));
-        exchanges.push(body);
-        return tokenEndpoint(body);
+      async (url, init) => {
+        assert.equal(String(url), saas.tokenUrl);
+        exchanges.push(new URLSearchParams(String(init?.body)));
+        return tokenEndpoint();
       }
     );
   });
@@ -156,157 +152,44 @@ describe("the sign-in round trip", () => {
     globalThis.fetch = realFetch;
   });
 
-  let lastNonce = "";
-  /** Starts a sign-in and returns what the browser and Access would carry back. */
-  async function start(store = memoryStore(), stored = "the caller's own value") {
-    const res = await startAccessLogin(new Request(`${ORIGIN}/authorize`, { method: "POST" }), { saas, store, flow: FLOW, stored });
-    const location = new URL(/** @type {string} */ (res.headers.get("Location")));
-    lastNonce = /** @type {string} */ (location.searchParams.get("nonce"));
-    const setCookie = /** @type {string} */ (res.headers.get("Set-Cookie"));
-    const binding = setCookie.split(";")[0].split("=")[1];
-    const state = /** @type {string} */ (location.searchParams.get("state"));
-    return { res, location, setCookie, binding, state, store };
-  }
-  /** @param {string} state @param {string | null} binding @param {string} [query] */
-  const callback = (state, binding, query = `code=c1&state=${state}`) =>
-    new Request(`${ORIGIN}/callback?${query}`, { headers: binding === null ? {} : { Cookie: `other=1; ${FLOW.stateCookie}=${binding}` } });
-  const complete = (/** @type {Request} */ req, /** @type {ReturnType<typeof memoryStore>} */ store, isAllowed = (/** @type {string} */ e) => e === "admin@example.com") =>
-    completeAccessLogin(req, { saas, store, flow: FLOW, isAllowed, keys });
-
-  test("start sends the browser to Access with PKCE S256, a nonce and a state, and keeps all three on the server", async () => {
-    const { res, location, setCookie, binding, state, store } = await start();
-    assert.equal(res.status, 302);
-    assert.equal(location.origin + location.pathname, saas.authorizationUrl);
-    assert.equal(location.searchParams.get("client_id"), "client-1");
-    assert.equal(location.searchParams.get("redirect_uri"), `${ORIGIN}/callback`);
-    assert.equal(location.searchParams.get("code_challenge_method"), "S256");
-    assert.equal(location.searchParams.get("scope"), "openid email profile");
-    assert.match(setCookie, /HttpOnly; Secure; SameSite=Lax; Path=\/callback; Max-Age=600$/);
-    assert.deepEqual(store.ttls, [STATE_TTL_SECONDS]);
-    const kept = JSON.parse(/** @type {string} */ (store.map.get(`login:${state}`)));
-    assert.equal(kept.stored, "the caller's own value");
-    assert.equal(kept.nonce, lastNonce);
-    // PLANT: the verifier never leaves the server, and the cookie is not the stored binding.
-    assert.ok(!location.href.includes(kept.verifier));
-    assert.ok(!setCookie.includes(kept.verifier));
-    assert.notEqual(binding, kept.binding);
-    assert.ok(!binding.includes(state));
+  test("exchanges the code with the verifier and the client secret, and returns the verified email", async () => {
+    assert.deepEqual(await finishSignIn(saas, input, keys), { ok: true, email: "admin@example.com" });
+    const sent = exchanges[0];
+    assert.equal(sent.get("grant_type"), "authorization_code");
+    assert.equal(sent.get("code"), "c1");
+    assert.equal(sent.get("redirect_uri"), input.redirectUri);
+    assert.equal(sent.get("code_verifier"), "v1");
+    assert.equal(sent.get("client_id"), "client-1");
+    assert.equal(sent.get("client_secret"), "secret-1");
   });
 
-  test("a whole sign-in admits the allowed email once, and the state is gone after", async () => {
-    const { binding, state, store } = await start();
-    const result = await complete(callback(state, binding), store);
-    assert.equal(result.ok, true);
-    assert.ok(result.ok && result.email === "admin@example.com" && result.state === "the caller's own value");
-    assert.equal(exchanges[0].get("code"), "c1");
-    assert.equal(exchanges[0].get("redirect_uri"), `${ORIGIN}/callback`);
-    assert.equal(store.map.size, 0);
-    const again = await complete(callback(state, binding), store);
-    assert.equal(again.ok, false);
-    assert.ok(!again.ok && again.response.status === 403);
+  test("returns the name too, trimmed and cut to 80 characters", async () => {
+    tokenEndpoint = async () => Response.json({ id_token: await sign(claims({ name: `  ${"n".repeat(100)} ` })) });
+    assert.deepEqual(await finishSignIn(saas, input, keys), { ok: true, email: "admin@example.com", name: "n".repeat(80) });
   });
 
-  test("the verifier sent to the token endpoint is the one whose challenge went to Access", async () => {
-    const { location, binding, state, store } = await start();
-    await complete(callback(state, binding), store);
-    const verifier = /** @type {string} */ (exchanges[0].get("code_verifier"));
-    const challenge = b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
-    assert.equal(location.searchParams.get("code_challenge"), challenge);
-  });
-
-  test("PLANT: no cookie, or another browser's cookie, is refused and leaves the state for its own browser", async () => {
-    const { binding, state, store } = await start();
-    for (const presented of [null, "0".repeat(64), `${binding}x`]) {
-      const result = await complete(callback(state, presented), store);
-      assert.ok(!result.ok && result.response.status === 403);
-      assert.match(await result.response.text(), /did not start the sign-in/);
-    }
-    assert.equal(exchanges.length, 0);
-    assert.equal(store.map.size, 1);
-    assert.equal((await complete(callback(state, binding), store)).ok, true);
-  });
-
-  test("PLANT: a state that was never stored, or expired, is refused before Access is asked", async () => {
-    const { binding, store } = await start();
-    const result = await complete(callback(crypto.randomUUID(), binding), store);
-    assert.ok(!result.ok && result.response.status === 403);
-    assert.equal(exchanges.length, 0);
-  });
-
-  test("an email isAllowed refuses is the flow's denial", async () => {
-    const { binding, state, store } = await start();
-    const result = await complete(callback(state, binding), store, () => false);
-    assert.ok(!result.ok && result.response.status === 403);
-    assert.equal(await result.response.text(), FLOW.deniedMessage);
-  });
-
-  test("PLANT: a token with another nonce, an unverified email or no email is refused", async () => {
-    for (const over of [{ nonce: "replayed" }, { email_verified: false }, { email: "  " }]) {
-      const { binding, state, store } = await start();
-      tokenEndpoint = async () => Response.json({ id_token: await sign(claims({ nonce: lastNonce, ...over })) });
-      const result = await complete(callback(state, binding), store);
-      assert.ok(!result.ok && result.response.status === 403, JSON.stringify(over));
+  test("PLANT: another nonce, an unverified email or no email is refused", async () => {
+    /** @type {[Record<string, unknown>, string][]} */
+    const cases = [
+      [{ nonce: "replayed" }, "nonce-mismatch"],
+      [{ email_verified: false }, "email-not-verified"],
+      [{ email: "  " }, "no-email"],
+    ];
+    for (const [over, reason] of cases) {
+      tokenEndpoint = async () => Response.json({ id_token: await sign(claims(over)) });
+      assert.deepEqual(await finishSignIn(saas, input, keys), { ok: false, reason });
     }
   });
 
-  test("a failed exchange keeps the state, so the person can retry the same sign-in", async () => {
-    const { binding, state, store } = await start();
+  test("PLANT: a token signed by another key is refused", async () => {
+    tokenEndpoint = async () => Response.json({ id_token: await sign(claims(), other.privateKey) });
+    assert.deepEqual(await finishSignIn(saas, input, keys), { ok: false, reason: "invalid-id-token" });
+  });
+
+  test("a failed exchange or an answer with no ID token is a refusal, not a throw", async () => {
     tokenEndpoint = async () => new Response("busy", { status: 503 });
-    const failed = await complete(callback(state, binding), store);
-    assert.ok(!failed.ok && failed.response.status === 502);
-    assert.equal(store.map.size, 1);
-    tokenEndpoint = async () => Response.json({});
-    const empty = await complete(callback(state, binding), store);
-    assert.ok(!empty.ok && empty.response.status === 502);
-  });
-
-  test("Access's own refusal is named, and a missing code is a 400", async () => {
-    const { binding, state, store } = await start();
-    const refused = await complete(callback(state, binding, "error=access_denied"), store);
-    assert.ok(!refused.ok && refused.response.status === 403);
-    assert.match(await refused.response.text(), /refused by Access: access_denied/);
-    const missing = await complete(callback(state, binding, `state=${state}`), store);
-    assert.ok(!missing.ok && missing.response.status === 400);
-  });
-
-  test("an unreadable stored state, or one parse refuses, is deleted and refused", async () => {
-    const { binding, state, store } = await start();
-    const thrown = await completeAccessLogin(callback(state, binding), {
-      saas,
-      store,
-      flow: FLOW,
-      isAllowed: () => true,
-      keys,
-      parse: () => {
-        throw new Error("bad");
-      },
-    });
-    assert.ok(!thrown.ok && thrown.response.status === 403);
-    assert.equal(store.map.size, 0);
-    store.map.set("login:junk", "{not json");
-    const junk = await complete(callback("junk", binding), store);
-    assert.ok(!junk.ok && junk.response.status === 403);
-    assert.equal(store.map.has("login:junk"), false);
-  });
-
-  test("the name is returned, trimmed and cut to 80 characters", async () => {
-    const { binding, state, store } = await start();
-    tokenEndpoint = async () => Response.json({ id_token: await sign(claims({ nonce: lastNonce, name: `  ${"n".repeat(100)} ` })) });
-    const result = await complete(callback(state, binding), store);
-    assert.ok(result.ok && result.name === "n".repeat(80));
-  });
-
-  test("PLANT: an unconfigured sign-in is closed at both ends", async () => {
-    const store = memoryStore();
-    const started = await startAccessLogin(new Request(`${ORIGIN}/authorize`), { saas: null, store, flow: FLOW, stored: "x" });
-    assert.equal(started.status, 503);
-    assert.equal(await started.text(), NOT_CONFIGURED);
-    assert.equal(store.map.size, 0);
-    const done = await completeAccessLogin(callback("s", "b"), { saas: null, store, flow: FLOW, isAllowed: () => true });
-    assert.ok(!done.ok && done.response.status === 503);
-  });
-
-  test("clearStateCookie expires the binding cookie on its own path", () => {
-    assert.equal(clearStateCookie(FLOW), "sample_login=; HttpOnly; Secure; SameSite=Lax; Path=/callback; Max-Age=0");
+    assert.deepEqual(await finishSignIn(saas, input, keys), { ok: false, reason: "token-exchange-503" });
+    tokenEndpoint = async () => new Response("not json");
+    assert.deepEqual(await finishSignIn(saas, input, keys), { ok: false, reason: "no-id-token" });
   });
 });
