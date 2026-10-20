@@ -18,6 +18,8 @@
  */
 
 /** The largest body read; the rest is never read. */
+import { readCapped } from "./body.mjs";
+
 export const MAX_REPORT_BYTES = 16_384;
 
 /** The most violations logged from one request. */
@@ -75,36 +77,17 @@ export function summarizeViolation(body) {
 }
 
 /**
- * The body as text, at most `max` bytes; null when it is longer or unreadable.
+ * The body as text, at most `max` bytes; null when it is longer or unreadable (a report that cannot be read is
+ * dropped, never retried).
  * @param {Request} request @param {number} max
  * @returns {Promise<string | null>}
  */
-async function readCapped(request, max) {
-  if (!request.body) return "";
-  const reader = request.body.getReader();
-  const chunks = [];
-  let size = 0;
+async function readReport(request, max) {
   try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > max) {
-        await reader.cancel().catch(() => {});
-        return null;
-      }
-      chunks.push(value);
-    }
+    return await readCapped(request, max);
   } catch {
     return null;
   }
-  const all = new Uint8Array(size);
-  let at = 0;
-  for (const c of chunks) {
-    all.set(c, at);
-    at += c.byteLength;
-  }
-  return new TextDecoder().decode(all);
 }
 
 /**
@@ -139,7 +122,7 @@ export async function receiveCspReport(request, { allow, allowOrigin, headers = 
   const declared = Number(request.headers.get("Content-Length") ?? 0);
   if (Number.isFinite(declared) && declared > MAX_REPORT_BYTES) return answer(204);
   if (allow && !(await allow(request))) return answer(204);
-  const text = await readCapped(request, MAX_REPORT_BYTES);
+  const text = await readReport(request, MAX_REPORT_BYTES);
   if (text === null) return answer(204);
   let parsed;
   try {

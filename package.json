@@ -21,6 +21,10 @@
       "types": "./csp-report.d.mts",
       "default": "./csp-report.mjs"
     },
+    "./body": {
+      "types": "./body.d.mts",
+      "default": "./body.mjs"
+    },
     "./check": {
       "types": "./check.d.mts",
       "default": "./check.mjs"
@@ -74,6 +78,8 @@
     "members",
     "access-login.mjs",
     "access-login.d.mts",
+    "body.mjs",
+    "body.d.mts",
     "bin",
     "README.md"
   ],

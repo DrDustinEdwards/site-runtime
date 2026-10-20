@@ -100,6 +100,20 @@ at most 10 violations are logged, one JSON line each, with every URL cut to its 
 agent or cookie. `allow` is the site's rate limiter, asked before the body is read; `allowOrigin` names the one origin
 that may report from another host (the CORS preflight). Nothing is stored.
 
+## A request body, read to a ceiling
+
+`./body` reads a body to a byte ceiling, counting the chunks as they arrive. Content-Length can be missing or wrong,
+and `request.text()` holds the whole body before any check runs, so neither is a cap.
+
+```js
+import { readCapped } from "@dustinedwards/site-runtime/body";
+const text = await readCapped(request, 64 * 1024);
+if (text === null) return new Response("too large", { status: 413 });
+```
+
+`null` means over the ceiling (never a truncated body); "" means no body; a stream that fails mid-read throws.
+`readCappedBytes` returns the bytes instead. The report sink above reads with it.
+
 ## The test suite
 
 OSHP has one: its validator, `subprojects/validator/tests_suite.yml` in the project repository, a
