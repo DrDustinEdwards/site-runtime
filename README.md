@@ -277,4 +277,4 @@ checks.
 
 A git dependency cannot point at a subfolder of a monorepo, and the sites that adopt it are other repositories (some private),
 so it is published as its own small repository, now `DrDustinEdwards/site-runtime`, and installed by tag like capsomer and
-d1-dump: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.5.0"`. The reason and the exact steps are in the pull request that introduced this layout.
+d1-dump: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.6.0"`. The reason and the exact steps are in the pull request that introduced this layout.
