@@ -3,8 +3,9 @@
 The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-homes-2026-10-06.md). This repository was
 `DrDustinEdwards/security-headers` and was renamed on 2026-10-08, keeping its history and tags; `v0.1.0` and `v0.1.1` are the
 package under its old name, `@dustinedwards/security-headers`. Today it holds the security headers (the root export and
-`./headers`, `./csp`, `./check`, `./oshp`, `./owasp`) the rate limiter (`./rate-limit`, `./rate-limit/durable-object`) and the members model (`./members`).
-The health format, the Access check and the email helper are to move in later, each as its own subpath and its own pull request.
+`./headers`, `./csp`, `./check`, `./oshp`, `./owasp`) the rate limiter (`./rate-limit`, `./rate-limit/durable-object`), the members model (`./members`) and the Access for SaaS
+sign-in (`./access-login`). The health format, the Access header check and the email helper are to move in later, each as its
+own subpath and its own pull request.
 
 ## Security headers
 
@@ -223,8 +224,46 @@ a bundle wider than the granter's, an Owner removing or demoting the Primary Own
 his email), a peer managed, a removed or expired row admitted, the expiry boundary moved a day, an end date lengthened, a
 two-line reason.
 
+## The Access sign-in
+
+Every MCP server and app in the family that signs a person in does it through Cloudflare Access for SaaS (OIDC), one
+login for all of them (2026-10-18). Four servers each carried their own copy of the round trip until 2026-10-20; the two
+admin MCPs kept the sign-in state, the PKCE verifier and the nonce in an unsigned cookie. `./access-login` is the one copy:
+
+```js
+import { accessSaas, startAccessLogin, completeAccessLogin, clearStateCookie } from "@dustinedwards/site-runtime/access-login";
+
+const flow = {
+  callbackPath: "/callback", stateCookie: "mcp_login", cookiePath: "/callback", kvPrefix: "login:",
+  restartHint: "Start the authorization again from your client.",
+  deniedMessage: "Access denied: this account is not the administrator.",
+};
+// After consent: keep what the callback needs, server-side, and send the browser to Access.
+return startAccessLogin(request, { saas: accessSaas(env), store: env.OAUTH_KV, flow, stored: JSON.stringify({ req, scopes }) });
+// On /callback:
+const result = await completeAccessLogin(request, {
+  saas: accessSaas(env), store: env.OAUTH_KV, flow, parse: JSON.parse,
+  isAllowed: (email) => email.toLowerCase() === env.ADMIN_EMAIL?.toLowerCase(),
+});
+if (!result.ok) return result.response;
+```
+
+- The state is kept in the caller's store (a KV namespace) for ten minutes and used once. The browser holds only a random
+  binding value, whose SHA-256 digest the stored state keeps, so a person holding the callback URL cannot finish another
+  browser's sign-in. A cookie that does not match leaves the state for its own browser.
+- PKCE (S256) and an OIDC nonce on every sign-in, both kept on the server. The state is consumed after the token exchange,
+  so a passing Access error does not burn it; Access honours a code once.
+- The ID token is checked with WebCrypto against the SaaS app's keys (RS256): issuer, audience, expiry and not-before with
+  60 seconds of skew, the nonce, `email_verified` not false, and an email present. An unknown kid refetches once, so a key
+  rotation does not lock the door. There is no JWT library.
+- Who may sign in is the caller's `isAllowed`; the module admits nobody by itself. A missing setting closes the door (503).
+
+**Tests.** `test/access-login.test.mjs`, against a key pair made in the test, a fake token endpoint and an in-memory
+store. The binding check, the nonce check, the issuer check and the signature check were each removed once and seen to
+fail a test.
+
 ## Publishing it
 
 A git dependency cannot point at a subfolder of a monorepo, and the sites that adopt it are other repositories (some private),
 so it is published as its own small repository, now `DrDustinEdwards/site-runtime`, and installed by tag like capsomer and
-d1-dump: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.4.0"`. The reason and the exact steps are in the pull request that introduced this layout.
+d1-dump: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.5.0"`. The reason and the exact steps are in the pull request that introduced this layout.
