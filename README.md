@@ -68,7 +68,8 @@ headers.set(name, value);
 ```
 
 The fixed parts are the same for every site: `default-src 'self'`, `object-src 'none'`, `base-uri 'none'`,
-`form-action 'self'`, `frame-ancestors 'none'`. Scripts are `'self'`, the site's hashes or nonce, its listed hosts and, on
+`form-action 'self'`, `frame-ancestors 'none'` (`framedBySameOrigin: true` makes it `'self'`, for a site that frames its own
+pages, such as Capsomer's specimens; pair it with an `X-Frame-Options: sameorigin` override). Scripts are `'self'`, the site's hashes or nonce, its listed hosts and, on
 request, the Cloudflare Web Analytics beacon. A script source of `*`, a bare scheme, `'unsafe-inline'` or `'unsafe-eval'` is
 refused, and a policy with no report sink is refused.
 
@@ -209,4 +210,4 @@ two-line reason.
 
 A git dependency cannot point at a subfolder of a monorepo, and the sites that adopt it are other repositories (some private),
 so it is published as its own small repository, now `DrDustinEdwards/site-runtime`, and installed by tag like capsomer and
-d1-dump: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.3.0"`. The reason and the exact steps are in the pull request that introduced this layout.
+d1-dump: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.4.0"`. The reason and the exact steps are in the pull request that introduced this layout.

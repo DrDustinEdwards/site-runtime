@@ -92,6 +92,7 @@ function checkSource(source) {
  *   reportUri?: string,
  *   reportTo?: string,
  *   reportOnly?: boolean,
+ *   framedBySameOrigin?: boolean,
  *   extraDirectives?: readonly string[],
  * }} SitePolicy
  *   `scriptHashes` / `styleHashes`: `sha256-...` values (scriptHash), for responses that may not carry a nonce.
@@ -99,11 +100,14 @@ function checkSource(source) {
  *   `styleAttributesInline`: `style-src-attr 'unsafe-inline'`, for pages that emit style attributes, which a nonce
  *   cannot cover; the one inline allowance offered, scoped to attributes, which run no code.
  *   `reportUri` / `reportTo`: where violations go. A policy with no sink hides the page it breaks, so one is required.
+ *   `framedBySameOrigin`: `frame-ancestors 'self'` in place of 'none', for a site that shows its own pages in frames
+ *   (a design system's live specimens). No other origin can be allowed to frame a site.
  */
 
 /**
  * The Content-Security-Policy header a site sends, from what it loads. The fixed parts are the same everywhere
- * (`default-src 'self'`, `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`, `frame-ancestors 'none'`);
+ * (`default-src 'self'`, `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`, `frame-ancestors 'none'`, or
+ * 'self' when the site frames its own pages);
  * scripts are 'self', the site's hashes or nonce, its listed hosts and, when asked, the Cloudflare beacon. A script
  * source that is `*`, a bare scheme, 'unsafe-inline' or 'unsafe-eval' is refused here, so a site cannot list its way
  * to a policy the check would fail.
@@ -112,7 +116,7 @@ function checkSource(source) {
  * @returns {{ name: "Content-Security-Policy" | "Content-Security-Policy-Report-Only", value: string }}
  */
 export function buildContentSecurityPolicy(site) {
-  const { sources = {}, scriptHashes = [], styleHashes = [], nonce, styleAttributesInline = false, cloudflareWebAnalytics = false, reportUri, reportTo, reportOnly = false, extraDirectives = [] } = site;
+  const { sources = {}, scriptHashes = [], styleHashes = [], nonce, styleAttributesInline = false, cloudflareWebAnalytics = false, reportUri, reportTo, reportOnly = false, framedBySameOrigin = false, extraDirectives = [] } = site;
   if (!reportUri && !reportTo) throw new Error("a policy needs a report sink (reportUri or reportTo)");
   if (nonce !== undefined && !/^[A-Za-z0-9+/_-]{16,}={0,2}$/.test(nonce)) throw new Error("the nonce is not a base64 value of at least 16 characters");
   const hashSource = (/** @type {string} */ h) => {
@@ -142,7 +146,7 @@ export function buildContentSecurityPolicy(site) {
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'self'",
-    "frame-ancestors 'none'",
+    `frame-ancestors ${framedBySameOrigin ? "'self'" : "'none'"}`,
     ...extraDirectives,
     ...(reportUri ? [`report-uri ${checkSource(reportUri)}`] : []),
     ...(reportTo ? [`report-to ${checkSource(reportTo)}`] : []),
