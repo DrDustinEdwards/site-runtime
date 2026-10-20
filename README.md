@@ -3,9 +3,10 @@
 The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-homes-2026-10-06.md). This repository was
 `DrDustinEdwards/security-headers` and was renamed on 2026-10-08, keeping its history and tags; `v0.1.0` and `v0.1.1` are the
 package under its old name, `@dustinedwards/security-headers`. Today it holds the security headers (the root export and
-`./headers`, `./csp`, `./check`, `./oshp`, `./owasp`) the rate limiter (`./rate-limit`, `./rate-limit/durable-object`), the members model (`./members`) and the Access for SaaS
-sign-in (`./access-login`). The health format, the Access header check and the email helper are to move in later, each as its
-own subpath and its own pull request.
+`./headers`, `./csp`, `./check`, `./oshp`, `./owasp`) the rate limiter (`./rate-limit`, `./rate-limit/durable-object`), the members model (`./members`), the Access for SaaS
+sign-in (`./access-login`), the Access request-token check (`./access`), the capped body reader (`./body`), one HTML escape
+(`./html`) and one constant-time secret compare (`./compare`). The health format and the email helper are to move in later,
+each as its own subpath and its own pull request.
 
 ## Security headers
 
@@ -113,6 +114,69 @@ if (text === null) return new Response("too large", { status: 413 });
 
 `null` means over the ceiling (never a truncated body); "" means no body; a stream that fails mid-read throws.
 `readCappedBytes` returns the bytes instead. The report sink above reads with it.
+
+## HTML escaping
+
+`./html` is the one `escapeHtml` (Dustin's rule of 2026-10-20: the same thing is the same file and the same code). Capsid,
+its explorer, Capsomer's system map, dustinedwards.info's palette and CV print document, Enarratio and Foxing's email each
+had a copy; three of them left the single quote alone.
+
+```js
+import { escapeHtml } from "@dustinedwards/site-runtime/html";
+const html = `<a title="${escapeHtml(title)}">${escapeHtml(label)}</a>`;
+```
+
+It replaces `& < > " '` with `&amp; &lt; &gt; &quot; &#39;` and nothing else, so its output is safe as element content and
+inside a single- or double-quoted attribute. A non-string is passed through `String()` first, as a template literal would.
+It is not an encoder for unquoted attributes, `javascript:` URLs, or the inside of `<script>` and `<style>`.
+
+## A constant-time secret compare
+
+`./compare` is the one comparison of a presented secret with the expected one, in place of Capsid's `timingSafeEqual` and
+dustinedwards.info's `constantTimeEqual`.
+
+```js
+import { safeEqual } from "@dustinedwards/site-runtime/compare";
+if (!(await safeEqual(presentedToken, env.OPERATOR_TOKEN))) return new Response("unauthorized", { status: 401 });
+```
+
+- Both sides are hashed with SHA-256 and the 32-byte digests compared, so neither string's length reaches the compare (the
+  hash's own time follows the input's length, which only tells a caller the length of what they sent).
+- The digests are compared by `crypto.subtle.timingSafeEqual` where the runtime has it (workerd), and by an XOR over all 32
+  bytes where it does not (Node).
+- It is async, since WebCrypto's digest is. A side that is not a string, or is empty, matches nothing, so an unset secret
+  never admits an absent credential.
+
+## The Access request check
+
+`./access` checks the token Cloudflare Access signs for each request it lets through, in place of carrel's and
+dustinedwards.info's jose copies. It verifies with `./access-login`'s WebCrypto JWT check (`verifyJwt`, which
+`verifyIdToken` now wraps), so there is no JWT library.
+
+```js
+import { verifyAccessRequest } from "@dustinedwards/site-runtime/access";
+const verdict = await verifyAccessRequest(request, { teamDomain: env.ACCESS_TEAM_DOMAIN, audience: env.ACCESS_AUD, cookie: true });
+if (!verdict.ok) return refuse(verdict.reason);
+const email = typeof verdict.claims.email === "string" ? verdict.claims.email : null; // a person
+const service = typeof verdict.claims.common_name === "string" ? verdict.claims.common_name : null; // a service token
+```
+
+- The token is the `Cf-Access-Jwt-Assertion` header, or with `cookie: true` the `CF_Authorization` cookie when there is no
+  header (the cookie rides on every path of the host; the header only on paths the application covers).
+- RS256 is pinned. The issuer must be `https://<team domain>` exactly, with no trailing slash; the team domain may be kept with
+  or without the scheme and a trailing slash. The audience is the application's tag. Expiry and not-before allow 60 seconds
+  of skew.
+- A refusal names its reason: `not-configured`, `no-token`, `malformed`, `algorithm`, `unknown-key`, `signature`, `issuer`,
+  `audience`, `expired`, `not-yet-valid`. A pass returns the token's claims.
+- The keys come from `https://<team domain>/cdn-cgi/access/certs`, cached per isolate. A kid not in the cache refetches, at
+  most once every 30 seconds, so a forged kid cannot hammer the endpoint. A key set that cannot be fetched **throws**: an
+  outage is not a refusal.
+- Who the claims name (an email, a service token's `common_name`), any case folding, a local development bypass and what a
+  refusal shows stay with each site.
+
+**Tests.** `test/html.test.mjs`, `test/compare.test.mjs` (both the XOR path and a stubbed `crypto.subtle.timingSafeEqual`)
+and `test/access.test.mjs` (a key pair made in the test and a fake certs endpoint). Each PLANT test fails when the guard it
+names is removed.
 
 ## The test suite
 
@@ -277,4 +341,4 @@ checks.
 
 A git dependency cannot point at a subfolder of a monorepo, and the sites that adopt it are other repositories (some private),
 so it is published as its own small repository, now `DrDustinEdwards/site-runtime`, and installed by tag like capsomer and
-d1-dump: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.6.0"`. The reason and the exact steps are in the pull request that introduced this layout.
+d1-dump: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.7.0"`. The reason and the exact steps are in the pull request that introduced this layout.

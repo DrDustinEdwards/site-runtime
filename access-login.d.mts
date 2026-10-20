@@ -30,6 +30,11 @@ export type Jwk = JsonWebKey & { kid?: string };
 export type KeySource = (kid: string, fresh: boolean) => Promise<Jwk | undefined>;
 /** The keys at a JWKS URL, cached per isolate. */
 export function remoteKeys(jwksUrl: string): KeySource;
+/** Why a JWT was refused. Only a fault in the token is a refusal; a key source that throws is not caught. */
+export type JwtRefusal = "malformed" | "algorithm" | "unknown-key" | "signature" | "issuer" | "audience" | "expired" | "not-yet-valid";
+export type JwtVerdict = { ok: true; claims: Record<string, unknown> } | { ok: false; reason: JwtRefusal };
+/** The family's one JWT check: RS256 pinned, signed by one of `keys`, for `issuer` and `audience`, in date (60 s skew). `now` in ms. */
+export function verifyJwt(token: string, keys: KeySource, expect: { issuer: string; audience: string; now?: number }): Promise<JwtVerdict>;
 /** The payload of an RS256 JWT signed by one of `keys`, for `issuer` and `audience`, in date; else null. */
 export function verifyIdToken(token: string, keys: KeySource, expect: { issuer: string; audience: string; now?: number }): Promise<Record<string, unknown> | null>;
 

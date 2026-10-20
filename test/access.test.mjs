@@ -1,0 +1,216 @@
+// The Access request-token check: the team domain, where the token is read from, each refusal by its reason, and the
+// key fetch against a fake certs endpoint, with a key pair made here. PLANT tests are the ones that fail if the guard
+// they name is removed.
+import assert from "node:assert/strict";
+import { afterEach, beforeEach, describe, test } from "node:test";
+
+import { ACCESS_COOKIE, ACCESS_JWT_HEADER, REFETCH_COOLDOWN_MS, accessIssuer, accessKeys, accessToken, verifyAccessRequest } from "../access.mjs";
+import { verifyIdToken } from "../access-login.mjs";
+
+const TEAM = "sample.cloudflareaccess.com";
+const ISSUER = `https://${TEAM}`;
+const AUD = "aud-tag-1";
+
+/** @param {Uint8Array} bytes */
+const b64url = (bytes) => Buffer.from(bytes).toString("base64url");
+/** @param {unknown} value */
+const encode = (value) => b64url(new TextEncoder().encode(JSON.stringify(value)));
+
+const keyParams = { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" };
+const pair = /** @type {CryptoKeyPair} */ (await crypto.subtle.generateKey(keyParams, true, ["sign", "verify"]));
+const other = /** @type {CryptoKeyPair} */ (await crypto.subtle.generateKey(keyParams, true, ["sign", "verify"]));
+const publicJwk = { ...(await crypto.subtle.exportKey("jwk", pair.publicKey)), kid: "k1" };
+/** @type {import("../access-login.d.mts").KeySource} */
+const keys = async (kid) => (kid === "k1" ? publicJwk : undefined);
+
+const now = Math.floor(Date.now() / 1000);
+/** Access's request token: aud is an array of application tags; a person has an email, a service token a common_name. */
+/** @param {Record<string, unknown>} [over] */
+const claims = (over = {}) => ({ iss: ISSUER, aud: [AUD], exp: now + 300, iat: now, email: "admin@example.com", ...over });
+
+/** @param {unknown} payload @param {CryptoKey} [key] @param {Record<string, unknown>} [header] */
+async function sign(payload, key = pair.privateKey, header = { alg: "RS256", kid: "k1" }) {
+  const input = `${encode(header)}.${encode(payload)}`;
+  const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(input));
+  return `${input}.${b64url(new Uint8Array(sig))}`;
+}
+
+/** @param {Record<string, string>} headers */
+const request = (headers = {}) => new Request("https://example.com/admin", { headers });
+const config = { teamDomain: TEAM, audience: AUD, keys };
+
+describe("accessIssuer", () => {
+  test("is https://<team domain> with no trailing slash, whichever way the domain is kept", () => {
+    for (const domain of [TEAM, `${TEAM}/`, `https://${TEAM}`, `https://${TEAM}//`, `  ${TEAM} `, "Sample.CloudflareAccess.com"]) {
+      assert.equal(accessIssuer(domain), ISSUER);
+    }
+  });
+
+  test("a missing domain or one that is not a bare host is null", () => {
+    for (const domain of [undefined, "", "  ", "https://", `${TEAM}/cdn-cgi`, `http://${TEAM}`, "team domain"]) {
+      assert.equal(accessIssuer(domain), null);
+    }
+  });
+});
+
+describe("accessToken", () => {
+  const token = "h.p.s";
+  test("reads the header, and the cookie only when asked", () => {
+    assert.equal(accessToken(request({ [ACCESS_JWT_HEADER]: token })), token);
+    assert.equal(accessToken(request({ cookie: `a=1; ${ACCESS_COOKIE}=${token}; b=2` })), null);
+    assert.equal(accessToken(request({ cookie: `a=1; ${ACCESS_COOKIE}=${token}; b=2` }), { cookie: true }), token);
+  });
+
+  test("the header wins over the cookie, and an empty cookie or one with a longer name is no token", () => {
+    assert.equal(accessToken(request({ [ACCESS_JWT_HEADER]: "header", cookie: `${ACCESS_COOKIE}=cookie` }), { cookie: true }), "header");
+    assert.equal(accessToken(request({ cookie: `${ACCESS_COOKIE}=` }), { cookie: true }), null);
+    assert.equal(accessToken(request({ cookie: `X${ACCESS_COOKIE}=${token}` }), { cookie: true }), null);
+  });
+});
+
+describe("verifyAccessRequest", () => {
+  test("returns the claims of a token Access signed for this application", async () => {
+    const verdict = await verifyAccessRequest(request({ [ACCESS_JWT_HEADER]: await sign(claims()) }), config);
+    assert.equal(verdict.ok && verdict.claims.email, "admin@example.com");
+    const service = await verifyAccessRequest(request({ [ACCESS_JWT_HEADER]: await sign(claims({ email: undefined, common_name: "svc.access" })) }), config);
+    assert.equal(service.ok && service.claims.common_name, "svc.access");
+    const single = await verifyAccessRequest(request({ [ACCESS_JWT_HEADER]: await sign(claims({ aud: AUD })) }), config);
+    assert.equal(single.ok, true);
+  });
+
+  test("reads the CF_Authorization cookie only when the caller asks", async () => {
+    const cookie = `${ACCESS_COOKIE}=${await sign(claims())}`;
+    assert.deepEqual(await verifyAccessRequest(request({ cookie }), config), { ok: false, reason: "no-token" });
+    assert.equal((await verifyAccessRequest(request({ cookie }), { ...config, cookie: true })).ok, true);
+  });
+
+  test("PLANT: a missing setting keeps the door shut", async () => {
+    const req = request({ [ACCESS_JWT_HEADER]: await sign(claims()) });
+    assert.deepEqual(await verifyAccessRequest(req, { ...config, teamDomain: undefined }), { ok: false, reason: "not-configured" });
+    assert.deepEqual(await verifyAccessRequest(req, { ...config, audience: " " }), { ok: false, reason: "not-configured" });
+  });
+
+  test("no token is no-token", async () => {
+    assert.deepEqual(await verifyAccessRequest(request(), config), { ok: false, reason: "no-token" });
+  });
+
+  test("PLANT: each fault in the token is refused with its reason", async () => {
+    /** @type {[string, string][]} */
+    const cases = [
+      [await sign(claims(), other.privateKey), "signature"],
+      [await sign(claims({ iss: "https://other.cloudflareaccess.com" })), "issuer"],
+      [await sign(claims({ iss: `${ISSUER}/` })), "issuer"],
+      [await sign(claims({ aud: ["another-app"] })), "audience"],
+      [await sign(claims({ exp: now - 120 })), "expired"],
+      [await sign(claims({ exp: undefined })), "expired"],
+      [await sign(claims({ nbf: now + 120 })), "not-yet-valid"],
+      [`${encode({ alg: "none", kid: "k1" })}.${encode(claims())}.`, "algorithm"],
+      [await sign(claims(), pair.privateKey, { alg: "HS256", kid: "k1" }), "algorithm"],
+      [await sign(claims(), pair.privateKey, { alg: "RS256", kid: "k9" }), "unknown-key"],
+      [await sign(claims(), pair.privateKey, { alg: "RS256" }), "unknown-key"],
+      ["not-a-jwt", "malformed"],
+      ["!!.!!.!!", "malformed"],
+      [`${encode({ alg: "RS256", kid: "k1" })}.${encode([1])}.x`, "malformed"],
+    ];
+    for (const [token, reason] of cases) {
+      assert.deepEqual(await verifyAccessRequest(request({ [ACCESS_JWT_HEADER]: token }), config), { ok: false, reason }, reason);
+    }
+  });
+
+  test("allows 60 seconds of clock skew either way, and no more", async () => {
+    const at = async (/** @type {Record<string, unknown>} */ over) => (await verifyAccessRequest(request({ [ACCESS_JWT_HEADER]: await sign(claims(over)) }), config)).ok;
+    assert.equal(await at({ exp: now - 30 }), true);
+    assert.equal(await at({ nbf: now + 30 }), true);
+    assert.equal(await at({ exp: now - 90 }), false);
+    assert.equal(await at({ nbf: now + 90 }), false);
+  });
+
+  test("`now` sets the clock, in milliseconds", async () => {
+    const req = request({ [ACCESS_JWT_HEADER]: await sign(claims()) });
+    assert.deepEqual(await verifyAccessRequest(req, { ...config, now: (now + 600) * 1000 }), { ok: false, reason: "expired" });
+  });
+});
+
+describe("accessKeys", () => {
+  const realFetch = globalThis.fetch;
+  /** @type {string[]} */
+  let fetched = [];
+  /** @type {() => Response | Promise<Response>} */
+  let certs;
+  let team = 0;
+  /** A team domain no other test has used, so the isolate cache starts empty. */
+  const freshTeam = () => `team-${++team}.cloudflareaccess.com`;
+
+  beforeEach(() => {
+    fetched = [];
+    certs = () => Response.json({ keys: [publicJwk] });
+    globalThis.fetch = /** @type {typeof fetch} */ (
+      async (url) => {
+        fetched.push(String(url));
+        return certs();
+      }
+    );
+  });
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  test("fetches https://<team>/cdn-cgi/access/certs once and caches it", async () => {
+    const domain = freshTeam();
+    const source = accessKeys(`https://${domain}/`);
+    assert.equal((await source("k1", false))?.kid, "k1");
+    assert.equal((await accessKeys(domain)("k1", false))?.kid, "k1");
+    assert.deepEqual(fetched, [`https://${domain}/cdn-cgi/access/certs`]);
+  });
+
+  test("verifies a request end to end through the fetched keys", async () => {
+    const domain = freshTeam();
+    const token = await sign(claims({ iss: `https://${domain}` }));
+    const verdict = await verifyAccessRequest(request({ [ACCESS_JWT_HEADER]: token }), { teamDomain: domain, audience: AUD });
+    assert.equal(verdict.ok, true);
+  });
+
+  test("PLANT: an unavailable key set throws, never a refusal", async () => {
+    const domain = freshTeam();
+    const token = await sign(claims({ iss: `https://${domain}` }));
+    const req = () => request({ [ACCESS_JWT_HEADER]: token });
+    certs = () => new Response("down", { status: 503 });
+    await assert.rejects(verifyAccessRequest(req(), { teamDomain: domain, audience: AUD }), /answered 503/);
+    certs = () => new Response("<html>");
+    await assert.rejects(verifyAccessRequest(req(), { teamDomain: domain, audience: AUD }), /not a key set/);
+    certs = () => Promise.reject(new TypeError("fetch failed"));
+    await assert.rejects(verifyAccessRequest(req(), { teamDomain: domain, audience: AUD }), /fetch failed/);
+  });
+
+  test("PLANT: within the cooldown a forged kid does not refetch, however many tokens name it", async () => {
+    const domain = freshTeam();
+    const source = accessKeys(domain);
+    assert.equal((await source("k1", false))?.kid, "k1");
+    for (let i = 0; i < 5; i++) assert.equal(await source(`forged-${i}`, true), undefined);
+    assert.equal(fetched.length, 1);
+  });
+
+  test("PLANT: after the cooldown an unknown kid refetches and the rotated key is found", async (t) => {
+    const domain = freshTeam();
+    t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+    certs = () => Response.json({ keys: [] });
+    const source = accessKeys(domain);
+    assert.equal(await source("k1", false), undefined);
+    t.mock.timers.tick(REFETCH_COOLDOWN_MS);
+    certs = () => Response.json({ keys: [publicJwk] });
+    assert.equal((await source("k1", true))?.kid, "k1");
+    assert.equal(fetched.length, 2);
+  });
+
+  test("a team domain that is not a host throws, since no key set can be named for it", () => {
+    assert.throws(() => accessKeys(""), /team domain/);
+  });
+});
+
+describe("the sign-in's ID token check is unchanged by the shared verifier", () => {
+  test("verifyIdToken still answers a payload or null", async () => {
+    const expect = { issuer: ISSUER, audience: AUD };
+    assert.equal((await verifyIdToken(await sign(claims()), keys, expect))?.email, "admin@example.com");
+    assert.equal(await verifyIdToken(await sign(claims(), other.privateKey), keys, expect), null);
+  });
+});
