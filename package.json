@@ -1,6 +1,6 @@
 {
   "name": "@dustinedwards/site-runtime",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "The portfolio sites' shared runtime. Today: OWASP Secure Headers Project defaults, a Content-Security-Policy built from a per-site list of what a site loads, the check a site runs in CI to prove its responses carry them, and one exact rate limiter on a SQLite Durable Object, and the members model: layers, permission bundles and end dates for an app with staff.",
   "type": "module",
@@ -16,6 +16,10 @@
     "./csp": {
       "types": "./csp.d.mts",
       "default": "./csp.mjs"
+    },
+    "./csp-report": {
+      "types": "./csp-report.d.mts",
+      "default": "./csp-report.mjs"
     },
     "./check": {
       "types": "./check.d.mts",
@@ -52,6 +56,8 @@
     "headers.d.mts",
     "csp.mjs",
     "csp.d.mts",
+    "csp-report.mjs",
+    "csp-report.d.mts",
     "check.mjs",
     "check.d.mts",
     "oshp-suite.mjs",

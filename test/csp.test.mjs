@@ -64,6 +64,16 @@ test("a site that loads nothing extra gets the fixed policy, enforced", () => {
   });
 });
 
+test("framedBySameOrigin lets the site frame its own pages and no one else", () => {
+  assert.deepEqual(directives({ ...SINK, framedBySameOrigin: true }).get("frame-ancestors"), ["'self'"]);
+  assert.deepEqual(directives({ ...SINK, framedBySameOrigin: false }).get("frame-ancestors"), ["'none'"]);
+  const headers = new Headers();
+  applyHeaderSet(headers, { "X-Frame-Options": "sameorigin" });
+  const { name, value } = buildContentSecurityPolicy({ ...SINK, framedBySameOrigin: true });
+  headers.set(name, value);
+  assert.deepEqual(failures(checkSecurityHeaders(headers, { standard: { "X-Frame-Options": "deny" } })), []);
+});
+
 test("a policy with no report sink is refused", () => {
   assert.throws(() => buildContentSecurityPolicy({}), /needs a report sink/);
   assert.throws(() => buildContentSecurityPolicy({ reportUri: "", reportTo: "" }), /needs a report sink/);

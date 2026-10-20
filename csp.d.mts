@@ -55,6 +55,7 @@ export function buildPolicy(directives: readonly string[]): string;
  *   reportUri?: string,
  *   reportTo?: string,
  *   reportOnly?: boolean,
+ *   framedBySameOrigin?: boolean,
  *   extraDirectives?: readonly string[],
  * }} SitePolicy
  *   `scriptHashes` / `styleHashes`: `sha256-...` values (scriptHash), for responses that may not carry a nonce.
@@ -62,10 +63,13 @@ export function buildPolicy(directives: readonly string[]): string;
  *   `styleAttributesInline`: `style-src-attr 'unsafe-inline'`, for pages that emit style attributes, which a nonce
  *   cannot cover; the one inline allowance offered, scoped to attributes, which run no code.
  *   `reportUri` / `reportTo`: where violations go. A policy with no sink hides the page it breaks, so one is required.
+ *   `framedBySameOrigin`: `frame-ancestors 'self'` in place of 'none', for a site that shows its own pages in frames
+ *   (a design system's live specimens). No other origin can be allowed to frame a site.
  */
 /**
  * The Content-Security-Policy header a site sends, from what it loads. The fixed parts are the same everywhere
- * (`default-src 'self'`, `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`, `frame-ancestors 'none'`);
+ * (`default-src 'self'`, `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`, `frame-ancestors 'none'`, or
+ * 'self' when the site frames its own pages);
  * scripts are 'self', the site's hashes or nonce, its listed hosts and, when asked, the Cloudflare beacon. A script
  * source that is `*` (or any host-source whose host is `*`), a bare scheme, or 'unsafe-inline' or 'unsafe-eval' in any
  * case is refused here, so a site cannot list its way to a policy the check would fail.
@@ -118,5 +122,6 @@ export type SitePolicy = {
     reportUri?: string;
     reportTo?: string;
     reportOnly?: boolean;
+    framedBySameOrigin?: boolean;
     extraDirectives?: readonly string[];
 };

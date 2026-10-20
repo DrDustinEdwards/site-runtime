@@ -68,9 +68,11 @@ headers.set(name, value);
 ```
 
 The fixed parts are the same for every site: `default-src 'self'`, `object-src 'none'`, `base-uri 'none'`,
-`form-action 'self'`, `frame-ancestors 'none'`. Scripts are `'self'`, the site's hashes or nonce, its listed hosts and, on
-request, the Cloudflare Web Analytics beacon. A script source of `*` (or `https://*` and the like), a bare scheme, or
-`'unsafe-inline'` or `'unsafe-eval'` in any case is refused, and a policy with no report sink is refused.
+`form-action 'self'`, `frame-ancestors 'none'` (`framedBySameOrigin: true` makes it `'self'`, for a site that frames its own
+pages, such as Capsomer's specimens; pair it with an `X-Frame-Options: sameorigin` override). Scripts are `'self'`, the
+site's hashes or nonce, its listed hosts and, on request, the Cloudflare Web Analytics beacon. A script source of `*` (or
+`https://*` and the like), a bare scheme, or `'unsafe-inline'` or `'unsafe-eval'` in any case is refused, and a policy with
+no report sink is refused.
 
 **The beacon.** Cloudflare's edge injects `/beacon.min.js/v31...` into a proxied site's pages, so the script source is the
 host with a path prefix, not the bare file: `https://static.cloudflareinsights.com/beacon.min.js` and the same followed by `/`
@@ -81,6 +83,21 @@ blocked beacon on germomics (#35), capsomer (#20), foxhound (#20), carrel (#18) 
 **Nonce or hash.** A response that is never shared-cached may carry a per-request nonce (`generateNonce`; foxhound and carrel).
 An edge-cached response must not: every reader would share one nonce for the cache lifetime, so its inline scripts are trusted by
 hash (`scriptHash`).
+
+
+## The report sink
+
+Every policy needs a sink, and every site receives its reports with the same function (`./csp-report`), not its own:
+
+```js
+import { receiveCspReport } from "@dustinedwards/site-runtime/csp-report";
+if (url.pathname === "/csp-report") return receiveCspReport(request, { headers: SECURITY_HEADERS, allow: (r) => myLimiter(r) });
+```
+
+A POST always gets 204 (an error status makes browsers send the report again). The body is read to 16 KB and no further;
+at most 10 violations are logged, one JSON line each, with every URL cut to its origin and path, and no address, user
+agent or cookie. `allow` is the site's rate limiter, asked before the body is read; `allowOrigin` names the one origin
+that may report from another host (the CORS preflight). Nothing is stored.
 
 ## The test suite
 
@@ -210,4 +227,4 @@ two-line reason.
 
 A git dependency cannot point at a subfolder of a monorepo, and the sites that adopt it are other repositories (some private),
 so it is published as its own small repository, now `DrDustinEdwards/site-runtime`, and installed by tag like capsomer and
-d1-dump: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.3.0"`. The reason and the exact steps are in the pull request that introduced this layout.
+d1-dump: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.4.0"`. The reason and the exact steps are in the pull request that introduced this layout.
