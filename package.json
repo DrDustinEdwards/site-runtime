@@ -1,8 +1,8 @@
 {
   "name": "@dustinedwards/site-runtime",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
-  "description": "The portfolio sites' shared runtime. Today: OWASP Secure Headers Project defaults, a Content-Security-Policy built from a per-site list of what a site loads, the check a site runs in CI to prove its responses carry them, and one exact rate limiter on a SQLite Durable Object, the members model: layers, permission bundles and end dates for an app with staff, and the Access for SaaS sign-in.",
+  "description": "The portfolio sites' shared runtime. Today: OWASP Secure Headers Project defaults, a Content-Security-Policy built from a per-site list of what a site loads, the check a site runs in CI to prove its responses carry them, one exact rate limiter on a SQLite Durable Object, the members model: layers, permission bundles and end dates for an app with staff, the Access for SaaS sign-in, the Cloudflare Access request-token check, one HTML escape and one constant-time secret compare.",
   "type": "module",
   "exports": {
     ".": {
@@ -24,6 +24,14 @@
     "./body": {
       "types": "./body.d.mts",
       "default": "./body.mjs"
+    },
+    "./html": {
+      "types": "./html.d.mts",
+      "default": "./html.mjs"
+    },
+    "./compare": {
+      "types": "./compare.d.mts",
+      "default": "./compare.mjs"
     },
     "./check": {
       "types": "./check.d.mts",
@@ -48,6 +56,10 @@
     "./access-login": {
       "types": "./access-login.d.mts",
       "default": "./access-login.mjs"
+    },
+    "./access": {
+      "types": "./access.d.mts",
+      "default": "./access.mjs"
     },
     "./members": {
       "types": "./members/index.d.mts",
@@ -80,6 +92,12 @@
     "access-login.d.mts",
     "body.mjs",
     "body.d.mts",
+    "access.mjs",
+    "access.d.mts",
+    "html.mjs",
+    "html.d.mts",
+    "compare.mjs",
+    "compare.d.mts",
     "bin",
     "README.md"
   ],

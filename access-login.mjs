@@ -95,16 +95,21 @@ export function remoteKeys(jwksUrl) {
 }
 
 /**
- * The payload of an RS256 JWT signed by one of `keys`, issued by `issuer` for `audience` and in date, or null. A kid
- * not in the cached set refetches once.
+ * The family's one JWT check, with the reason for a refusal: RS256 only (the algorithm is pinned here, never taken
+ * from the token, so `alg: none` and HMAC-with-the-public-key fail), signed by one of `keys`, issued by `issuer`
+ * exactly, for `audience` (a string or one entry of an array), with an `exp`, and in date with 60 seconds of skew. A
+ * kid not in the cached set refetches once. Both this module's ID token and `./access`'s request token use it.
+ *
+ * Only a fault in the token is a refusal. A key source that throws (`./access` throws when the keys cannot be fetched)
+ * is not caught: an outage reads as an outage.
  * @param {string} token
  * @param {KeySource} keys
- * @param {{ issuer: string, audience: string, now?: number }} expect
- * @returns {Promise<Record<string, unknown> | null>}
+ * @param {{ issuer: string, audience: string, now?: number }} expect `now` in epoch milliseconds, for a test's clock
+ * @returns {Promise<import("./access-login.d.mts").JwtVerdict>}
  */
-export async function verifyIdToken(token, keys, expect) {
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
+export async function verifyJwt(token, keys, expect) {
+  const parts = typeof token === "string" ? token.split(".") : [];
+  if (parts.length !== 3) return { ok: false, reason: "malformed" };
   /** @type {{ alg?: unknown, kid?: unknown }} */
   let header;
   /** @type {unknown} */
@@ -113,28 +118,43 @@ export async function verifyIdToken(token, keys, expect) {
     header = JSON.parse(new TextDecoder().decode(fromBase64url(parts[0])));
     parsed = JSON.parse(new TextDecoder().decode(fromBase64url(parts[1])));
   } catch {
-    return null;
+    return { ok: false, reason: "malformed" };
   }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+  if (typeof header !== "object" || header === null) return { ok: false, reason: "malformed" };
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return { ok: false, reason: "malformed" };
   const payload = /** @type {Record<string, unknown>} */ (parsed);
-  if (header?.alg !== "RS256" || typeof header.kid !== "string") return null;
+  if (header.alg !== "RS256") return { ok: false, reason: "algorithm" };
+  if (typeof header.kid !== "string") return { ok: false, reason: "unknown-key" };
   const jwk = (await keys(header.kid, false)) ?? (await keys(header.kid, true));
-  if (!jwk || jwk.kty !== "RSA") return null;
+  if (!jwk || jwk.kty !== "RSA") return { ok: false, reason: "unknown-key" };
   let valid = false;
   try {
     const key = await crypto.subtle.importKey("jwk", { kty: jwk.kty, n: jwk.n, e: jwk.e }, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
     valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, fromBase64url(parts[2]), new TextEncoder().encode(`${parts[0]}.${parts[1]}`));
   } catch {
-    return null;
+    return { ok: false, reason: "signature" };
   }
-  if (!valid) return null;
+  if (!valid) return { ok: false, reason: "signature" };
   const now = Math.floor((expect.now ?? Date.now()) / 1000);
-  if (payload.iss !== expect.issuer) return null;
+  if (payload.iss !== expect.issuer) return { ok: false, reason: "issuer" };
   const aud = payload.aud;
-  if (!(aud === expect.audience || (Array.isArray(aud) && aud.includes(expect.audience)))) return null;
-  if (typeof payload.exp !== "number" || payload.exp + SKEW_SECONDS < now) return null;
-  if (payload.nbf !== undefined && (typeof payload.nbf !== "number" || payload.nbf - SKEW_SECONDS > now)) return null;
-  return payload;
+  if (!(aud === expect.audience || (Array.isArray(aud) && aud.includes(expect.audience)))) return { ok: false, reason: "audience" };
+  if (typeof payload.exp !== "number" || payload.exp + SKEW_SECONDS < now) return { ok: false, reason: "expired" };
+  if (payload.nbf !== undefined && (typeof payload.nbf !== "number" || payload.nbf - SKEW_SECONDS > now)) return { ok: false, reason: "not-yet-valid" };
+  return { ok: true, claims: payload };
+}
+
+/**
+ * The payload of an RS256 JWT signed by one of `keys`, issued by `issuer` for `audience` and in date, or null
+ * (`verifyJwt` without the reason).
+ * @param {string} token
+ * @param {KeySource} keys
+ * @param {{ issuer: string, audience: string, now?: number }} expect
+ * @returns {Promise<Record<string, unknown> | null>}
+ */
+export async function verifyIdToken(token, keys, expect) {
+  const verdict = await verifyJwt(token, keys, expect);
+  return verdict.ok ? verdict.claims : null;
 }
 
 /**
