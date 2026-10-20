@@ -71,8 +71,8 @@ export function buildPolicy(directives: readonly string[]): string;
  * (`default-src 'self'`, `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`, `frame-ancestors 'none'`, or
  * 'self' when the site frames its own pages);
  * scripts are 'self', the site's hashes or nonce, its listed hosts and, when asked, the Cloudflare beacon. A script
- * source that is `*`, a bare scheme, 'unsafe-inline' or 'unsafe-eval' is refused here, so a site cannot list its way
- * to a policy the check would fail.
+ * source that is `*` (or any host-source whose host is `*`), a bare scheme, or 'unsafe-inline' or 'unsafe-eval' in any
+ * case is refused here, so a site cannot list its way to a policy the check would fail.
  *
  * @param {SitePolicy} site
  * @returns {{ name: "Content-Security-Policy" | "Content-Security-Policy-Report-Only", value: string }}

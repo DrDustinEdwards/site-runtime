@@ -94,9 +94,11 @@ export function checkSecurityHeaders(headers, { standard = STANDARD_SECURITY_HEA
   const scripts = policy.get("script-src") ?? policy.get("default-src");
   result("the policy governs scripts (script-src or default-src)", Boolean(scripts), "neither directive is present, so any script runs");
   if (scripts) {
-    result("scripts: no 'unsafe-inline'", !scripts.includes("'unsafe-inline'"), `script sources: ${scripts.join(" ")}`);
-    result("scripts: no 'unsafe-eval'", !scripts.includes("'unsafe-eval'"), `script sources: ${scripts.join(" ")}`);
-    const broad = scripts.filter((s) => s === "*" || /^(https?|data|blob):$/i.test(s));
+    // Browsers match keywords in any case, and a host of `*` matches every host whatever the scheme, port or path.
+    const keywords = scripts.map((s) => s.toLowerCase());
+    result("scripts: no 'unsafe-inline'", !keywords.includes("'unsafe-inline'"), `script sources: ${scripts.join(" ")}`);
+    result("scripts: no 'unsafe-eval'", !keywords.includes("'unsafe-eval'"), `script sources: ${scripts.join(" ")}`);
+    const broad = scripts.filter((s) => /^([a-z][a-z0-9+.-]*:\/\/)?\*(:(\d+|\*))?(\/.*)?$/i.test(s) || /^(https?|data|blob):$/i.test(s));
     result("scripts: no wildcard or bare scheme source", broad.length === 0, broad.length ? `allows ${broad.join(" ")}` : "");
   }
   const objects = policy.get("object-src") ?? policy.get("default-src");
