@@ -1,6 +1,5 @@
 /**
- * People and roles for an app with staff (capsid docs/design/design-identity-roles.md; Dustin's rulings of
- * 2026-10-09 in capsid/decisions.md). Each app keeps its own `members` and `member_audit` tables and its own
+ * People and roles for an app with staff (capsid docs/design/design-identity-roles.md). Each app keeps its own `members` and `member_audit` tables and its own
  * titles; this module holds the rules every app shares, so they are tested once.
  *
  * Code checks permissions, never titles. A title is a named bundle of permissions on a layer:

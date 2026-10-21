@@ -1,8 +1,6 @@
 /**
  * A request body read to a byte ceiling, counted as the chunks arrive. The declared Content-Length can be absent or
  * understated, and `request.text()` holds the whole body in memory before any check can run, so neither is a cap.
- * dustinedwards.info (app/lib/read-capped.mjs), Capsid and the CSP receiver here each had one; this is the one copy
- * (2026-10-20).
  *
  * Over the ceiling is `null`, never a truncated body, so the caller answers 413 instead of parsing a fragment. A
  * stream that fails mid-read THROWS: an empty body is no safe stand-in, because every caller parses what it gets.

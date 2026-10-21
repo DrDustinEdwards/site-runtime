@@ -2,10 +2,9 @@
  * Content-Security-Policy helpers: a per-request nonce, a hash source for an inline script, and the policy a site's
  * own list of what it loads builds.
  *
- * - generateNonce is foxhound's (app/lib/http/security-headers.ts): 16 random bytes, base64. Call it
- *   once per request and give the same value to the rendered <script nonce> and to the policy.
- * - scriptHash is dustinedwards.info's (workers/csp.mjs): Web Crypto rather than node:crypto, so a
- *   Worker and a Node gate run one function.
+ * - generateNonce: 16 random bytes, base64. Call it once per request and give the same value to the rendered
+ *   <script nonce> and to the policy.
+ * - scriptHash: Web Crypto rather than node:crypto, so a Worker and a Node gate run one function.
  * - buildContentSecurityPolicy takes the hosts a site loads, per kind, plus its nonce or hashes, and returns the
  *   header (enforced, or Report-Only so a repo can ship the policy before it blocks anything). It is the one place
  *   the policy's fixed parts (object-src, base-uri, frame-ancestors, form-action, the report sink) and the

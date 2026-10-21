@@ -1,9 +1,7 @@
 /**
  * The check that a request came through Cloudflare Access: the token Access signs for each request it lets through,
  * read from the `Cf-Access-Jwt-Assertion` header (or, on request, the `CF_Authorization` cookie) and verified against
- * the team's published keys. Carrel (app/lib/access.server.ts) and dustinedwards.info (app/lib/access.server.ts and
- * app/lib/access-verify.mjs) each had their own, both on jose, until 2026-10-20; this is the one copy (2026-10-20), on
- * the WebCrypto verifier `./access-login` already uses, so there is no JWT library.
+ * the team's published keys, with the WebCrypto verifier `./access-login` uses, so there is no JWT library.
  *
  * Presence of the header proves nothing, since anyone can send one. What proves a request passed Access is a signature
  * by a key Access publishes, an `aud` naming THIS application's tag, and an `iss` equal to the team domain,

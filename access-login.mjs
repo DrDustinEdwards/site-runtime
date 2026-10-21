@@ -1,7 +1,5 @@
 /**
- * The upstream sign-in with Cloudflare Access for SaaS (OIDC), the one login every MCP server in the family uses
- * (2026-10-18). Carrel, Foxing Admin and Dustin Edwards Admin each carried the same four functions until 2026-10-20,
- * two verifying the ID token with WebCrypto and one with jose; this is the one copy (2026-10-20).
+ * The upstream sign-in with Cloudflare Access for SaaS (OIDC), the one login every MCP server in the family uses.
  *
  * The state of a sign-in in flight (the client's request, the PKCE verifier, the nonce) is not kept here. An MCP
  * server keeps it with @cloudflare/workers-oauth-provider's beginUpstream and finishUpstream, which hold it server-side,

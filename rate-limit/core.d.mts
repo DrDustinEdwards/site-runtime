@@ -42,7 +42,6 @@ export function purgeExpired(sql: Sql, nowMs: number): number | null;
  * @typedef {{ exec: (query: string, ...bindings: unknown[]) => { toArray: () => any[] } }} Sql
  * @typedef {{ ok: boolean, used: number, limit: number, retryAfterSeconds: number, window: number }} Hit
  */
-export const TABLE_SQL: "CREATE TABLE IF NOT EXISTS rate_window (window_seconds INTEGER PRIMARY KEY, window_index INTEGER NOT NULL, count INTEGER NOT NULL)";
 /**
  * The counting, apart from the Durable Object so a test can run it on any SQLite. Fixed windows aligned
  * to the epoch, one row per window length. All rules are checked first and none is counted when any is
