@@ -71,7 +71,8 @@ The fixed parts are the same for every site: `default-src 'self'`, `object-src '
 pages, such as Capsomer's specimens; pair it with an `X-Frame-Options: sameorigin` override). Scripts are `'self'`, the
 site's hashes or nonce, its listed hosts and, on request, the Cloudflare Web Analytics beacon. A script source of `*` (or
 `https://*` and the like), a bare scheme, or `'unsafe-inline'` or `'unsafe-eval'` in any case is refused, and a policy with
-no report sink is refused.
+no report sink is refused. `extraDirectives` adds a kind the builder leaves out (`frame-src`, `worker-src`,
+`upgrade-insecure-requests`); one that restates a fixed directive or names `script-src-elem` or `script-src-attr` is refused.
 
 **The beacon.** Cloudflare's edge injects `/beacon.min.js/v31...` into a proxied site's pages, so the script source is the
 host with a path prefix, not the bare file: `https://static.cloudflareinsights.com/beacon.min.js` and the same followed by `/`
@@ -185,12 +186,14 @@ changed set of failures.
 `checkSecurityHeaders(headers, { standard?, csp? })` grades a real response against `standard` (default
 `STANDARD_SECURITY_HEADERS`; a site passes the set it declared with `buildSecurityHeaders`):
 
-- Every header in the set, at least as strict: HSTS at least the set's age, a strict Referrer-Policy, framing refused, every
-  feature the set denies denied.
+- Every header in the set, at least as strict: HSTS at least the set's age (and `includeSubDomains` when the set has it), a
+  strict Referrer-Policy, framing refused, every feature the set denies denied.
 - An **enforced** Content-Security-Policy. A Report-Only policy alone fails: it blocks nothing.
 - A script source list with no `'unsafe-inline'` or `'unsafe-eval'` in any case, and no `*`, host-source whose host is `*`
-  (`https://*`), or bare scheme.
-- `object-src 'none'`, `base-uri 'none'` or `'self'`, `frame-ancestors` set, and a report sink (`report-uri` or `report-to`).
+  (`https://*`), or bare scheme. `script-src-elem`, `script-src-attr` and `worker-src`, when present, are held to the same
+  rules (`worker-src` may use `blob:`).
+- `object-src 'none'`, `base-uri 'none'` or `'self'`, `frame-ancestors 'none'` or `'self'`, `form-action` `'self'` or
+  `'none'` when set (an OAuth consent page leaves it out on purpose), and a report sink (`report-uri` or `report-to`).
 
 `style-src-attr 'unsafe-inline'` is allowed: several sites emit inline style attributes, and styles cannot run code.
 
@@ -281,7 +284,7 @@ if (!can(actor, "edit_inventory")) return notFound();
   the Owner has not entered a future date yet, rather than inventing one. A row is valid through the whole of its end date in
   UTC; `reviewOpen` is true from three weeks before it.
 - `auditRow` is the `member_audit` row, written in the same batch as the change, with `cloudflare: "pending"` until the sync
-  answers. `allowList(rows)` is the email list the app's Access group should hold; the sync itself is Capsid's (ruling 1:
+  answers. `allowList(rows, nowMs, catalog)` is the email list the app's Access group should hold; the sync itself is Capsid's (ruling 1:
   Capsid is the only holder of the Cloudflare token).
 
 **Tests.** `test/members.test.mjs`. Each rule was planted broken once and seen to fail a test: a lead granting their own layer,

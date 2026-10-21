@@ -131,6 +131,16 @@ export function buildContentSecurityPolicy(site) {
       throw new Error(`${host} is not an acceptable script source: name the host`);
     }
   }
+  // An extra directive may add a kind (frame-src, worker-src, upgrade-insecure-requests), never restate one of the fixed
+  // ones, and never reopen scripts through script-src-elem or script-src-attr.
+  const written = new Set(["default-src", "script-src", "script-src-elem", "script-src-attr", "object-src", "base-uri", "form-action", "frame-ancestors", "report-uri", "report-to"]);
+  for (const extra of extraDirectives) {
+    const [name = "", ...values] = extra.trim().split(/\s+/);
+    if (written.has(name.toLowerCase())) throw new Error(`${name} is written by the builder; pass its sources instead of an extra directive`);
+    if (name.toLowerCase() === "worker-src" && values.some((v) => /^([a-z][a-z0-9+.-]*:\/\/)?\*/i.test(v) || /^(https?|data):$/i.test(v) || /^'unsafe-(inline|eval)'$/i.test(v))) {
+      throw new Error(`${extra} is not an acceptable worker source: name the host`);
+    }
+  }
   const nonceSource = nonce === undefined ? [] : [`'nonce-${nonce}'`];
   const directives = [
     "default-src 'self'",

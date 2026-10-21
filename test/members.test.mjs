@@ -114,9 +114,9 @@ test("expiry runs through the end date, and the review opens three weeks before"
   assert.equal(isExpired(row("o@example.org", "owner"), Date.parse("2099-01-01T00:00:00Z")), false);
 });
 
-test("the allow list is every active, unexpired row, and the audit row starts pending", () => {
-  const rows = [row("B@example.org", "lab_worker"), row("a@example.org", "lab_worker", { status: "removed" }), row("c@example.org", "lab_worker", { end_date: "2026-01-01" })];
-  assert.deepEqual(allowList(rows, NOW), ["b@example.org"]);
+test("the allow list is every active, unexpired row with a known title, and the audit row starts pending", () => {
+  const rows = [row("B@example.org", "lab_worker"), row("a@example.org", "lab_worker", { status: "removed" }), row("c@example.org", "lab_worker", { end_date: "2026-01-01" }), row("d@example.org", "no_such_title")];
+  assert.deepEqual(allowList(rows, NOW, catalog), ["b@example.org"]);
   const audit = auditRow({ actor: manager, action: "remove", email: "W@example.org", before: rows[0], after: null, nowMs: NOW });
   assert.equal(audit.cloudflare, "pending");
   assert.equal(audit.member_email, "w@example.org");

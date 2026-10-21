@@ -48,6 +48,7 @@ describe("accessSaas", () => {
     assert.equal(accessSaas({ ...ENV, ACCESS_TEAM_DOMAIN: undefined }), null);
     assert.equal(accessSaas({ ...ENV, ACCESS_SAAS_CLIENT_ID: "" }), null);
     assert.equal(accessSaas({}), null);
+    assert.equal(accessSaas({ ...ENV, ACCESS_TEAM_DOMAIN: "https://attacker.example" }), null);
   });
 });
 

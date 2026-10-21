@@ -215,11 +215,17 @@ export function auditRow({ actor, action, email, before, after, reason, nowMs })
 }
 
 /**
- * The emails that belong on the app's Access allow list: every active, unexpired row. The Primary Owner is
- * not on it; admin surfaces list Dustin's emails directly in their own policies.
+ * The emails that belong on the app's Access allow list: every active, unexpired row whose title the app defines,
+ * the same rows resolveActor admits. The Primary Owner is not on it; admin surfaces list Dustin's emails directly in
+ * their own policies.
  * @param {MemberRow[]} rows
  * @param {number} nowMs
+ * @param {Catalog} catalog
  */
-export function allowList(rows, nowMs) {
-  return [...new Set(rows.filter((r) => r.status === "active" && !isExpired(r, nowMs)).map((r) => normalizeEmail(r.email)))].sort();
+export function allowList(rows, nowMs, catalog) {
+  const admitted = (/** @type {MemberRow} */ r) => {
+    const title = catalog.titles.get(r.title);
+    return r.status === "active" && !isExpired(r, nowMs) && Boolean(title) && title?.layer !== 0;
+  };
+  return [...new Set(rows.filter(admitted).map((r) => normalizeEmail(r.email)))].sort();
 }
