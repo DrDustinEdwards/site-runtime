@@ -1,7 +1,6 @@
 /**
- * The one constant-time comparison of a presented secret with the expected one. Capsid (src/auth.ts) and
- * dustinedwards.info (app/lib/bearer.server.ts) each had their own until 2026-10-20; this is the one copy (2026-10-20).
- * A copy that drifts toward `===` leaks the secret a byte at a time and no test notices.
+ * The one constant-time comparison of a presented secret with the expected one. A local copy that drifts toward `===`
+ * leaks the secret a byte at a time and no test notices.
  *
  * - Both sides are hashed with SHA-256 first, so what is compared is always 32 bytes against 32 bytes. Comparing the
  *   strings themselves would leak their lengths through an early return or the loop bound; after hashing, neither

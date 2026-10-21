@@ -1,6 +1,5 @@
 /**
- * The one receiver for Content-Security-Policy violation reports (csp-report.mjs says what it keeps from each
- * site's old receiver). A POST always gets 204; the body is read to 16 KB at most; at most 10 violations are logged,
+ * The one receiver for Content-Security-Policy violation reports. A POST always gets 204; the body is read to 16 KB at most; at most 10 violations are logged,
  * each URL cut to its origin and path; the site's limiter is asked first; nothing is stored.
  */
 /** The largest body read; the rest is never read. */

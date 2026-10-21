@@ -9,7 +9,7 @@
  * @typedef {{ ok: boolean, used: number, limit: number, retryAfterSeconds: number, window: number }} Hit
  */
 
-export const TABLE_SQL =
+const TABLE_SQL =
   "CREATE TABLE IF NOT EXISTS rate_window (window_seconds INTEGER PRIMARY KEY, window_index INTEGER NOT NULL, count INTEGER NOT NULL)";
 
 /** @param {Rule[]} rules */

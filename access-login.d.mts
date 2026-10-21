@@ -1,6 +1,6 @@
 /**
- * The upstream sign-in with Cloudflare Access for SaaS (OIDC), the one login every MCP server in the family uses
- * (access-login.mjs says where each part came from). The state of a sign-in in flight is kept by the caller, with
+ * The upstream sign-in with Cloudflare Access for SaaS (OIDC), the one login every MCP server in the family uses.
+ * The state of a sign-in in flight is kept by the caller, with
  * @cloudflare/workers-oauth-provider's beginUpstream and finishUpstream.
  */
 export type AccessEnv = {

@@ -1,25 +1,22 @@
 /**
  * The one receiver for Content-Security-Policy violation reports, for every site that names a report sink in its
- * policy (buildContentSecurityPolicy requires one). Before this, six sites each wrote their own, with different size
- * limits, rate limits, logging and replies (2026-10-20). This keeps the strongest of each:
+ * policy (buildContentSecurityPolicy requires one):
  *
  * - A POST always gets 204, even when it is too large, unreadable or rate-limited: an error status makes browsers
- *   send the report again (dustinedwards.info's rule).
+ *   send the report again.
  * - The body is read up to 16 KB and no further, whatever Content-Length claims; a real report is well under 2 kB.
  * - At most 10 violations are logged from one request, one JSON line each, with every URL cut to its origin and
- *   path, so no query string reaches the log, and no address, user agent or cookie is ever logged (the gallery's
- *   rule).
- * - The site's own limiter, when it passes one, is asked first (Capsid and dustinedwards.info had one; the others
- *   let anyone fill their logs).
+ *   path, so no query string reaches the log, and no address, user agent or cookie is ever logged.
+ * - The site's own limiter, when it passes one, is asked first, so nobody can fill the logs.
  * - Nothing is stored: a store the internet can write to is a storage-exhaustion primitive.
  *
  * Both wire formats are read: report-uri's `{"csp-report": {...}}` (application/csp-report) and the Reporting API's
  * array of `{type: "csp-violation", body}` (application/reports+json).
  */
 
-/** The largest body read; the rest is never read. */
 import { readCapped } from "./body.mjs";
 
+/** The largest body read; the rest is never read. */
 export const MAX_REPORT_BYTES = 16_384;
 
 /** The most violations logged from one request. */
