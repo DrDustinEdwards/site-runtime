@@ -1,21 +1,18 @@
 # @dustinedwards/site-runtime
 
-The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-homes-2026-10-06.md). This repository was
-`DrDustinEdwards/security-headers` and was renamed on 2026-10-08, keeping its history and tags; `v0.1.0` and `v0.1.1` are the
-package under its old name, `@dustinedwards/security-headers`. Today it holds the security headers (the root export and
-`./headers`, `./csp`, `./check`, `./oshp`, `./owasp`) the rate limiter (`./rate-limit`, `./rate-limit/durable-object`), the members model (`./members`), the Access for SaaS
-sign-in (`./access-login`), the Access request-token check (`./access`), the capped body reader (`./body`), one HTML escape
-(`./html`) and one constant-time secret compare (`./compare`). The health format and the email helper are to move in later,
-each as its own subpath and its own pull request.
+The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-homes-2026-10-06.md): the security headers
+(the root export and `./headers`, `./csp`, `./csp-report`, `./check`, `./oshp`, `./owasp`), the rate limiter (`./rate-limit`,
+`./rate-limit/durable-object`), the members model (`./members`), the Access for SaaS sign-in (`./access-login`), the Access
+request-token check (`./access`), the capped body reader (`./body`), one HTML escape (`./html`) and one constant-time secret
+compare (`./compare`).
+
+No dependencies, plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
+tag: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.7.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
 
-The security headers for the portfolio's sites: OWASP's defaults for every header that is the same everywhere, a
-Content-Security-Policy built from a short per-site list of what the site loads, and the check that proves a site's
-responses carry them. Ruled by Dustin (capsid/decisions.md, "shared functions across the sites", point 5; D6, 2026-10-04):
-adopt it for every site.
-
-No dependencies, plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24.
+OWASP's defaults for every header that is the same everywhere, a Content-Security-Policy built from a short per-site list
+of what the site loads, and the check that proves a site's responses carry them. Every site adopts it.
 
 ## Source
 
@@ -79,13 +76,11 @@ no report sink is refused.
 **The beacon.** Cloudflare's edge injects `/beacon.min.js/v31...` into a proxied site's pages, so the script source is the
 host with a path prefix, not the bare file: `https://static.cloudflareinsights.com/beacon.min.js` and the same followed by `/`
 (`CLOUDFLARE_WEB_ANALYTICS.script`). It reports to the site's own `/cdn-cgi/rum`, so `connect-src` always carries `'self'`.
-The file is named and not hashed because its `integrity` changes whenever Cloudflare ships a new beacon. This is the fix for the
-blocked beacon on germomics (#35), capsomer (#20), foxhound (#20), carrel (#18) and dustinedwards (#300, #307).
+The file is named and not hashed because its `integrity` changes whenever Cloudflare ships a new beacon.
 
-**Nonce or hash.** A response that is never shared-cached may carry a per-request nonce (`generateNonce`; foxhound and carrel).
+**Nonce or hash.** A response that is never shared-cached may carry a per-request nonce (`generateNonce`).
 An edge-cached response must not: every reader would share one nonce for the cache lifetime, so its inline scripts are trusted by
 hash (`scriptHash`).
-
 
 ## The report sink
 
@@ -117,9 +112,7 @@ if (text === null) return new Response("too large", { status: 413 });
 
 ## HTML escaping
 
-`./html` is the one `escapeHtml` (Dustin's rule of 2026-10-20: the same thing is the same file and the same code). Capsid,
-its explorer, Capsomer's system map, dustinedwards.info's palette and CV print document, Enarratio and Foxing's email each
-had a copy; three of them left the single quote alone.
+`./html` is the one `escapeHtml`.
 
 ```js
 import { escapeHtml } from "@dustinedwards/site-runtime/html";
@@ -132,8 +125,7 @@ It is not an encoder for unquoted attributes, `javascript:` URLs, or the inside 
 
 ## A constant-time secret compare
 
-`./compare` is the one comparison of a presented secret with the expected one, in place of Capsid's `timingSafeEqual` and
-dustinedwards.info's `constantTimeEqual`.
+`./compare` is the one comparison of a presented secret with the expected one.
 
 ```js
 import { safeEqual } from "@dustinedwards/site-runtime/compare";
@@ -149,9 +141,8 @@ if (!(await safeEqual(presentedToken, env.OPERATOR_TOKEN))) return new Response(
 
 ## The Access request check
 
-`./access` checks the token Cloudflare Access signs for each request it lets through, in place of carrel's and
-dustinedwards.info's jose copies. It verifies with `./access-login`'s WebCrypto JWT check (`verifyJwt`, which
-`verifyIdToken` now wraps), so there is no JWT library.
+`./access` checks the token Cloudflare Access signs for each request it lets through. It verifies with `./access-login`'s
+WebCrypto JWT check (`verifyJwt`, which `verifyIdToken` wraps), so there is no JWT library.
 
 ```js
 import { verifyAccessRequest } from "@dustinedwards/site-runtime/access";
@@ -214,8 +205,7 @@ changed set of failures.
 
 ## Rate limiter
 
-One exact rate limiter for the sites, moved here from `DrDustinEdwards/rate-limit` at its `v0.1.1` (commit `57feb84`; that
-repository's later commits change only its `renovate.json`). A SQLite-backed Durable Object counts fixed windows in synchronous
+One exact rate limiter for the sites. A SQLite-backed Durable Object counts fixed windows in synchronous
 SQL, so the count cannot race. Each call site says what a failing counter means; the module has no default for it.
 
 Not the Workers Rate Limiting binding (Cloudflare documents it as "permissive, eventually consistent, and intentionally designed to
@@ -244,20 +234,17 @@ if (mustStop(verdict, "refuse")) return limitedResponse(verdict);
   slash and lower-casing, so `/LOGIN`, `/login///` and `/%4cogin` all match `/login`.
 
 A Worker that already has a Durable Object class it cannot rename (a rename needs a migration) can `extend RateLimiter`; the
-counting is in its own `rate_window` table, so the class and its storage are unchanged by the move.
+counting is in its own `rate_window` table, so the class's other storage is untouched.
 
-**Cost, quoted from Cloudflare's pricing pages (fetched 2026-10-06).** Durable Objects, Paid: requests "1 million / month, +
-$0.15/million"; rows written "First 50 million / month included + $1.00 / million rows". KV, Paid: reads "+ $0.50/million";
-writes "+ $5.00/million". Per million allowed requests one window costs about $1.15 on a Durable Object and $5.50 on KV; a
-refused request on the Durable Object costs a request and a row read, no write.
+**Cost.** Per million allowed requests, one window costs about $1.15 on a Durable Object (one request, one row read, one
+row written) against $5.50 on KV; a refused request costs a request and a row read, no write.
 
 **Tests.** `npm test` runs `test/rate-limit.test.mjs`: window edges, a spent rule counting nothing, Retry-After, the fail-closed
-and fail-open paths, and the path matcher on an in-memory SQLite (`node:sqlite`). CI runs it on every pull request.
+and fail-open paths, and the path matcher on an in-memory SQLite (`node:sqlite`).
 
 ## Members
 
-The rules every app with staff shares (capsid docs/design/design-identity-roles.md; Dustin's rulings of 2026-10-09, "people
-and roles across the family"). Each app keeps its own `members` and `member_audit` tables and its own titles; this module
+The rules every app with staff shares (capsid docs/design/design-identity-roles.md). Each app keeps its own `members` and `member_audit` tables and its own titles; this module
 holds the rules, with no I/O and no dependencies, so they are tested once.
 
 Code checks permissions, never titles. A title is a named bundle of permissions on a layer:
@@ -304,9 +291,8 @@ two-line reason.
 
 ## The Access sign-in
 
-Every MCP server in the family signs a person in through Cloudflare Access for SaaS (OIDC), one login for all of them
-(2026-10-18). Carrel, Foxing Admin and Dustin Edwards Admin each carried the same four functions until 2026-10-20, two
-checking the ID token with WebCrypto and one with jose. `./access-login` is the one copy:
+Every MCP server in the family signs a person in through Cloudflare Access for SaaS (OIDC), one login for all of them, with
+`./access-login`:
 
 ```js
 import { accessSaas, newSignIn, authorizationUrl, finishSignIn } from "@dustinedwards/site-runtime/access-login";
@@ -336,9 +322,3 @@ if (!signedIn.ok || !isAdministrator(signedIn.email)) return refuse(original);
 **Tests.** `test/access-login.test.mjs` runs against a key pair made in the test and a fake token endpoint. Each of these
 checks was removed once and seen to fail a test: the signature, issuer, expiry, algorithm, nonce and `email_verified`
 checks.
-
-## Publishing it
-
-A git dependency cannot point at a subfolder of a monorepo, and the sites that adopt it are other repositories (some private),
-so it is published as its own small repository, now `DrDustinEdwards/site-runtime`, and installed by tag like capsomer and
-d1-dump: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.7.0"`. The reason and the exact steps are in the pull request that introduced this layout.
