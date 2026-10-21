@@ -21,11 +21,14 @@ const MAX_NAME = 80;
 
 /**
  * The SaaS app's endpoints, or null while any setting is missing. ACCESS_TEAM_DOMAIN is the team domain as the
- * dashboard shows it, https://<team>.cloudflareaccess.com; a trailing slash is ignored.
+ * dashboard shows it, https://<team>.cloudflareaccess.com (the scheme and a trailing slash are optional); null for any
+ * other host.
  * @param {{ ACCESS_TEAM_DOMAIN?: string, ACCESS_SAAS_CLIENT_ID?: string, ACCESS_SAAS_CLIENT_SECRET?: string }} env
  */
 export function accessSaas(env) {
-  const team = env.ACCESS_TEAM_DOMAIN?.trim().replace(/\/+$/, "");
+  // The issuer's host is trusted with the client secret and to sign who signs in, so it must be an Access team host.
+  const host = env.ACCESS_TEAM_DOMAIN?.trim().replace(/^https:\/\//i, "").replace(/\/+$/, "");
+  const team = host && /^[a-z0-9-]+\.cloudflareaccess\.com$/i.test(host) ? `https://${host.toLowerCase()}` : null;
   const clientId = env.ACCESS_SAAS_CLIENT_ID?.trim();
   const clientSecret = env.ACCESS_SAAS_CLIENT_SECRET?.trim();
   if (!team || !clientId || !clientSecret) return null;

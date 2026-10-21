@@ -254,11 +254,15 @@ test("styleAttributesInline allows style attributes only, and only when asked", 
   assert.ok(!directives({ ...SINK, styleAttributesInline: true }).get("style-src")?.includes("'unsafe-inline'"));
 });
 
-test("extra directives are added, and an empty one is refused", () => {
+test("extra directives are added; an empty one, one that restates a fixed directive or reopens scripts, is refused", () => {
   const policy = directives({ ...SINK, extraDirectives: ["upgrade-insecure-requests", "worker-src 'self'"] });
   assert.deepEqual(policy.get("upgrade-insecure-requests"), []);
   assert.deepEqual(policy.get("worker-src"), ["'self'"]);
   assert.throws(() => buildContentSecurityPolicy({ ...SINK, extraDirectives: [" "] }), /a CSP directive is empty/);
+  for (const extra of ["script-src-elem 'unsafe-inline'", "script-src-attr 'unsafe-inline'", "form-action *", "frame-ancestors *"]) {
+    assert.throws(() => buildContentSecurityPolicy({ ...SINK, extraDirectives: [extra] }), /written by the builder/, extra);
+  }
+  assert.throws(() => buildContentSecurityPolicy({ ...SINK, extraDirectives: ["worker-src *"] }), /not an acceptable worker source/);
 });
 
 test("every policy the builder writes passes the header check", () => {

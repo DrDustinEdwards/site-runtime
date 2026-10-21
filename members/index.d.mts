@@ -62,4 +62,4 @@ export function auditRow(entry: {
   nowMs: number;
 }): AuditRow;
 /** The emails that belong on the app's Access allow list: every active, unexpired row, sorted. */
-export function allowList(rows: MemberRow[], nowMs: number): string[];
+export function allowList(rows: MemberRow[], nowMs: number, catalog: Catalog): string[];

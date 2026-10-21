@@ -18,7 +18,7 @@ function readSuite(text) {
   /** @type {string[] | null} */
   let or = null;
   const unquote = (/** @type {string} */ s) => (/^'.*'$/.test(s) ? s.slice(1, -1).replaceAll("''", "'") : s);
-  for (const line of text.split("\n")) {
+  for (const line of text.split(/\r?\n/)) {
     const testcase = /^ {2}- name: (.*)$/.exec(line);
     const step = /^ {6}- type: /.test(line);
     const url = /^ {8}url: (.*)$/.exec(line);

@@ -4,7 +4,7 @@ import { checkSecurityHeaders, failures, parsePolicy } from "../check.mjs";
 import { CLOUDFLARE_WEB_ANALYTICS } from "../csp.mjs";
 import { STANDARD_SECURITY_HEADERS, applyHeaderSet } from "../headers.mjs";
 
-const GOOD_POLICY = "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; report-uri /csp";
+const GOOD_POLICY = "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; report-uri /csp";
 const BEACON = CLOUDFLARE_WEB_ANALYTICS.script.join(" ");
 
 /** The standard set plus a passing policy, with `changes` applied (null deletes). @param {Record<string, string | null>} [changes] */
@@ -49,7 +49,7 @@ test("failures keeps only the failed results", () => {
 test("a response with the standard set and a sound policy passes every check", () => {
   const results = checkSecurityHeaders(response());
   assert.deepEqual(failures(results), []);
-  assert.equal(results.length, Object.keys(STANDARD_SECURITY_HEADERS).length + 9);
+  assert.equal(results.length, Object.keys(STANDARD_SECURITY_HEADERS).length + 11);
 });
 
 test("a response with no security headers fails every one, as ABSENT", () => {
@@ -64,10 +64,10 @@ test("each standard header, removed alone, fails alone", () => {
   for (const name of Object.keys(STANDARD_SECURITY_HEADERS)) assert.deepEqual(failed(response({ [name]: null })), [`${name} is present`]);
 });
 
-test("HSTS must last at least as long as the floor says", () => {
-  assert.deepEqual(failed(response({ "Strict-Transport-Security": "max-age=63072000" })), []);
-  assert.deepEqual(failed(response({ "Strict-Transport-Security": "MAX-AGE=99999999; preload" })), []);
-  for (const value of ["max-age=63071999; includeSubDomains", "max-age=31536000", "includeSubDomains", "max-age=abc"]) {
+test("HSTS must last at least as long as the floor says, and keep includeSubDomains when the floor has it", () => {
+  assert.deepEqual(failed(response({ "Strict-Transport-Security": "MAX-AGE=99999999; includesubdomains; preload" })), []);
+  assert.deepEqual(failed(response({ "Strict-Transport-Security": "max-age=63072000" })), ["Strict-Transport-Security covers subdomains"]);
+  for (const value of ["max-age=63071999; includeSubDomains", "max-age=31536000; includeSubDomains", "max-age=abc; includeSubDomains"]) {
     const result = failure(response({ "Strict-Transport-Security": value }), /Strict-Transport-Security/);
     assert.equal(result.name, "Strict-Transport-Security lasts at least 63072000 seconds");
     assert.match(result.detail, /max-age|includeSubDomains/);
@@ -134,11 +134,11 @@ test("no policy, or only a Report-Only one, fails as not enforced and grades not
   assert.deepEqual(failures(none).map((r) => [r.name, r.detail]), [["the Content-Security-Policy is enforced, not only reported", "ABSENT"]]);
   const reportOnly = checkSecurityHeaders(response({ "Content-Security-Policy": null, "Content-Security-Policy-Report-Only": GOOD_POLICY }));
   assert.deepEqual(failures(reportOnly).map((r) => r.detail), ["only a Report-Only policy is sent, which blocks nothing"]);
-  assert.equal(none.length, Object.keys(STANDARD_SECURITY_HEADERS).length + 1);
+  assert.equal(none.length, Object.keys(STANDARD_SECURITY_HEADERS).length + 2);
 });
 
 test("a policy that governs no scripts fails", () => {
-  const result = failure(response({ "Content-Security-Policy": "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; report-uri /r" }), /governs scripts/);
+  const result = failure(response({ "Content-Security-Policy": "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; report-uri /r" }), /governs scripts/);
   assert.match(result.detail, /any script runs/);
 });
 
@@ -177,7 +177,7 @@ test("every check is reported, passing or failing: the count does not depend on 
     "X-Frame-Options": "allowall",
   });
   const results = checkSecurityHeaders(bad);
-  assert.equal(results.length, standard + 9);
+  assert.equal(results.length, standard + 11);
   assert.deepEqual(failures(results).map((r) => r.name), [
     "X-Frame-Options refuses framing",
     "scripts: no 'unsafe-inline'",
@@ -185,11 +185,11 @@ test("every check is reported, passing or failing: the count does not depend on 
     "scripts: no wildcard or bare scheme source",
     "object-src is 'none'",
     "base-uri is 'none' or 'self'",
-    "frame-ancestors is set",
+    "frame-ancestors is 'none' or 'self'",
     "violations are reported somewhere (report-uri or report-to)",
   ]);
-  assert.equal(checkSecurityHeaders(response(), { cloudflareWebAnalytics: true }).length, standard + 11);
-  assert.equal(checkSecurityHeaders(response({ "Content-Security-Policy": "object-src 'none'" })).length, standard + 6, "with no scripts directive the three script checks do not run");
+  assert.equal(checkSecurityHeaders(response(), { cloudflareWebAnalytics: true }).length, standard + 13);
+  assert.equal(checkSecurityHeaders(response({ "Content-Security-Policy": "object-src 'none'" })).length, standard + 8, "with no scripts directive the three script checks do not run");
 });
 
 test("the policy is read only from the enforced header: a sound Report-Only beside a weak enforced one does not help", () => {
@@ -199,8 +199,8 @@ test("the policy is read only from the enforced header: a sound Report-Only besi
 });
 
 test("without script-src, the scripts and objects checks read default-src", () => {
-  assert.deepEqual(failed(response({ "Content-Security-Policy": "default-src 'none'; base-uri 'self'; frame-ancestors 'none'; report-to csp" })), []);
-  const loose = response({ "Content-Security-Policy": "default-src 'self' 'unsafe-inline'; base-uri 'self'; frame-ancestors 'none'; report-to csp" });
+  assert.deepEqual(failed(response({ "Content-Security-Policy": "default-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; report-to csp" })), []);
+  const loose = response({ "Content-Security-Policy": "default-src 'self' 'unsafe-inline'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; report-to csp" });
   assert.deepEqual(failed(loose), ["scripts: no 'unsafe-inline'", "object-src is 'none'"]);
 });
 
@@ -214,7 +214,7 @@ test("object-src must be exactly 'none'", () => {
     const policy = GOOD_POLICY.replace("object-src 'none'", objects ?? "");
     assert.equal(failure(response({ "Content-Security-Policy": policy }), /object-src/).detail, detail);
   }
-  const neither = "script-src 'self'; base-uri 'none'; frame-ancestors 'none'; report-uri /r";
+  const neither = "script-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; report-uri /r";
   assert.equal(failure(response({ "Content-Security-Policy": neither }), /object-src/).detail, "got ABSENT");
 });
 
@@ -228,9 +228,25 @@ test("base-uri must be 'none' or 'self' and does not fall back to default-src", 
   assert.match(absent.detail, /does not fall back/);
 });
 
-test("frame-ancestors must be present", () => {
-  const result = failure(response({ "Content-Security-Policy": GOOD_POLICY.replace("frame-ancestors 'none'; ", "") }), /frame-ancestors is set/);
-  assert.equal(result.detail, "ABSENT (it does not fall back to default-src)");
+test("frame-ancestors must be present and refuse other origins; form-action, when set, too", () => {
+  const without = (/** @type {string} */ directive) => response({ "Content-Security-Policy": GOOD_POLICY.replace(new RegExp(`${directive} [^;]*; `), "") });
+  assert.equal(failure(without("frame-ancestors"), /frame-ancestors/).detail, "got ABSENT (it does not fall back to default-src)");
+  assert.deepEqual(failed(without("form-action")), [], "a consent page leaves form-action out on purpose");
+  for (const loose of ["frame-ancestors *", "frame-ancestors https://evil.example", "form-action *", "form-action 'self' https://evil.example"]) {
+    const [directive] = loose.split(" ");
+    const policy = GOOD_POLICY.replace(new RegExp(`${directive} [^;]*`), loose);
+    failure(response({ "Content-Security-Policy": policy }), new RegExp(directive ?? ""));
+  }
+  assert.deepEqual(failed(response({ "Content-Security-Policy": GOOD_POLICY.replace("frame-ancestors 'none'", "frame-ancestors 'self'") })), []);
+});
+
+test("script-src-elem, script-src-attr and worker-src are held to the script rules", () => {
+  for (const directive of ["script-src-elem", "script-src-attr", "worker-src"]) {
+    for (const source of ["'unsafe-inline'", "'unsafe-eval'", "*", "https:"]) {
+      failure(response({ "Content-Security-Policy": `${GOOD_POLICY}; ${directive} ${source}` }), new RegExp(`^${directive}: `));
+    }
+  }
+  assert.deepEqual(failed(response({ "Content-Security-Policy": `${GOOD_POLICY}; worker-src 'self' blob:` })), []);
 });
 
 test("a policy with no report sink fails; report-uri or report-to passes", () => {
@@ -260,9 +276,9 @@ test("with Cloudflare Web Analytics on, the policy must let the beacon run from 
 });
 
 test("the beacon check reads default-src for scripts when script-src is absent", () => {
-  const policy = `default-src 'self' ${BEACON}; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; report-uri /r`;
+  const policy = `default-src 'self' ${BEACON}; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; report-uri /r`;
   assert.deepEqual(failed(response({ "Content-Security-Policy": policy }), { cloudflareWebAnalytics: true }), []);
-  const noScripts = "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; connect-src 'self'; report-uri /r";
+  const noScripts = "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; connect-src 'self'; report-uri /r";
   const result = failure(response({ "Content-Security-Policy": noScripts }), /beacon run/, { cloudflareWebAnalytics: true });
   assert.match(result.detail, /beacon\.min\.js and https:/);
 });

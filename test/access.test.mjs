@@ -46,8 +46,8 @@ describe("accessIssuer", () => {
     }
   });
 
-  test("a missing domain or one that is not a bare host is null", () => {
-    for (const domain of [undefined, "", "  ", "https://", `${TEAM}/cdn-cgi`, `http://${TEAM}`, "team domain"]) {
+  test("a missing domain, one that is not a bare host, or one off cloudflareaccess.com is null", () => {
+    for (const domain of [undefined, "", "  ", "https://", `${TEAM}/cdn-cgi`, `http://${TEAM}`, "team domain", "attacker.example", "sample.cloudflareaccess.com.attacker.example"]) {
       assert.equal(accessIssuer(domain), null);
     }
   });

@@ -66,6 +66,7 @@ export function checkSecurityHeaders(headers, { standard = STANDARD_SECURITY_HEA
       const age = Number(/max-age=(\d+)/i.exec(got)?.[1] ?? 0);
       const want = Number(/max-age=(\d+)/i.exec(floor)?.[1] ?? ONE_YEAR);
       result(`${name} lasts at least ${want} seconds`, age >= want, `got ${JSON.stringify(got)}`);
+      if (/includeSubDomains/i.test(floor)) result(`${name} covers subdomains`, /(^|;)\s*includeSubDomains\s*(;|$)/i.test(got), `got ${JSON.stringify(got)}`);
     } else if (name === "Referrer-Policy") {
       result(`${name} is a strict policy`, STRICT_REFERRER.has(got.trim().toLowerCase()), `got ${JSON.stringify(got)}`);
     } else if (name === "X-Frame-Options") {
@@ -93,19 +94,41 @@ export function checkSecurityHeaders(headers, { standard = STANDARD_SECURITY_HEA
   const policy = parsePolicy(enforced);
   const scripts = policy.get("script-src") ?? policy.get("default-src");
   result("the policy governs scripts (script-src or default-src)", Boolean(scripts), "neither directive is present, so any script runs");
-  if (scripts) {
+  // script-src-elem and script-src-attr override script-src for the scripts they govern, and worker-src for workers, so
+  // each one present is held to the same rules.
+  const scriptDirectives = /** @type {Array<[string, string[]]>} */ ([
+    ["scripts", scripts ?? []],
+    ...["script-src-elem", "script-src-attr", "worker-src"].flatMap((d) => (policy.has(d) ? [[d, policy.get(d) ?? []]] : [])),
+  ]);
+  for (const [label, sources] of scripts ? scriptDirectives : scriptDirectives.slice(1)) {
     // Browsers match keywords in any case, and a host of `*` matches every host whatever the scheme, port or path.
-    const keywords = scripts.map((s) => s.toLowerCase());
-    result("scripts: no 'unsafe-inline'", !keywords.includes("'unsafe-inline'"), `script sources: ${scripts.join(" ")}`);
-    result("scripts: no 'unsafe-eval'", !keywords.includes("'unsafe-eval'"), `script sources: ${scripts.join(" ")}`);
-    const broad = scripts.filter((s) => /^([a-z][a-z0-9+.-]*:\/\/)?\*(:(\d+|\*))?(\/.*)?$/i.test(s) || /^(https?|data|blob):$/i.test(s));
-    result("scripts: no wildcard or bare scheme source", broad.length === 0, broad.length ? `allows ${broad.join(" ")}` : "");
+    const keywords = sources.map((s) => s.toLowerCase());
+    const noun = label === "scripts" ? "script" : label;
+    result(`${label}: no 'unsafe-inline'`, !keywords.includes("'unsafe-inline'"), `${noun} sources: ${sources.join(" ")}`);
+    result(`${label}: no 'unsafe-eval'`, !keywords.includes("'unsafe-eval'"), `${noun} sources: ${sources.join(" ")}`);
+    // A worker from a blob: URL is one the page's own script made, which already had to run, so workers may use blob:.
+    const schemes = label === "worker-src" ? /^(https?|data):$/i : /^(https?|data|blob):$/i;
+    const broad = sources.filter((s) => /^([a-z][a-z0-9+.-]*:\/\/)?\*(:(\d+|\*))?(\/.*)?$/i.test(s) || schemes.test(s));
+    result(`${label}: no wildcard or bare scheme source`, broad.length === 0, broad.length ? `allows ${broad.join(" ")}` : "");
   }
   const objects = policy.get("object-src") ?? policy.get("default-src");
   result("object-src is 'none'", objects?.length === 1 && objects[0] === "'none'", `got ${objects ? objects.join(" ") : "ABSENT"}`);
   const base = policy.get("base-uri");
   result("base-uri is 'none' or 'self'", base?.length === 1 && (base[0] === "'none'" || base[0] === "'self'"), `got ${base ? base.join(" ") : "ABSENT (it does not fall back to default-src)"}`);
-  result("frame-ancestors is set", policy.has("frame-ancestors"), "ABSENT (it does not fall back to default-src)");
+  const ancestors = policy.get("frame-ancestors");
+  result(
+    "frame-ancestors is 'none' or 'self'",
+    ancestors?.length === 1 && (ancestors[0] === "'none'" || ancestors[0] === "'self'"),
+    `got ${ancestors ? ancestors.join(" ") : "ABSENT (it does not fall back to default-src)"}`,
+  );
+  // form-action may be absent: an OAuth consent page leaves it out on purpose, since browsers apply it to every redirect
+  // hop and the last hop is the client's redirect_uri. When it is present it must keep forms on this origin.
+  const forms = policy.get("form-action");
+  result(
+    "form-action, when set, is 'self' or 'none'",
+    !forms || (forms.length === 1 && (forms[0] === "'self'" || forms[0] === "'none'")),
+    `got ${forms ? forms.join(" ") : "ABSENT"}`,
+  );
   if (cloudflareWebAnalytics) {
     const missingScript = CLOUDFLARE_WEB_ANALYTICS.script.filter((source) => !(scripts ?? []).includes(source));
     const connect = policy.get("connect-src") ?? policy.get("default-src") ?? [];

@@ -24,7 +24,7 @@ export const REFETCH_COOLDOWN_MS = 30_000;
 
 /**
  * The issuer Access writes, https://<team domain>, from the team domain as either site keeps it: with or without the
- * scheme, with or without a trailing slash. Null when it is missing or not a bare host.
+ * scheme, with or without a trailing slash. Null when it is missing or not a <team>.cloudflareaccess.com host.
  * @param {string | undefined} teamDomain
  * @returns {string | null}
  */
@@ -33,7 +33,8 @@ export function accessIssuer(teamDomain) {
     .trim()
     .replace(/^https:\/\//i, "")
     .replace(/\/+$/, "");
-  if (!host || !/^[A-Za-z0-9.-]+$/.test(host)) return null;
+  // Only an Access team host: the keys fetched from it are trusted to sign who a request is.
+  if (!host || !/^[a-z0-9-]+\.cloudflareaccess\.com$/i.test(host)) return null;
   return `https://${host.toLowerCase()}`;
 }
 
