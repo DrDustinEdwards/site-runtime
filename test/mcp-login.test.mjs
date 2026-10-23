@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, test } from "node:test";
 
 import { isAdminUser, loginHandler, registrationRefusal } from "../mcp-login.mjs";
+import { publicJwk as jwk, sign as idToken } from "./jwt.mjs";
 
 const ORIGIN = "https://wrapper.test";
 const TEAM = "https://sample.cloudflareaccess.com";
@@ -12,21 +13,6 @@ const ISSUER = `${TEAM}/cdn-cgi/access/sso/oidc/client-id`;
 const AUTH_REQUEST = { clientId: "https://client.example.com/meta", redirectUri: "https://client.example.com/cb", scope: ["s.read", "s.write"], state: "s" };
 
 const handler = loginHandler({ name: "Sample Admin", scopes: { read: "s.read", write: "s.write" }, about: "<p>Sample.</p>", admit: isAdminUser });
-
-const pair = /** @type {CryptoKeyPair} */ (
-  await crypto.subtle.generateKey({ name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" }, true, ["sign", "verify"])
-);
-const jwk = { ...(await crypto.subtle.exportKey("jwk", pair.publicKey)), kid: "k1" };
-/** @param {Uint8Array} bytes */
-const b64url = (bytes) => Buffer.from(bytes).toString("base64url");
-/** @param {unknown} value */
-const encode = (value) => b64url(new TextEncoder().encode(JSON.stringify(value)));
-/** @param {Record<string, unknown>} claims */
-async function idToken(claims) {
-  const input = `${encode({ alg: "RS256", kid: "k1" })}.${encode(claims)}`;
-  const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", pair.privateKey, new TextEncoder().encode(input));
-  return `${input}.${b64url(new Uint8Array(sig))}`;
-}
 
 function setup() {
   /** @type {{ upstream?: { request: typeof AUTH_REQUEST, data: { verifier: string, nonce: string } }, approvedScope?: string[], completed?: Record<string, any> }} */

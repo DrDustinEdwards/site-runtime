@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, test } from "node:test";
 
 import { accessSaas, authorizationUrl, finishSignIn, newSignIn, verifyIdToken } from "../access-login.mjs";
+import { encode, b64url, other, pair, publicJwk, keys, sign } from "./jwt.mjs";
 
 const ENV = {
   ACCESS_TEAM_DOMAIN: "https://sample.cloudflareaccess.com/",
@@ -12,28 +13,10 @@ const ENV = {
 };
 const saas = /** @type {NonNullable<ReturnType<typeof accessSaas>>} */ (accessSaas(ENV));
 
-/** @param {Uint8Array} bytes */
-const b64url = (bytes) => Buffer.from(bytes).toString("base64url");
-/** @param {unknown} value */
-const encode = (value) => b64url(new TextEncoder().encode(JSON.stringify(value)));
-
-const keyParams = { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" };
-const pair = /** @type {CryptoKeyPair} */ (await crypto.subtle.generateKey(keyParams, true, ["sign", "verify"]));
-const other = /** @type {CryptoKeyPair} */ (await crypto.subtle.generateKey(keyParams, true, ["sign", "verify"]));
-const publicJwk = { ...(await crypto.subtle.exportKey("jwk", pair.publicKey)), kid: "k1" };
-/** @type {import("../access-login.d.mts").KeySource} */
-const keys = async (kid) => (kid === "k1" ? publicJwk : undefined);
-
 const now = Math.floor(Date.now() / 1000);
 /** @param {Record<string, unknown>} [over] */
 const claims = (over = {}) => ({ iss: saas.issuer, aud: saas.clientId, exp: now + 300, nonce: "n1", email: "admin@example.com", ...over });
 
-/** @param {unknown} payload @param {CryptoKey} [key] @param {Record<string, unknown>} [header] */
-async function sign(payload, key = pair.privateKey, header = { alg: "RS256", kid: "k1" }) {
-  const input = `${encode(header)}.${encode(payload)}`;
-  const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(input));
-  return `${input}.${b64url(new Uint8Array(sig))}`;
-}
 
 describe("accessSaas", () => {
   test("derives every endpoint from the team domain and client id", () => {

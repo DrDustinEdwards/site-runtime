@@ -5,35 +5,17 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, test } from "node:test";
 
 import { ACCESS_COOKIE, ACCESS_JWT_HEADER, REFETCH_COOLDOWN_MS, accessIssuer, accessKeys, accessToken, verifyAccessRequest } from "../access.mjs";
-import { verifyIdToken } from "../access-login.mjs";
+import { encode, other, pair, publicJwk, keys, sign } from "./jwt.mjs";
 
 const TEAM = "sample.cloudflareaccess.com";
 const ISSUER = `https://${TEAM}`;
 const AUD = "aud-tag-1";
-
-/** @param {Uint8Array} bytes */
-const b64url = (bytes) => Buffer.from(bytes).toString("base64url");
-/** @param {unknown} value */
-const encode = (value) => b64url(new TextEncoder().encode(JSON.stringify(value)));
-
-const keyParams = { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" };
-const pair = /** @type {CryptoKeyPair} */ (await crypto.subtle.generateKey(keyParams, true, ["sign", "verify"]));
-const other = /** @type {CryptoKeyPair} */ (await crypto.subtle.generateKey(keyParams, true, ["sign", "verify"]));
-const publicJwk = { ...(await crypto.subtle.exportKey("jwk", pair.publicKey)), kid: "k1" };
-/** @type {import("../access-login.d.mts").KeySource} */
-const keys = async (kid) => (kid === "k1" ? publicJwk : undefined);
 
 const now = Math.floor(Date.now() / 1000);
 /** Access's request token: aud is an array of application tags; a person has an email, a service token a common_name. */
 /** @param {Record<string, unknown>} [over] */
 const claims = (over = {}) => ({ iss: ISSUER, aud: [AUD], exp: now + 300, iat: now, email: "admin@example.com", ...over });
 
-/** @param {unknown} payload @param {CryptoKey} [key] @param {Record<string, unknown>} [header] */
-async function sign(payload, key = pair.privateKey, header = { alg: "RS256", kid: "k1" }) {
-  const input = `${encode(header)}.${encode(payload)}`;
-  const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(input));
-  return `${input}.${b64url(new Uint8Array(sig))}`;
-}
 
 /** @param {Record<string, string>} headers */
 const request = (headers = {}) => new Request("https://example.com/admin", { headers });
@@ -204,13 +186,5 @@ describe("accessKeys", () => {
 
   test("a team domain that is not a host throws, since no key set can be named for it", () => {
     assert.throws(() => accessKeys(""), /team domain/);
-  });
-});
-
-describe("the sign-in's ID token check is unchanged by the shared verifier", () => {
-  test("verifyIdToken still answers a payload or null", async () => {
-    const expect = { issuer: ISSUER, audience: AUD };
-    assert.equal((await verifyIdToken(await sign(claims()), keys, expect))?.email, "admin@example.com");
-    assert.equal(await verifyIdToken(await sign(claims(), other.privateKey), keys, expect), null);
   });
 });
