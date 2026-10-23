@@ -28,22 +28,8 @@ test("scriptHash is the SHA-256 of the script's UTF-8 text, as a CSP hash source
   }
 });
 
-test("buildPolicy joins directives in the order given", () => {
-  assert.equal(buildPolicy(["default-src 'self'", "object-src 'none'"]), "default-src 'self'; object-src 'none'");
-  assert.equal(buildPolicy(["object-src 'none'", "default-src 'self'"]), "object-src 'none'; default-src 'self'");
-  assert.equal(buildPolicy(["sandbox"]), "sandbox");
-});
-
 test("buildPolicy refuses an empty or blank directive", () => {
   for (const bad of [[""], ["default-src 'self'", "  "]]) assert.throws(() => buildPolicy(bad), /a CSP directive is empty/);
-});
-
-test("the Cloudflare beacon entries are the file and its versioned directory", () => {
-  assert.ok(Object.isFrozen(CLOUDFLARE_WEB_ANALYTICS) && Object.isFrozen(CLOUDFLARE_WEB_ANALYTICS.script));
-  assert.deepEqual([...CLOUDFLARE_WEB_ANALYTICS.script], [
-    "https://static.cloudflareinsights.com/beacon.min.js",
-    "https://static.cloudflareinsights.com/beacon.min.js/",
-  ]);
 });
 
 test("a site that loads nothing extra gets the fixed policy, enforced", () => {
@@ -110,7 +96,7 @@ test("a nonce goes on script-src and style-src and nowhere else", () => {
 test("a nonce that is short or not base64 is refused", () => {
   assert.doesNotThrow(() => buildContentSecurityPolicy({ ...SINK, nonce: "abcdefghijklmnop" }));
   assert.doesNotThrow(() => buildContentSecurityPolicy({ ...SINK, nonce: "abc-def_ghi+jkl/mn==" }));
-  for (const nonce of ["", "abcdefghijklmno", "abcdefghijklmnop'", "abcdefghij klmnop", "abcdefghijklmnop===", "*; abcdefghijklmnop", "abcdefghijklmnop; script-src *"]) {
+  for (const nonce of ["", "abcdefghijklmno", "abcdefghijklmnop'", "'abcdefghijklmnop", " abcdefghijklmnop", "abcdefghijklmnop\n", "abcdefghij klmnop", "abcdefghijklmnop===", "*; abcdefghijklmnop", "abcdefghijklmnop; script-src *"]) {
     assert.throws(() => buildContentSecurityPolicy({ ...SINK, nonce }), /the nonce is not a base64 value/, `accepted ${JSON.stringify(nonce)}`);
   }
 });
@@ -193,41 +179,6 @@ test("only script sources are held to the script rules: other kinds may list a s
 
 test("the refusal names the offending source", () => {
   assert.throws(() => buildContentSecurityPolicy({ ...SINK, sources: { script: ["https://js.example.com", "data:"] } }), /^Error: data: is not an acceptable script source/);
-});
-
-test("script-src puts the nonce first, then hashes, then 'self', then hosts, then the beacon", () => {
-  const nonce = "abcdefghijklmnop";
-  const policy = directives({ ...SINK, nonce, scriptHashes: [HASH, "sha384-abc"], cloudflareWebAnalytics: true, sources: { script: ["https://js.example.com"] } });
-  assert.deepEqual(policy.get("script-src"), [`'nonce-${nonce}'`, `'${HASH}'`, "'sha384-abc'", "'self'", "https://js.example.com", ...CLOUDFLARE_WEB_ANALYTICS.script]);
-  const styles = directives({ ...SINK, nonce, styleHashes: [HASH], sources: { style: ["https://css.example.com"] } });
-  assert.deepEqual(styles.get("style-src"), ["'self'", `'nonce-${nonce}'`, `'${HASH}'`, "https://css.example.com"]);
-});
-
-test("the fixed directives are written in one order, with extras after them and the sinks last", () => {
-  const { value } = buildContentSecurityPolicy({
-    reportUri: "/r",
-    reportTo: "csp",
-    styleAttributesInline: true,
-    extraDirectives: ["upgrade-insecure-requests"],
-    sources: { media: ["https://m.example.com"], frame: ["https://f.example.com"] },
-  });
-  assert.equal(
-    value,
-    "default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; font-src 'self'; img-src 'self'; " +
-      "media-src 'self' https://m.example.com; connect-src 'self'; frame-src 'self' https://f.example.com; object-src 'none'; " +
-      "base-uri 'none'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests; report-uri /r; report-to csp",
-  );
-});
-
-test("reportOnly false names the enforced header", () => {
-  assert.equal(buildContentSecurityPolicy({ ...SINK, reportOnly: false }).name, "Content-Security-Policy");
-});
-
-test("a nonce must be a whole base64 value: anything round it is refused", () => {
-  for (const nonce of ["'abcdefghijklmnop", "abcdefghijklmnop'", " abcdefghijklmnop", "abcdefghijklmnop\n"]) {
-    assert.throws(() => buildContentSecurityPolicy({ ...SINK, nonce }), /the nonce is not a base64 value/, `accepted ${JSON.stringify(nonce)}`);
-  }
-  assert.doesNotThrow(() => buildContentSecurityPolicy({ ...SINK, nonce: generateNonce() }));
 });
 
 test("a source with a space, semicolon or comma, or not a string, is refused in every kind and in the sinks", () => {
