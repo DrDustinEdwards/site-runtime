@@ -7,7 +7,7 @@ request-token check (`./access`), the capped body reader (`./body`), one HTML es
 compare (`./compare`).
 
 No dependencies, plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
-tag: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.7.0"`. `npm test` runs every test in `test/`.
+tag: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.8.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
 
