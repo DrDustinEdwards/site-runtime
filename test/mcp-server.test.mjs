@@ -29,9 +29,14 @@ test("callApi: unconfigured, unreachable and malformed are ApiLegErrors; a refus
   const kind = (/** @type {Promise<unknown>} */ p) => p.then(() => "ok", (e) => (e instanceof ApiLegError ? `${e.kind}: ${e.message}` : String(e)));
 
   assert.match(await kind(callApi({ SITE_ORIGIN: "https://site.example.com", TOKEN: token }, leg, "/api")), /^unconfigured: .*the SITE service binding is missing/);
-  assert.match(await kind(callApi({ SITE: site(() => Response.json({})), SITE_ORIGIN: "https://site.example.com", TOKEN: "short" }, leg, "/api")), /TOKEN is unset or shorter than 32/);
+  const short = await kind(callApi({ SITE: site(() => Response.json({})), SITE_ORIGIN: "https://site.example.com", TOKEN: "short-secret" }, leg, "/api"));
+  assert.match(short, /TOKEN is unset or shorter than 32/);
+  assert.doesNotMatch(short, /short-secret/);
+  assert.match(await kind(callApi({ SITE: site(() => Response.json({})), TOKEN: token }, leg, "/api")), /SITE_ORIGIN is unset/);
+  assert.equal(sent.length, 0);
   const env = { SITE: site(() => new Response("<html>")), SITE_ORIGIN: "https://site.example.com", TOKEN: token };
   assert.match(await kind(callApi(env, leg, "/api")), /^malformed: The operator API returned status 200/);
+  assert.equal(await callApi({ ...env, SITE: site(() => new Response("<html>", { status: 502 })) }, leg, "/api").catch((e) => e.status), 502);
   assert.match(await kind(callApi({ ...env, SITE: { fetch: async () => { throw new Error("1042"); } } }, leg, "/api")), /^unreachable: The operator API could not be reached: 1042/);
 
   const refused = await callApi({ ...env, SITE: site(() => Response.json({ ok: false, error: "no" }, { status: 403 })) }, leg, "/api/operator", { json: { tool: "x" } });

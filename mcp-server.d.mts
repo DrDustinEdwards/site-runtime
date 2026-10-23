@@ -15,7 +15,9 @@ export function routeMcpEra<F, O extends object, E, C>(
 
 export declare class ApiLegError extends Error {
   readonly kind: "unconfigured" | "unreachable" | "malformed";
-  constructor(message: string, kind: "unconfigured" | "unreachable" | "malformed");
+  /** The HTTP status when an answer came back but was not JSON (kind "malformed"). */
+  readonly status?: number;
+  constructor(message: string, kind: "unconfigured" | "unreachable" | "malformed", status?: number);
 }
 
 export interface ApiLeg {
