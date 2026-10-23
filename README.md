@@ -389,7 +389,7 @@ const refusal = authorizeCall(env, caller, SCOPES.write, { site: "sample.example
   `server/discover`; the router is then modern-only.
 - `callApi` is the API leg's transport over a service binding to `SITE_ORIGIN + path`. It throws `ApiLegError` (`kind`
   `unconfigured`, `unreachable` or `malformed`) for a missing binding, origin, token under 32 characters or `require`d
-  var, a failed fetch or a body that is not JSON, and returns `{ status, ok, body }` otherwise, so a refusal by the API is
+  var, a failed fetch or a body that is not JSON (its `status` then the HTTP status), and returns `{ status, ok, body }` otherwise, so a refusal by the API is
   an answer the server relays verbatim. `anonymous: true` sends no bearer (a public health read).
 - `checkRateLimit` is 30 requests a minute per identity on the family's limiter. A lower `perMinute` (registration's 5)
   is honoured and a higher one is not; a missing or failing binding refuses, with `retryAfter` 60. `refuse` is the

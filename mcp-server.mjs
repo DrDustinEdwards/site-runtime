@@ -52,12 +52,15 @@ export class ApiLegError extends Error {
   /**
    * @param {string} message
    * @param {"unconfigured" | "unreachable" | "malformed"} kind
+   * @param {number} [status] the HTTP status, when an answer came back (malformed)
    */
-  constructor(message, kind) {
+  constructor(message, kind, status) {
     super(message);
     this.name = "ApiLegError";
     /** @type {"unconfigured" | "unreachable" | "malformed"} */
     this.kind = kind;
+    /** @type {number | undefined} */
+    this.status = status;
   }
 }
 
@@ -99,7 +102,7 @@ export async function callApi(env, leg, path, init = {}) {
   try {
     return { status: response.status, ok: response.ok, body: raw ? JSON.parse(raw) : null };
   } catch {
-    throw new ApiLegError(`${leg.api} returned status ${response.status} with a body that is not JSON.`, "malformed");
+    throw new ApiLegError(`${leg.api} returned status ${response.status} with a body that is not JSON.`, "malformed", response.status);
   }
 }
 
