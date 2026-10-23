@@ -2,12 +2,12 @@
 
 The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-homes-2026-10-06.md): the security headers
 (the root export and `./headers`, `./csp`, `./csp-report`, `./check`, `./oshp`, `./owasp`), the rate limiter (`./rate-limit`,
-`./rate-limit/durable-object`), the members model (`./members`), the Access for SaaS sign-in (`./access-login`), the Access
-request-token check (`./access`), the capped body reader (`./body`), one HTML escape (`./html`) and one constant-time secret
-compare (`./compare`).
+`./rate-limit/durable-object`), the members model (`./members`), the Access for SaaS sign-in (`./access-login`), the MCP
+servers' consent and sign-in handler (`./mcp-login`) and tool-call log (`./audit-log`), the Access request-token check
+(`./access`), the capped body reader (`./body`), one HTML escape (`./html`) and one constant-time secret compare (`./compare`).
 
 No dependencies, plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
-tag: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.8.0"`. `npm test` runs every test in `test/`.
+tag: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.9.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
 
@@ -325,3 +325,43 @@ if (!signedIn.ok || !isAdministrator(signedIn.email)) return refuse(original);
 **Tests.** `test/access-login.test.mjs` runs against a key pair made in the test and a fake token endpoint. Each of these
 checks was removed once and seen to fail a test: the signature, issuer, expiry, algorithm, nonce and `email_verified`
 checks.
+
+## The MCP login and the tool-call log
+
+The single-administrator MCP servers (Dustin Edwards Admin, Foxing Admin) sit behind `@cloudflare/workers-oauth-provider`
+and share everything else in front of it: the consent page, the Access round trip, the administrator check, the
+registration allowlist and the tool-call log. Each server passes what is its own:
+
+```js
+import { isAdminUser, loginHandler, registrationRefusal } from "@dustinedwards/site-runtime/mcp-login";
+
+export const defaultHandler = loginHandler({
+  name: "Sample Admin",
+  scopes: { read: "sample.read", write: "sample.write" },
+  about: "<p>Sample Admin runs sample.example.com. It will always be able to read. Changes need the box below.</p>",
+  admit: isAdminUser,
+});
+// In the provider's options:
+clientRegistrationCallback: ({ clientMetadata }) => {
+  const why = registrationRefusal(env.DCR_REDIRECT_URIS, clientMetadata);
+  return why ? { code: "invalid_redirect_uri", description: why } : undefined;
+},
+```
+
+- `loginHandler` is the provider's `defaultHandler`: `/health`, the consent page and its form on `/authorize`, and
+  `/callback`. The callback address is `PUBLIC_ORIGIN` (or the request's origin) plus `/callback`. A missing Access setting
+  answers 503: not configured means not open.
+- Least scope first: every grant holds the read scope, and the write scope only when the administrator ticks the box
+  (it starts ticked only when the client asked for it). The grant's props are `{ email, scopes }`.
+- `admit` decides who is let in; `isAdminUser` is `ADMIN_EMAIL`, compared without case, and an unset value admits nobody.
+- The page's one inline style is `CONSENT_STYLE`, rendered exactly, so the server's Content-Security-Policy trusts it by
+  `scriptHash(CONSENT_STYLE)`. Give the page no `form-action`: the approve POST redirects through Access to whatever
+  redirect URI the client named.
+- `registrationRefusal` allows a dynamic client registration only when every redirect URI it names is in
+  `DCR_REDIRECT_URIS` exactly; an empty list refuses all. Rate limit `/register` before the provider sees it.
+- `./audit-log` is the append-only tool-call log: export `ToolCallLog` as the Durable Object bound to `TOOL_CALL_LOG`,
+  then `appendAudit(env, row)` before (`started`) and after (`finished`) each call, or once for a `refused` one, with
+  `loggedArgs` and `loggedResult`. A string argument over 200 characters is stored as its length and a SHA-256 prefix.
+
+**Tests.** `test/mcp-login.test.mjs` runs the handler against a fake provider and a fake Access. The scope from the box,
+the administrator check and the exact registration match were each removed once and seen to fail a test.

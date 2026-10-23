@@ -1,8 +1,8 @@
 {
   "name": "@dustinedwards/site-runtime",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "private": true,
-  "description": "The portfolio sites' shared runtime. Today: OWASP Secure Headers Project defaults, a Content-Security-Policy built from a per-site list of what a site loads, the check a site runs in CI to prove its responses carry them, one exact rate limiter on a SQLite Durable Object, the members model: layers, permission bundles and end dates for an app with staff, the Access for SaaS sign-in, the Cloudflare Access request-token check, one HTML escape and one constant-time secret compare.",
+  "description": "The portfolio sites' shared runtime. Today: OWASP Secure Headers Project defaults, a Content-Security-Policy built from a per-site list of what a site loads, the check a site runs in CI to prove its responses carry them, one exact rate limiter on a SQLite Durable Object, the members model: layers, permission bundles and end dates for an app with staff, the Access for SaaS sign-in, the MCP servers' consent page, sign-in handler and tool-call log, the Cloudflare Access request-token check, one HTML escape and one constant-time secret compare.",
   "type": "module",
   "exports": {
     ".": {
@@ -57,6 +57,14 @@
       "types": "./access-login.d.mts",
       "default": "./access-login.mjs"
     },
+    "./mcp-login": {
+      "types": "./mcp-login.d.mts",
+      "default": "./mcp-login.mjs"
+    },
+    "./audit-log": {
+      "types": "./audit-log.d.mts",
+      "default": "./audit-log.mjs"
+    },
     "./access": {
       "types": "./access.d.mts",
       "default": "./access.mjs"
@@ -90,6 +98,10 @@
     "members",
     "access-login.mjs",
     "access-login.d.mts",
+    "mcp-login.mjs",
+    "mcp-login.d.mts",
+    "audit-log.mjs",
+    "audit-log.d.mts",
     "body.mjs",
     "body.d.mts",
     "access.mjs",
