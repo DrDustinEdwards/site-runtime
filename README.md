@@ -4,10 +4,10 @@ The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-
 (the root export and `./headers`, `./csp`, `./csp-report`, `./check`, `./oshp`, `./owasp`), the rate limiter (`./rate-limit`,
 `./rate-limit/durable-object`), the members model (`./members`), the Access for SaaS sign-in (`./access-login`), the MCP
 servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-log`) and server scaffold (`./mcp-server`), the Access request-token check
-(`./access`), the capped body reader (`./body`), one HTML escape (`./html`) and one constant-time secret compare (`./compare`).
+(`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`) and the /health response (`./health`).
 
 No dependencies, plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
-tag: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.10.0"`. `npm test` runs every test in `test/`.
+tag: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.11.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
 
@@ -123,6 +123,11 @@ const html = `<a title="${escapeHtml(title)}">${escapeHtml(label)}</a>`;
 It replaces `& < > " '` with `&amp; &lt; &gt; &quot; &#39;` and nothing else, so its output is safe as element content and
 inside a single- or double-quoted attribute. A non-string is passed through `String()` first, as a template literal would.
 It is not an encoder for unquoted attributes, `javascript:` URLs, or the inside of `<script>` and `<style>`.
+
+## The /health response
+
+`./health` is the uptime probe's answer: `healthResponse({ ping, backup, now })` is 200 when `ping` resolves and 503 when
+it throws (logged as `health_db_down`), with `{ ok, db, backup, time }`, `no-store` and `noindex`.
 
 ## A constant-time secret compare
 
