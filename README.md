@@ -3,11 +3,11 @@
 The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-homes-2026-10-06.md): the security headers
 (the root export and `./headers`, `./csp`, `./csp-report`, `./check`, `./oshp`, `./owasp`), the rate limiter (`./rate-limit`,
 `./rate-limit/durable-object`), the members model (`./members`), the Access for SaaS sign-in (`./access-login`), the MCP
-servers' consent and sign-in handler (`./mcp-login`) and tool-call log (`./audit-log`), the Access request-token check
+servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-log`) and server scaffold (`./mcp-server`), the Access request-token check
 (`./access`), the capped body reader (`./body`), one HTML escape (`./html`) and one constant-time secret compare (`./compare`).
 
 No dependencies, plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
-tag: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.9.0"`. `npm test` runs every test in `test/`.
+tag: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.10.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
 
@@ -365,3 +365,36 @@ clientRegistrationCallback: ({ clientMetadata }) => {
 
 **Tests.** `test/mcp-login.test.mjs` runs the handler against a fake provider and a fake Access. The scope from the box,
 the administrator check and the exact registration match were each removed once and seen to fail a test.
+
+## The MCP server scaffold
+
+`./mcp-server` is the rest of what the admin MCP servers (and Carrel's AI door, for the era router) had each copied. No
+dependency: the caller hands in the SDK's two functions.
+
+```js
+import { authorizeCall, callApi, checkRateLimit, mcpScopes, refuse, routeMcpEra } from "@dustinedwards/site-runtime/mcp-server";
+import { isLegacyRequest } from "@modelcontextprotocol/server";
+import { createMcpHandler } from "agents/mcp/server";
+
+export const SCOPES = mcpScopes("sample"); // { read: "sample.read", write: "sample.write", all }
+return routeMcpEra(request, env, ctx, { factory, options: { route: "/mcp" }, createMcpHandler, isLegacyRequest });
+const limit = await checkRateLimit(env.MCP_RATE_LIMIT, `admin:${email}`); // { allowed, retryAfter }
+const answer = await callApi(env, { binding: "SITE", token: "OPERATOR_TOKEN", api: "The operator API", userAgent }, "/api/operator", { json: { tool, args } });
+const refusal = authorizeCall(env, caller, SCOPES.write, { site: "sample.example.com", scopes: SCOPES });
+```
+
+- `routeMcpEra` sends a request the SDK's `isLegacyRequest` calls legacy (2025-11-25, `initialize`) to a
+  `legacy: "stateless"` handler and everything else to `legacy: "reject"`, the stateless 2026-07-28 server. Its removal
+  condition is in its header: stop passing `isLegacyRequest` when the probe shows the target clients opening with
+  `server/discover`; the router is then modern-only.
+- `callApi` is the API leg's transport over a service binding to `SITE_ORIGIN + path`. It throws `ApiLegError` (`kind`
+  `unconfigured`, `unreachable` or `malformed`) for a missing binding, origin, token under 32 characters or `require`d
+  var, a failed fetch or a body that is not JSON, and returns `{ status, ok, body }` otherwise, so a refusal by the API is
+  an answer the server relays verbatim. `anonymous: true` sends no bearer (a public health read).
+- `checkRateLimit` is 30 requests a minute per identity on the family's limiter. A lower `perMinute` (registration's 5)
+  is honoured and a higher one is not; a missing or failing binding refuses, with `retryAfter` 60. `refuse` is the
+  plain-text, `no-store`, `noindex` answer to go with it.
+- `authorizeCall` is the per-call check (rule 12.1): a caller, the administrator (`isAdminUser`) or a well-formed agent
+  principal, and the scope the tool needs. `callerName` is its audit name.
+
+**Tests.** `test/mcp-server.test.mjs`, once; the servers' own copies of these tests go when they adopt it.
