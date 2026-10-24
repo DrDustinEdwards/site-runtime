@@ -4,8 +4,8 @@ The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-
 (the root export and `./headers`, `./csp`, `./csp-report`, `./check`, `./oshp`, `./owasp`), the rate limiter (`./rate-limit`,
 `./rate-limit/durable-object`), the members model (`./members`), the Access for SaaS sign-in (`./access-login`), the MCP
 servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-log`) and server scaffold (`./mcp-server`), the Access request-token check
-(`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), and the check on AI-written prose with the
-measure of an author's voice (`./prose`).
+(`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), where a site's Anthropic calls go
+(`./ai-gateway`), and the check on AI-written prose with the measure of an author's voice (`./prose`).
 
 No dependencies (`./prose` carries a generated copy of an MIT engine, below), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
 tag: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.11.0"`. `npm test` runs every test in `test/`.
@@ -178,6 +178,26 @@ licence header included.
 
 `./health` is the uptime probe's answer: `healthResponse({ ping, backup, now })` is 200 when `ping` resolves and 503 when
 it throws (logged as `health_db_down`), with `{ ok, db, backup, time }`, `no-store` and `noindex`.
+
+## Where a site's Anthropic calls go
+
+`./ai-gateway` is the one decision between Cloudflare AI Gateway and Anthropic directly, so every site logs the same way.
+
+```js
+import { anthropicRoute } from "@dustinedwards/site-runtime/ai-gateway";
+const { baseURL, headers } = anthropicRoute(env, "foxing");
+const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, baseURL, defaultHeaders: headers });
+// or, without the SDK: fetch(`${baseURL}/v1/messages`, { headers: { ...headers, "x-api-key": key, ... } })
+```
+
+- `AI_GATEWAY_BASE_URL` unset: Anthropic's origin and no extra header, so nothing changes until the gateway exists. Set:
+  the gateway's Anthropic endpoint, `https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/anthropic`. A value
+  that is not https or does not end in `/anthropic` throws.
+- The site's own Anthropic key stays the credential; the gateway stores none.
+- `AI_GATEWAY_TOKEN`, when set, goes as `cf-aig-authorization: Bearer ...`, which an authenticated gateway requires.
+- `cf-aig-collect-log-payload: false` keeps request and response bodies out of the gateway's logs (the metadata log of
+  model, tokens, cost and status stays), and `cf-aig-metadata: {"app": ...}` names the site on every log entry, so one
+  gateway serves every site.
 
 ## A constant-time secret compare
 
