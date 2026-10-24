@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { EMAIL_PHRASES, checkProse, copiedRuns, distanceFrom, nearestPassages, profileOf, thresholdFor, VOICE_THRESHOLD } from "../prose.mjs";
+import { EMAIL_PHRASES, checkProse, copiedRuns, distanceFrom, nearestPassages, profileOf, sentenceSpread, slopScan, thresholdFor, voiceExcerpts, VOICE_THRESHOLD } from "../prose.mjs";
 import { BASELINE, PLANT, TWIN } from "./fixtures/voice.mjs";
 
 const checks = (/** @type {string} */ text, /** @type {Parameters<typeof checkProse>[1]} */ options) =>
@@ -106,5 +106,71 @@ describe("the voice measure", () => {
     const nearest = nearestPassages(profile, [...BASELINE, PLANT], 3);
     assert.equal(nearest.length, 3);
     assert.ok(nearest.every((t) => !t.includes("afternoon tea")));
+  });
+});
+
+describe("slopScan", () => {
+  // BASELINE's sentences run 5, 10 and 18 words (10th percentile, median, 90th), the longest 27.
+  const scan = (/** @type {string} */ text, excerpts = BASELINE) => slopScan(text, excerpts).findings;
+  const kinds = (/** @type {string} */ text, excerpts = BASELINE) => scan(text, excerpts).map((f) => f.kind);
+
+  test("PLANT: four sentences of the same length, when the author's vary, are one finding on the first", () => {
+    const even =
+      "The team reviewed the quarterly numbers and found a steady rise in sales. " +
+      "The new process cut the waiting time for nearly all of our regular customers. " +
+      "Our support staff answered many more questions each week than they had before. " +
+      "The product team shipped three small updates that fixed the slowest pages on the site.";
+    const found = scan(even);
+    assert.deepEqual(found.map((f) => [f.kind, f.line]), [["length", 1]]);
+    assert.match(found[0].say, /^These four sentences are all about 14 words\. The excerpts run from 5 to 18\./);
+  });
+
+  test("PLANT: a sentence eight words past the author's long ones, and past their longest", () => {
+    const long =
+      "When we finally reached the end of the gravel road after the long drive from town we found that the gate had been chained " +
+      "and that someone had cut the grass and painted the fence white.";
+    const found = scan(long);
+    assert.deepEqual(found.map((f) => f.kind), ["length"]);
+    assert.match(found[0].say, /^This is 36 words\. The long sentences in the excerpts are about 18\./);
+  });
+
+  test("PLANT: a word the excerpts never use, filler, a joiner dash, and a padded closing list", () => {
+    assert.deepEqual(kinds("The river was a tapestry of light."), ["word"]);
+    assert.deepEqual(kinds("It is important to note that the river was up."), ["filler"]);
+    assert.deepEqual(kinds("We left early \u2014 the road was out."), ["shape"]);
+    assert.deepEqual(kinds("We fixed the roof.\nThe result was seamless, holistic, and pivotal."), ["shape"]);
+  });
+
+  test("the instruction names each span and the author's spread, and edits in place", () => {
+    const { instruction } = slopScan("It is important to note that the river was up.", BASELINE, { firstLine: 7 });
+    assert.equal(
+      instruction,
+      [
+        "Edit the draft in place. Change only the spans listed. Keep every fact, name, number, and link. Leave every other sentence as it is.",
+        "The excerpts' sentences run about 5, 10, and 18 words. Stay inside that spread. Do not alternate short and long on purpose.",
+        '- Line 7, "It is important to note that": Delete "it is important to note that" and keep the rest of the sentence.',
+      ].join("\n"),
+    );
+    assert.equal(slopScan("The river was up.", ["Too short to measure."]).instruction, null);
+  });
+
+  test("CLEAN TWIN: the author's own words, ranges, real lists and their own pages pass", () => {
+    assert.deepEqual(kinds("The river was a tapestry of light.", [...BASELINE, "Her quilt was a tapestry of feed sacks."]), []);
+    assert.deepEqual(kinds("She bought eggs, flour, and a sack of rice for the week."), []);
+    assert.deepEqual(kinds("From 2019-2024 the same protocol held, and from 2019\u20132024 too."), []);
+    assert.deepEqual(kinds("We left early \u2014 the road was out.", BASELINE.map((b) => b.replace(/\. /g, " \u2014 "))), []);
+    for (const page of [...BASELINE, TWIN]) assert.deepEqual(scan(page), []);
+  });
+});
+
+describe("voiceExcerpts", () => {
+  test("one per passage, holding one of the author's long sentences and one short one", () => {
+    const spread = sentenceSpread(BASELINE);
+    assert.ok(spread);
+    const picked = voiceExcerpts(BASELINE, 3);
+    assert.equal(picked.length, 3);
+    const lengths = picked.flatMap((p) => p.split(/(?<=[.!?])\s+/)).map((s) => s.split(/\s+/).length);
+    assert.ok(lengths.some((n) => n >= spread.long));
+    assert.ok(lengths.some((n) => n <= spread.short));
   });
 });
