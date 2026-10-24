@@ -149,7 +149,13 @@ export function checkProse(text, options = {}) {
   lines.forEach((line, i) => {
     // The construction often spans a line break inside a paragraph ("This wasn't about money.\nIt was about pride.").
     const next = lines[i + 1]?.trim() ? ` ${lines[i + 1]}` : "";
-    const m = NOT_JUST.map((re) => re.exec(line) ?? (next ? re.exec(line + next) : null)).find(Boolean);
+    // Across the break only when the match starts on this line and runs into the next: one wholly on the next line is
+    // that line's to report.
+    const across = (/** @type {RegExp} */ re) => {
+      const m = next ? re.exec(line + next) : null;
+      return m && m.index < line.length && m.index + m[0].length > line.length ? m : null;
+    };
+    const m = NOT_JUST.map((re) => re.exec(line) ?? across(re)).find(Boolean);
     if (m && !parallel.has(firstLine + i)) add({ check: "not-x-but-y", message: `The "not X, it's Y" construction.`, excerpt: m[0], line: firstLine + i, severity: "medium" });
     if (dashes === "flag") {
       for (const d of line.matchAll(DASH)) {

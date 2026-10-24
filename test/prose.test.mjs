@@ -19,7 +19,7 @@ describe("checkProse", () => {
   });
 
   test("PLANT: \"not X, it's Y\" in one sentence and across two, reported once", () => {
-    for (const text of ["It's not just a house, it's a promise.", "This wasn't about money.\nIt was about pride.", "It is not just a tool. It is a way of working."]) {
+    for (const text of ["It's not just a house, it's a promise.", "This wasn't about money.\nIt was about pride.", "It is not just a tool. It is a way of working.", "She stood a while.\nIt's not just a house, it's a promise."]) {
       const found = checks(text).filter((c) => c === "not-x-but-y" || c === "negative-parallelism");
       assert.equal(found.length, 1, text);
     }
