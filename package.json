@@ -88,6 +88,10 @@
     "./ai-gateway": {
       "types": "./ai-gateway.d.mts",
       "default": "./ai-gateway.mjs"
+    },
+    "./routine": {
+      "types": "./routine.d.mts",
+      "default": "./routine.mjs"
     }
   },
   "bin": {
