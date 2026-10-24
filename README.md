@@ -4,8 +4,8 @@ The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-
 (the root export and `./headers`, `./csp`, `./csp-report`, `./check`, `./oshp`, `./owasp`), the rate limiter (`./rate-limit`,
 `./rate-limit/durable-object`), the members model (`./members`), the Access for SaaS sign-in (`./access-login`), the MCP
 servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-log`) and server scaffold (`./mcp-server`), the Access request-token check
-(`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), and the check on AI-written prose with the
-measure of an author's voice (`./prose`).
+(`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), the check on AI-written prose with the
+measure of an author's voice (`./prose`), and the Cloudflare Turnstile widget loader (`./turnstile`).
 
 No dependencies (`./prose` carries a generated copy of an MIT engine, below), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
 tag: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.11.0"`. `npm test` runs every test in `test/`.
@@ -178,6 +178,24 @@ licence header included.
 
 `./health` is the uptime probe's answer: `healthResponse({ ping, backup, now })` is 200 when `ping` resolves and 503 when
 it throws (logged as `health_db_down`), with `{ ok, db, backup, time }`, `no-store` and `noindex`.
+
+## The Turnstile widget
+
+`./turnstile` loads Cloudflare Turnstile, the bot check on a public form that sends email, so no site keeps its own copy.
+
+```js
+import { TURNSTILE_ORIGIN, mountTurnstile } from "@dustinedwards/site-runtime/turnstile";
+// The CSP sources: { script: [TURNSTILE_ORIGIN], frame: [TURNSTILE_ORIGIN] }
+useEffect(() => mountTurnstile(ref.current, siteKey), [siteKey]);
+```
+
+- The script loads once per page (`render=explicit`, so it never renders a widget of its own), and a load that fails is
+  tried again on the next mount. The returned function removes the widget; called before the script loads, nothing renders.
+- The widget leaves its token in a hidden `cf-turnstile-response` input inside the element, so the form sends it with its
+  fields. `{ onToken }` is for a form that sends it another way, such as Better Auth's `x-captcha-response` header.
+- Browser only. The token is checked on the server, by Better Auth's captcha plugin for its own endpoints.
+
+**Tests.** `test/turnstile.test.mjs`, against a fake document.
 
 ## A constant-time secret compare
 
