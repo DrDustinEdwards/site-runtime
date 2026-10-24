@@ -18,10 +18,11 @@ describe("checkProse", () => {
     );
   });
 
-  test("PLANT: \"not X, it's Y\" in one sentence and across two", () => {
-    assert.ok(checks("It's not just a house, it's a promise.").includes("not-x-but-y"));
-    assert.ok(checks("This wasn't about money. It was about pride.").includes("not-x-but-y"));
-    assert.ok(checks("It is not just a tool. It is a way of working.").includes("not-x-but-y"));
+  test("PLANT: \"not X, it's Y\" in one sentence and across two, reported once", () => {
+    for (const text of ["It's not just a house, it's a promise.", "This wasn't about money. It was about pride.", "It is not just a tool. It is a way of working."]) {
+      const found = checks(text).filter((c) => c === "not-x-but-y" || c === "negative-parallelism");
+      assert.equal(found.length, 1, text);
+    }
   });
 
   test("PLANT: a paragraph that closes on a list of three, on the line it ends", () => {

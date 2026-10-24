@@ -109,9 +109,15 @@ export function checkProse(text, options = {}) {
     if (allowed.has(String(issue.text).toLowerCase())) continue;
     const label = AIDetector.TYPE_LABELS[issue.type] ?? issue.type;
     const quoted = lineOf(lines, firstLine, issue.text);
+    const suggestion = String(issue.suggestion ?? "").replace(/\.+$/, "");
+    // A quoted finding names words to change; the rest (rhythm, density) describe the whole text.
+    const message =
+      quoted === null
+        ? `${label}: ${String(issue.text).replace(/\.+$/, "")}.${suggestion ? ` ${suggestion}.` : ""}`
+        : `${label}: "${issue.text}".${suggestion ? ` Try: ${suggestion}.` : ""}`;
     add({
       check: issue.type,
-      message: `${label}: "${issue.text}".${issue.suggestion ? ` Try: ${issue.suggestion}.` : ""}`,
+      message,
       excerpt: quoted === null ? null : issue.text,
       line: quoted,
       severity: issue.severity,
@@ -128,9 +134,11 @@ export function checkProse(text, options = {}) {
     });
   }
 
+  // The engine sees some "not X, it's Y" lines itself; ours reports only the ones it missed.
+  const parallel = new Set(out.filter((i) => i.check === "negative-parallelism").map((i) => i.line));
   lines.forEach((line, i) => {
     const m = NOT_JUST.map((re) => re.exec(line)).find(Boolean);
-    if (m) add({ check: "not-x-but-y", message: `The "not X, it's Y" construction.`, excerpt: m[0], line: firstLine + i, severity: "medium" });
+    if (m && !parallel.has(firstLine + i)) add({ check: "not-x-but-y", message: `The "not X, it's Y" construction.`, excerpt: m[0], line: firstLine + i, severity: "medium" });
     if (dashes === "flag") {
       for (const d of line.matchAll(DASH)) {
         const at = d.index ?? 0;
