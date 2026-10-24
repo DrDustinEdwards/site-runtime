@@ -43,14 +43,16 @@ function deniedFeatures(value) {
 
 /**
  * @param {Headers} headers a real response's headers
- * @param {{ standard?: Readonly<Record<string, string>>, csp?: boolean, cloudflareWebAnalytics?: boolean }} [options]
+ * @param {{ standard?: Readonly<Record<string, string>>, csp?: boolean, cloudflareWebAnalytics?: boolean, inlineScripts?: "unsafe-inline" }} [options]
  *   `standard`: the floor (default STANDARD_SECURITY_HEADERS; a site passes the set it declared). `csp`: grade the
  *   policy too; false for a response that carries none by design, such as a feed or an image.
  *   `cloudflareWebAnalytics`: the site is Cloudflare-proxied with Web Analytics on, so the policy must let the injected
  *   beacon run (its script path prefix) and report (connect-src with the site itself).
+ *   `inlineScripts`: the site built its policy with the same opt-in (buildContentSecurityPolicy), so `'unsafe-inline'`
+ *   is accepted on script-src alone; script-src-elem, script-src-attr and worker-src are still refused it.
  * @returns {CheckResult[]}
  */
-export function checkSecurityHeaders(headers, { standard = STANDARD_SECURITY_HEADERS, csp = true, cloudflareWebAnalytics = false } = {}) {
+export function checkSecurityHeaders(headers, { standard = STANDARD_SECURITY_HEADERS, csp = true, cloudflareWebAnalytics = false, inlineScripts } = {}) {
   /** @type {CheckResult[]} */
   const results = [];
   const result = (/** @type {string} */ name, /** @type {boolean} */ pass, /** @type {string} */ detail) =>
@@ -104,7 +106,8 @@ export function checkSecurityHeaders(headers, { standard = STANDARD_SECURITY_HEA
     // Browsers match keywords in any case, and a host of `*` matches every host whatever the scheme, port or path.
     const keywords = sources.map((s) => s.toLowerCase());
     const noun = label === "scripts" ? "script" : label;
-    result(`${label}: no 'unsafe-inline'`, !keywords.includes("'unsafe-inline'"), `${noun} sources: ${sources.join(" ")}`);
+    const inlineDeclared = label === "scripts" && inlineScripts === "unsafe-inline";
+    result(`${label}: no 'unsafe-inline'${inlineDeclared ? " (declared: inlineScripts)" : ""}`, inlineDeclared || !keywords.includes("'unsafe-inline'"), `${noun} sources: ${sources.join(" ")}`);
     result(`${label}: no 'unsafe-eval'`, !keywords.includes("'unsafe-eval'"), `${noun} sources: ${sources.join(" ")}`);
     // A worker from a blob: URL is one the page's own script made, which already had to run, so workers may use blob:.
     const schemes = label === "worker-src" ? /^(https?|data):$/i : /^(https?|data|blob):$/i;

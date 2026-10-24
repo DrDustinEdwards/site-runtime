@@ -64,14 +64,20 @@ const { name, value } = buildContentSecurityPolicy({
   reportOnly: false,                                     // true ships the policy as Content-Security-Policy-Report-Only
 });
 headers.set(name, value);
+headers.set("Reporting-Endpoints", reportingEndpoints("csp-endpoint", new URL("/api/csp-report", url.origin)));
 ```
+
+`reportingEndpoints(group, url)` writes the header that defines the `reportTo` group. The URL must be absolute and https
+(http on localhost only): a browser ignores a relative or insecure endpoint, and the group's reports then go nowhere.
 
 The fixed parts are the same for every site: `default-src 'self'`, `object-src 'none'`, `base-uri 'none'`,
 `form-action 'self'`, `frame-ancestors 'none'` (`framedBySameOrigin: true` makes it `'self'`, for a site that frames its own
-pages, such as Capsomer's specimens; pair it with an `X-Frame-Options: sameorigin` override). Scripts are `'self'`, the
+pages, such as Capsomer's specimens; pair it with an `X-Frame-Options: sameorigin` override). Two make it stricter:
+`denyUnlisted: true` writes `default-src 'none'`, so a kind the policy does not name (media, frames, workers, the manifest)
+is refused rather than allowed from the site, and `noForms: true` writes `form-action 'none'`, for a site with no forms. Scripts are `'self'`, the
 site's hashes or nonce, its listed hosts and, on request, the Cloudflare Web Analytics beacon. A script source of `*` (or
 `https://*` and the like), a bare scheme, or `'unsafe-inline'` or `'unsafe-eval'` in any case is refused, and a policy with
-no report sink is refused. `extraDirectives` adds a kind the builder leaves out (`frame-src`, `worker-src`,
+no report sink is refused. `'unsafe-inline'` reaches script-src only through the named opt-in below. `extraDirectives` adds a kind the builder leaves out (`frame-src`, `worker-src`,
 `upgrade-insecure-requests`); one that restates a fixed directive or names `script-src-elem` or `script-src-attr` is refused.
 
 **The beacon.** Cloudflare's edge injects `/beacon.min.js/v31...` into a proxied site's pages, so the script source is the
@@ -82,6 +88,14 @@ The file is named and not hashed because its `integrity` changes whenever Cloudf
 **Nonce or hash.** A response that is never shared-cached may carry a per-request nonce (`generateNonce`).
 An edge-cached response must not: every reader would share one nonce for the cache lifetime, so its inline scripts are trusted by
 hash (`scriptHash`).
+
+**Inline scripts, the last resort.** `inlineScripts: "unsafe-inline"` puts `'unsafe-inline'` on script-src. Use it only when
+neither a nonce nor hashes can work: an edge-cached page (so no nonce) that streams inline scripts whose text differs per
+page (so no hashes), as React Router's streamed hydration data does. A nonce is preferred, then hashes. The builder refuses
+it beside a nonce or script hashes, because a browser then ignores `'unsafe-inline'` and the page's inline scripts stop
+running. The check fails such a policy unless the site declares the same opt-in: `checkSecurityHeaders(headers,
+{ inlineScripts: "unsafe-inline" })`, which accepts it on script-src alone. Inline `<style>` elements, when a site has them
+and no nonce, are a style source like any other: `sources: { style: ["'unsafe-inline'"] }`.
 
 ## The report sink
 
@@ -194,7 +208,8 @@ changed set of failures.
 - Every header in the set, at least as strict: HSTS at least the set's age (and `includeSubDomains` when the set has it), a
   strict Referrer-Policy, framing refused, every feature the set denies denied.
 - An **enforced** Content-Security-Policy. A Report-Only policy alone fails: it blocks nothing.
-- A script source list with no `'unsafe-inline'` or `'unsafe-eval'` in any case, and no `*`, host-source whose host is `*`
+- A script source list with no `'unsafe-inline'` (unless the site passes `inlineScripts: "unsafe-inline"`, as it did to the
+  builder) or `'unsafe-eval'` in any case, and no `*`, host-source whose host is `*`
   (`https://*`), or bare scheme. `script-src-elem`, `script-src-attr` and `worker-src`, when present, are held to the same
   rules (`worker-src` may use `blob:`).
 - `object-src 'none'`, `base-uri 'none'` or `'self'`, `frame-ancestors 'none'` or `'self'`, `form-action` `'self'` or

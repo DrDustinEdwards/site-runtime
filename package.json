@@ -1,6 +1,6 @@
 {
   "name": "@dustinedwards/site-runtime",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "private": true,
   "description": "The portfolio sites' shared runtime. Today: OWASP Secure Headers Project defaults, a Content-Security-Policy built from a per-site list of what a site loads, the check a site runs in CI to prove its responses carry them, one exact rate limiter on a SQLite Durable Object, the members model: layers, permission bundles and end dates for an app with staff, the Access for SaaS sign-in, the MCP servers' consent page, sign-in handler, tool-call log and server scaffold, the Cloudflare Access request-token check, one HTML escape, one constant-time secret compare and the /health response.",
   "type": "module",

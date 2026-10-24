@@ -11,9 +11,12 @@
  *   Cloudflare Web Analytics beacon are written.
  * - buildPolicy is the plain join, for a policy that is not a page's (a sandboxed media route).
  *
+ * - reportingEndpoints is the Reporting-Endpoints header that names a policy's report-to group.
+ *
  * Which to use, nonce or hash: a response that is never shared-cached may carry a nonce. A response that is
  * edge-cached must not, since every reader would share one nonce for the cache lifetime; trust its inline scripts
- * by hash instead.
+ * by hash instead. Only when neither can work (an edge-cached page that streams inline scripts whose text changes
+ * per page, as React Router's hydration data does) does a site opt into `inlineScripts: "unsafe-inline"`.
  */
 /** @returns {string} a fresh nonce, 24 base64 characters */
 export function generateNonce(): string;
@@ -71,7 +74,8 @@ export function buildPolicy(directives: readonly string[]): string;
  * 'self' when the site frames its own pages);
  * scripts are 'self', the site's hashes or nonce, its listed hosts and, when asked, the Cloudflare beacon. A script
  * source that is `*` (or any host-source whose host is `*`), a bare scheme, or 'unsafe-inline' or 'unsafe-eval' in any
- * case is refused here, so a site cannot list its way to a policy the check would fail.
+ * case is refused here, so a site cannot list its way to a policy the check would fail; 'unsafe-inline' comes only
+ * from the named opt-in `inlineScripts`, which the check accepts when the site declares the same.
  *
  * @param {SitePolicy} site
  * @returns {{ name: "Content-Security-Policy" | "Content-Security-Policy-Report-Only", value: string }}
@@ -107,20 +111,40 @@ export type CspSources = {
 /**
  * `scriptHashes` / `styleHashes`: `sha256-...` values (scriptHash), for responses that may not carry a nonce.
  * `nonce`: this request's nonce, for a response that is never shared-cached; it goes on script-src and style-src.
+ * `inlineScripts: "unsafe-inline"`: `'unsafe-inline'` on script-src, the explicit opt-in for a page whose inline
+ * scripts neither a nonce nor hashes can cover (an edge-cached page that streams inline hydration scripts). A nonce
+ * is preferred, then hashes; this is the last resort, and it is refused beside a nonce or hashes, since a browser
+ * ignores 'unsafe-inline' when either is present and the page's inline scripts would stop running.
  * `styleAttributesInline`: `style-src-attr 'unsafe-inline'`, for pages that emit style attributes, which a nonce
  * cannot cover; the one inline allowance offered, scoped to attributes, which run no code.
  * `reportUri` / `reportTo`: where violations go. A policy with no sink hides the page it breaks, so one is required.
+ * `framedBySameOrigin`: `frame-ancestors 'self'` in place of 'none', for a site that shows its own pages in frames.
+ * `denyUnlisted`: `default-src 'none'` in place of 'self', so a kind the policy does not name (media, frames,
+ * workers, the manifest) is refused rather than allowed from the site; for a static site that wants nothing more.
+ * `noForms`: `form-action 'none'` in place of 'self', for a site with no forms.
  */
 export type SitePolicy = {
     sources?: CspSources;
     scriptHashes?: readonly string[];
     styleHashes?: readonly string[];
     nonce?: string;
+    inlineScripts?: "unsafe-inline";
     styleAttributesInline?: boolean;
     cloudflareWebAnalytics?: boolean;
     reportUri?: string;
     reportTo?: string;
     reportOnly?: boolean;
     framedBySameOrigin?: boolean;
+    denyUnlisted?: boolean;
+    noForms?: boolean;
     extraDirectives?: readonly string[];
 };
+/**
+ * The Reporting-Endpoints header value that defines a policy's `report-to` group: `csp-endpoint="https://example.com/csp-report"`.
+ * The URL must be absolute and https (http only on localhost): a browser ignores a relative or insecure endpoint, and the
+ * group's reports then go nowhere.
+ *
+ * @param group the name the policy's `reportTo` gives
+ * @param url the receiver, absolute: `new URL("/csp-report", origin)`
+ */
+export function reportingEndpoints(group: string, url: string | URL): string;
