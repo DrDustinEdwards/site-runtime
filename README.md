@@ -67,14 +67,17 @@ headers.set(name, value);
 headers.set("Reporting-Endpoints", reportingEndpoints("csp-endpoint", new URL("/api/csp-report", url.origin)));
 ```
 
-`reportingEndpoints(group, url)` writes the header that defines the `reportTo` group. The URL must be absolute and https
-(http on localhost only): a browser ignores a relative or insecure endpoint, and the group's reports then go nowhere.
+`reportingEndpoints(group, url)` writes the header that defines the `reportTo` group. The URL must be absolute and
+[potentially trustworthy](https://w3c.github.io/webappsec-secure-contexts/#is-origin-trustworthy): https, or http on a loopback
+host (`127.0.0.0/8`, `[::1]`, `localhost`, `*.localhost`), so a local dev server needs no special case. A browser skips any
+other endpoint, and the group's reports then go nowhere, so the function refuses it.
 
 The fixed parts are the same for every site: `default-src 'self'`, `object-src 'none'`, `base-uri 'none'`,
 `form-action 'self'`, `frame-ancestors 'none'` (`framedBySameOrigin: true` makes it `'self'`, for a site that frames its own
 pages, such as Capsomer's specimens; pair it with an `X-Frame-Options: sameorigin` override). Two make it stricter:
 `denyUnlisted: true` writes `default-src 'none'`, so a kind the policy does not name (media, frames, workers, the manifest)
-is refused rather than allowed from the site, and `noForms: true` writes `form-action 'none'`, for a site with no forms. Scripts are `'self'`, the
+is refused rather than allowed from the site, and `noForms: true` writes `form-action 'none'`, for a site with no forms.
+`baseUriSelf: true` writes `base-uri 'self'`, for a page that sets a same-origin `<base>` (Foxing's EPUB reader). Scripts are `'self'`, the
 site's hashes or nonce, its listed hosts and, on request, the Cloudflare Web Analytics beacon. A script source of `*` (or
 `https://*` and the like), a bare scheme, or `'unsafe-inline'` or `'unsafe-eval'` in any case is refused, and a policy with
 no report sink is refused. `'unsafe-inline'` reaches script-src only through the named opt-in below. `extraDirectives` adds a kind the builder leaves out (`frame-src`, `worker-src`,
@@ -95,7 +98,12 @@ page (so no hashes), as React Router's streamed hydration data does. A nonce is 
 it beside a nonce or script hashes, because a browser then ignores `'unsafe-inline'` and the page's inline scripts stop
 running. The check fails such a policy unless the site declares the same opt-in: `checkSecurityHeaders(headers,
 { inlineScripts: "unsafe-inline" })`, which accepts it on script-src alone. Inline `<style>` elements, when a site has them
-and no nonce, are a style source like any other: `sources: { style: ["'unsafe-inline'"] }`.
+and no nonce, are a style source like any other: `sources: { style: ["'unsafe-inline'"] }`. A page with a nonce whose
+styles must stay inline (a browser ignores `'unsafe-inline'` beside a nonce) passes `nonceStyles: false`, which keeps the
+nonce on script-src only.
+
+A policy for one kind of document rather than a page (a sandboxed image route, an SVG opened on its own, a preview, an OAuth
+consent page) is written with `buildPolicy`; the page builder does not take options for those.
 
 ## The report sink
 

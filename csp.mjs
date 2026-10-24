@@ -89,6 +89,7 @@ function checkSource(source) {
  *   scriptHashes?: readonly string[],
  *   styleHashes?: readonly string[],
  *   nonce?: string,
+ *   nonceStyles?: boolean,
  *   inlineScripts?: "unsafe-inline",
  *   styleAttributesInline?: boolean,
  *   cloudflareWebAnalytics?: boolean,
@@ -96,12 +97,15 @@ function checkSource(source) {
  *   reportTo?: string,
  *   reportOnly?: boolean,
  *   framedBySameOrigin?: boolean,
+ *   baseUriSelf?: boolean,
  *   denyUnlisted?: boolean,
  *   noForms?: boolean,
  *   extraDirectives?: readonly string[],
  * }} SitePolicy
  *   `scriptHashes` / `styleHashes`: `sha256-...` values (scriptHash), for responses that may not carry a nonce.
  *   `nonce`: this request's nonce, for a response that is never shared-cached; it goes on script-src and style-src.
+ *   `nonceStyles: false`: the nonce on script-src only, for a page whose styles must run as 'unsafe-inline' (listed in
+ *   `sources.style`), which a nonce on style-src would switch off; styles run no code, scripts keep the nonce.
  *   `inlineScripts: "unsafe-inline"`: `'unsafe-inline'` on script-src, the explicit opt-in for a page whose inline
  *   scripts neither a nonce nor hashes can cover (an edge-cached page that streams inline hydration scripts). A nonce
  *   is preferred, then hashes; this is the last resort, and it is refused beside a nonce or hashes, since a browser
@@ -114,6 +118,8 @@ function checkSource(source) {
  *   `denyUnlisted`: `default-src 'none'` in place of 'self', so a kind the policy does not name (media, frames,
  *   workers, the manifest) is refused rather than allowed from the site; for a static site that wants nothing more.
  *   `noForms`: `form-action 'none'` in place of 'self', for a site with no forms.
+ *   `baseUriSelf`: `base-uri 'self'` in place of 'none', for a page that writes a same-origin <base> (an EPUB reader
+ *   resolving a book's files); the check accepts either.
  */
 
 /**
@@ -129,7 +135,7 @@ function checkSource(source) {
  * @returns {{ name: "Content-Security-Policy" | "Content-Security-Policy-Report-Only", value: string }}
  */
 export function buildContentSecurityPolicy(site) {
-  const { sources = {}, scriptHashes = [], styleHashes = [], nonce, inlineScripts, styleAttributesInline = false, cloudflareWebAnalytics = false, reportUri, reportTo, reportOnly = false, framedBySameOrigin = false, denyUnlisted = false, noForms = false, extraDirectives = [] } = site;
+  const { sources = {}, scriptHashes = [], styleHashes = [], nonce, nonceStyles = true, inlineScripts, styleAttributesInline = false, cloudflareWebAnalytics = false, reportUri, reportTo, reportOnly = false, framedBySameOrigin = false, baseUriSelf = false, denyUnlisted = false, noForms = false, extraDirectives = [] } = site;
   if (!reportUri && !reportTo) throw new Error("a policy needs a report sink (reportUri or reportTo)");
   if (inlineScripts !== undefined && inlineScripts !== "unsafe-inline") throw new Error(`inlineScripts is "unsafe-inline" or left out, not ${JSON.stringify(inlineScripts)}`);
   if (inlineScripts && (nonce !== undefined || scriptHashes.length > 0)) {
@@ -163,7 +169,7 @@ export function buildContentSecurityPolicy(site) {
   const directives = [
     `default-src ${denyUnlisted ? "'none'" : "'self'"}`,
     `script-src ${[...nonceSource, ...scriptHashes.map(hashSource), "'self'", ...(inlineScripts ? ["'unsafe-inline'"] : []), ...scriptHosts].join(" ")}`,
-    `style-src ${["'self'", ...nonceSource, ...styleHashes.map(hashSource), ...list(sources.style)].join(" ")}`,
+    `style-src ${["'self'", ...(nonceStyles ? nonceSource : []), ...styleHashes.map(hashSource), ...list(sources.style)].join(" ")}`,
     ...(styleAttributesInline ? ["style-src-attr 'unsafe-inline'"] : []),
     `font-src ${["'self'", ...list(sources.font)].join(" ")}`,
     `img-src ${["'self'", ...list(sources.img)].join(" ")}`,
@@ -172,7 +178,7 @@ export function buildContentSecurityPolicy(site) {
     `connect-src ${["'self'", ...list(sources.connect)].join(" ")}`,
     ...((sources.frame ?? []).length > 0 ? [`frame-src ${["'self'", ...list(sources.frame)].join(" ")}`] : []),
     "object-src 'none'",
-    "base-uri 'none'",
+    `base-uri ${baseUriSelf ? "'self'" : "'none'"}`,
     `form-action ${noForms ? "'none'" : "'self'"}`,
     `frame-ancestors ${framedBySameOrigin ? "'self'" : "'none'"}`,
     ...extraDirectives,
@@ -184,8 +190,10 @@ export function buildContentSecurityPolicy(site) {
 
 /**
  * The Reporting-Endpoints header value that defines a policy's `report-to` group: `csp-endpoint="https://example.com/csp-report"`.
- * The URL must be absolute and https (http only on localhost): a browser ignores a relative or insecure endpoint, and the
- * group's reports then go nowhere.
+ * The URL must be absolute and potentially trustworthy: https, or http on a loopback host (127.0.0.0/8, [::1], localhost or
+ * a name under .localhost), so a local dev server works. A browser skips any other endpoint (Reporting API, "process
+ * reporting endpoints": "If endpoint url's origin is not potentially trustworthy, then continue"; the hosts are Secure
+ * Contexts, https://w3c.github.io/webappsec-secure-contexts/#is-origin-trustworthy), and the group's reports then go nowhere.
  *
  * @param {string} group the name the policy's `reportTo` gives
  * @param {string | URL} url the receiver, absolute: `new URL("/csp-report", origin)`
@@ -199,7 +207,8 @@ export function reportingEndpoints(group, url) {
   } catch {
     throw new Error(`${JSON.stringify(String(url))} is not an absolute URL: Reporting-Endpoints ignores a relative endpoint`);
   }
-  const local = parsed.protocol === "http:" && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(parsed.hostname);
-  if (parsed.protocol !== "https:" && !local) throw new Error(`${parsed.href} is not https: Reporting-Endpoints ignores an insecure endpoint`);
+  // The URL parser lower-cases the host and writes an IPv4 address as four decimals, so these match every spelling.
+  const local = parsed.protocol === "http:" && /^(127(\.\d{1,3}){3}|\[::1\]|(.+\.)?localhost\.?)$/.test(parsed.hostname);
+  if (parsed.protocol !== "https:" && !local) throw new Error(`${parsed.href} is not https or http on a loopback host: Reporting-Endpoints ignores an endpoint that is not potentially trustworthy`);
   return `${group}="${parsed.href}"`;
 }

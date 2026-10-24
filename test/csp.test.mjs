@@ -244,7 +244,10 @@ test("inlineScripts opts script-src into 'unsafe-inline' alone; beside a nonce o
   assert.deepEqual(failures(checkSecurityHeaders(headers, { standard: {}, inlineScripts: "unsafe-inline" })), []);
 });
 
-test("reportingEndpoints refuses a relative or insecure endpoint, which a browser ignores", () => {
+test("reportingEndpoints takes https or loopback http and refuses what a browser ignores", () => {
   assert.equal(reportingEndpoints("csp-endpoint", new URL("/csp-report", "https://example.com")), 'csp-endpoint="https://example.com/csp-report"');
-  for (const url of ["/csp-report", "http://example.com/csp-report"]) assert.throws(() => reportingEndpoints("csp-endpoint", url));
+  for (const url of ["http://localhost:5173/r", "http://foo.localhost/r", "http://127.0.0.2/r", "http://[::1]:8787/r"]) assert.ok(reportingEndpoints("csp-endpoint", url));
+  for (const url of ["/csp-report", "http://example.com/csp-report", "http://localhost.example.com/r", "http://notlocalhost/r", "http://127.0.0.1.example.com/r"]) {
+    assert.throws(() => reportingEndpoints("csp-endpoint", url));
+  }
 });
