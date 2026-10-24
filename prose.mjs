@@ -32,7 +32,12 @@ export const NOT_JUST = [
 /** A sentence that closes its paragraph on a three-item list of one- or two-word items. */
 const CLOSING_TRIAD = /(?:^|[.!?]\s+)([^.!?]*?\b([\p{L}'’]+(?:\s[\p{L}'’]+)?),\s+([\p{L}'’]+(?:\s[\p{L}'’]+)?),?\s+(?:and|or)\s+([\p{L}'’]+(?:\s[\p{L}'’]+)?)[.!])\s*$/u;
 
-const DASH = /\s*[—–]\s*|\s--\s/gu;
+/** An em dash anywhere, an en dash only with spaces round it (an unspaced one is a range: 2019–2024, pp. 12–14). */
+const DASH = /\s*—\s*|\s+–\s+|\s--\s/gu;
+
+/** Engine findings about whether a text looks pasted from a model (punctuation signatures, function-word entropy,
+ *  lookalike characters), not about how it reads. They say nothing of an author's voice, so none is passed on. */
+const DETECTOR_SIGNALS = new Set(["smart-punct-signature", "fnword-trigram-entropy", "punct-distribution", "normalization-flag"]);
 
 /**
  * Stock phrases of a model writing to a customer, which the engine's lists (built from articles and posts) miss. Pass
@@ -106,6 +111,7 @@ export function checkProse(text, options = {}) {
   for (const issue of result.issues) {
     // Each dash is reported on its own line below; the engine's is a count for the whole text.
     if (issue.type === "em-dash") continue;
+    if (DETECTOR_SIGNALS.has(issue.type)) continue;
     if (allowed.has(String(issue.text).toLowerCase())) continue;
     const label = AIDetector.TYPE_LABELS[issue.type] ?? issue.type;
     const quoted = lineOf(lines, firstLine, issue.text);
@@ -141,7 +147,9 @@ export function checkProse(text, options = {}) {
   // The engine sees some "not X, it's Y" lines itself; ours reports only the ones it missed.
   const parallel = new Set(out.filter((i) => i.check === "negative-parallelism").map((i) => i.line));
   lines.forEach((line, i) => {
-    const m = NOT_JUST.map((re) => re.exec(line)).find(Boolean);
+    // The construction often spans a line break inside a paragraph ("This wasn't about money.\nIt was about pride.").
+    const next = lines[i + 1]?.trim() ? ` ${lines[i + 1]}` : "";
+    const m = NOT_JUST.map((re) => re.exec(line) ?? (next ? re.exec(line + next) : null)).find(Boolean);
     if (m && !parallel.has(firstLine + i)) add({ check: "not-x-but-y", message: `The "not X, it's Y" construction.`, excerpt: m[0], line: firstLine + i, severity: "medium" });
     if (dashes === "flag") {
       for (const d of line.matchAll(DASH)) {
@@ -159,7 +167,7 @@ export function checkProse(text, options = {}) {
       const paragraph = lines.slice(start, i).join(" ").trim();
       const m = CLOSING_TRIAD.exec(paragraph);
       if (m && !paragraph.startsWith("#")) {
-        add({ check: "closing-triad", message: "The paragraph closes on a list of three.", excerpt: m[1].trim(), line: firstLine + Math.max(start, i - 1), severity: "medium" });
+        add({ check: "closing-triad", message: "The paragraph closes on a list of three: fine if there are three things, padding if it is there for rhythm.", excerpt: m[1].trim(), line: firstLine + Math.max(start, i - 1), severity: "low" });
       }
       start = i + 1;
     }
@@ -203,21 +211,27 @@ const MAX_Z = 5;
 const MIN_SPREAD = 0.15;
 
 /** @typedef {Record<string, number>} Features */
-/** @typedef {{ mean: Features, spread: Features, chunks: number, words: number }} Profile */
+/** @typedef {{ mean: Features, spread: Features, chunks: number, words: number, usual?: number }} Profile */
 /** @typedef {{ name: string, value: number, mean: number, z: number }} FeatureReading */
 /** @typedef {{ distance: number, furthest: FeatureReading[] }} VoiceReading */
+
+const CONTRACTION = /(?:n['’]t|['’](?:re|ve|ll|d|m)|^(?:it|that|there|here|what|who|where|how|he|she|let)['’]s)$/u;
 
 /** @param {string} text */
 function words(text) {
   return text.toLowerCase().match(/[\p{L}]+(?:['’][\p{L}]+)*/gu) ?? [];
 }
 
+/** Abbreviations whose full stop does not end a sentence ("Dr. Edwards", "Fig. 1", "U.S. policy"). */
+const ABBREVIATIONS = /\bNo\.(?=\s*\d)|\b(?:Dr|Mr|Mrs|Ms|Prof|St|Jr|Sr|Fig|Figs|Vol|pp|vs|al|e\.g|i\.e|U\.S|U\.K|a\.m|p\.m)\./gu;
+
 /** @param {string} text */
 function sentences(text) {
   return text
+    .replace(ABBREVIATIONS, (m) => m.replace(/\./g, "\u2024"))
     .replace(/\s+/g, " ")
     .split(/(?<=[.!?])["”’)]?\s+(?=["“‘(]?[\p{Lu}\d])/u)
-    .map((s) => s.trim())
+    .map((s) => s.replace(/\u2024/g, ".").trim())
     .filter((s) => words(s).length > 0);
 }
 
@@ -246,9 +260,26 @@ function features(text) {
     questions: per1000(count(/\?/g), total),
     exclamations: per1000(count(/!/g), total),
     // People editing a model's draft toward their own voice added contractions above all (Baumler et al., ACL 2026).
-    contractions: per1000(all.filter((w) => /['’](?:s|t|re|ve|ll|d|m)$/.test(w)).length, total),
+    // A possessive is not a contraction ("Edwards's", "the phage's"): 's counts only after a pronoun or "let".
+    contractions: per1000(all.filter((w) => CONTRACTION.test(w)).length, total),
   };
   for (const fw of FUNCTION_WORDS) out[`"${fw}"`] = per1000(counts.get(fw) ?? 0, total);
+  return out;
+}
+
+/** Sentences regrouped into runs of about CHUNK_WORDS words. @param {string[]} sents */
+function runsOf(sents) {
+  /** @type {string[]} */
+  const out = [];
+  let run = "";
+  for (const sent of sents) {
+    run = run ? `${run} ${sent}` : sent;
+    if (words(run).length >= CHUNK_WORDS) {
+      out.push(run);
+      run = "";
+    }
+  }
+  if (run) out.push(run);
   return out;
 }
 
@@ -260,7 +291,9 @@ function chunks(text) {
   /** @type {string[]} */
   let current = [];
   let size = 0;
-  for (const p of paragraphs) {
+  // A post with no paragraph breaks would otherwise come back whole: cut such a paragraph on sentences.
+  const pieces = paragraphs.flatMap((p) => (words(p).length > 2 * CHUNK_WORDS ? runsOf(sentences(p)) : [p]));
+  for (const p of pieces) {
     current.push(p);
     size += words(p).length;
     if (size >= CHUNK_WORDS) {
@@ -297,7 +330,26 @@ export function profileOf(passages) {
     const floor = name === "sentence length" ? MIN_SPREAD * Math.max(1, m) : 1000 / CHUNK_WORDS;
     spread[name] = Math.max(Math.sqrt(variance), floor);
   }
-  return { mean, spread, chunks: pieces.length, words: passages.reduce((n, p) => n + words(p).length, 0) };
+  // How far the author's own chunks sit from their mean: the 90th percentile is the edge of their usual range.
+  const own = rows.map((f) => deltaOf(mean, spread, f)).sort((a, b) => a - b);
+  const usual = own[Math.min(own.length - 1, Math.floor(own.length * 0.9))];
+  return { mean, spread, chunks: pieces.length, words: passages.reduce((n, p) => n + words(p).length, 0), usual };
+}
+
+/** The mean capped distance, in standard deviations, of one feature set from a profile's. @param {Features} mean @param {Features} spread @param {Features} f */
+function deltaOf(mean, spread, f) {
+  const names = Object.keys(mean);
+  return names.reduce((a, name) => a + Math.min(MAX_Z, Math.abs(((f[name] ?? 0) - (mean[name] ?? 0)) / (spread[name] ?? 1))), 0) / names.length;
+}
+
+/**
+ * Where a text starts to read unlike this author: the edge of their own range (a profile's `usual`), and never closer
+ * than VOICE_THRESHOLD. An author who writes both lab notes and essays has a wide range, so a methods note is not
+ * flagged against the mix.
+ * @param {Profile} profile
+ */
+export function thresholdFor(profile) {
+  return Math.max(VOICE_THRESHOLD, profile.usual ?? 0);
 }
 
 /**
@@ -329,21 +381,58 @@ export function distanceFrom(profile, text) {
  * @returns {string[]}
  */
 export function nearestPassages(profile, passages, count = 5) {
+  // The nearest chunk of each passage, so the examples come from different pieces rather than one long post.
   return passages
-    .flatMap(chunks)
-    .map((text) => ({ text, reading: distanceFrom(profile, text) }))
-    .filter((c) => c.reading !== null)
-    .sort((a, b) => /** @type {VoiceReading} */ (a.reading).distance - /** @type {VoiceReading} */ (b.reading).distance)
+    .map((passage) =>
+      chunks(passage)
+        .map((text) => ({ text, distance: distanceFrom(profile, text)?.distance ?? Infinity }))
+        .sort((a, b) => a.distance - b.distance)[0],
+    )
+    .filter((c) => c !== undefined && Number.isFinite(c.distance))
+    .sort((a, b) => a.distance - b.distance)
     .slice(0, count)
     .map((c) => c.text);
 }
 
 /**
- * Where a text counts as reading unlike the passages. Set between the fixtures in test/prose.test.mjs (measured
+ * The least distance at which a text counts as reading unlike the passages (thresholdFor widens it to the author's own
+ * range). Set between the fixtures in test/prose.test.mjs (measured
  * 2026-10-24: the passages themselves 0.46 to 0.54, the same register not in them 0.78, a public-domain passage by
  * Henry James 1.47). An app recalibrates once it holds the author's own text: the fixtures stand in for it.
  */
 export const VOICE_THRESHOLD = 1.1;
+
+/**
+ * Runs of at least `minWords` words that `text` repeats word for word from one of `sources`: an example the model was
+ * told to write like, copied instead. Each run is reported once, longest match first.
+ * @param {string} text
+ * @param {string[]} sources
+ * @param {number} [minWords]
+ * @returns {string[]}
+ */
+export function copiedRuns(text, sources, minWords = 8) {
+  const key = (/** @type {string[]} */ ws) => ws.join(" ");
+  /** @type {Set<string>} */
+  const seen = new Set();
+  for (const source of sources) {
+    const ws = words(source);
+    for (let i = 0; i + minWords <= ws.length; i++) seen.add(key(ws.slice(i, i + minWords)));
+  }
+  const ws = words(text);
+  /** @type {string[]} */
+  const out = [];
+  for (let i = 0; i + minWords <= ws.length; ) {
+    if (!seen.has(key(ws.slice(i, i + minWords)))) {
+      i++;
+      continue;
+    }
+    let end = i + minWords;
+    while (end < ws.length && seen.has(key(ws.slice(end - minWords + 1, end + 1)))) end++;
+    out.push(key(ws.slice(i, end)));
+    i = end;
+  }
+  return out;
+}
 
 /** One feature reading in words, for a flag. @param {FeatureReading} f */
 export function describeFeature(f) {

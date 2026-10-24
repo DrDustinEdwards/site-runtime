@@ -155,20 +155,26 @@ It is not an encoder for unquoted attributes, `javascript:` URLs, or the inside 
 the caller decides what a flag means.
 
 ```js
-import { checkProse, profileOf, nearestPassages, distanceFrom, WRITING_RULES, EMAIL_PHRASES } from "@dustinedwards/site-runtime/prose";
+import { checkProse, profileOf, nearestPassages, distanceFrom, thresholdFor, copiedRuns, WRITING_RULES, EMAIL_PHRASES } from "@dustinedwards/site-runtime/prose";
 
 const issues = checkProse(body, { context: "general", phrases: authorList, allow, dashes: "flag", firstLine });
 const profile = profileOf(publishedPosts); // null under ~900 words
 const examples = profile ? nearestPassages(profile, publishedPosts, 5) : [];
+const unlike = profile && (distanceFrom(profile, draft)?.distance ?? 0) > thresholdFor(profile);
+const copied = copiedRuns(draft, examples); // runs of 8+ words lifted from the excerpts
 ```
 
 - `checkProse` runs the [avoid-ai-writing](https://github.com/conorbronsdon/avoid-ai-writing) detection engine (MIT) and
   adds the "not X, it's Y" construction across two sentences, a paragraph closing on a list of three, the caller's own
-  phrases (`EMAIL_PHRASES` for customer email) and each dash on its line. Each issue has `check`, `message`, `excerpt`,
-  `line` and `severity`. `allow` takes a word back out of every list.
+  phrases (`EMAIL_PHRASES` for customer email) and each dash on its line (an unspaced en dash is a range and passes).
+  Each issue has `check`, `message`, `excerpt`, `line` and `severity`. `allow` takes a word back out of every list. The
+  engine's statistical signals (smart quotes, punctuation spread, function-word entropy) are left out: they describe
+  detector scores, not how a sentence reads.
 - `profileOf`, `distanceFrom`, `describeFeature` and `VOICE_THRESHOLD` measure a text against the author's own passages in
-  the manner of Burrows' Delta: sentence length, punctuation, contractions and 48 function words.
-- `nearestPassages` picks the excerpts that read most like the author's usual style. Those, `WRITING_RULES` and the
+  the manner of Burrows' Delta: sentence length, punctuation, contractions and 48 function words. `thresholdFor` widens
+  `VOICE_THRESHOLD` to the author's own spread, so an author whose posts vary a lot is not flagged for being themselves.
+- `copiedRuns` finds a draft's word runs copied from the examples: the model should borrow the voice, not the facts.
+- `nearestPassages` picks one excerpt per post, the passages that read most like the author's usual style. Those, `WRITING_RULES` and the
   author's own guide are what a model reads before it writes: real examples copy a voice better than a description of it
   (Wang et al., Findings of EMNLP 2025).
 
