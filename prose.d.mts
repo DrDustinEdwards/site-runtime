@@ -37,3 +37,26 @@ export function thresholdFor(profile: Profile): number;
 /** Runs of at least `minWords` (default 8) words that `text` copies word for word from one of `sources`. */
 export function copiedRuns(text: string, sources: string[], minWords?: number): string[];
 export function describeFeature(f: FeatureReading): string;
+
+/** A model's words most writers never use; the scan flags one only when the author's excerpts never use it. */
+export declare const OUT_OF_PLACE: string[];
+export type SlopKind = "length" | "filler" | "word" | "shape";
+export type SlopFinding = { kind: SlopKind; excerpt: string; line: number; say: string };
+/** The 10th percentile, median, 90th percentile and longest of the excerpts' sentence lengths, in words. */
+export type Spread = { short: number; mid: number; long: number; longest: number };
+/** How long the author's sentences run, over sentences of four words or more; null under five of them. */
+export function sentenceSpread(excerpts: string[]): Spread | null;
+/**
+ * What in `text` reads unlike the author's `excerpts`, as spans to fix in place: sentence length against their spread,
+ * filler, a model's words the excerpts never use, joiner dashes, "not X, it's Y" and a padded closing list (each shape
+ * only when the excerpts do not write that way). At most twelve, in line order. `instruction` is null with no findings.
+ */
+export function slopScan(
+  text: string,
+  excerpts: string[],
+  options?: { firstLine?: number },
+): { findings: SlopFinding[]; instruction: string | null; spread: Spread | null };
+/** Edit the listed spans in place and nothing else; null with no findings. For a caller that adds findings of its own. */
+export function instructionFor(findings: { excerpt: string; line: number | null; say: string }[], spread: Spread | null): string | null;
+/** At most `count` (default 6) excerpts, one per passage, holding one long and one short sentence of the author's. */
+export function voiceExcerpts(passages: string[], count?: number): string[];

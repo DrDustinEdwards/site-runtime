@@ -12,6 +12,12 @@
  *   a text is, only that it reads unlike the passages; and the passages nearest the author's usual style are the
  *   examples a model writes from best (Wang et al., Findings of EMNLP 2025: examples beat a described style).
  *
+ * - `slopScan` is the scan after a draft: spans that read unlike the author's excerpts (sentence length against their own
+ *   spread, a model's filler, a model's words the excerpts never use, joiner dashes), each with what to do, and one
+ *   instruction a session can apply. It does not call the engine, and it has no global list of banned words.
+ * - `voiceExcerpts` picks the excerpts a model writes from: one long sentence and one short one among them, not the
+ *   passages nearest the average.
+ *
  * Nothing here scores text against an AI detector or aims to pass one. The goal is prose a reader finds worth reading.
  */
 
@@ -188,11 +194,11 @@ export function checkProse(text, options = {}) {
 export const WRITING_RULES = `Write the way the author's excerpts read, not the way a model usually writes.
 
 - Say the thing. No run-up ("Here's the thing", "Let's be honest"), no closing summary, no moral at the end.
-- Plain words over impressive ones: "use" not "leverage", "shows" not "is a testament to". No delve, tapestry, landscape, realm, navigate (unless literal), crucial, pivotal, seamless, robust.
+- Plain words over impressive ones: "use" not "leverage", "shows" not "is a testament to". The excerpts' words are the right ones.
 - No "not X, it's Y", and no "It isn't about X. It's about Y."
 - Lists of three only when there are three things. Never end a paragraph on one for rhythm.
 - No dashes as all-purpose joiners. Use a comma, a full stop or brackets.
-- Contractions where the author uses them. Vary sentence length the way the excerpts do; short sentences are fine, a run of them is a tic.
+- Contractions where the author uses them. Let each sentence run as long as its thought, as the excerpts' sentences do.
 - No hedging stacks ("may potentially", "it could be argued"). Commit, or say what you don't know and why.
 - Concrete over abstract: a number, a name, an example, a thing that happened. Cut a sentence that would fit any article on the subject.
 - No inflated significance ("plays a vital role", "stands as", "marks a pivotal moment") and no vague authority ("experts say", "studies show") without the source.
@@ -445,4 +451,281 @@ export function describeFeature(f) {
   const round = (/** @type {number} */ n) => (n >= 10 ? Math.round(n) : Math.round(n * 10) / 10);
   if (f.name === "sentence length") return `sentences average ${round(f.value)} words against ${round(f.mean)} in your passages`;
   return `${round(f.value)} ${f.name} per 1,000 words against ${round(f.mean)}`;
+}
+
+// ---------- the scan
+
+/**
+ * A model's filler, flagged in any text. Each comes with what to do instead, since cutting some of them ("a testament
+ * to", "delve into") would leave a broken sentence.
+ * @type {[string, string][]}
+ */
+const FILLER = [
+  ["it is important to note that", 'Delete "it is important to note that" and keep the rest of the sentence.'],
+  ["it's important to note that", 'Delete "it\'s important to note that" and keep the rest of the sentence.'],
+  ["in order to", 'Use "to".'],
+  ["a testament to", 'Say what it shows, plainly ("shows", "comes from"), and keep the fact.'],
+  ["delve into", 'Say what the piece does ("look at", "go through"), or cut the sentence\'s run-up.'],
+  ["I hope this email finds you well", "Delete it and start with the point."],
+  ["I hope this message finds you well", "Delete it and start with the point."],
+  ["please don't hesitate to", 'Delete "please don\'t hesitate to" and keep the verb ("reply", "ask").'],
+  ["at your earliest convenience", "Delete it, or give the real date."],
+  ["rest assured", 'Delete "rest assured" and keep the clause.'],
+  ["feel free to reach out", 'Say how to reach you ("reply to this email").'],
+];
+
+/**
+ * Words a model reaches for that most writers never use. Flagged only when the author's own excerpts never use them: a
+ * word the author writes is the author's. A short, closed list on purpose: an ordinary word ("journey", "landscape",
+ * "explore") is not a fault because a detector lists it.
+ */
+export const OUT_OF_PLACE = ["delve", "tapestry", "testament", "seamless", "seamlessly", "leverage", "holistic", "pivotal", "groundbreaking", "synergy", "cutting-edge"];
+
+/** The most findings one scan returns: past a dozen, a session rewrites instead of editing. */
+const MAX_FINDINGS = 12;
+/** Excerpt sentences shorter than this are left out of the spread ("Dr." and "Fig." cut by the splitter, "Yes."). */
+const SPREAD_MIN_WORDS = 4;
+
+/** @typedef {"length" | "filler" | "word" | "shape"} SlopKind */
+/** @typedef {{ kind: SlopKind, excerpt: string, line: number, say: string }} SlopFinding */
+/** @typedef {{ short: number, mid: number, long: number, longest: number }} Spread */
+
+/** @param {number[]} sorted @param {number} p */
+function percentile(sorted, p) {
+  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.round(p * (sorted.length - 1))))];
+}
+
+/** Markdown reduced to the words a reader reads: link text kept, marks and code dropped. @param {string} line */
+function readable(line) {
+  return line
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/<[^>]+>/g, "")
+    .replace(/`([^`]*)`/g, "$1")
+    .replace(/^\s{0,3}(?:>\s?|[-*+]\s+|\d+\.\s+)/, "")
+    .replace(/(\*\*|__|\*|_)(?=\S)([^*_]+?)\1/g, "$2");
+}
+
+/** The prose lines of a text with their line numbers: headings, code, tables and HTML blocks left out. @param {string} text @param {number} firstLine */
+function proseLines(text, firstLine) {
+  /** @type {{ text: string, line: number }[]} */
+  const out = [];
+  let fenced = false;
+  text.split(/\r?\n/).forEach((raw, i) => {
+    if (/^\s*(?:```|~~~)/.test(raw)) {
+      fenced = !fenced;
+      return;
+    }
+    if (fenced || /^\s*(?:#|\||<|---\s*$)/.test(raw)) return;
+    out.push({ text: readable(raw), line: firstLine + i });
+  });
+  return out;
+}
+
+/**
+ * How long the author's sentences run, from their excerpts: the 10th percentile, the median and the 90th, over sentences
+ * of four words or more. Null under five such sentences.
+ * @param {string[]} excerpts
+ * @returns {Spread | null}
+ */
+export function sentenceSpread(excerpts) {
+  const lengths = excerpts
+    .flatMap((e) => proseLines(e, 1).flatMap((l) => sentences(l.text)))
+    .map((s) => words(s).length)
+    .filter((n) => n >= SPREAD_MIN_WORDS)
+    .sort((a, b) => a - b);
+  if (lengths.length < 5) return null;
+  return { short: percentile(lengths, 0.1), mid: percentile(lengths, 0.5), long: percentile(lengths, 0.9), longest: lengths[lengths.length - 1] };
+}
+
+/** A sentence quoted short enough for a list line. @param {string} s */
+function quote(s) {
+  const ws = s.trim().split(/\s+/);
+  return ws.length > 12 ? `${ws.slice(0, 10).join(" ")} …` : s.trim();
+}
+
+/** Joiner dashes per 1,000 words of the excerpts: an author who writes a dash a page keeps theirs. @param {string} text */
+function dashRate(text) {
+  return per1000(text.match(DASH)?.length ?? 0, words(text).length);
+}
+
+/**
+ * The scan after a draft: what in it reads unlike the author's excerpts, as spans a session can fix in place. No model
+ * and no detector. Four kinds:
+ * - `length`: a sentence well past the author's long ones, or four or more in a row of the same length when the author's
+ *   own vary (measured from the excerpts; skipped under five excerpt sentences of four words or more);
+ * - `filler`: a fixed list of a model's filler phrases;
+ * - `word`: a short closed list of a model's words (OUT_OF_PLACE), each only when the excerpts never use it;
+ * - `shape`: a dash used as a joiner, "not X, it's Y", and a paragraph ending on three padded words, each only when the
+ *   excerpts do not write that way themselves. A dash between numbers is a range and passes.
+ * At most twelve findings, in line order. `instruction` is what to hand the session that wrote the draft, null when there
+ * is nothing to fix. `firstLine` is the file line `text` starts on.
+ * @param {string} text
+ * @param {string[]} excerpts
+ * @param {{ firstLine?: number }} [options]
+ * @returns {{ findings: SlopFinding[], instruction: string | null, spread: Spread | null }}
+ */
+export function slopScan(text, excerpts, options = {}) {
+  const firstLine = options.firstLine ?? 1;
+  const lines = proseLines(text, firstLine);
+  const source = excerpts.join("\n\n");
+  const theirs = new Set(words(source));
+  const spread = sentenceSpread(excerpts);
+  /** @type {SlopFinding[]} */
+  const found = [];
+
+  // Length, over the draft's sentences in reading order.
+  if (spread) {
+    const sents = lines.flatMap((l) => sentences(l.text).map((s) => ({ s, n: words(s).length, line: l.line })));
+    // Past the excerpts' long sentences by eight words, and past their longest: a length the author writes is theirs.
+    const limit = Math.max(spread.long + 7, spread.longest);
+    for (const { s, n, line } of sents) {
+      if (n > limit) {
+        found.push({ kind: "length", excerpt: quote(s), line, say: `This is ${n} words. The long sentences in the excerpts are about ${spread.long}. Split it where the subject changes.` });
+      }
+    }
+    if (spread.long - spread.short >= 10) {
+      for (let i = 0; i + 4 <= sents.length; ) {
+        let end = i + 1;
+        let lo = sents[i].n;
+        let hi = sents[i].n;
+        while (end < sents.length && Math.max(hi, sents[end].n) - Math.min(lo, sents[end].n) <= 2) {
+          lo = Math.min(lo, sents[end].n);
+          hi = Math.max(hi, sents[end].n);
+          end++;
+        }
+        const run = sents.slice(i, end);
+        const m = Math.round(run.reduce((a, r) => a + r.n, 0) / run.length);
+        // A run of fragments at or under the author's short sentences is a device ("I turned it over. My name, in
+        // pencil."), not the even middle length a model settles into.
+        if (run.length >= 4 && m > spread.short) {
+          found.push({
+            kind: "length",
+            excerpt: quote(run[0].s),
+            line: run[0].line,
+            say: `These ${run.length === 4 ? "four" : run.length} sentences are all about ${m} words. The excerpts run from ${spread.short} to ${spread.long}. Break one, or join two, where the sense allows. Do not alternate short and long on purpose.`,
+          });
+          i = end;
+        } else i++;
+      }
+    }
+  }
+
+  const outOfPlace = OUT_OF_PLACE.filter((w) => !theirs.has(w));
+  const dashesAreTheirs = dashRate(source) >= 1;
+  const notXIsTheirs = excerpts.some((e) => NOT_JUST.some((re) => re.test(e.replace(/\s+/g, " "))));
+
+  lines.forEach(({ text: line, line: n }, i) => {
+    /** @type {[number, number][]} */
+    const filled = [];
+    for (const [phrase, say] of FILLER) {
+      for (const m of line.matchAll(phraseRegExp(phrase))) {
+        filled.push([m.index ?? 0, (m.index ?? 0) + m[0].length]);
+        found.push({ kind: "filler", excerpt: m[0], line: n, say });
+      }
+    }
+    for (const word of outOfPlace) {
+      for (const m of line.matchAll(phraseRegExp(word))) {
+        const at = m.index ?? 0;
+        if (filled.some(([a, b]) => at >= a && at < b)) continue;
+        found.push({ kind: "word", excerpt: m[0], line: n, say: "This word is not in the excerpts. Use the plain word the excerpts would use, or cut it and keep the fact." });
+      }
+    }
+    if (!dashesAreTheirs) {
+      for (const m of line.matchAll(DASH)) {
+        // Between two numbers it is a range (2019—2024), not a joiner.
+        if (/\d$/.test(line.slice(0, m.index ?? 0)) && /^\d/.test(line.slice((m.index ?? 0) + m[0].length))) continue;
+        const around = line.slice(Math.max(0, (m.index ?? 0) - 20), (m.index ?? 0) + m[0].length + 20).trim();
+        found.push({ kind: "shape", excerpt: around, line: n, say: "Make this two sentences, or a comma if it is one thought." });
+      }
+    }
+    if (!notXIsTheirs) {
+      const next = lines[i + 1]?.text.trim() ? ` ${lines[i + 1].text}` : "";
+      const hit = NOT_JUST.map((re) => {
+        const own = re.exec(line);
+        if (own) return own;
+        const m = next ? re.exec(line + next) : null;
+        return m && (m.index ?? 0) < line.length && (m.index ?? 0) + m[0].length > line.length ? m : null;
+      }).find(Boolean);
+      if (hit) found.push({ kind: "shape", excerpt: hit[0].trim(), line: n, say: 'Say what it is. "Not X, it\'s Y" sets up a claim nobody made.' });
+    }
+    // A paragraph's last line: the next line is blank or there is none.
+    const last = !lines[i + 1] || !lines[i + 1].text.trim() || lines[i + 1].line !== n + 1;
+    const triad = last ? CLOSING_TRIAD.exec(line.trim()) : null;
+    if (triad) {
+      const padded = [triad[2], triad[3], triad[4]].filter((item) => words(item).some((w) => outOfPlace.includes(w))).length;
+      if (padded >= 2) {
+        // The list's own words are this finding's to fix, not three more.
+        for (let k = found.length - 1; k >= 0; k--) {
+          if (found[k].kind === "word" && found[k].line === n && triad[1].toLowerCase().includes(found[k].excerpt.toLowerCase())) found.splice(k, 1);
+        }
+        found.push({ kind: "shape", excerpt: triad[1].trim(), line: n, say: "This list is padding. End on the fact. Keep a list of three only when the three things are real." });
+      }
+    }
+  });
+
+  const findings = found.sort((a, b) => a.line - b.line).slice(0, MAX_FINDINGS);
+  return { findings, instruction: instructionFor(findings, spread), spread };
+}
+
+/**
+ * The one instruction for a session that wrote a draft: edit the listed spans in place and nothing else. Null with no
+ * findings. Exported so a caller that adds findings of its own (a run copied from an excerpt) hands over one list.
+ * @param {{ excerpt: string, line: number | null, say: string }[]} findings
+ * @param {Spread | null} spread
+ * @returns {string | null}
+ */
+export function instructionFor(findings, spread) {
+  if (findings.length === 0) return null;
+  const head = [
+    "Edit the draft in place. Change only the spans listed. Keep every fact, name, number, and link. Leave every other sentence as it is.",
+    ...(spread ? [`The excerpts' sentences run about ${spread.short}, ${spread.mid}, and ${spread.long} words. Stay inside that spread. Do not alternate short and long on purpose.`] : []),
+  ];
+  return [...head, ...findings.map((f) => `- ${f.line === null ? "" : `Line ${f.line}, `}"${f.excerpt}": ${f.say}`)].join("\n");
+}
+
+/** A passage's excerpts: its ~300-word chunks, or the whole of a short post that still has something to show. @param {string} passage */
+function excerptsOf(passage) {
+  const own = chunks(passage);
+  return own.length > 0 ? own : words(passage).length >= 50 ? [passage.trim()] : [];
+}
+
+/**
+ * The excerpts a model writes from, from the author's passages (newest first): at most one per passage, chosen so the set
+ * holds one of the author's long sentences and one of their short ones, and the rest are the newest passages as they
+ * come. Not the passages nearest the author's average: those show a model one sentence length, and it writes that length.
+ * @param {string[]} passages
+ * @param {number} [count]
+ * @returns {string[]}
+ */
+export function voiceExcerpts(passages, count = 6) {
+  const pieces = passages.map(excerptsOf);
+  const spread = sentenceSpread(passages);
+  /** @type {Set<number>} */
+  const used = new Set();
+  /** @type {string[]} */
+  const out = [];
+  /** @param {(n: number) => boolean} test */
+  const pick = (test) => {
+    for (const [i, list] of pieces.entries()) {
+      if (used.has(i)) continue;
+      const hit = list.find((c) => sentences(c).some((s) => test(words(s).length)));
+      if (hit) {
+        used.add(i);
+        out.push(hit);
+        return;
+      }
+    }
+  };
+  if (spread) {
+    pick((n) => n >= spread.long);
+    pick((n) => n >= 2 && n <= spread.short);
+  }
+  for (const [i, list] of pieces.entries()) {
+    if (out.length >= count) break;
+    if (used.has(i) || list.length === 0) continue;
+    used.add(i);
+    out.push(list[0]);
+  }
+  return out.slice(0, count);
 }

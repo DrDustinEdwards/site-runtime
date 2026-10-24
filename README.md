@@ -179,6 +179,22 @@ const copied = copiedRuns(draft, examples); // runs of 8+ words lifted from the 
   author's own guide are what a model reads before it writes: real examples copy a voice better than a description of it
   (Wang et al., Findings of EMNLP 2025).
 
+`slopScan(draft, excerpts, { firstLine })` is the scan after a draft, and it does not call the engine. It measures the
+author's sentence lengths from their own excerpts (`sentenceSpread`: 10th percentile, median, 90th, longest) and returns
+at most twelve findings, each `{ kind, excerpt, line, say }`, plus one `instruction` a session can apply in place:
+
+- `length`: a sentence eight or more words past the author's long ones and past their longest; four or more sentences in
+  a row within two words of each other, when the author's own run at least ten words apart (a run of fragments at or
+  under their short length is a device and passes);
+- `filler`: a fixed list ("it is important to note that", "in order to", "a testament to", "delve into" and the email
+  openers), each with what to do instead;
+- `word`: `OUT_OF_PLACE`, eleven words a model reaches for, each flagged only when the excerpts never use it;
+- `shape`: a joiner dash, "not X, it's Y" and a paragraph ending on three padded words, each only when the excerpts do not
+  write that way themselves; a dash between numbers is a range.
+
+`voiceExcerpts(passages, count)` picks the excerpts a model writes from: one per passage, one holding a long sentence of
+the author's and one a short one, the rest the newest. The excerpts nearest the average show a model one length.
+
 Nothing here scores text against an AI detector or aims to pass one. `prose-engine.mjs` is generated:
 `node update-prose-engine.mjs <version>` packs `avoid-ai-writing-detector` at that version from npm and rewrites it,
 licence header included.
