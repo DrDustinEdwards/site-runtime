@@ -5,7 +5,7 @@ The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-
 `./rate-limit/durable-object`), the members model (`./members`), the Access for SaaS sign-in (`./access-login`), the MCP
 servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-log`) and server scaffold (`./mcp-server`), the Access request-token check
 (`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), where a site's Anthropic calls go
-(`./ai-gateway`), and the check on AI-written prose with the measure of an author's voice (`./prose`).
+(`./ai-gateway`), starting a Claude Code routine (`./routine`), and the check on AI-written prose with the measure of an author's voice (`./prose`).
 
 No dependencies (`./prose` carries a generated copy of an MIT engine, below), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
 tag: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.11.0"`. `npm test` runs every test in `test/`.
@@ -198,6 +198,25 @@ const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, baseURL, defaultHe
 - `cf-aig-collect-log-payload: false` keeps request and response bodies out of the gateway's logs (the metadata log of
   model, tokens, cost and status stays), and `cf-aig-metadata: {"app": ...}` names the site on every log entry, so one
   gateway serves every site.
+
+## Starting a Claude Code routine
+
+`./routine` is how a site starts work on Dustin's Claude subscription: a POST to a routine's API trigger. Anthropic allows
+subscription sign-in only in Claude Code and its own apps, so a site that wants model work without an API key starts a
+routine, which does the work in Claude Code and hands the result back to the site.
+
+```js
+import { fireRoutine, routineConfig } from "@dustinedwards/site-runtime/routine";
+const config = routineConfig(env.AI_ROUTINE_URL, env.AI_ROUTINE_TOKEN);
+if ("missing" in config) return config.missing;
+const fired = await fireRoutine(config, "job: ...");
+```
+
+- The URL must be `https://api.anthropic.com/v1/claude_code/routines/trig_.../fire`, so the token only goes to Anthropic.
+  The token comes from the routine's API trigger at claude.ai/code/routines and is a Worker secret.
+- `fireRoutine` never throws: `{ ok: true, sessionUrl }`, or `{ ok: false, retry, error }` with `retry` true for the
+  hourly limit (30 per routine, 100 per account) and for an unreachable or failing service.
+- Each fire is a new session; the endpoint has no idempotency key, so the caller keeps a fire from repeating.
 
 ## A constant-time secret compare
 
