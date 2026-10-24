@@ -11,9 +11,12 @@
  *   Cloudflare Web Analytics beacon are written.
  * - buildPolicy is the plain join, for a policy that is not a page's (a sandboxed media route).
  *
+ * - reportingEndpoints is the Reporting-Endpoints header that names a policy's report-to group.
+ *
  * Which to use, nonce or hash: a response that is never shared-cached may carry a nonce. A response that is
  * edge-cached must not, since every reader would share one nonce for the cache lifetime; trust its inline scripts
- * by hash instead.
+ * by hash instead. Only when neither can work (an edge-cached page that streams inline scripts whose text changes
+ * per page, as React Router's hydration data does) does a site opt into `inlineScripts: "unsafe-inline"`.
  */
 
 /** @returns {string} a fresh nonce, 24 base64 characters */
@@ -86,21 +89,31 @@ function checkSource(source) {
  *   scriptHashes?: readonly string[],
  *   styleHashes?: readonly string[],
  *   nonce?: string,
+ *   inlineScripts?: "unsafe-inline",
  *   styleAttributesInline?: boolean,
  *   cloudflareWebAnalytics?: boolean,
  *   reportUri?: string,
  *   reportTo?: string,
  *   reportOnly?: boolean,
  *   framedBySameOrigin?: boolean,
+ *   denyUnlisted?: boolean,
+ *   noForms?: boolean,
  *   extraDirectives?: readonly string[],
  * }} SitePolicy
  *   `scriptHashes` / `styleHashes`: `sha256-...` values (scriptHash), for responses that may not carry a nonce.
  *   `nonce`: this request's nonce, for a response that is never shared-cached; it goes on script-src and style-src.
+ *   `inlineScripts: "unsafe-inline"`: `'unsafe-inline'` on script-src, the explicit opt-in for a page whose inline
+ *   scripts neither a nonce nor hashes can cover (an edge-cached page that streams inline hydration scripts). A nonce
+ *   is preferred, then hashes; this is the last resort, and it is refused beside a nonce or hashes, since a browser
+ *   ignores 'unsafe-inline' when either is present and the page's inline scripts would stop running.
  *   `styleAttributesInline`: `style-src-attr 'unsafe-inline'`, for pages that emit style attributes, which a nonce
  *   cannot cover; the one inline allowance offered, scoped to attributes, which run no code.
  *   `reportUri` / `reportTo`: where violations go. A policy with no sink hides the page it breaks, so one is required.
  *   `framedBySameOrigin`: `frame-ancestors 'self'` in place of 'none', for a site that shows its own pages in frames
  *   (a design system's live specimens). No other origin can be allowed to frame a site.
+ *   `denyUnlisted`: `default-src 'none'` in place of 'self', so a kind the policy does not name (media, frames,
+ *   workers, the manifest) is refused rather than allowed from the site; for a static site that wants nothing more.
+ *   `noForms`: `form-action 'none'` in place of 'self', for a site with no forms.
  */
 
 /**
@@ -109,14 +122,19 @@ function checkSource(source) {
  * 'self' when the site frames its own pages);
  * scripts are 'self', the site's hashes or nonce, its listed hosts and, when asked, the Cloudflare beacon. A script
  * source that is `*` (or any host-source whose host is `*`), a bare scheme, or 'unsafe-inline' or 'unsafe-eval' in any
- * case is refused here, so a site cannot list its way to a policy the check would fail.
+ * case is refused here, so a site cannot list its way to a policy the check would fail; 'unsafe-inline' comes only
+ * from the named opt-in `inlineScripts`, which the check accepts when the site declares the same.
  *
  * @param {SitePolicy} site
  * @returns {{ name: "Content-Security-Policy" | "Content-Security-Policy-Report-Only", value: string }}
  */
 export function buildContentSecurityPolicy(site) {
-  const { sources = {}, scriptHashes = [], styleHashes = [], nonce, styleAttributesInline = false, cloudflareWebAnalytics = false, reportUri, reportTo, reportOnly = false, framedBySameOrigin = false, extraDirectives = [] } = site;
+  const { sources = {}, scriptHashes = [], styleHashes = [], nonce, inlineScripts, styleAttributesInline = false, cloudflareWebAnalytics = false, reportUri, reportTo, reportOnly = false, framedBySameOrigin = false, denyUnlisted = false, noForms = false, extraDirectives = [] } = site;
   if (!reportUri && !reportTo) throw new Error("a policy needs a report sink (reportUri or reportTo)");
+  if (inlineScripts !== undefined && inlineScripts !== "unsafe-inline") throw new Error(`inlineScripts is "unsafe-inline" or left out, not ${JSON.stringify(inlineScripts)}`);
+  if (inlineScripts && (nonce !== undefined || scriptHashes.length > 0)) {
+    throw new Error("inlineScripts cannot go with a nonce or script hashes: a browser then ignores 'unsafe-inline'; use the nonce or hashes alone");
+  }
   if (nonce !== undefined && !/^[A-Za-z0-9+/_-]{16,}={0,2}$/.test(nonce)) throw new Error("the nonce is not a base64 value of at least 16 characters");
   const hashSource = (/** @type {string} */ h) => {
     if (!/^sha(256|384|512)-[A-Za-z0-9+/_-]+={0,2}$/.test(h)) throw new Error(`${JSON.stringify(h)} is not a hash source`);
@@ -143,8 +161,8 @@ export function buildContentSecurityPolicy(site) {
   }
   const nonceSource = nonce === undefined ? [] : [`'nonce-${nonce}'`];
   const directives = [
-    "default-src 'self'",
-    `script-src ${[...nonceSource, ...scriptHashes.map(hashSource), "'self'", ...scriptHosts].join(" ")}`,
+    `default-src ${denyUnlisted ? "'none'" : "'self'"}`,
+    `script-src ${[...nonceSource, ...scriptHashes.map(hashSource), "'self'", ...(inlineScripts ? ["'unsafe-inline'"] : []), ...scriptHosts].join(" ")}`,
     `style-src ${["'self'", ...nonceSource, ...styleHashes.map(hashSource), ...list(sources.style)].join(" ")}`,
     ...(styleAttributesInline ? ["style-src-attr 'unsafe-inline'"] : []),
     `font-src ${["'self'", ...list(sources.font)].join(" ")}`,
@@ -155,11 +173,33 @@ export function buildContentSecurityPolicy(site) {
     ...((sources.frame ?? []).length > 0 ? [`frame-src ${["'self'", ...list(sources.frame)].join(" ")}`] : []),
     "object-src 'none'",
     "base-uri 'none'",
-    "form-action 'self'",
+    `form-action ${noForms ? "'none'" : "'self'"}`,
     `frame-ancestors ${framedBySameOrigin ? "'self'" : "'none'"}`,
     ...extraDirectives,
     ...(reportUri ? [`report-uri ${checkSource(reportUri)}`] : []),
     ...(reportTo ? [`report-to ${checkSource(reportTo)}`] : []),
   ];
   return { name: reportOnly ? "Content-Security-Policy-Report-Only" : "Content-Security-Policy", value: buildPolicy(directives) };
+}
+
+/**
+ * The Reporting-Endpoints header value that defines a policy's `report-to` group: `csp-endpoint="https://example.com/csp-report"`.
+ * The URL must be absolute and https (http only on localhost): a browser ignores a relative or insecure endpoint, and the
+ * group's reports then go nowhere.
+ *
+ * @param {string} group the name the policy's `reportTo` gives
+ * @param {string | URL} url the receiver, absolute: `new URL("/csp-report", origin)`
+ * @returns {string}
+ */
+export function reportingEndpoints(group, url) {
+  if (!/^[a-z*][a-z0-9_.*-]*$/.test(group)) throw new Error(`${JSON.stringify(group)} is not a report-to group name (lower-case letters, digits, _ - . *)`);
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`${JSON.stringify(String(url))} is not an absolute URL: Reporting-Endpoints ignores a relative endpoint`);
+  }
+  const local = parsed.protocol === "http:" && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(parsed.hostname);
+  if (parsed.protocol !== "https:" && !local) throw new Error(`${parsed.href} is not https: Reporting-Endpoints ignores an insecure endpoint`);
+  return `${group}="${parsed.href}"`;
 }

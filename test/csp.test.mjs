@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { checkSecurityHeaders, failures, parsePolicy } from "../check.mjs";
-import { CLOUDFLARE_WEB_ANALYTICS, buildContentSecurityPolicy, buildPolicy, generateNonce, scriptHash } from "../csp.mjs";
+import { CLOUDFLARE_WEB_ANALYTICS, buildContentSecurityPolicy, buildPolicy, generateNonce, reportingEndpoints, scriptHash } from "../csp.mjs";
 import { applyHeaderSet } from "../headers.mjs";
 
 const SINK = { reportUri: "/csp-report" };
@@ -230,4 +230,21 @@ test("every policy the builder writes passes the header check", () => {
     headers.set(name, value);
     assert.deepEqual(failures(checkSecurityHeaders(headers, { cloudflareWebAnalytics: Boolean(site.cloudflareWebAnalytics) })), [], JSON.stringify(site));
   }
+});
+
+test("inlineScripts opts script-src into 'unsafe-inline' alone; beside a nonce or hashes, which void it, it is refused", () => {
+  const site = { ...SINK, inlineScripts: /** @type {const} */ ("unsafe-inline") };
+  assert.deepEqual(directives(site).get("script-src"), ["'self'", "'unsafe-inline'"]);
+  for (const extra of [{ nonce: generateNonce() }, { scriptHashes: [HASH] }]) {
+    assert.throws(() => buildContentSecurityPolicy({ ...site, ...extra }), /cannot go with a nonce or script hashes/);
+  }
+  assert.throws(() => buildContentSecurityPolicy({ ...SINK, inlineScripts: /** @type {any} */ ("unsafe-eval") }), /inlineScripts is "unsafe-inline"/);
+  const headers = new Headers({ "Content-Security-Policy": buildContentSecurityPolicy(site).value });
+  assert.ok(failures(checkSecurityHeaders(headers, { standard: {} })).some((r) => /'unsafe-inline'/.test(r.name)));
+  assert.deepEqual(failures(checkSecurityHeaders(headers, { standard: {}, inlineScripts: "unsafe-inline" })), []);
+});
+
+test("reportingEndpoints refuses a relative or insecure endpoint, which a browser ignores", () => {
+  assert.equal(reportingEndpoints("csp-endpoint", new URL("/csp-report", "https://example.com")), 'csp-endpoint="https://example.com/csp-report"');
+  for (const url of ["/csp-report", "http://example.com/csp-report"]) assert.throws(() => reportingEndpoints("csp-endpoint", url));
 });
