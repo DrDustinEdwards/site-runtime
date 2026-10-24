@@ -5,9 +5,11 @@ The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-
 `./rate-limit/durable-object`), the members model (`./members`), the Access for SaaS sign-in (`./access-login`), the MCP
 servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-log`) and server scaffold (`./mcp-server`), the Access request-token check
 (`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), where a site's Anthropic calls go
-(`./ai-gateway`), and the check on AI-written prose with the measure of an author's voice (`./prose`).
+(`./ai-gateway`), the check on AI-written prose with the measure of an author's voice (`./prose`), the one sign-in every site
+offers (`./sign-in`, `./sign-in-client`, `./apple-secret`) and the Cloudflare Turnstile widget (`./turnstile`).
 
-No dependencies (`./prose` carries a generated copy of an MIT engine, below), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
+No dependencies (`./prose` carries a generated copy of an MIT engine, below; `./sign-in` uses the site's own `better-auth` and
+`@better-auth/passkey`, optional peers), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
 tag: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.11.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
@@ -198,6 +200,55 @@ const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, baseURL, defaultHe
 - `cf-aig-collect-log-payload: false` keeps request and response bodies out of the gateway's logs (the metadata log of
   model, tokens, cost and status stays), and `cf-aig-metadata: {"app": ...}` names the site on every log entry, so one
   gateway serves every site.
+
+## Sign-in
+
+`./sign-in` is the one way a person signs in to any family site, chosen 2026-10-24 from current practice: a passkey
+first, an emailed link before a passkey exists, Google and Apple only on a consumer app. Admins are not here; they come
+through Cloudflare Access (`./access`).
+
+```js
+import { signInOptions, signInMethods } from "@dustinedwards/site-runtime/sign-in";
+const auth = betterAuth({
+  baseURL: env.BETTER_AUTH_URL,
+  secret: env.BETTER_AUTH_SECRET,
+  database: drizzleAdapter(db, { provider: "sqlite", schema }),
+  ...(await signInOptions(env, { siteName: "Foxing", sendMagicLink, social: true })),
+});
+// the sign-in page's loader: signInMethods(env, { social: true }) -> { google, apple, turnstileSiteKey }
+// the browser: createAuthClient({ plugins: signInClientPlugins() }) from "@dustinedwards/site-runtime/sign-in-client"
+```
+
+- Passkey: its relying party is the host of `BETTER_AUTH_URL`, so a passkey made on the live site works there only. The
+  site needs the plugin's `passkey` table.
+- Email link: Better Auth's magic link. Passwords are off.
+- Turnstile checks the email link when `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` are both set.
+- Google (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`) and Apple (`APPLE_CLIENT_ID`, the Services ID; `APPLE_TEAM_ID`,
+  `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`, the .p8 text) when the site passes `social: true` and has the settings.
+  `./apple-secret` signs Apple's client secret, a JWT Apple refuses after six months, fresh from the key in each isolate.
+- Accounts are joined only by a signed-in person (`linkSocial`), never by a matching email at sign-in.
+- Async, because Apple's secret is signed with WebCrypto: a site keeps the promise per isolate.
+
+**Tests.** `test/apple-secret.test.mjs` (a key made in the test, the signature verified). The rest is Better Auth's own
+plugins, set up; each site's tests sign in through it.
+
+## The Turnstile widget
+
+`./turnstile` loads Cloudflare Turnstile, the bot check on a public form that sends email, so no site keeps its own copy.
+
+```js
+import { TURNSTILE_ORIGIN, mountTurnstile } from "@dustinedwards/site-runtime/turnstile";
+// The CSP sources: { script: [TURNSTILE_ORIGIN], frame: [TURNSTILE_ORIGIN] }
+useEffect(() => mountTurnstile(ref.current, siteKey), [siteKey]);
+```
+
+- The script loads once per page (`render=explicit`, so it never renders a widget of its own), and a load that fails is
+  tried again on the next mount. The returned function removes the widget; called before the script loads, nothing renders.
+- The widget leaves its token in a hidden `cf-turnstile-response` input inside the element, so the form sends it with its
+  fields. `{ onToken }` is for a form that sends it another way, such as Better Auth's `x-captcha-response` header.
+- Browser only. The token is checked on the server, by `./sign-in`'s captcha plugin.
+
+**Tests.** `test/turnstile.test.mjs`, against a fake document.
 
 ## A constant-time secret compare
 
