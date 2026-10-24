@@ -1,5 +1,6 @@
 /** The one sign-in every family site offers (sign-in.mjs): passkey, email link, optional Google and Apple. */
-import type { BetterAuthPlugin } from "better-auth";
+import type { passkey } from "@better-auth/passkey";
+import type { captcha, magicLink } from "better-auth/plugins";
 
 type SignInEnv = {
   BETTER_AUTH_URL: string;
@@ -26,9 +27,12 @@ export function signInOptions(
   },
 ): Promise<{
   emailAndPassword: { enabled: false };
-  plugins: BetterAuthPlugin[];
+  /** Typed one by one, so a site's auth.api knows the passkey and magic-link endpoints. */
+  plugins: [ReturnType<typeof magicLink>, ReturnType<typeof passkey>, ...ReturnType<typeof captcha>[]];
   socialProviders: { google?: { clientId: string; clientSecret: string }; apple?: { clientId: string; clientSecret: string } };
   account: { accountLinking: { enabled: true; disableImplicitLinking: true } };
+  rateLimit: { enabled: true; storage: "database" };
+  advanced: { ipAddress: { ipAddressHeaders: ["cf-connecting-ip"] } };
   trustedOrigins: string[];
 }>;
 

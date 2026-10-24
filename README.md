@@ -220,13 +220,16 @@ const auth = betterAuth({
 ```
 
 - Passkey: its relying party is the host of `BETTER_AUTH_URL`, so a passkey made on the live site works there only. The
-  site needs the plugin's `passkey` table.
+  site needs the plugin's `passkey` table, and `buildSecurityHeaders({ overrides: PASSKEY_OVERRIDES })` (`./headers`):
+  OSHP's Permissions-Policy turns passkey sign-in off (`publickey-credentials-get=()`).
 - Email link: Better Auth's magic link. Passwords are off.
 - Turnstile checks the email link when `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` are both set.
 - Google (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`) and Apple (`APPLE_CLIENT_ID`, the Services ID; `APPLE_TEAM_ID`,
   `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`, the .p8 text) when the site passes `social: true` and has the settings.
   `./apple-secret` signs Apple's client secret, a JWT Apple refuses after six months, fresh from the key in each isolate.
 - Accounts are joined only by a signed-in person (`linkSocial`), never by a matching email at sign-in.
+- Rate limited in the database, keyed on `cf-connecting-ip`, in every environment. Sessions and the counts live in the
+  site's D1 (`session`, `rateLimit`), never KV, which is eventually consistent.
 - Async, because Apple's secret is signed with WebCrypto: a site keeps the promise per isolate.
 
 **Tests.** `test/apple-secret.test.mjs` (a key made in the test, the signature verified). The rest is Better Auth's own

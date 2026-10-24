@@ -5,7 +5,8 @@
  * admins are not here, they come through Cloudflare Access (`./access`).
  *
  * - PASSKEY: the main way in, phishing-proof because the browser ties it to this site's domain. Its relying party is the
- *   host of BETTER_AUTH_URL, so a passkey made on the live site works only there.
+ *   host of BETTER_AUTH_URL, so a passkey made on the live site works only there. The site's headers need
+ *   PASSKEY_OVERRIDES (`./headers`), or OSHP's Permissions-Policy refuses every passkey sign-in.
  * - EMAIL LINK: first sign-in, a new device, recovery. No passwords: emailAndPassword is off.
  * - TURNSTILE on the email link when TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY are both set (a key without its secret
  *   would show a widget nothing checks; a secret without its key would refuse everyone). The link is the one endpoint
@@ -15,6 +16,10 @@
  *   secret). Apple comes with Google, since an iPhone app that offers Google sign-in must offer Apple's too.
  * - ACCOUNTS ARE JOINED ONLY BY A SIGNED-IN PERSON (linkSocial), never by a matching email at sign-in, the recurring
  *   takeover path.
+ * - RATE LIMITED IN THE DATABASE, keyed on Cloudflare's client address: Better Auth counts each request in one atomic
+ *   database step, in every environment (not only when NODE_ENV says production), and the magic-link plugin adds its
+ *   own five a minute. Sessions and the counts live in the site's D1 (the `session` and `rateLimit` tables), never KV,
+ *   which is eventually consistent: a sign-out would take up to a minute to hold and a count could be lost.
  *
  * Async, because Apple's secret is signed with WebCrypto. A site builds its auth once per isolate and keeps the promise.
  */
@@ -67,6 +72,8 @@ export async function signInOptions(env, { siteName, sendMagicLink, social = fal
     plugins,
     socialProviders,
     account: { accountLinking: { enabled: true, disableImplicitLinking: true } },
+    rateLimit: { enabled: true, storage: "database" },
+    advanced: { ipAddress: { ipAddressHeaders: ["cf-connecting-ip"] } },
     // Apple returns to the site with a form POST from its own origin.
     trustedOrigins: socialProviders.apple ? ["https://appleid.apple.com"] : [],
   };
