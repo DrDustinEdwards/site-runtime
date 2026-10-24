@@ -1,8 +1,8 @@
 {
   "name": "@dustinedwards/site-runtime",
-  "version": "0.12.1",
+  "version": "0.13.0",
   "private": true,
-  "description": "The portfolio sites' shared runtime. Today: OWASP Secure Headers Project defaults, a Content-Security-Policy built from a per-site list of what a site loads, the check a site runs in CI to prove its responses carry them, one exact rate limiter on a SQLite Durable Object, the members model: layers, permission bundles and end dates for an app with staff, the Access for SaaS sign-in, the MCP servers' consent page, sign-in handler, tool-call log and server scaffold, the Cloudflare Access request-token check, one HTML escape, one constant-time secret compare and the /health response.",
+  "description": "The portfolio sites' shared runtime. Today: OWASP Secure Headers Project defaults, a Content-Security-Policy built from a per-site list of what a site loads, the check a site runs in CI to prove its responses carry them, one exact rate limiter on a SQLite Durable Object, the members model: layers, permission bundles and end dates for an app with staff, the Access for SaaS sign-in, the MCP servers' consent page, sign-in handler, tool-call log and server scaffold, the Cloudflare Access request-token check, one HTML escape, one constant-time secret compare, the /health response and the check on AI-written prose with the measure of an author's voice.",
   "type": "module",
   "exports": {
     ".": {
@@ -80,6 +80,10 @@
     "./members": {
       "types": "./members/index.d.mts",
       "default": "./members/index.mjs"
+    },
+    "./prose": {
+      "types": "./prose.d.mts",
+      "default": "./prose.mjs"
     }
   },
   "bin": {
@@ -122,6 +126,10 @@
     "health.d.mts",
     "compare.mjs",
     "compare.d.mts",
+    "prose.mjs",
+    "prose.d.mts",
+    "prose-engine.mjs",
+    "update-prose-engine.mjs",
     "bin",
     "README.md"
   ],
