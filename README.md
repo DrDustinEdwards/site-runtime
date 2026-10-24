@@ -4,9 +4,10 @@ The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-
 (the root export and `./headers`, `./csp`, `./csp-report`, `./check`, `./oshp`, `./owasp`), the rate limiter (`./rate-limit`,
 `./rate-limit/durable-object`), the members model (`./members`), the Access for SaaS sign-in (`./access-login`), the MCP
 servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-log`) and server scaffold (`./mcp-server`), the Access request-token check
-(`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`) and the /health response (`./health`).
+(`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), and the check on AI-written prose with the
+measure of an author's voice (`./prose`).
 
-No dependencies, plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
+No dependencies (`./prose` carries a generated copy of an MIT engine, below), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
 tag: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.11.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
@@ -145,6 +146,33 @@ const html = `<a title="${escapeHtml(title)}">${escapeHtml(label)}</a>`;
 It replaces `& < > " '` with `&amp; &lt; &gt; &quot; &#39;` and nothing else, so its output is safe as element content and
 inside a single- or double-quoted attribute. A non-string is passed through `String()` first, as a template literal would.
 It is not an encoder for unquoted attributes, `javascript:` URLs, or the inside of `<script>` and `<style>`.
+
+## AI-written prose and the author's voice
+
+`./prose` is for every app that has a model write text a person will read (Carrel's drafts, Foxhound's emails). It flags;
+the caller decides what a flag means.
+
+```js
+import { checkProse, profileOf, nearestPassages, distanceFrom, WRITING_RULES, EMAIL_PHRASES } from "@dustinedwards/site-runtime/prose";
+
+const issues = checkProse(body, { context: "general", phrases: authorList, allow, dashes: "flag", firstLine });
+const profile = profileOf(publishedPosts); // null under ~900 words
+const examples = profile ? nearestPassages(profile, publishedPosts, 5) : [];
+```
+
+- `checkProse` runs the [avoid-ai-writing](https://github.com/conorbronsdon/avoid-ai-writing) detection engine (MIT) and
+  adds the "not X, it's Y" construction across two sentences, a paragraph closing on a list of three, the caller's own
+  phrases (`EMAIL_PHRASES` for customer email) and each dash on its line. Each issue has `check`, `message`, `excerpt`,
+  `line` and `severity`. `allow` takes a word back out of every list.
+- `profileOf`, `distanceFrom`, `describeFeature` and `VOICE_THRESHOLD` measure a text against the author's own passages in
+  the manner of Burrows' Delta: sentence length, punctuation, contractions and 48 function words.
+- `nearestPassages` picks the excerpts that read most like the author's usual style. Those, `WRITING_RULES` and the
+  author's own guide are what a model reads before it writes: real examples copy a voice better than a description of it
+  (Wang et al., Findings of EMNLP 2025).
+
+Nothing here scores text against an AI detector or aims to pass one. `prose-engine.mjs` is generated:
+`node update-prose-engine.mjs <version>` packs `avoid-ai-writing-detector` at that version from npm and rewrites it,
+licence header included.
 
 ## The /health response
 
