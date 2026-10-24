@@ -124,12 +124,16 @@ export function checkProse(text, options = {}) {
     });
   }
 
+  // Every occurrence of the caller's phrases counts, two on one line included, except the one the engine
+  // already reported (it names each word once, on its first line).
+  const reported = new Set(out.filter((i) => i.excerpt).map((i) => `${String(i.excerpt).toLowerCase()}\u0000${i.line}`));
   for (const phrase of phrases) {
     if (allowed.has(phrase.toLowerCase())) continue;
     const re = phraseRegExp(phrase);
     lines.forEach((line, i) => {
       for (const m of line.matchAll(re)) {
-        add({ check: "phrase", message: `"${phrase}" is on your list of stock phrases.`, excerpt: m[0], line: firstLine + i, severity: "high" });
+        if (reported.delete(`${m[0].toLowerCase()}\u0000${firstLine + i}`)) continue;
+        out.push({ check: "phrase", message: `"${phrase}" is on the list of stock phrases.`, excerpt: m[0], line: firstLine + i, severity: "high" });
       }
     });
   }

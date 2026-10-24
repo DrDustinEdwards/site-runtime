@@ -48,6 +48,10 @@ describe("checkProse", () => {
       checkProse(email, { phrases: EMAIL_PHRASES }).map((i) => [i.check, i.line]),
       [["phrase", 3]],
     );
+    assert.deepEqual(
+      checkProse("A tapestry. Another tapestry, and a testament to it.", { phrases: ["tapestry", "testament to"] }).map((i) => i.excerpt).sort(),
+      ["tapestry", "tapestry", "testament to"],
+    );
     assert.deepEqual(checks("A testament to the town.", { allow: ["testament to"] }), []);
     assert.deepEqual(checks(email, { phrases: EMAIL_PHRASES, allow: ["I hope this email finds you well"] }), []);
   });
