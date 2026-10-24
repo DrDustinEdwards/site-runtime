@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { EMAIL_PHRASES, checkProse, distanceFrom, nearestPassages, profileOf, VOICE_THRESHOLD } from "../prose.mjs";
+import { EMAIL_PHRASES, checkProse, copiedRuns, distanceFrom, nearestPassages, profileOf, thresholdFor, VOICE_THRESHOLD } from "../prose.mjs";
 import { BASELINE, PLANT, TWIN } from "./fixtures/voice.mjs";
 
 const checks = (/** @type {string} */ text, /** @type {Parameters<typeof checkProse>[1]} */ options) =>
@@ -19,7 +19,7 @@ describe("checkProse", () => {
   });
 
   test("PLANT: \"not X, it's Y\" in one sentence and across two, reported once", () => {
-    for (const text of ["It's not just a house, it's a promise.", "This wasn't about money. It was about pride.", "It is not just a tool. It is a way of working."]) {
+    for (const text of ["It's not just a house, it's a promise.", "This wasn't about money.\nIt was about pride.", "It is not just a tool. It is a way of working."]) {
       const found = checks(text).filter((c) => c === "not-x-but-y" || c === "negative-parallelism");
       assert.equal(found.length, 1, text);
     }
@@ -33,8 +33,8 @@ describe("checkProse", () => {
     );
   });
 
-  test("PLANT: each dash on its line, unless the author allows them", () => {
-    const text = "We left early — the road was out.\nNo dash here.\nThen – again.";
+  test("PLANT: each dash on its line, unless the author allows them; an unspaced en dash is a range", () => {
+    const text = "We left early — the road was out.\nNo dash here, 2019–2024 and pp. 12–14.\nThen – again.";
     assert.deepEqual(
       checkProse(text).filter((i) => i.check === "dash").map((i) => i.line),
       [1, 3],
@@ -65,6 +65,9 @@ describe("checkProse", () => {
       "She bought eggs, flour, and a sack of rice for the week. Then she drove north.",
       "",
       "Hi Sam, your card didn't go through on the 3rd. You can update it here.",
+      "",
+      "It wasn't raining.",
+      "We walked to town and back.",
     ].join("\n");
     assert.deepEqual(checkProse(plain, { phrases: EMAIL_PHRASES }), []);
   });
@@ -84,6 +87,16 @@ describe("the voice measure", () => {
     assert.ok(profile);
     const reading = distanceFrom(profile, TWIN);
     assert.ok(reading && reading.distance < VOICE_THRESHOLD, `distance ${reading?.distance}`);
+  });
+
+  test("the threshold widens to the author's own range, and a copied run is found", () => {
+    assert.ok(profile);
+    assert.ok(profile.usual && profile.usual < VOICE_THRESHOLD, `usual ${profile?.usual}`);
+    assert.equal(thresholdFor({ ...profile, usual: 1.6 }), 1.6);
+    const source = BASELINE[0];
+    const run = source.split(/\s+/).slice(10, 22).join(" ");
+    assert.equal(copiedRuns(`New words first. ${run} and then mine.`, [source]).length, 1);
+    assert.deepEqual(copiedRuns("Nothing here comes from the passages at all, not one run of eight.", [source]), []);
   });
 
   test("silent on too little text, and the nearest excerpts come from the passages", () => {
