@@ -45,6 +45,26 @@ export const STANDARD_SECURITY_HEADERS = Object.freeze(
 export const LOGOUT_HEADERS = Object.freeze({ "Clear-Site-Data": OWASP_RECOMMENDED["Clear-Site-Data"] ?? "" });
 
 /**
+ * The override a site that offers passkey sign-in (`./sign-in`) passes to buildSecurityHeaders. OSHP's
+ * Permissions-Policy sets `publickey-credentials-get=()`, which refuses every passkey sign-in on the page; this allows
+ * it for the site's own pages and still for no frame. Every other directive stays OSHP's.
+ *
+ * @type {Readonly<Record<string, HeaderOverride>>}
+ */
+export const PASSKEY_OVERRIDES = Object.freeze({
+  "Permissions-Policy": Object.freeze({
+    value: [
+      ...(STANDARD_SECURITY_HEADERS["Permissions-Policy"] ?? "")
+        .split(",")
+        .map((d) => d.trim())
+        .filter((d) => d && !d.startsWith("publickey-credentials-get=")),
+      "publickey-credentials-get=(self)",
+    ].join(", "),
+    reason: "Passkey sign-in (./sign-in) calls navigator.credentials.get, which OSHP's publickey-credentials-get=() refuses; allowed for the site's own pages only.",
+  }),
+});
+
+/**
  * @typedef {{ value: string | null, reason: string }} HeaderOverride
  *   A header a site sends differently from the standard: its own value, or null to send none, and why. A reason is
  *   required, so a deviation is a decision someone wrote down and not an accident.

@@ -48,6 +48,8 @@ export const STANDARD_SECURITY_HEADERS: Readonly<Record<string, string>>;
  * @type {Readonly<Record<string, string>>}
  */
 export const LOGOUT_HEADERS: Readonly<Record<string, string>>;
+/** The Permissions-Policy override a site offering passkey sign-in needs: publickey-credentials-get=(self). */
+export const PASSKEY_OVERRIDES: Readonly<Record<string, { value: string | null; reason: string }>>;
 /**
  * A header a site sends differently from the standard: its own value, or null to send none, and why. A reason is
  * required, so a deviation is a decision someone wrote down and not an accident.
