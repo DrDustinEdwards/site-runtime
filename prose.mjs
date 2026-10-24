@@ -665,13 +665,23 @@ export function slopScan(text, excerpts, options = {}) {
   });
 
   const findings = found.sort((a, b) => a.line - b.line).slice(0, MAX_FINDINGS);
-  if (findings.length === 0) return { findings, instruction: null, spread };
+  return { findings, instruction: instructionFor(findings, spread), spread };
+}
+
+/**
+ * The one instruction for a session that wrote a draft: edit the listed spans in place and nothing else. Null with no
+ * findings. Exported so a caller that adds findings of its own (a run copied from an excerpt) hands over one list.
+ * @param {{ excerpt: string, line: number | null, say: string }[]} findings
+ * @param {Spread | null} spread
+ * @returns {string | null}
+ */
+export function instructionFor(findings, spread) {
+  if (findings.length === 0) return null;
   const head = [
     "Edit the draft in place. Change only the spans listed. Keep every fact, name, number, and link. Leave every other sentence as it is.",
     ...(spread ? [`The excerpts' sentences run about ${spread.short}, ${spread.mid}, and ${spread.long} words. Stay inside that spread. Do not alternate short and long on purpose.`] : []),
   ];
-  const instruction = [...head, ...findings.map((f) => `- Line ${f.line}, "${f.excerpt}": ${f.say}`)].join("\n");
-  return { findings, instruction, spread };
+  return [...head, ...findings.map((f) => `- ${f.line === null ? "" : `Line ${f.line}, `}"${f.excerpt}": ${f.say}`)].join("\n");
 }
 
 /** A passage's excerpts: its ~300-word chunks, or the whole of a short post that still has something to show. @param {string} passage */

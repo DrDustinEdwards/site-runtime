@@ -56,5 +56,7 @@ export function slopScan(
   excerpts: string[],
   options?: { firstLine?: number },
 ): { findings: SlopFinding[]; instruction: string | null; spread: Spread | null };
+/** Edit the listed spans in place and nothing else; null with no findings. For a caller that adds findings of its own. */
+export function instructionFor(findings: { excerpt: string; line: number | null; say: string }[], spread: Spread | null): string | null;
 /** At most `count` (default 6) excerpts, one per passage, holding one long and one short sentence of the author's. */
 export function voiceExcerpts(passages: string[], count?: number): string[];
