@@ -9,7 +9,8 @@ servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-lo
 offers (`./sign-in`, `./sign-in-client`, `./apple-secret`) and the Cloudflare Turnstile widget (`./turnstile`).
 
 No dependencies (`./prose` carries a generated copy of an MIT engine, below; `./sign-in` uses the site's own `better-auth` and
-`@better-auth/passkey`, optional peers), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
+`@better-auth/passkey`, 1.7.12 or later, which a site that imports it installs itself; they are not declared as peers,
+because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
 tag: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.11.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
