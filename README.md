@@ -270,6 +270,8 @@ useEffect(() => mountTurnstile(ref.current, siteKey), [siteKey]);
 
 - The script loads once per page (`render=explicit`, so it never renders a widget of its own), and a load that fails is
   tried again on the next mount. The returned function removes the widget; called before the script loads, nothing renders.
+- The widget is Cloudflare's flexible size: it fills the element's width (300px at least), so it lines up with the form's
+  inputs and buttons.
 - The widget leaves its token in a hidden `cf-turnstile-response` input inside the element, so the form sends it with its
   fields. `{ onToken }` is for a form that sends it another way, such as Better Auth's `x-captcha-response` header.
 - Browser only. The token is checked on the server, by `./sign-in`'s captcha plugin.
