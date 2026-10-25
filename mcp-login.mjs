@@ -114,6 +114,10 @@ export function loginHandler({ name, scopes, about, admit }) {
     const label = escape(clientLabel(client, request.clientId));
     const redirectHost = escape(new URL(request.redirectUri).hostname);
     const wantsWrite = request.scope.includes(scopes.write);
+    // A CIMD client's id is the URL its metadata is published at, so its host is checked; a registered client named itself.
+    const publisher = request.clientId.startsWith("https://")
+      ? `Published by <strong>${escape(new URL(request.clientId).hostname)}</strong>.`
+      : "This client registered itself, so its name is its own claim, not checked.";
     return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -122,7 +126,7 @@ export function loginHandler({ name, scopes, about, admit }) {
 <style>${CONSENT_STYLE}</style>
 </head><body>
 <h1>Allow ${label} to use ${serverName}?</h1>
-<p>Its access will be sent to <strong>${redirectHost}</strong>.</p>
+<p>${publisher} Its access will be sent to <strong>${redirectHost}</strong>.</p>
 ${about.trim()}
 <p>Next you sign in with Cloudflare Access. Only the configured administrator is accepted.</p>
 <form method="post">
@@ -188,12 +192,13 @@ ${about.trim()}
     }
 
     const granted = original.scope.includes(scopes.write) ? [scopes.read, scopes.write] : [scopes.read];
+    const client = clientLabel(await oauth.lookupClient(original.clientId).catch(() => null), original.clientId);
     const { redirectTo } = await oauth.completeAuthorization({
       request: original,
       userId: signedIn.email.toLowerCase(),
-      metadata: { email: signedIn.email },
+      metadata: { email: signedIn.email, client },
       scope: granted,
-      props: { email: signedIn.email, scopes: granted },
+      props: { email: signedIn.email, scopes: granted, client, clientId: original.clientId },
     });
     return redirect(redirectTo, headers);
   }
@@ -242,6 +247,18 @@ export function isAdminUser(env, user) {
 }
 
 /**
+ * The registration callbacks that are the same for every user, for a server to allow beside its own DCR_REDIRECT_URIS:
+ * Grok's two custom-connector callbacks, ChatGPT's fixed (legacy) connector callback and Gemini Enterprise's redirect.
+ * A callback that carries a per-connector or per-user id is listed exactly in DCR_REDIRECT_URIS.
+ */
+export const DCR_CALLBACKS = Object.freeze([
+  "https://grok.com/connectors/oauth/callback",
+  "https://grok.com/connectors-oauth-exchange-code/",
+  "https://chatgpt.com/connector_platform_oauth_redirect",
+  "https://vertexaisearch.cloud.google.com/oauth-redirect",
+]);
+
+/**
  * The redirect URIs a dynamically registered client may name, from a comma-separated setting (DCR_REDIRECT_URIS).
  * @param {string | undefined} configured
  */
@@ -267,8 +284,36 @@ export function registrationRefusal(configured, clientMetadata) {
   if (allowed.length === 0) return "Dynamic client registration is closed on this server: no redirect URI is allowlisted.";
   const asked = clientMetadata.redirect_uris;
   if (!Array.isArray(asked) || asked.length === 0) return "A registration must name at least one redirect URI.";
+  if (asked.length > 5) return "A registration may name at most five redirect URIs.";
   for (const uri of asked) {
     if (typeof uri !== "string" || !allowed.includes(uri)) return `The redirect URI ${JSON.stringify(uri)} is not allowlisted on this server.`;
   }
+  return null;
+}
+
+/**
+ * Counts one POST /register and answers the 429 to send, or null: five an hour from one address and thirty a day from
+ * everyone, in KV (eventually consistent, so a burst can pass a few over; the ceiling is what matters). Call it before
+ * the provider sees the request. A client registers once per connection, so a person connecting several never nears it.
+ * @param {Request} request
+ * @param {{ get(key: string): Promise<string | null>, put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void> }} kv
+ * @param {number} [now]
+ * @returns {Promise<Response | null>}
+ */
+export async function registrationLimited(request, kv, now = Date.now()) {
+  const address = request.headers.get("CF-Connecting-IP") ?? "unknown";
+  const keys = [
+    { key: `dcr-rate:addr:${address}:${Math.floor(now / 3_600_000)}`, limit: 5, ttl: 3_700 },
+    { key: `dcr-rate:all:${Math.floor(now / 86_400_000)}`, limit: 30, ttl: 86_500 },
+  ];
+  const counts = await Promise.all(keys.map(async (k) => Number((await kv.get(k.key)) ?? 0)));
+  if (keys.some((k, i) => counts[i] >= k.limit)) {
+    console.warn(JSON.stringify({ door: "registration-limited", address }));
+    return new Response(JSON.stringify({ error: "temporarily_unavailable", error_description: "Too many registrations. Try again later." }), {
+      status: 429,
+      headers: { "content-type": "application/json", "cache-control": "no-store", "retry-after": "3600" },
+    });
+  }
+  await Promise.all(keys.map((k, i) => kv.put(k.key, String(counts[i] + 1), { expirationTtl: k.ttl })));
   return null;
 }
