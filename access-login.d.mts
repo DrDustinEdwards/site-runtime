@@ -28,6 +28,8 @@ export function authorizationUrl(saas: AccessSaas, input: { redirectUri: string;
 export type Jwk = JsonWebKey & { kid?: string };
 /** Finds the public key for a kid; `fresh` asks for a refetch past any cache. */
 export type KeySource = (kid: string, fresh: boolean) => Promise<Jwk | undefined>;
+/** Drops every cached key set, for a test whose stubs sign with a new key under the same kid. */
+export function forgetKeys(): void;
 /** The keys at a JWKS URL, cached per isolate. */
 export function remoteKeys(jwksUrl: string): KeySource;
 /** Why a JWT was refused. Only a fault in the token is a refusal; a key source that throws is not caught. */

@@ -81,6 +81,11 @@ export async function authorizationUrl(saas, input) {
 /** @type {Map<string, Jwk[]>} */
 const cachedKeys = new Map();
 
+/** Drops every cached key set, for a test whose stubs sign with a new key under the same kid. */
+export function forgetKeys() {
+  cachedKeys.clear();
+}
+
 /** The keys at a JWKS URL, cached per isolate; `fresh` refetches. @param {string} jwksUrl @returns {KeySource} */
 export function remoteKeys(jwksUrl) {
   return async (kid, fresh) => {
