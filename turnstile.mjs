@@ -17,7 +17,7 @@ const SCRIPT_URL = `${TURNSTILE_ORIGIN}/turnstile/v0/api.js?render=explicit`;
 
 /**
  * @typedef {{
- *   render: (el: HTMLElement, options: { sitekey: string, callback?: (token: string) => void }) => string,
+ *   render: (el: HTMLElement, options: { sitekey: string, size?: string, callback?: (token: string) => void }) => string,
  *   remove: (widgetId: string) => void,
  * }} Turnstile
  */
@@ -59,7 +59,8 @@ export function mountTurnstile(el, siteKey, options = {}) {
   let removed = false;
   loadTurnstile().then(
     (turnstile) => {
-      if (!removed) widgetId = turnstile.render(el, { sitekey: siteKey, callback: options.onToken });
+      // flexible: as wide as the form (300px at least), not Cloudflare's fixed 300px box.
+      if (!removed) widgetId = turnstile.render(el, { sitekey: siteKey, size: "flexible", callback: options.onToken });
     },
     (error) => console.error(error),
   );
