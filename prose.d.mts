@@ -1,23 +1,22 @@
 /** The one check on AI-written prose and the one measure of an author's voice (prose.mjs). */
 
 export type Severity = "critical" | "high" | "medium" | "low";
-export type ProseContext = "general" | "technical" | "marketing" | "personal";
 export type ProseIssue = { check: string; message: string; excerpt: string | null; line: number | null; severity: Severity };
 
 export declare const NOT_JUST: RegExp[];
-/** Stock phrases of a model writing to a customer; pass as `phrases` for an email. */
-export declare const EMAIL_PHRASES: string[];
+/** Phrases current models still write, each with what to do instead. */
+export declare const TELLS: [string, string][];
 /** What a model is told before it writes; callers add the author's excerpts and guide. */
 export declare const WRITING_RULES: string;
 
 /**
- * Every habit in `text`, each with the words it concerns and its line: the avoid-ai-writing engine's findings, "not X,
- * it's Y", a paragraph closing on a list of three, the caller's `phrases`, and each dash unless `dashes: "allow"`. Words in
- * `allow` are dropped from every source. `firstLine` is the file line `text` starts on.
+ * Every habit in `text`, each with the words it concerns and its line: `TELLS`, `OUT_OF_PLACE` and the caller's `phrases`
+ * (high), "not X, it's Y" and each dash unless `dashes: "allow"` (medium), a paragraph closing on a list of three (low).
+ * Words in `allow` are dropped from every list. `firstLine` is the file line `text` starts on.
  */
 export function checkProse(
   text: string,
-  options?: { context?: ProseContext; phrases?: string[]; allow?: string[]; dashes?: "flag" | "allow"; firstLine?: number },
+  options?: { phrases?: string[]; allow?: string[]; dashes?: "flag" | "allow"; firstLine?: number },
 ): ProseIssue[];
 
 /** `usual` is the 90th percentile of the author's own chunks' distance from their mean (absent on older stored profiles). */
@@ -38,7 +37,7 @@ export function thresholdFor(profile: Profile): number;
 export function copiedRuns(text: string, sources: string[], minWords?: number): string[];
 export function describeFeature(f: FeatureReading): string;
 
-/** A model's words most writers never use; the scan flags one only when the author's excerpts never use it. */
+/** Words current models reach for that most writers rarely use; checkProse flags them always, slopScan only when the excerpts never use them. */
 export declare const OUT_OF_PLACE: string[];
 export type SlopKind = "length" | "filler" | "word" | "shape";
 export type SlopFinding = { kind: SlopKind; excerpt: string; line: number; say: string };
@@ -48,7 +47,7 @@ export type Spread = { short: number; mid: number; long: number; longest: number
 export function sentenceSpread(excerpts: string[]): Spread | null;
 /**
  * What in `text` reads unlike the author's `excerpts`, as spans to fix in place: sentence length against their spread,
- * filler, a model's words the excerpts never use, joiner dashes, "not X, it's Y" and a padded closing list (each shape
+ * `TELLS`, the `OUT_OF_PLACE` words the excerpts never use, joiner dashes, "not X, it's Y" and a padded closing list (each shape
  * only when the excerpts do not write that way). At most twelve, in line order. `instruction` is null with no findings.
  */
 export function slopScan(
