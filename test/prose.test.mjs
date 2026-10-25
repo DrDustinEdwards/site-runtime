@@ -124,7 +124,7 @@ describe("slopScan", () => {
 
   test("PLANT: a sentence eight words past the author's long ones, and past their longest", () => {
     const long =
-      "When we finally reached the end of the gravel road after the long drive from town we found that the gate had been chained " +
+      "When we finally reached the end of the gravel road after the long drive from town we found that somebody had chained the gate " +
       "and that someone had cut the grass and painted the fence white.";
     const found = scan(long);
     assert.deepEqual(found.map((f) => f.kind), ["length"]);
@@ -156,7 +156,36 @@ describe("slopScan", () => {
     assert.deepEqual(kinds("She bought eggs, flour, and a sack of rice for the week."), []);
     assert.deepEqual(kinds("From 2019-2024 the same protocol held, and from 2019\u20132024 too."), []);
     assert.deepEqual(kinds("We left early \u2014 the road was out.", BASELINE.map((b) => b.replace(/\. /g, " \u2014 "))), []);
-    for (const page of [...BASELINE, TWIN]) assert.deepEqual(scan(page), []);
+    // The passive is the Owner's rule for every draft, so it is the one finding an author's own page can carry.
+    for (const page of [...BASELINE, TWIN]) assert.deepEqual(scan(page).filter((f) => !f.say.startsWith("Passive")), []);
+  });
+
+  // A scientist's plain report: numbers and names in every paragraph, no stinger, no "So" opener.
+  const papers = [
+    "In 2016, 393 blood samples from Rio Grande wild turkeys in Erath County went to the lab at Tarleton for testing. Five of the 98 birds from Hood County carried REV, and one of 62 eastern birds imported from Missouri did too. Fossil Rim lost nearly half its adult prairie chickens that year.",
+    "We sequenced the Arlo genome at the Pittsburgh Bacteriophage Institute in 2018. It is 52,960 base pairs long, with 96 predicted genes, and Arlo sits in cluster A1 next to DD5 and Oogway, two phages found in Pennsylvania and Texas.",
+    "Students in BIOL 1407 at Tarleton found 14 new phages in 2019 from soil around Stephenville, Bluff Dale and Glen Rose. Seven of them went to Pittsburgh for sequencing, and three of those were published in Microbiology Resource Announcements that year.",
+  ];
+
+  test("PLANT: a definition opening, a paragraph with nothing specific, the passive, and a wrap-up ending", () => {
+    const draft =
+      "Bacteriophages are viruses that infect bacteria, and most of them infect only a narrow range of hosts. A phage that grows on one strain will often fail on a closely related one. " +
+      "This specificity is determined largely at the first step of infection, when proteins at the tip of the tail bind to receptors on the surface. If the receptor is absent, the phage cannot attach.\n\n" +
+      "This is one reason that phages from the same soil can differ widely in which bacteria they infect.";
+    const found = scan(draft, papers);
+    assert.deepEqual(found.map((f) => f.say.split(/[.:]/)[0]), [
+      "Nothing in this paragraph is specific",
+      "This opens on a definition the reader already knows",
+      "Passive",
+      "This sums up what was just said",
+    ]);
+  });
+
+  test("PLANT: a stinger and a \"So\" opener, flagged only when the excerpts never write them", () => {
+    const stinger = "We fixed the roof in June. The rain held off for a week. The crew left on the Friday. There was a cost.";
+    assert.deepEqual(kinds(stinger, papers), ["shape"]);
+    assert.deepEqual(kinds("So we drove back to town.", papers), ["shape"]);
+    assert.deepEqual(kinds("So we drove back to town.", [...BASELINE, "So I went. And then I came back."]), []);
   });
 });
 

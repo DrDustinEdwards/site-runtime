@@ -182,6 +182,9 @@ export const WRITING_RULES = `Write the way the author's excerpts read, not the 
 - Contractions where the author uses them. Let each sentence run as long as its thought, as the excerpts' sentences do.
 - No hedging stacks ("may potentially", "it could be argued"). Commit, or say what you don't know and why.
 - Concrete over abstract: a number, a name, an example, a thing that happened. Cut a sentence that would fit any article on the subject.
+- Active voice. Name who did it: "we tested 393 samples", not "393 samples were tested". This holds even where the excerpts are passive.
+- Don't open on a definition the reader already knows. Start with the case, the finding or the question.
+- No one-line stinger to end a paragraph, and no "So", "And" or "But" opening a sentence for effect, unless the excerpts write that way.
 - No sincerity markers ("genuinely", "honestly") and no reflex permission ("no hard feelings", "that's completely fine"). Say what happens next.
 - End when the answer is done. No offer of more ("Would you like me to") unless the reader needs it.
 - Bold and headings only where the author's own posts use them.`;
@@ -441,7 +444,7 @@ const MAX_FINDINGS = 12;
 /** Excerpt sentences shorter than this are left out of the spread ("Dr." and "Fig." cut by the splitter, "Yes."). */
 const SPREAD_MIN_WORDS = 4;
 
-/** @typedef {"length" | "filler" | "word" | "shape"} SlopKind */
+/** @typedef {"length" | "filler" | "word" | "shape" | "detail"} SlopKind */
 /** @typedef {{ kind: SlopKind, excerpt: string, line: number, say: string }} SlopFinding */
 /** @typedef {{ short: number, mid: number, long: number, longest: number }} Spread */
 
@@ -504,15 +507,77 @@ function dashRate(text) {
   return per1000(text.match(DASH)?.length ?? 0, words(text).length);
 }
 
+/** A definition as a first sentence ("Bacteriophages are viruses that infect bacteria"); "It is estimated that" is not one. */
+const DEFINITION = /^(?!(?:it|this|that|there|these|those|here)\s)(?:an?\s+|the\s+)?[\p{L}-]+(?:\s+[\p{L}-]+){0,3}\s+(?:is|are)\s+(?:an?\s+|the\s+)?(?:[\p{L}-]+\s+){0,3}[\p{L}-]+\s+(?:that|which|who|used|where|in which)\b/iu;
+/** A last sentence that sums up instead of stopping ("This is one reason that...", "In the end,"). */
+const WRAP_UP = /^(?:this is (?:one reason|why|what|how|the reason)|that(?:['’]s| is) (?:why|what|how)|which is why|in short|in the end|ultimately|overall|in other words|all of this|the result is|the lesson|so the next time)\b/iu;
+/** A passive verb: a form of "be" and a past participle ("is determined", "were tested", "has been shown"). "Was supposed to",
+ * "is used to" and a feeling ("was tired") are not passives. */
+const PASSIVE = /\b(?:is|are|was|were|be|been|being)\s+(?:(?:\p{L}+ly|also|often|not|never|still|then|now|first|always)\s+)?(?!(?:supposed|used|tired|scared|worried|excited|interested|pleased|married|born)\b)(?:\p{L}+ed|known|shown|seen|given|taken|made|found|done|built|written|driven|held|kept|told|brought|caught|left|lost|paid|run|set|sent|spent|thought|understood|won|grown|drawn|chosen|begun|broken|hidden|bound|fed|led|met|put|read|said|sold|struck|worn)\b/iu;
+/** A sentence opened with "So", "And" or "But" for effect. */
+const CONJUNCTION_OPENER = /^(?:So|And|But)\s+\p{L}/u;
+/** Words in the stinger a paragraph ends on ("There is a cost."). */
+const STINGER_WORDS = [2, 5];
+/** A paragraph shorter than this is not weighed for detail. */
+const DETAIL_MIN_WORDS = 40;
+
+/** Specific things per 100 words: numbers, and capitalised words that do not open a sentence (names, places, species). @param {string} text */
+function detailRate(text) {
+  let hits = 0;
+  let total = 0;
+  for (const s of sentences(text)) {
+    const ws = s.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu) ?? [];
+    total += ws.length;
+    ws.forEach((w, i) => {
+      if (/\d/.test(w) || (i > 0 && /^\p{Lu}/u.test(w))) hits++;
+    });
+  }
+  return total ? (hits / total) * 100 : 0;
+}
+
+/** How specific the author's plainer paragraphs are: the 10th percentile of their paragraphs' detail. Null under three paragraphs of forty words. @param {string[]} excerpts */
+function detailFloor(excerpts) {
+  const rates = excerpts
+    .flatMap((e) => paragraphsOf(proseLines(e, 1)))
+    .filter((p) => p.text.split(/\s+/).length >= DETAIL_MIN_WORDS)
+    .map((p) => detailRate(p.text))
+    .sort((a, b) => a - b);
+  return rates.length < 3 ? null : percentile(rates, 0.1);
+}
+
+/** The paragraphs of a text's prose lines, each with the line it starts on and the line it ends on. @param {{ text: string, line: number }[]} lines */
+function paragraphsOf(lines) {
+  /** @type {{ text: string, line: number, last: number }[]} */
+  const out = [];
+  for (const l of lines) {
+    const prev = out[out.length - 1];
+    if (!l.text.trim()) continue;
+    if (prev && prev.last === l.line - 1) {
+      prev.text += ` ${l.text}`;
+      prev.last = l.line;
+    } else out.push({ text: l.text, line: l.line, last: l.line });
+  }
+  return out;
+}
+
+/** A paragraph of three or more sentences that ends on one of two to five words. @param {string} text */
+function isStinger(text) {
+  const ss = sentences(text);
+  const n = words(ss.at(-1) ?? "").length;
+  return ss.length >= 3 && n >= STINGER_WORDS[0] && n <= STINGER_WORDS[1];
+}
+
 /**
  * The scan after a draft: what in it reads unlike the author's excerpts, as spans a session can fix in place. No model
- * and no detector. Four kinds:
+ * and no detector. Five kinds:
  * - `length`: a sentence well past the author's long ones, or four or more in a row of the same length when the author's
  *   own vary (measured from the excerpts; skipped under five excerpt sentences of four words or more);
  * - `filler`: a phrase in `TELLS`;
  * - `word`: a short closed list of a model's words (OUT_OF_PLACE), each only when the excerpts never use it;
- * - `shape`: a dash used as a joiner, "not X, it's Y", and a paragraph ending on three padded words, each only when the
- *   excerpts do not write that way themselves. A dash between numbers is a range and passes.
+ * - `shape`: a dash used as a joiner, "not X, it's Y", a paragraph ending on three padded words or on a two-to-five-word
+ *   stinger, and a "So"/"And"/"But" opener, each only when the excerpts do not write that way themselves (a dash between
+ *   numbers is a range and passes); and in every draft a definition opening, a wrap-up ending and the passive voice;
+ * - `detail`: a paragraph with under half the specifics of the excerpts' plainer paragraphs.
  * At most twelve findings, in line order. `instruction` is what to hand the session that wrote the draft, null when there
  * is nothing to fix. `firstLine` is the file line `text` starts on.
  * @param {string} text
@@ -618,6 +683,40 @@ export function slopScan(text, excerpts, options = {}) {
       }
     }
   });
+
+  // The shape of the whole piece. Detail, stingers and "So"/"And"/"But" openers are weighed against the excerpts; a
+  // definition opening, a wrap-up ending and the passive are the Owner's rules for every draft (WRITING_RULES).
+  const theirParagraphs = excerpts.flatMap((e) => paragraphsOf(proseLines(e, 1)));
+  const stingersAreTheirs = theirParagraphs.some((p) => isStinger(p.text));
+  // About one in every two thousand words, as an author who writes that way does; a formal writer's one "And third," in a
+  // paper is not a habit.
+  const openersAreTheirs = per1000(theirParagraphs.flatMap((p) => sentences(p.text)).filter((t) => CONJUNCTION_OPENER.test(t)).length, words(source).length) >= 0.5;
+  const paragraphs = paragraphsOf(lines);
+  const floor = detailFloor(excerpts);
+  if (floor !== null) {
+    for (const p of paragraphs) {
+      if (p.text.split(/\s+/).length < DETAIL_MIN_WORDS) continue;
+      if (detailRate(p.text) < floor / 2) {
+        found.push({ kind: "detail", excerpt: quote(sentences(p.text)[0] ?? p.text), line: p.line, say: "Nothing in this paragraph is specific: no number, name, place or thing that happened. Put in the specific case it is about, or cut it." });
+      }
+    }
+  }
+  const opening = sentences(paragraphs[0]?.text ?? "")[0];
+  if (opening && DEFINITION.test(opening)) {
+    found.push({ kind: "shape", excerpt: quote(opening), line: paragraphs[0].line, say: "This opens on a definition the reader already knows. Start with the case, the finding or the question." });
+  }
+  const closing = paragraphs.length ? sentences(paragraphs[paragraphs.length - 1].text).at(-1) : undefined;
+  if (closing && WRAP_UP.test(closing)) {
+    found.push({ kind: "shape", excerpt: quote(closing), line: paragraphs[paragraphs.length - 1].last, say: "This sums up what was just said. Cut it and end on the last fact." });
+  }
+  for (const p of paragraphs) {
+    if (!stingersAreTheirs && isStinger(p.text)) found.push({ kind: "shape", excerpt: sentences(p.text).at(-1) ?? "", line: p.last, say: "A short line to end the paragraph on a beat. Fold it into the sentence before, or cut it." });
+    for (const t of sentences(p.text)) {
+      if (!openersAreTheirs && CONJUNCTION_OPENER.test(t)) found.push({ kind: "shape", excerpt: quote(t), line: p.line, say: `Drop the opening "${t.split(/\s/)[0]}" and say the sentence plainly.` });
+      const passive = PASSIVE.exec(t);
+      if (passive) found.push({ kind: "shape", excerpt: passive[0], line: p.line, say: "Passive. Name who did it and make them the subject." });
+    }
+  }
 
   const findings = found.sort((a, b) => a.line - b.line).slice(0, MAX_FINDINGS);
   return { findings, instruction: instructionFor(findings, spread), spread };

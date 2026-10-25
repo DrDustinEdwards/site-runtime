@@ -39,7 +39,7 @@ export function describeFeature(f: FeatureReading): string;
 
 /** Words current models reach for that most writers rarely use; checkProse flags them always, slopScan only when the excerpts never use them. */
 export declare const OUT_OF_PLACE: string[];
-export type SlopKind = "length" | "filler" | "word" | "shape";
+export type SlopKind = "length" | "filler" | "word" | "shape" | "detail";
 export type SlopFinding = { kind: SlopKind; excerpt: string; line: number; say: string };
 /** The 10th percentile, median, 90th percentile and longest of the excerpts' sentence lengths, in words. */
 export type Spread = { short: number; mid: number; long: number; longest: number };
