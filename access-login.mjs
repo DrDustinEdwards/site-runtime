@@ -17,6 +17,7 @@
  */
 
 const SKEW_SECONDS = 60;
+const TOKEN_TIMEOUT_MS = 15_000;
 const MAX_NAME = 80;
 
 /**
@@ -162,14 +163,16 @@ export async function verifyIdToken(token, keys, expect) {
  * Exchanges Access's code for tokens and verifies the ID token: signed by the SaaS app's keys, issued by it, for this
  * client, carrying this sign-in's nonce, and naming an email that is not marked unverified. Anything else is a
  * refusal with a reason a log can carry; no token or secret is in it.
+ * The exchange is bounded, so a hung token endpoint does not hold the sign-in (Grok audit 2026-10-21, CA-10).
  * @param {import("./access-login.d.mts").AccessSaas} saas
- * @param {{ code: string, redirectUri: string, verifier: string, nonce: string }} input
+ * @param {{ code: string, redirectUri: string, verifier: string, nonce: string, now?: number }} input `now` in epoch ms, for a test's clock
  * @param {KeySource} [keys]
  * @returns {Promise<import("./access-login.d.mts").SignedIn>}
  */
 export async function finishSignIn(saas, input, keys = remoteKeys(saas.jwksUrl)) {
   const response = await fetch(saas.tokenUrl, {
     method: "POST",
+    signal: AbortSignal.timeout(TOKEN_TIMEOUT_MS),
     headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
     body: new URLSearchParams({
       grant_type: "authorization_code",
@@ -179,12 +182,13 @@ export async function finishSignIn(saas, input, keys = remoteKeys(saas.jwksUrl))
       client_secret: saas.clientSecret,
       code_verifier: input.verifier,
     }),
-  });
+  }).catch(() => null);
+  if (!response) return { ok: false, reason: "token-exchange-unanswered" };
   if (!response.ok) return { ok: false, reason: `token-exchange-${response.status}` };
   const tokens = /** @type {{ id_token?: unknown }} */ (await response.json().catch(() => ({})));
   if (typeof tokens.id_token !== "string") return { ok: false, reason: "no-id-token" };
 
-  const payload = await verifyIdToken(tokens.id_token, keys, { issuer: saas.issuer, audience: saas.clientId });
+  const payload = await verifyIdToken(tokens.id_token, keys, { issuer: saas.issuer, audience: saas.clientId, now: input.now });
   if (!payload) return { ok: false, reason: "invalid-id-token" };
   if (payload.nonce !== input.nonce) return { ok: false, reason: "nonce-mismatch" };
   if (payload.email_verified === false) return { ok: false, reason: "email-not-verified" };

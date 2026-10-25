@@ -39,5 +39,5 @@ export function verifyJwt(token: string, keys: KeySource, expect: { issuer: stri
 export function verifyIdToken(token: string, keys: KeySource, expect: { issuer: string; audience: string; now?: number }): Promise<Record<string, unknown> | null>;
 
 export type SignedIn = { ok: true; email: string; name?: string } | { ok: false; reason: string };
-/** Exchanges Access's code for tokens and verifies the ID token. */
-export function finishSignIn(saas: AccessSaas, input: { code: string; redirectUri: string; verifier: string; nonce: string }, keys?: KeySource): Promise<SignedIn>;
+/** Exchanges Access's code for tokens (within 15 seconds) and verifies the ID token. `now` in ms, for a test's clock. */
+export function finishSignIn(saas: AccessSaas, input: { code: string; redirectUri: string; verifier: string; nonce: string; now?: number }, keys?: KeySource): Promise<SignedIn>;

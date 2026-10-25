@@ -526,7 +526,8 @@ if (!signedIn.ok || !isAdministrator(signedIn.email)) return refuse(original);
   in a cookie.
 - Every endpoint derives from `ACCESS_TEAM_DOMAIN` (`https://<team>.cloudflareaccess.com`) and the SaaS app's client id.
   A missing setting makes `accessSaas` null, and the door stays shut.
-- PKCE (S256) and an OIDC nonce on every sign-in.
+- PKCE (S256) and an OIDC nonce on every sign-in. The code exchange gives up after 15 seconds
+  (`token-exchange-unanswered`), so a hung Access does not hold the sign-in.
 - The ID token is checked with WebCrypto against the SaaS app's keys, with no JWT library. It must be RS256, from the
   right issuer, for this audience, and within expiry and not-before (60 seconds of skew allowed). The nonce must match,
   `email_verified` must not be false, and an email must be present. An unknown kid refetches once, so a key rotation
