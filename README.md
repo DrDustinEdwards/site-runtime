@@ -11,7 +11,7 @@ offers (`./sign-in`, `./sign-in-client`, `./apple-secret`) and the Cloudflare Tu
 No dependencies (`./sign-in` uses the site's own `better-auth` and
 `@better-auth/passkey`, 1.7.12 or later, which a site that imports it installs itself; they are not declared as peers,
 because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
-tag: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.22.0"`. `npm test` runs every test in `test/`.
+tag: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.23.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
 
@@ -539,7 +539,7 @@ checks.
 
 ## The MCP login and the tool-call log
 
-The single-administrator MCP servers (Dustin Edwards Admin, Foxing Admin, Foxhound Admin) sit behind `@cloudflare/workers-oauth-provider`
+The MCP servers (Dustin Edwards Admin, Foxing Admin, Foxhound Admin, and Carrel with several people) sit behind `@cloudflare/workers-oauth-provider`
 and share everything else in front of it: the consent page, the Access round trip, the administrator check, the
 registration allowlist and the tool-call log. Each server passes what is its own:
 
@@ -567,11 +567,16 @@ clientRegistrationCallback: ({ clientMetadata }) => {
   `client` being the name the consent page showed, for the server's own log. The page says who publishes a CIMD client
   (its metadata URL's host) and that a registered client's name is its own claim.
 - `admit` decides who is let in; `isAdminUser` is `ADMIN_EMAIL`, compared without case, and an unset value admits nobody.
+  A server with several people returns an object instead of `true` (Carrel's `{ personId }`): it admits, and its fields
+  join the grant's props for the server to check again on every request. `admits: { consent, refusal }` then says who
+  is let in, on the consent page and in the refusal (default: the configured administrator). `wantsWrite(requested)`
+  decides whether the write box starts ticked (default: the client asked for the write scope), and `health(env)` answers
+  `/health` (default: "ok").
 - The page's one inline style is `CONSENT_STYLE`, rendered exactly, so the server's Content-Security-Policy trusts it by
   `scriptHash(CONSENT_STYLE)`. Give the page no `form-action`: the approve POST redirects through Access to whatever
-  redirect URI the client named.
+  redirect URI the client named. A loopback callback (an app on the person's computer) gets a line saying so.
 - `registrationRefusal` allows a dynamic client registration only when it names one to five redirect URIs, each in the
-  list exactly; an empty list refuses all. `DCR_CALLBACKS` holds the callbacks that are the same for every user (Grok,
+  list exactly; the list is separated by commas or spaces and keeps only https callbacks, and an empty one refuses all. `DCR_CALLBACKS` holds the callbacks that are the same for every user (Grok,
   ChatGPT's fixed one, Gemini Enterprise), for a server that registers them: pass
   `[...DCR_CALLBACKS, env.DCR_REDIRECT_URIS].join(",")`. `registrationLimited(request, env.OAUTH_KV)` counts each
   `/register` in KV (five an hour per address, thirty a day in all) and answers the 429; call it before the provider.

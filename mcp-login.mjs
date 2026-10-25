@@ -102,7 +102,18 @@ const NOT_CONFIGURED =
  * @template {LoginEnv} E
  * @param {import("./mcp-login.d.mts").LoginOptions<E>} options
  */
-export function loginHandler({ name, scopes, about, admit }) {
+export function loginHandler({
+  name,
+  scopes,
+  about,
+  admit,
+  admits = {
+    consent: "Only the configured administrator is accepted.",
+    refusal: `This account is not the administrator of ${name}.`,
+  },
+  wantsWrite = (requested) => requested.includes(scopes.write),
+  health = () => text("ok"),
+}) {
   const serverName = escape(name);
 
   /**
@@ -112,8 +123,10 @@ export function loginHandler({ name, scopes, about, admit }) {
    */
   function consentPage(client, request, handle) {
     const label = escape(clientLabel(client, request.clientId));
-    const redirectHost = escape(new URL(request.redirectUri).hostname);
-    const wantsWrite = request.scope.includes(scopes.write);
+    const host = new URL(request.redirectUri).hostname;
+    const redirectHost = escape(host);
+    // A loopback callback hands the access to an app on this computer, so the page says so.
+    const local = /^(localhost|127(\.\d{1,3}){3}|\[::1\])$/.test(host);
     // A CIMD client's id is the URL its metadata is published at, so its host is checked; a registered client named itself.
     const publisher = request.clientId.startsWith("https://")
       ? `Published by <strong>${escape(new URL(request.clientId).hostname)}</strong>.`
@@ -127,11 +140,11 @@ export function loginHandler({ name, scopes, about, admit }) {
 </head><body>
 <h1>Allow ${label} to use ${serverName}?</h1>
 <p>${publisher} Its access will be sent to <strong>${redirectHost}</strong>.</p>
-${about.trim()}
-<p>Next you sign in with Cloudflare Access. Only the configured administrator is accepted.</p>
+${local ? "<p><strong>This sends access to an app on your computer.</strong> Continue only if you just started signing in from it.</p>\n" : ""}${about.trim()}
+<p>Next you sign in with Cloudflare Access. ${escape(admits.consent)}</p>
 <form method="post">
   <input type="hidden" name="handle" value="${escape(handle)}">
-  <p><label><input type="checkbox" name="allow_write" value="1"${wantsWrite ? " checked" : ""}>
+  <p><label><input type="checkbox" name="allow_write" value="1"${wantsWrite(request.scope) ? " checked" : ""}>
   Allow changes (${escape(scopes.write)})</label></p>
   <button name="decision" value="approve">Continue to sign in</button>
   <button name="decision" value="deny">Deny</button>
@@ -186,10 +199,13 @@ ${about.trim()}
       console.warn(JSON.stringify({ door: "refused", reason: signedIn.reason }));
       return redirectError(original, "Cloudflare Access did not confirm the sign-in.", headers);
     }
-    if (!(await admit(env, signedIn))) {
-      console.warn(JSON.stringify({ door: "refused", reason: "not-the-administrator" }));
-      return redirectError(original, `This account is not the administrator of ${name}.`, headers);
+    const admitted = await admit(env, signedIn);
+    if (!admitted) {
+      console.warn(JSON.stringify({ door: "refused", reason: "not-admitted" }));
+      return redirectError(original, admits.refusal, headers);
     }
+    // An object admits and travels with the grant: a server's own id for the person, read again on every request.
+    const extra = typeof admitted === "object" ? admitted : {};
 
     const granted = original.scope.includes(scopes.write) ? [scopes.read, scopes.write] : [scopes.read];
     const client = clientLabel(await oauth.lookupClient(original.clientId).catch(() => null), original.clientId);
@@ -198,7 +214,7 @@ ${about.trim()}
       userId: signedIn.email.toLowerCase(),
       metadata: { email: signedIn.email, client },
       scope: granted,
-      props: { email: signedIn.email, scopes: granted, client, clientId: original.clientId },
+      props: { ...extra, email: signedIn.email, scopes: granted, client, clientId: original.clientId },
     });
     return redirect(redirectTo, headers);
   }
@@ -208,7 +224,7 @@ ${about.trim()}
     async fetch(request, env) {
       const { pathname } = new URL(request.url);
       try {
-        if (pathname === "/health") return text("ok");
+        if (pathname === "/health") return health(env);
         if (pathname === "/authorize" && request.method === "GET") return await authorizeGet(request, env);
         if (pathname === "/authorize" && request.method === "POST") return await authorizePost(request, env);
         if (pathname === "/callback" && request.method === "GET") return await callback(request, env);
@@ -259,14 +275,12 @@ export const DCR_CALLBACKS = Object.freeze([
 ]);
 
 /**
- * The redirect URIs a dynamically registered client may name, from a comma-separated setting (DCR_REDIRECT_URIS).
+ * The redirect URIs a dynamically registered client may name, from a setting (DCR_REDIRECT_URIS) separated by commas
+ * or spaces. Only https callbacks count: a code is never delivered in the clear.
  * @param {string | undefined} configured
  */
 export function allowedRedirects(configured) {
-  return (configured ?? "")
-    .split(",")
-    .map((uri) => uri.trim())
-    .filter(Boolean);
+  return (configured ?? "").split(/[\s,]+/).filter((uri) => uri.startsWith("https://"));
 }
 
 /**
