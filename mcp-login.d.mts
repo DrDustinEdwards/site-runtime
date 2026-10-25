@@ -18,8 +18,17 @@ export type LoginOptions<E extends LoginEnv> = {
   scopes: { read: string; write: string };
   /** The server's own paragraphs on the consent page (trusted HTML): what it does, and what the write box allows. */
   about: string;
-  /** Whether the email Access verified is let in. */
-  admit(env: E, user: { email: string; name?: string }): boolean | Promise<boolean>;
+  /**
+   * Whether the email Access verified is let in. An object admits and is added to the grant's props, for a server
+   * with several people that keeps its own id for each (Carrel's personId); false or null refuses.
+   */
+  admit(env: E, user: { email: string; name?: string }): boolean | Record<string, unknown> | null | Promise<boolean | Record<string, unknown> | null>;
+  /** Who is let in, for the consent page's line and the refusal. Default: the single configured administrator. */
+  admits?: { consent: string; refusal: string };
+  /** Whether the consent page's write box starts ticked for the scopes a client asked for. Default: it asked for write. */
+  wantsWrite?(requested: string[]): boolean;
+  /** The /health answer. Default: "ok". */
+  health?(env: E): Response;
 };
 
 /** The consent page's one inline <style>, for the page's Content-Security-Policy hash. */

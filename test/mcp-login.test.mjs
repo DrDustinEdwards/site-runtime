@@ -127,6 +127,28 @@ describe("the callback", () => {
     assert.deepEqual(seen.completed?.props, { email: "Admin@Example.com", scopes: ["s.read"], client: "Sample Client", clientId: AUTH_REQUEST.clientId });
   });
 
+  test("a server with several people: an admit object travels with the grant, and its refusal names who is let in", async () => {
+    const team = loginHandler({
+      name: "Sample Team",
+      scopes: { read: "s.read", write: "s.write" },
+      about: "<p>Sample.</p>",
+      admit: (_env, user) => (user.email.toLowerCase() === "admin@example.com" ? { personId: 7 } : null),
+      admits: { consent: "Only people Sample knows are let in.", refusal: "This person is not in Sample." },
+    });
+    const { env, seen } = setup();
+    await approve(env, false);
+    lastNonce = seen.upstream?.data.nonce ?? "";
+    await team.fetch(new Request(`${ORIGIN}/callback?code=c1&state=upstream-state`), env);
+    assert.equal(seen.completed?.props.personId, 7);
+    const other = setup();
+    tokenClaims = (nonce) => ({ iss: ISSUER, aud: "client-id", exp: Math.floor(Date.now() / 1000) + 300, nonce, email: "someone@example.com" });
+    await approve(other.env, false);
+    lastNonce = other.seen.upstream?.data.nonce ?? "";
+    const res = await team.fetch(new Request(`${ORIGIN}/callback?code=c1&state=upstream-state`), other.env);
+    assert.equal(new URL(res.headers.get("location") ?? "").searchParams.get("error_description"), "This person is not in Sample.");
+    assert.equal(other.seen.completed, undefined);
+  });
+
   test("PLANT: anyone else is refused back to the client, and nothing is granted", async () => {
     const { env, seen } = setup();
     tokenClaims = (nonce) => ({ iss: ISSUER, aud: "client-id", exp: Math.floor(Date.now() / 1000) + 300, nonce, email: "someone@example.com" });
