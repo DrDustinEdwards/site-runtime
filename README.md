@@ -191,8 +191,15 @@ at most twelve findings, each `{ kind, excerpt, line, say }`, plus one `instruct
   under their short length is a device and passes);
 - `filler`: a phrase in `TELLS`, with what to do instead;
 - `word`: an `OUT_OF_PLACE` word, flagged only when the excerpts never use it;
-- `shape`: a joiner dash, "not X, it's Y" and a paragraph ending on three padded words, each only when the excerpts do not
-  write that way themselves; a dash between numbers is a range.
+- `shape`: a joiner dash, "not X, it's Y", a paragraph ending on three padded words, a paragraph ending on a stinger of two
+  to five words, and a sentence opened with "So", "And" or "But", each only when the excerpts do not write that way
+  themselves (a dash between numbers is a range); and, in every draft whatever the excerpts do, a first sentence that is a
+  definition, a last sentence that sums up ("This is one reason that"), and the passive voice;
+- `detail`: a paragraph of forty words or more with under half the specifics (numbers, names, places) of the excerpts'
+  plainer paragraphs (their 10th percentile).
+
+Pass every passage of the author's own writing as `excerpts` when there is more than a model reads: the measures are
+steadier on more of it, and a long sentence of theirs that the chosen excerpts leave out is still theirs.
 
 `voiceExcerpts(passages, count)` picks the excerpts a model writes from: one per passage, one holding a long sentence of
 the author's and one a short one, the rest the newest. The excerpts nearest the average show a model one length.
