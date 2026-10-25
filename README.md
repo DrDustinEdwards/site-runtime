@@ -182,7 +182,7 @@ const copied = copiedRuns(draft, examples); // runs of 8+ words lifted from the 
   author's own guide are what a model reads before it writes: real examples copy a voice better than a description of it
   (Wang et al., Findings of EMNLP 2025).
 
-`slopScan(draft, excerpts, { firstLine })` is the scan after a draft. It measures the
+`slopScan(draft, excerpts, { firstLine, sources })` is the scan after a draft. It measures the
 author's sentence lengths from their own excerpts (`sentenceSpread`: 10th percentile, median, 90th, longest) and returns
 at most twelve findings, each `{ kind, excerpt, line, say }`, plus one `instruction` a session can apply in place:
 
@@ -191,12 +191,17 @@ at most twelve findings, each `{ kind, excerpt, line, say }`, plus one `instruct
   under their short length is a device and passes);
 - `filler`: a phrase in `TELLS`, with what to do instead;
 - `word`: an `OUT_OF_PLACE` word, flagged only when the excerpts never use it;
-- `shape`: a joiner dash, "not X, it's Y", a paragraph ending on three padded words, a paragraph ending on a stinger of two
-  to five words, and a sentence opened with "So", "And" or "But", each only when the excerpts do not write that way
-  themselves (a dash between numbers is a range); and, in every draft whatever the excerpts do, a first sentence that is a
-  definition, a last sentence that sums up ("This is one reason that"), and the passive voice;
-- `detail`: a paragraph of forty words or more with under half the specifics (numbers, names, places) of the excerpts'
-  plainer paragraphs (their 10th percentile).
+- `shape`: a joiner dash, "not X, it's Y" and "a gift, not a waste", a paragraph ending on three padded words, a paragraph
+  ending on a stinger of two to five words, a sentence opened with "So", "And" or "But", a bold lead-in ("**You can't skim
+  out loud.**"), and a question put to the reader, each only when the excerpts do not write that way themselves (a dash
+  between numbers is a range); and, in every draft whatever the excerpts do, a first sentence that is a definition, a last
+  sentence that sums up ("This is one reason that") or asks the reader something ("Want to look at it together?"), and the
+  passive voice;
+- `detail`: a paragraph of 25 words or more with under half the specifics (numbers, names, places) of the excerpts'
+  plainer paragraphs (their 10th percentile); DNA, RNA, PCR and the like are kinds of thing, not specifics;
+- `source`: with `sources` (the text of the papers and pages the draft drew on), each sentence holding a name or number
+  found in neither the sources nor the excerpts, since a claim nobody can check is the one a reader cannot trust; with
+  `sources` empty, one finding asking for them. Without `sources` the check is off.
 
 Pass every passage of the author's own writing as `excerpts` when there is more than a model reads: the measures are
 steadier on more of it, and a long sentence of theirs that the chosen excerpts leave out is still theirs.

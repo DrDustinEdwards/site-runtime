@@ -29,10 +29,16 @@
 
 // ---------- the habits
 
-/** "It's not just a house, it's a promise." / "This isn't only about money; it's about pride." / "It wasn't about money. It was about pride." */
+/**
+ * "It's not just a house, it's a promise." / "This isn't only about money; it's about pride." / "It wasn't about money. It
+ * was about pride." / "The best part was never just the book. It was the talk." / "Rereading is a gift, not a waste." /
+ * "They are not simple; they are clear."
+ */
 export const NOT_JUST = [
-  /(?:\bnot|n['’]t)\s+(?:just|only|merely|simply)\s+[^.!?;:,]{1,60}[,;:.]\s*(?:it|this|that|he|she|they|we|you)(?:['’](?:s|re)|\s+(?:is|was|are|were))\b/iu,
+  /(?:\bnot|\bnever|n['’]t)\s+(?:just|only|merely|simply)\s+[^.!?;:,]{1,60}[,;:.]\s*(?:it|this|that|he|she|they|we|you)(?:['’](?:s|re)|\s+(?:is|was|are|were))\b/iu,
   /\b(?:it|this|that)(?:['’]s\s+not|\s+is\s+not|\s+was\s+not|\s+isn['’]t|\s+wasn['’]t)\s+[^.!?;:,]{1,50}[.,;:]\s*(?:it|this|that)(?:['’]s|\s+(?:is|was))\b/iu,
+  /\b[\p{L}'’]+,\s+not\s+(?:(?:a|an|the)\s+)?[\p{L}'’-]+[.!;]/iu,
+  /\bnot\s+[\p{L}'’]+;\s+(?:they|it|this|that|he|she|we)\s+(?:are|is|was|were)\s+[\p{L}'’]+/iu,
 ];
 
 /** A sentence that closes its paragraph on a three-item list of one- or two-word items. */
@@ -176,18 +182,18 @@ export const WRITING_RULES = `Write the way the author's excerpts read, not the 
 
 - Say the thing. No run-up ("Here's the truth:", "Great question"), no reassurance before the answer, no closing summary, no moral at the end.
 - No closing verdict on a thing's worth ("stays with you", "remains one of the most") and no blurb adjectives ("unforgettable", "haunting", "lyrical", "profound"). End on a fact, or stop.
-- No "not X, it's Y", and no "It isn't about X. It's about Y."
+- No "not X, it's Y", no "It isn't about X. It's about Y." and no "a gift, not a waste".
 - Lists of three only when there are three things. Never end a paragraph on one for rhythm.
 - No dashes as all-purpose joiners. Use a comma, a full stop or brackets.
 - Contractions where the author uses them. Let each sentence run as long as its thought, as the excerpts' sentences do.
 - No hedging stacks ("may potentially", "it could be argued"). Commit, or say what you don't know and why.
-- Concrete over abstract: a number, a name, an example, a thing that happened. Cut a sentence that would fit any article on the subject.
+- Concrete over abstract: a number, a name, an example, a thing that happened. Cut a sentence that would fit any article on the subject. Every name and number comes from the author's writing or a source you list; a fact you can't point to comes out.
 - Active voice. Name who did it: "we tested 393 samples", not "393 samples were tested". This holds even where the excerpts are passive.
 - Don't open on a definition the reader already knows. Start with the case, the finding or the question.
 - No one-line stinger to end a paragraph, and no "So", "And" or "But" opening a sentence for effect, unless the excerpts write that way.
 - No sincerity markers ("genuinely", "honestly") and no reflex permission ("no hard feelings", "that's completely fine"). Say what happens next.
-- End when the answer is done. No offer of more ("Would you like me to") unless the reader needs it.
-- Bold and headings only where the author's own posts use them.`;
+- End when the answer is done. No offer of more ("Would you like me to") and no question to the reader at the end.
+- Bold, headings and questions to the reader only where the author's own writing uses them.`;
 
 // ---------- the voice
 
@@ -444,7 +450,7 @@ const MAX_FINDINGS = 12;
 /** Excerpt sentences shorter than this are left out of the spread ("Dr." and "Fig." cut by the splitter, "Yes."). */
 const SPREAD_MIN_WORDS = 4;
 
-/** @typedef {"length" | "filler" | "word" | "shape" | "detail"} SlopKind */
+/** @typedef {"length" | "filler" | "word" | "shape" | "detail" | "source"} SlopKind */
 /** @typedef {{ kind: SlopKind, excerpt: string, line: number, say: string }} SlopFinding */
 /** @typedef {{ short: number, mid: number, long: number, longest: number }} Spread */
 
@@ -464,9 +470,12 @@ function readable(line) {
     .replace(/(\*\*|__|\*|_)(?=\S)([^*_]+?)\1/g, "$2");
 }
 
-/** The prose lines of a text with their line numbers: headings, code, tables and HTML blocks left out. @param {string} text @param {number} firstLine */
+/** A line that opens on a bold run: "**You can't skim out loud.** As an adult..." or "- **Group picks.** Nominate...". */
+const BOLD_LEAD = /^\s{0,3}(?:[-*+]\s+|\d+\.\s+)?(?:\*\*|__)\S/;
+
+/** The prose lines of a text with their line numbers, and whether each opens on a bold run: headings, code, tables and HTML blocks left out. @param {string} text @param {number} firstLine */
 function proseLines(text, firstLine) {
-  /** @type {{ text: string, line: number }[]} */
+  /** @type {{ text: string, line: number, bold: boolean }[]} */
   const out = [];
   let fenced = false;
   text.split(/\r?\n/).forEach((raw, i) => {
@@ -475,7 +484,7 @@ function proseLines(text, firstLine) {
       return;
     }
     if (fenced || /^\s*(?:#|\||<|---\s*$)/.test(raw)) return;
-    out.push({ text: readable(raw), line: firstLine + i });
+    out.push({ text: readable(raw), line: firstLine + i, bold: BOLD_LEAD.test(raw) });
   });
   return out;
 }
@@ -518,8 +527,12 @@ const PASSIVE = /\b(?:is|are|was|were|be|been|being)\s+(?:(?:\p{L}+ly|also|often
 const CONJUNCTION_OPENER = /^(?:So|And|But)\s+\p{L}/u;
 /** Words in the stinger a paragraph ends on ("There is a cost."). */
 const STINGER_WORDS = [2, 5];
-/** A paragraph shorter than this is not weighed for detail. */
+/** An excerpt paragraph shorter than this does not set the author's floor for detail. */
 const DETAIL_MIN_WORDS = 40;
+/** A draft paragraph shorter than this is not weighed for detail. */
+const DETAIL_DRAFT_MIN_WORDS = 25;
+/** Words written in capitals that name a kind of thing, not a particular one: "DNA" is not a specific the way "Arlo" is. */
+const GENERIC_CAPS = new Set(["DNA", "RNA", "mRNA", "cDNA", "tRNA", "rRNA", "dsDNA", "ssDNA", "PCR", "ATP", "I"]);
 
 /** Specific things per 100 words: numbers, and capitalised words that do not open a sentence (names, places, species). @param {string} text */
 function detailRate(text) {
@@ -529,7 +542,7 @@ function detailRate(text) {
     const ws = s.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu) ?? [];
     total += ws.length;
     ws.forEach((w, i) => {
-      if (/\d/.test(w) || (i > 0 && /^\p{Lu}/u.test(w))) hits++;
+      if (/\d/.test(w) || (i > 0 && /^\p{Lu}/u.test(w) && !GENERIC_CAPS.has(w))) hits++;
     });
   }
   return total ? (hits / total) * 100 : 0;
@@ -560,6 +573,44 @@ function paragraphsOf(lines) {
   return out;
 }
 
+/** A last question put to the reader: "Want to look at that passage together?", "What was it about the ending that didn't work for you?" */
+const ASKS_THE_READER = /\byou(?:r)?\b|^(?:want|shall|ready|curious)\b/iu;
+
+/** A word or number as the sources would hold it: "52,960" and "52960" alike. @param {string} w */
+function keyOf(w) {
+  return /^[\d.,]+$/.test(w) ? w.replace(/,/g, "") : w.toLowerCase();
+}
+
+/** The names and numbers in a text, sentence by sentence: what `detailRate` counts. @param {string} text */
+function specificsOf(text) {
+  return sentences(text).map((s) => (s.match(/[\p{L}\p{N}]+(?:['’.,-][\p{L}\p{N}]+)*/gu) ?? []).filter((w, i) => /\d/.test(w) || (i > 0 && /^\p{Lu}/u.test(w) && !GENERIC_CAPS.has(w))));
+}
+
+/**
+ * Names and numbers in the draft found in neither the sources nor the author's writing: a claim nobody can check. With
+ * sources given, one finding per sentence naming them; with none, one finding asking for them.
+ * @param {{ text: string, line: number }[]} paragraphs @param {string[]} known @param {boolean} given
+ * @returns {SlopFinding[]}
+ */
+function unsourced(paragraphs, known, given) {
+  const have = new Set(known.flatMap((k) => (k.match(/[\p{L}\p{N}]+(?:['’.,-][\p{L}\p{N}]+)*/gu) ?? []).flatMap((w) => [keyOf(w), ...w.split(/[-'’]/).map(keyOf)])));
+  const isKnown = (/** @type {string} */ w) => have.has(keyOf(w)) || w.split(/[-'’]/).every((part) => have.has(keyOf(part)));
+  /** @type {SlopFinding[]} */
+  const out = [];
+  for (const p of paragraphs) {
+    const missing = specificsOf(p.text).map((ws) => [...new Set(ws.filter((w) => !isKnown(w)))]);
+    missing.forEach((ws, j) => {
+      if (!ws.length) return;
+      const names = ws.map((w) => `"${w}"`).join(", ");
+      if (given) out.push({ kind: "source", excerpt: quote(sentences(p.text)[j]), line: p.line, say: `${names} ${ws.length === 1 ? "is" : "are"} not in the sources or the author's writing. Check it against a source and add the source, or cut it.` });
+    });
+    if (!given && missing.some((ws) => ws.length) && !out.length) {
+      out.push({ kind: "source", excerpt: quote(p.text), line: p.line, say: "This draft names things that are not in the author's writing, and no sources were given. List the sources the draft used and scan again." });
+    }
+  }
+  return out;
+}
+
 /** A paragraph of three or more sentences that ends on one of two to five words. @param {string} text */
 function isStinger(text) {
   const ss = sentences(text);
@@ -569,20 +620,25 @@ function isStinger(text) {
 
 /**
  * The scan after a draft: what in it reads unlike the author's excerpts, as spans a session can fix in place. No model
- * and no detector. Five kinds:
+ * and no detector. Six kinds:
  * - `length`: a sentence well past the author's long ones, or four or more in a row of the same length when the author's
  *   own vary (measured from the excerpts; skipped under five excerpt sentences of four words or more);
  * - `filler`: a phrase in `TELLS`;
  * - `word`: a short closed list of a model's words (OUT_OF_PLACE), each only when the excerpts never use it;
- * - `shape`: a dash used as a joiner, "not X, it's Y", a paragraph ending on three padded words or on a two-to-five-word
- *   stinger, and a "So"/"And"/"But" opener, each only when the excerpts do not write that way themselves (a dash between
- *   numbers is a range and passes); and in every draft a definition opening, a wrap-up ending and the passive voice;
- * - `detail`: a paragraph with under half the specifics of the excerpts' plainer paragraphs.
+ * - `shape`: a dash used as a joiner, "not X, it's Y" (and "X, not Y"), a paragraph ending on three padded words or on a
+ *   two-to-five-word stinger, a "So"/"And"/"But" opener, a bold lead-in and a question to the reader, each only when the
+ *   excerpts do not write that way themselves (a dash between numbers is a range and passes); and in every draft a
+ *   definition opening, a wrap-up ending, a last sentence asking the reader something, and the passive voice;
+ * - `detail`: a paragraph of 25 words or more with under half the specifics of the excerpts' plainer paragraphs ("DNA" and
+ *   the like are kinds of thing, not specifics);
+ * - `source`: with `sources` given (the text of what the draft drew on), each sentence naming a name or number found in
+ *   neither the sources nor the excerpts; with `sources` empty, one finding asking for them. Left out when `sources` is not
+ *   passed.
  * At most twelve findings, in line order. `instruction` is what to hand the session that wrote the draft, null when there
  * is nothing to fix. `firstLine` is the file line `text` starts on.
  * @param {string} text
  * @param {string[]} excerpts
- * @param {{ firstLine?: number }} [options]
+ * @param {{ firstLine?: number, sources?: string[] }} [options]
  * @returns {{ findings: SlopFinding[], instruction: string | null, spread: Spread | null }}
  */
 export function slopScan(text, excerpts, options = {}) {
@@ -695,7 +751,7 @@ export function slopScan(text, excerpts, options = {}) {
   const floor = detailFloor(excerpts);
   if (floor !== null) {
     for (const p of paragraphs) {
-      if (p.text.split(/\s+/).length < DETAIL_MIN_WORDS) continue;
+      if (p.text.split(/\s+/).length < DETAIL_DRAFT_MIN_WORDS) continue;
       if (detailRate(p.text) < floor / 2) {
         found.push({ kind: "detail", excerpt: quote(sentences(p.text)[0] ?? p.text), line: p.line, say: "Nothing in this paragraph is specific: no number, name, place or thing that happened. Put in the specific case it is about, or cut it." });
       }
@@ -709,6 +765,24 @@ export function slopScan(text, excerpts, options = {}) {
   if (closing && WRAP_UP.test(closing)) {
     found.push({ kind: "shape", excerpt: quote(closing), line: paragraphs[paragraphs.length - 1].last, say: "This sums up what was just said. Cut it and end on the last fact." });
   }
+  const boldIsTheirs = excerpts.some((e) => proseLines(e, 1).some((l) => l.bold));
+  if (!boldIsTheirs) {
+    for (const l of lines) if (l.bold) found.push({ kind: "shape", excerpt: quote(l.text), line: l.line, say: "A bold lead-in. Make it a plain first sentence, or cut it." });
+  }
+  // A question to the reader: weighed against the excerpts, except that a piece never ends by asking the reader something.
+  const questionsAreTheirs = per1000(theirParagraphs.flatMap((p) => sentences(p.text)).filter((t) => t.endsWith("?")).length, words(source).length) >= 0.5;
+  paragraphs.forEach((p, k) => {
+    const ss = sentences(p.text);
+    ss.forEach((t, j) => {
+      if (!t.endsWith("?")) return;
+      if (k === paragraphs.length - 1 && j === ss.length - 1 && ASKS_THE_READER.test(t)) {
+        found.push({ kind: "shape", excerpt: quote(t), line: p.last, say: "This ends by asking the reader something. Stop on the last fact." });
+      } else if (!questionsAreTheirs) {
+        found.push({ kind: "shape", excerpt: quote(t), line: p.line, say: "A question to the reader. Say the answer instead." });
+      }
+    });
+  });
+  if (options.sources) found.push(...unsourced(paragraphs, [...options.sources, source], options.sources.length > 0));
   for (const p of paragraphs) {
     if (!stingersAreTheirs && isStinger(p.text)) found.push({ kind: "shape", excerpt: sentences(p.text).at(-1) ?? "", line: p.last, say: "A short line to end the paragraph on a beat. Fold it into the sentence before, or cut it." });
     for (const t of sentences(p.text)) {

@@ -187,6 +187,28 @@ describe("slopScan", () => {
     assert.deepEqual(kinds("So we drove back to town.", papers), ["shape"]);
     assert.deepEqual(kinds("So we drove back to town.", [...BASELINE, "So I went. And then I came back."]), []);
   });
+
+  test("PLANT: a bold lead-in, \"X, not Y\", \"never just X. It was Y\", and a closing question to the reader", () => {
+    const says = (/** @type {string} */ text, excerpts = papers) => scan(text, excerpts).map((f) => f.say.split(/[.:]/)[0]);
+    assert.deepEqual(says("**Rereading pays.** We read Arlo's genome twice in 2018."), ["A bold lead-in"]);
+    assert.deepEqual(says("Rereading the Arlo genome in 2018 was a gift, not a waste."), ["Say what it is"]);
+    assert.deepEqual(says("The best part was never just the genome. It was the 14 students at Tarleton."), ["Say what it is"]);
+    assert.deepEqual(says("Arlo has 96 genes in cluster A1. Want to look at them together?"), ["This ends by asking the reader something"]);
+    assert.deepEqual(says("Why did Arlo grow at 37 degrees? Nobody at Tarleton knew."), ["A question to the reader"]);
+    // An author who asks questions keeps theirs; the last line asking the reader is flagged whatever the excerpts do.
+    assert.deepEqual(says("Why did Arlo grow at 37 degrees? Nobody at Tarleton knew.", [...papers, "Why would REV spread? Why in Erath County?"]), []);
+  });
+
+  test("PLANT: \"DNA\" is not a specific; names and numbers not in the sources are flagged, and asked for when none are given", () => {
+    const general = "Bacteria also attack phage DNA once it gets inside. Restriction-modification systems cut foreign DNA at specific sequences, and a phage has to get past them before it can replicate.";
+    assert.deepEqual(kinds(general, papers), ["detail"]);
+    const draft = "Students found Arlo in Bluff Dale in 2018 and grew it on Mycobacterium smegmatis mc2155. Its genome runs 52960 base pairs.";
+    const source = "Arlo was isolated in Bluff Dale, Texas, on Mycobacterium smegmatis in 2018. The genome is 52,960 bp.";
+    const found = slopScan(draft, papers, { sources: [source] }).findings.filter((f) => f.kind === "source");
+    assert.deepEqual(found.map((f) => f.say.split(" is not")[0]), ['"mc2155"']);
+    assert.equal(slopScan(draft, papers, { sources: [] }).findings.filter((f) => f.kind === "source").length, 1);
+    assert.deepEqual(slopScan(draft, papers).findings.filter((f) => f.kind === "source"), []);
+  });
 });
 
 describe("voiceExcerpts", () => {
