@@ -39,7 +39,7 @@ export function loginHandler<E extends LoginEnv>(options: LoginOptions<E>): { fe
 export function isAdminUser(env: { ADMIN_EMAIL?: string }, user: { email?: unknown }): boolean;
 /** The registration callbacks that are the same for every user: Grok's two, ChatGPT's fixed one, Gemini Enterprise's. */
 export const DCR_CALLBACKS: readonly string[];
-/** The redirect URIs a registered client may name, from the comma-separated DCR_REDIRECT_URIS. */
+/** The https redirect URIs a registered client may name, from DCR_REDIRECT_URIS (commas or spaces). */
 export function allowedRedirects(configured: string | undefined): string[];
 /** Null when a registration names one to five redirect URIs, each allowlisted exactly; else why it is refused. */
 export function registrationRefusal(configured: string | undefined, clientMetadata: Record<string, unknown>): string | null;

@@ -123,7 +123,10 @@ export function loginHandler({
    */
   function consentPage(client, request, handle) {
     const label = escape(clientLabel(client, request.clientId));
-    const redirectHost = escape(new URL(request.redirectUri).hostname);
+    const host = new URL(request.redirectUri).hostname;
+    const redirectHost = escape(host);
+    // A loopback callback hands the access to an app on this computer, so the page says so.
+    const local = /^(localhost|127(\.\d{1,3}){3}|\[::1\])$/.test(host);
     // A CIMD client's id is the URL its metadata is published at, so its host is checked; a registered client named itself.
     const publisher = request.clientId.startsWith("https://")
       ? `Published by <strong>${escape(new URL(request.clientId).hostname)}</strong>.`
@@ -137,7 +140,7 @@ export function loginHandler({
 </head><body>
 <h1>Allow ${label} to use ${serverName}?</h1>
 <p>${publisher} Its access will be sent to <strong>${redirectHost}</strong>.</p>
-${about.trim()}
+${local ? "<p><strong>This sends access to an app on your computer.</strong> Continue only if you just started signing in from it.</p>\n" : ""}${about.trim()}
 <p>Next you sign in with Cloudflare Access. ${escape(admits.consent)}</p>
 <form method="post">
   <input type="hidden" name="handle" value="${escape(handle)}">
@@ -272,14 +275,12 @@ export const DCR_CALLBACKS = Object.freeze([
 ]);
 
 /**
- * The redirect URIs a dynamically registered client may name, from a comma-separated setting (DCR_REDIRECT_URIS).
+ * The redirect URIs a dynamically registered client may name, from a setting (DCR_REDIRECT_URIS) separated by commas
+ * or spaces. Only https callbacks count: a code is never delivered in the clear.
  * @param {string | undefined} configured
  */
 export function allowedRedirects(configured) {
-  return (configured ?? "")
-    .split(",")
-    .map((uri) => uri.trim())
-    .filter(Boolean);
+  return (configured ?? "").split(/[\s,]+/).filter((uri) => uri.startsWith("https://"));
 }
 
 /**

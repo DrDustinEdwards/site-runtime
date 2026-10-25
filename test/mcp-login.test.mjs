@@ -184,9 +184,10 @@ describe("registrationRefusal", () => {
     assert.match(registrationRefusal(LIST, { redirect_uris: [] }) ?? "", /at least one/);
   });
 
-  test("PLANT: a near miss is refused, naming it", () => {
-    for (const uri of [`${GEMINI}/`, `${GEMINI}?x=1`, "https://vertexaisearch.cloud.google.com/oauth", GEMINI.toUpperCase()]) {
-      assert.match(registrationRefusal(LIST, { redirect_uris: [GEMINI, uri] }) ?? "", /not allowlisted/, uri);
+  test("PLANT: a near miss, or an http callback even when listed, is refused, naming it", () => {
+    const listed = `${LIST} http://insecure.example/cb`;
+    for (const uri of [`${GEMINI}/`, `${GEMINI}?x=1`, "https://vertexaisearch.cloud.google.com/oauth", GEMINI.toUpperCase(), "http://insecure.example/cb"]) {
+      assert.match(registrationRefusal(listed, { redirect_uris: [GEMINI, uri] }) ?? "", /not allowlisted/, uri);
     }
   });
 });
