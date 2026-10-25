@@ -39,7 +39,7 @@ export function describeFeature(f: FeatureReading): string;
 
 /** Words current models reach for that most writers rarely use; checkProse flags them always, slopScan only when the excerpts never use them. */
 export declare const OUT_OF_PLACE: string[];
-export type SlopKind = "length" | "filler" | "word" | "shape" | "detail";
+export type SlopKind = "length" | "filler" | "word" | "shape" | "detail" | "source";
 export type SlopFinding = { kind: SlopKind; excerpt: string; line: number; say: string };
 /** The 10th percentile, median, 90th percentile and longest of the excerpts' sentence lengths, in words. */
 export type Spread = { short: number; mid: number; long: number; longest: number };
@@ -47,13 +47,14 @@ export type Spread = { short: number; mid: number; long: number; longest: number
 export function sentenceSpread(excerpts: string[]): Spread | null;
 /**
  * What in `text` reads unlike the author's `excerpts`, as spans to fix in place: sentence length against their spread,
- * `TELLS`, the `OUT_OF_PLACE` words the excerpts never use, joiner dashes, "not X, it's Y" and a padded closing list (each shape
- * only when the excerpts do not write that way). At most twelve, in line order. `instruction` is null with no findings.
+ * `TELLS`, the `OUT_OF_PLACE` words the excerpts never use, shapes the excerpts do not write, paragraphs with nothing specific,
+ * and, with `sources` given, names and numbers found in neither the sources nor the excerpts. At most twelve, in line order.
+ * `instruction` is null with no findings.
  */
 export function slopScan(
   text: string,
   excerpts: string[],
-  options?: { firstLine?: number },
+  options?: { firstLine?: number; sources?: string[] },
 ): { findings: SlopFinding[]; instruction: string | null; spread: Spread | null };
 /** Edit the listed spans in place and nothing else; null with no findings. For a caller that adds findings of its own. */
 export function instructionFor(findings: { excerpt: string; line: number | null; say: string }[], spread: Spread | null): string | null;
