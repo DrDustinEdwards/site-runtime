@@ -3,29 +3,29 @@
  * a person will read: Carrel's drafts, Foxhound's emails. It flags; it never rewrites. What a flag means is the caller's
  * call: Carrel shows it to the author, Foxhound regenerates the email.
  *
- * - `checkProse` runs the avoid-ai-writing engine (prose-engine.mjs, a generated copy: see update-prose-engine.mjs) and
- *   adds what the engine does not see: the "not X, it's Y" construction across two sentences, a paragraph that closes on
- *   a list of three, the caller's own words and phrases, and each dash on the line it sits on. Words the caller allows
- *   are dropped from every source.
+ * The habits it looks for are the ones current Claude models were seen to write on 2026-10-25, with no style rules, across
+ * book blurbs, bios, a companion's replies, UI copy, newsletters, journal posts, failed-payment and win-back emails, a
+ * dispute statement and dashboard summaries (Capsid foxing/ai-writing-tells.md). The older lists ("delve", "tapestry",
+ * "I hope this email finds you well", the em dash) are gone: those models no longer write them.
+ *
+ * - `checkProse` flags `TELLS`, the words in `OUT_OF_PLACE`, the "not X, it's Y" construction across two sentences, a
+ *   paragraph that closes on a list of three, the caller's own words and phrases, and each dash on the line it sits on.
+ *   Words the caller allows are dropped from every source.
  * - `profileOf`, `distanceFrom` and `nearestPassages` measure a text against the author's own passages in the manner of
  *   Burrows' Delta (sentence length, punctuation, contractions and function-word rates). Statistics cannot say whose prose
  *   a text is, only that it reads unlike the passages; and the passages nearest the author's usual style are the
  *   examples a model writes from best (Wang et al., Findings of EMNLP 2025: examples beat a described style).
- *
  * - `slopScan` is the scan after a draft: spans that read unlike the author's excerpts (sentence length against their own
- *   spread, a model's filler, a model's words the excerpts never use, joiner dashes), each with what to do, and one
- *   instruction a session can apply. It does not call the engine, and it has no global list of banned words.
+ *   spread, `TELLS`, the `OUT_OF_PLACE` words the excerpts never use, joiner dashes), each with what to do, and one
+ *   instruction a session can apply.
  * - `voiceExcerpts` picks the excerpts a model writes from: one long sentence and one short one among them, not the
  *   passages nearest the average.
  *
  * Nothing here scores text against an AI detector or aims to pass one. The goal is prose a reader finds worth reading.
  */
 
-import AIDetector from "./prose-engine.mjs";
-
 /** @typedef {"critical" | "high" | "medium" | "low"} Severity */
 /** @typedef {{ check: string, message: string, excerpt: string | null, line: number | null, severity: Severity }} ProseIssue */
-/** @typedef {"general" | "technical" | "marketing" | "personal"} ProseContext */
 
 // ---------- the habits
 
@@ -41,24 +41,40 @@ const CLOSING_TRIAD = /(?:^|[.!?]\s+)([^.!?]*?\b([\p{L}'’]+(?:\s[\p{L}'’]+)?
 /** An em dash anywhere, an en dash only with spaces round it (an unspaced one is a range: 2019–2024, pp. 12–14). */
 const DASH = /\s*—\s*|\s+–\s+|\s--\s/gu;
 
-/** Engine findings about whether a text looks pasted from a model (punctuation signatures, function-word entropy,
- *  lookalike characters), not about how it reads. They say nothing of an author's voice, so none is passed on. */
-const DETECTOR_SIGNALS = new Set(["smart-punct-signature", "fnword-trigram-entropy", "punct-distribution", "normalization-flag"]);
+/**
+ * Phrases current models still write, flagged in any text, each with what to do instead. Every one was in the 2026-10-25
+ * sample; a phrase that stops turning up in fresh output comes off.
+ * @type {[string, string][]}
+ */
+export const TELLS = [
+  // A companion's reply: the compliment, the reassurance before the answer, the offer after it.
+  ["great question", "Answer the question. Cut the compliment."],
+  ["you're not wrong", "Cut the reassurance and give the answer."],
+  ["you're not missing anything", "Cut the reassurance and give the answer."],
+  ["would you like me to", "Stop when the answer is done. Offer more only when the reader needs it."],
+  ["here's the truth", "Delete it and say the claim."],
+  ["here is the truth", "Delete it and say the claim."],
+  // A book blurb's closing verdict.
+  ["stays with you", "End on a fact about the book, or stop."],
+  ["long after the last page", "End on a fact about the book, or stop."],
+  ["impossible to put down", "End on a fact about the book, or stop."],
+  ["remains one of the most", "Say what the book does. Its rank is the reader's to judge."],
+  // A newsletter.
+  ["we're delighted", "Delete it and start with the news."],
+  ["that's why we've built", "Say what it does."],
+  ["that's why we built", "Say what it does."],
+  ["here's what's new", "Name the one change that matters, in a sentence."],
+  // A customer email's reflex permission and sincerity.
+  ["no hard feelings", "Say what happens if they do nothing, and stop."],
+  ["that's completely fine", "Say what happens if they do nothing, and stop."],
+  ["that's okay too", "Say what happens if they do nothing, and stop."],
+];
 
 /**
- * Stock phrases of a model writing to a customer, which the engine's lists (built from articles and posts) miss. Pass
- * them as `phrases` when the text is an email.
+ * Words current models reach for in a blurb, a bio or an email that most writers rarely use. `checkProse` flags them in
+ * any text; `slopScan` only when the author's own excerpts never use them, since a word the author writes is theirs.
  */
-export const EMAIL_PHRASES = [
-  "I hope this email finds you well",
-  "I hope this message finds you well",
-  "we understand that",
-  "rest assured",
-  "at your earliest convenience",
-  "please don't hesitate to",
-  "feel free to reach out",
-  "thank you for your understanding",
-];
+export const OUT_OF_PLACE = ["unforgettable", "haunting", "lyrical", "sweeping", "poignant", "profound", "masterpiece", "quietly", "genuinely"];
 
 /** @param {string} s */
 function escapeRegExp(s) {
@@ -71,35 +87,20 @@ function phraseRegExp(phrase) {
 }
 
 /**
- * The line `excerpt` first appears on, counted from `firstLine`, or null when it is not in the text as written (the engine
- * reports some findings as a count, not a quotation).
- * @param {string[]} lines @param {number} firstLine @param {string} excerpt
- */
-function lineOf(lines, firstLine, excerpt) {
-  const re = phraseRegExp(excerpt);
-  const i = lines.findIndex((l) => {
-    re.lastIndex = 0;
-    return re.test(l);
-  });
-  return i === -1 ? null : firstLine + i;
-}
-
-/**
  * Every habit in `text`, each with the words it concerns and the line they are on.
  *
- * - `context` tunes the engine's lists: "marketing" tolerates sales words, "technical" tolerates jargon. Default "general".
- * - `phrases` adds the caller's own words and phrases (an author's list, `EMAIL_PHRASES`); `allow` takes words back out,
- *   from the engine's lists as well as from `phrases`.
+ * - `TELLS` and `OUT_OF_PLACE` are high severity; `phrases` adds the caller's own (an author's list), also high. `allow`
+ *   takes a word or phrase back out of every list.
  * - `dashes: "allow"` leaves em and en dashes alone, for an author whose own prose uses them; by default each line with
  *   one is flagged.
  * - `firstLine` is the file line `text` starts on, when it is a body cut from below a header.
  *
  * @param {string} text
- * @param {{ context?: ProseContext, phrases?: string[], allow?: string[], dashes?: "flag" | "allow", firstLine?: number }} [options]
+ * @param {{ phrases?: string[], allow?: string[], dashes?: "flag" | "allow", firstLine?: number }} [options]
  * @returns {ProseIssue[]}
  */
 export function checkProse(text, options = {}) {
-  const { context = "general", phrases = [], allow = [], dashes = "flag", firstLine = 1 } = options;
+  const { phrases = [], allow = [], dashes = "flag", firstLine = 1 } = options;
   const allowed = new Set(allow.map((w) => w.toLowerCase()));
   const lines = text.split("\n");
   /** @type {ProseIssue[]} */
@@ -113,45 +114,24 @@ export function checkProse(text, options = {}) {
     out.push(issue);
   };
 
-  const result = AIDetector.analyzeText(text, { contextMode: context, sourceMode: "rendered-markdown" });
-  for (const issue of result.issues) {
-    // Each dash is reported on its own line below; the engine's is a count for the whole text.
-    if (issue.type === "em-dash") continue;
-    if (DETECTOR_SIGNALS.has(issue.type)) continue;
-    if (allowed.has(String(issue.text).toLowerCase())) continue;
-    const label = AIDetector.TYPE_LABELS[issue.type] ?? issue.type;
-    const quoted = lineOf(lines, firstLine, issue.text);
-    const suggestion = String(issue.suggestion ?? "").replace(/\.+$/, "");
-    // A quoted finding names words to change; the rest (rhythm, density) describe the whole text.
-    const message =
-      quoted === null
-        ? `${label}: ${String(issue.text).replace(/\.+$/, "")}.${suggestion ? ` ${suggestion}.` : ""}`
-        : `${label}: "${issue.text}".${suggestion ? ` Try: ${suggestion}.` : ""}`;
-    add({
-      check: issue.type,
-      message,
-      excerpt: quoted === null ? null : issue.text,
-      line: quoted,
-      severity: issue.severity,
-    });
-  }
-
-  // Every occurrence of the caller's phrases counts, two on one line included, except the one the engine
-  // already reported (it names each word once, on its first line).
-  const reported = new Set(out.filter((i) => i.excerpt).map((i) => `${String(i.excerpt).toLowerCase()}\u0000${i.line}`));
-  for (const phrase of phrases) {
+  /** @type {[string, string, string][]} */
+  const listed = [
+    ...TELLS.map(([p, say]) => /** @type {[string, string, string]} */ (["tell", p, say])),
+    ...OUT_OF_PLACE.map((w) => /** @type {[string, string, string]} */ (["word", w, "Use the plain word, or cut it and keep the fact."])),
+    ...phrases.map((p) => /** @type {[string, string, string]} */ (["phrase", p, ""])),
+  ];
+  // Every occurrence counts, two on one line included.
+  for (const [check, phrase, say] of listed) {
     if (allowed.has(phrase.toLowerCase())) continue;
     const re = phraseRegExp(phrase);
     lines.forEach((line, i) => {
       for (const m of line.matchAll(re)) {
-        if (reported.delete(`${m[0].toLowerCase()}\u0000${firstLine + i}`)) continue;
-        out.push({ check: "phrase", message: `"${phrase}" is on the list of stock phrases.`, excerpt: m[0], line: firstLine + i, severity: "high" });
+        const message = check === "phrase" ? `"${phrase}" is on the list of stock phrases.` : `"${m[0]}": ${say}`;
+        out.push({ check, message, excerpt: m[0], line: firstLine + i, severity: "high" });
       }
     });
   }
 
-  // The engine sees some "not X, it's Y" lines itself; ours reports only the ones it missed.
-  const parallel = new Set(out.filter((i) => i.check === "negative-parallelism").map((i) => i.line));
   lines.forEach((line, i) => {
     // The construction often spans a line break inside a paragraph ("This wasn't about money.\nIt was about pride.").
     const next = lines[i + 1]?.trim() ? ` ${lines[i + 1]}` : "";
@@ -162,7 +142,7 @@ export function checkProse(text, options = {}) {
       return m && m.index < line.length && m.index + m[0].length > line.length ? m : null;
     };
     const m = NOT_JUST.map((re) => re.exec(line) ?? across(re)).find(Boolean);
-    if (m && !parallel.has(firstLine + i)) add({ check: "not-x-but-y", message: `The "not X, it's Y" construction.`, excerpt: m[0], line: firstLine + i, severity: "medium" });
+    if (m) add({ check: "not-x-but-y", message: `The "not X, it's Y" construction.`, excerpt: m[0], line: firstLine + i, severity: "medium" });
     if (dashes === "flag") {
       for (const d of line.matchAll(DASH)) {
         const at = d.index ?? 0;
@@ -189,20 +169,21 @@ export function checkProse(text, options = {}) {
 
 /**
  * What a model is told before it writes, in plain words, so the checks have less to find. The habits are the ones
- * `checkProse` flags; the rest are what the checks cannot see. Callers add the author's own excerpts and guide.
+ * current models were seen to write (above); the rest are what the checks cannot see. Callers add the author's own
+ * excerpts and guide.
  */
 export const WRITING_RULES = `Write the way the author's excerpts read, not the way a model usually writes.
 
-- Say the thing. No run-up ("Here's the thing", "Let's be honest"), no closing summary, no moral at the end.
-- Plain words over impressive ones: "use" not "leverage", "shows" not "is a testament to". The excerpts' words are the right ones.
+- Say the thing. No run-up ("Here's the truth:", "Great question"), no reassurance before the answer, no closing summary, no moral at the end.
+- No closing verdict on a thing's worth ("stays with you", "remains one of the most") and no blurb adjectives ("unforgettable", "haunting", "lyrical", "profound"). End on a fact, or stop.
 - No "not X, it's Y", and no "It isn't about X. It's about Y."
 - Lists of three only when there are three things. Never end a paragraph on one for rhythm.
 - No dashes as all-purpose joiners. Use a comma, a full stop or brackets.
 - Contractions where the author uses them. Let each sentence run as long as its thought, as the excerpts' sentences do.
 - No hedging stacks ("may potentially", "it could be argued"). Commit, or say what you don't know and why.
 - Concrete over abstract: a number, a name, an example, a thing that happened. Cut a sentence that would fit any article on the subject.
-- No inflated significance ("plays a vital role", "stands as", "marks a pivotal moment") and no vague authority ("experts say", "studies show") without the source.
-- No chatbot leftovers: "I hope this helps", "Great question", "As an AI", "Certainly!".
+- No sincerity markers ("genuinely", "honestly") and no reflex permission ("no hard feelings", "that's completely fine"). Say what happens next.
+- End when the answer is done. No offer of more ("Would you like me to") unless the reader needs it.
 - Bold and headings only where the author's own posts use them.`;
 
 // ---------- the voice
@@ -455,32 +436,6 @@ export function describeFeature(f) {
 
 // ---------- the scan
 
-/**
- * A model's filler, flagged in any text. Each comes with what to do instead, since cutting some of them ("a testament
- * to", "delve into") would leave a broken sentence.
- * @type {[string, string][]}
- */
-const FILLER = [
-  ["it is important to note that", 'Delete "it is important to note that" and keep the rest of the sentence.'],
-  ["it's important to note that", 'Delete "it\'s important to note that" and keep the rest of the sentence.'],
-  ["in order to", 'Use "to".'],
-  ["a testament to", 'Say what it shows, plainly ("shows", "comes from"), and keep the fact.'],
-  ["delve into", 'Say what the piece does ("look at", "go through"), or cut the sentence\'s run-up.'],
-  ["I hope this email finds you well", "Delete it and start with the point."],
-  ["I hope this message finds you well", "Delete it and start with the point."],
-  ["please don't hesitate to", 'Delete "please don\'t hesitate to" and keep the verb ("reply", "ask").'],
-  ["at your earliest convenience", "Delete it, or give the real date."],
-  ["rest assured", 'Delete "rest assured" and keep the clause.'],
-  ["feel free to reach out", 'Say how to reach you ("reply to this email").'],
-];
-
-/**
- * Words a model reaches for that most writers never use. Flagged only when the author's own excerpts never use them: a
- * word the author writes is the author's. A short, closed list on purpose: an ordinary word ("journey", "landscape",
- * "explore") is not a fault because a detector lists it.
- */
-export const OUT_OF_PLACE = ["delve", "tapestry", "testament", "seamless", "seamlessly", "leverage", "holistic", "pivotal", "groundbreaking", "synergy", "cutting-edge"];
-
 /** The most findings one scan returns: past a dozen, a session rewrites instead of editing. */
 const MAX_FINDINGS = 12;
 /** Excerpt sentences shorter than this are left out of the spread ("Dr." and "Fig." cut by the splitter, "Yes."). */
@@ -554,7 +509,7 @@ function dashRate(text) {
  * and no detector. Four kinds:
  * - `length`: a sentence well past the author's long ones, or four or more in a row of the same length when the author's
  *   own vary (measured from the excerpts; skipped under five excerpt sentences of four words or more);
- * - `filler`: a fixed list of a model's filler phrases;
+ * - `filler`: a phrase in `TELLS`;
  * - `word`: a short closed list of a model's words (OUT_OF_PLACE), each only when the excerpts never use it;
  * - `shape`: a dash used as a joiner, "not X, it's Y", and a paragraph ending on three padded words, each only when the
  *   excerpts do not write that way themselves. A dash between numbers is a range and passes.
@@ -618,7 +573,7 @@ export function slopScan(text, excerpts, options = {}) {
   lines.forEach(({ text: line, line: n }, i) => {
     /** @type {[number, number][]} */
     const filled = [];
-    for (const [phrase, say] of FILLER) {
+    for (const [phrase, say] of TELLS) {
       for (const m of line.matchAll(phraseRegExp(phrase))) {
         filled.push([m.index ?? 0, (m.index ?? 0) + m[0].length]);
         found.push({ kind: "filler", excerpt: m[0], line: n, say });

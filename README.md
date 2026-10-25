@@ -8,7 +8,7 @@ servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-lo
 (`./ai-gateway`), starting a Claude Code routine (`./routine`), the check on AI-written prose with the measure of an author's voice (`./prose`), the one sign-in every site
 offers (`./sign-in`, `./sign-in-client`, `./apple-secret`) and the Cloudflare Turnstile widget (`./turnstile`).
 
-No dependencies (`./prose` carries a generated copy of an MIT engine, below; `./sign-in` uses the site's own `better-auth` and
+No dependencies (`./sign-in` uses the site's own `better-auth` and
 `@better-auth/passkey`, 1.7.12 or later, which a site that imports it installs itself; they are not declared as peers,
 because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
 tag: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.11.0"`. `npm test` runs every test in `test/`.
@@ -156,21 +156,24 @@ It is not an encoder for unquoted attributes, `javascript:` URLs, or the inside 
 the caller decides what a flag means.
 
 ```js
-import { checkProse, profileOf, nearestPassages, distanceFrom, thresholdFor, copiedRuns, WRITING_RULES, EMAIL_PHRASES } from "@dustinedwards/site-runtime/prose";
+import { checkProse, profileOf, nearestPassages, distanceFrom, thresholdFor, copiedRuns, WRITING_RULES } from "@dustinedwards/site-runtime/prose";
 
-const issues = checkProse(body, { context: "general", phrases: authorList, allow, dashes: "flag", firstLine });
+const issues = checkProse(body, { phrases: authorList, allow, dashes: "flag", firstLine });
 const profile = profileOf(publishedPosts); // null under ~900 words
 const examples = profile ? nearestPassages(profile, publishedPosts, 5) : [];
 const unlike = profile && (distanceFrom(profile, draft)?.distance ?? 0) > thresholdFor(profile);
 const copied = copiedRuns(draft, examples); // runs of 8+ words lifted from the excerpts
 ```
 
-- `checkProse` runs the [avoid-ai-writing](https://github.com/conorbronsdon/avoid-ai-writing) detection engine (MIT) and
-  adds the "not X, it's Y" construction across two sentences, a paragraph closing on a list of three, the caller's own
-  phrases (`EMAIL_PHRASES` for customer email) and each dash on its line (an unspaced en dash is a range and passes).
-  Each issue has `check`, `message`, `excerpt`, `line` and `severity`. `allow` takes a word back out of every list. The
-  engine's statistical signals (smart quotes, punctuation spread, function-word entropy) are left out: they describe
-  detector scores, not how a sentence reads.
+- `checkProse` flags `TELLS` (phrases current models still write, each with what to do instead) and `OUT_OF_PLACE`
+  (their blurb and email words), the caller's own `phrases`, the "not X, it's Y" construction across two sentences, a
+  paragraph closing on a list of three and each dash on its line (an unspaced en dash is a range and passes). Each issue
+  has `check`, `message`, `excerpt`, `line` and `severity`. `allow` takes a word back out of every list.
+- The lists hold only what current Claude models were seen to write, with no style rules, on 2026-10-25: blurbs, bios,
+  a companion's replies, UI copy, newsletters, failed-payment and win-back emails, a dispute statement and dashboard
+  summaries (Capsid `foxing/ai-writing-tells.md`). The older lists ("delve", "tapestry", "I hope this email finds you
+  well") and the avoid-ai-writing engine are gone: those models no longer write them, and a list that flags nothing a
+  model writes only flags people. Re-run the sample when the models change.
 - `profileOf`, `distanceFrom`, `describeFeature` and `VOICE_THRESHOLD` measure a text against the author's own passages in
   the manner of Burrows' Delta: sentence length, punctuation, contractions and 48 function words. `thresholdFor` widens
   `VOICE_THRESHOLD` to the author's own spread, so an author whose posts vary a lot is not flagged for being themselves.
@@ -179,25 +182,22 @@ const copied = copiedRuns(draft, examples); // runs of 8+ words lifted from the 
   author's own guide are what a model reads before it writes: real examples copy a voice better than a description of it
   (Wang et al., Findings of EMNLP 2025).
 
-`slopScan(draft, excerpts, { firstLine })` is the scan after a draft, and it does not call the engine. It measures the
+`slopScan(draft, excerpts, { firstLine })` is the scan after a draft. It measures the
 author's sentence lengths from their own excerpts (`sentenceSpread`: 10th percentile, median, 90th, longest) and returns
 at most twelve findings, each `{ kind, excerpt, line, say }`, plus one `instruction` a session can apply in place:
 
 - `length`: a sentence eight or more words past the author's long ones and past their longest; four or more sentences in
   a row within two words of each other, when the author's own run at least ten words apart (a run of fragments at or
   under their short length is a device and passes);
-- `filler`: a fixed list ("it is important to note that", "in order to", "a testament to", "delve into" and the email
-  openers), each with what to do instead;
-- `word`: `OUT_OF_PLACE`, eleven words a model reaches for, each flagged only when the excerpts never use it;
+- `filler`: a phrase in `TELLS`, with what to do instead;
+- `word`: an `OUT_OF_PLACE` word, flagged only when the excerpts never use it;
 - `shape`: a joiner dash, "not X, it's Y" and a paragraph ending on three padded words, each only when the excerpts do not
   write that way themselves; a dash between numbers is a range.
 
 `voiceExcerpts(passages, count)` picks the excerpts a model writes from: one per passage, one holding a long sentence of
 the author's and one a short one, the rest the newest. The excerpts nearest the average show a model one length.
 
-Nothing here scores text against an AI detector or aims to pass one. `prose-engine.mjs` is generated:
-`node update-prose-engine.mjs <version>` packs `avoid-ai-writing-detector` at that version from npm and rewrites it,
-licence header included.
+Nothing here scores text against an AI detector or aims to pass one.
 
 ## The /health response
 

@@ -3,24 +3,24 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { EMAIL_PHRASES, checkProse, copiedRuns, distanceFrom, nearestPassages, profileOf, sentenceSpread, slopScan, thresholdFor, voiceExcerpts, VOICE_THRESHOLD } from "../prose.mjs";
+import { checkProse, copiedRuns, distanceFrom, nearestPassages, profileOf, sentenceSpread, slopScan, thresholdFor, voiceExcerpts, VOICE_THRESHOLD } from "../prose.mjs";
 import { BASELINE, PLANT, TWIN } from "./fixtures/voice.mjs";
 
 const checks = (/** @type {string} */ text, /** @type {Parameters<typeof checkProse>[1]} */ options) =>
   checkProse(text, options).map((i) => i.check);
 
 describe("checkProse", () => {
-  test("PLANT: the engine's word list, quoted on its own line", () => {
-    const found = checkProse("We walked home.\nIt is a testament to the town.\n", { firstLine: 10 });
+  test("PLANT: a phrase and a word current models still write, quoted on their line", () => {
+    const found = checkProse("We walked home.\nGreat question. The ending is a haunting one.\n", { firstLine: 10 });
     assert.deepEqual(
-      found.map((i) => [i.excerpt, i.line]),
-      [["testament to", 11]],
+      found.map((i) => [i.check, i.excerpt, i.line]),
+      [["tell", "Great question", 11], ["word", "haunting", 11]],
     );
   });
 
   test("PLANT: \"not X, it's Y\" in one sentence and across two, reported once", () => {
     for (const text of ["It's not just a house, it's a promise.", "This wasn't about money.\nIt was about pride.", "It is not just a tool. It is a way of working.", "She stood a while.\nIt's not just a house, it's a promise."]) {
-      const found = checks(text).filter((c) => c === "not-x-but-y" || c === "negative-parallelism");
+      const found = checks(text).filter((c) => c === "not-x-but-y");
       assert.equal(found.length, 1, text);
     }
   });
@@ -43,17 +43,12 @@ describe("checkProse", () => {
   });
 
   test("PLANT: the caller's phrases, and words allowed back out of every list", () => {
-    const email = "Hi Sam,\n\nI hope this email finds you well. Your card didn't go through.\n";
-    assert.deepEqual(
-      checkProse(email, { phrases: EMAIL_PHRASES }).map((i) => [i.check, i.line]),
-      [["phrase", 3]],
-    );
     assert.deepEqual(
       checkProse("A tapestry. Another tapestry, and a testament to it.", { phrases: ["tapestry", "testament to"] }).map((i) => i.excerpt).sort(),
       ["tapestry", "tapestry", "testament to"],
     );
-    assert.deepEqual(checks("A testament to the town.", { allow: ["testament to"] }), []);
-    assert.deepEqual(checks(email, { phrases: EMAIL_PHRASES, allow: ["I hope this email finds you well"] }), []);
+    assert.deepEqual(checks("It stays with you.", { allow: ["stays with you"] }), []);
+    assert.deepEqual(checks("We genuinely mean it.", { allow: ["genuinely"] }), []);
   });
 
   test("CLEAN TWIN: the same ideas, written plainly, are not flagged", () => {
@@ -64,12 +59,14 @@ describe("checkProse", () => {
       "",
       "She bought eggs, flour, and a sack of rice for the week. Then she drove north.",
       "",
-      "Hi Sam, your card didn't go through on the 3rd. You can update it here.",
+      "Hi Sam, your card didn't go through on the 3rd. You can update it here. If you'd rather stop, do nothing.",
+      "",
+      "That was a good question. The book stayed on my desk for a month.",
       "",
       "It wasn't raining.",
       "We walked to town and back.",
     ].join("\n");
-    assert.deepEqual(checkProse(plain, { phrases: EMAIL_PHRASES }), []);
+    assert.deepEqual(checkProse(plain), []);
   });
 });
 
@@ -135,27 +132,27 @@ describe("slopScan", () => {
   });
 
   test("PLANT: a word the excerpts never use, filler, a joiner dash, and a padded closing list", () => {
-    assert.deepEqual(kinds("The river was a tapestry of light."), ["word"]);
-    assert.deepEqual(kinds("It is important to note that the river was up."), ["filler"]);
+    assert.deepEqual(kinds("The river was a haunting light."), ["word"]);
+    assert.deepEqual(kinds("Great question. The river was up."), ["filler"]);
     assert.deepEqual(kinds("We left early \u2014 the road was out."), ["shape"]);
-    assert.deepEqual(kinds("We fixed the roof.\nThe result was seamless, holistic, and pivotal."), ["shape"]);
+    assert.deepEqual(kinds("We fixed the roof.\nThe result was haunting, lyrical, and profound."), ["shape"]);
   });
 
   test("the instruction names each span and the author's spread, and edits in place", () => {
-    const { instruction } = slopScan("It is important to note that the river was up.", BASELINE, { firstLine: 7 });
+    const { instruction } = slopScan("Great question. The river was up.", BASELINE, { firstLine: 7 });
     assert.equal(
       instruction,
       [
         "Edit the draft in place. Change only the spans listed. Keep every fact, name, number, and link. Leave every other sentence as it is.",
         "The excerpts' sentences run about 5, 10, and 18 words. Stay inside that spread. Do not alternate short and long on purpose.",
-        '- Line 7, "It is important to note that": Delete "it is important to note that" and keep the rest of the sentence.',
+        '- Line 7, "Great question": Answer the question. Cut the compliment.',
       ].join("\n"),
     );
     assert.equal(slopScan("The river was up.", ["Too short to measure."]).instruction, null);
   });
 
   test("CLEAN TWIN: the author's own words, ranges, real lists and their own pages pass", () => {
-    assert.deepEqual(kinds("The river was a tapestry of light.", [...BASELINE, "Her quilt was a tapestry of feed sacks."]), []);
+    assert.deepEqual(kinds("The river was a haunting light.", [...BASELINE, "The owl was haunting the barn all winter."]), []);
     assert.deepEqual(kinds("She bought eggs, flour, and a sack of rice for the week."), []);
     assert.deepEqual(kinds("From 2019-2024 the same protocol held, and from 2019\u20132024 too."), []);
     assert.deepEqual(kinds("We left early \u2014 the road was out.", BASELINE.map((b) => b.replace(/\. /g, " \u2014 "))), []);
