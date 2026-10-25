@@ -539,7 +539,7 @@ checks.
 
 ## The MCP login and the tool-call log
 
-The single-administrator MCP servers (Dustin Edwards Admin, Foxing Admin) sit behind `@cloudflare/workers-oauth-provider`
+The single-administrator MCP servers (Dustin Edwards Admin, Foxing Admin, Foxhound Admin) sit behind `@cloudflare/workers-oauth-provider`
 and share everything else in front of it: the consent page, the Access round trip, the administrator check, the
 registration allowlist and the tool-call log. Each server passes what is its own:
 
@@ -563,19 +563,25 @@ clientRegistrationCallback: ({ clientMetadata }) => {
   `/callback`. The callback address is `PUBLIC_ORIGIN` (or the request's origin) plus `/callback`. A missing Access setting
   answers 503: not configured means not open.
 - Least scope first: every grant holds the read scope, and the write scope only when the administrator ticks the box
-  (it starts ticked only when the client asked for it). The grant's props are `{ email, scopes }`.
+  (it starts ticked only when the client asked for it). The grant's props are `{ email, scopes, client, clientId }`,
+  `client` being the name the consent page showed, for the server's own log. The page says who publishes a CIMD client
+  (its metadata URL's host) and that a registered client's name is its own claim.
 - `admit` decides who is let in; `isAdminUser` is `ADMIN_EMAIL`, compared without case, and an unset value admits nobody.
 - The page's one inline style is `CONSENT_STYLE`, rendered exactly, so the server's Content-Security-Policy trusts it by
   `scriptHash(CONSENT_STYLE)`. Give the page no `form-action`: the approve POST redirects through Access to whatever
   redirect URI the client named.
-- `registrationRefusal` allows a dynamic client registration only when every redirect URI it names is in
-  `DCR_REDIRECT_URIS` exactly; an empty list refuses all. Rate limit `/register` before the provider sees it.
+- `registrationRefusal` allows a dynamic client registration only when it names one to five redirect URIs, each in the
+  list exactly; an empty list refuses all. `DCR_CALLBACKS` holds the callbacks that are the same for every user (Grok,
+  ChatGPT's fixed one, Gemini Enterprise), for a server that registers them: pass
+  `[...DCR_CALLBACKS, env.DCR_REDIRECT_URIS].join(",")`. `registrationLimited(request, env.OAUTH_KV)` counts each
+  `/register` in KV (five an hour per address, thirty a day in all) and answers the 429; call it before the provider.
 - `./audit-log` is the append-only tool-call log: export `ToolCallLog` as the Durable Object bound to `TOOL_CALL_LOG`,
   then `appendAudit(env, row)` before (`started`) and after (`finished`) each call, or once for a `refused` one, with
   `loggedArgs` and `loggedResult`. A string argument over 200 characters is stored as its length and a SHA-256 prefix.
 
 **Tests.** `test/mcp-login.test.mjs` runs the handler against a fake provider and a fake Access. The scope from the box,
-the administrator check and the exact registration match were each removed once and seen to fail a test.
+the administrator check, the exact registration match and the registration limit were each removed once and seen to fail a
+test.
 
 ## The MCP server scaffold
 

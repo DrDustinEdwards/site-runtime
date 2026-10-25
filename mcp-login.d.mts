@@ -28,7 +28,15 @@ export const CONSENT_STYLE: string;
 export function loginHandler<E extends LoginEnv>(options: LoginOptions<E>): { fetch(request: Request, env: E): Promise<Response> };
 /** Whether `user.email` is ADMIN_EMAIL, compared without case. Unset admits nobody. */
 export function isAdminUser(env: { ADMIN_EMAIL?: string }, user: { email?: unknown }): boolean;
+/** The registration callbacks that are the same for every user: Grok's two, ChatGPT's fixed one, Gemini Enterprise's. */
+export const DCR_CALLBACKS: readonly string[];
 /** The redirect URIs a registered client may name, from the comma-separated DCR_REDIRECT_URIS. */
 export function allowedRedirects(configured: string | undefined): string[];
-/** Null when a registration names only allowlisted redirect URIs, exactly; else why it is refused. */
+/** Null when a registration names one to five redirect URIs, each allowlisted exactly; else why it is refused. */
 export function registrationRefusal(configured: string | undefined, clientMetadata: Record<string, unknown>): string | null;
+/** Counts one POST /register in KV: the 429 to send (five an hour per address, thirty a day in all), or null. */
+export function registrationLimited(
+  request: Request,
+  kv: { get(key: string): Promise<string | null>; put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void> },
+  now?: number,
+): Promise<Response | null>;

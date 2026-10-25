@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, test } from "node:test";
 
-import { isAdminUser, loginHandler, registrationRefusal } from "../mcp-login.mjs";
+import { isAdminUser, loginHandler, registrationLimited, registrationRefusal } from "../mcp-login.mjs";
 import { publicJwk as jwk, sign as idToken } from "./jwt.mjs";
 
 const ORIGIN = "https://wrapper.test";
@@ -38,6 +38,9 @@ function setup() {
       async finishUpstream() {
         assert.ok(seen.upstream, "the callback came before the sign-in started");
         return { ...seen.upstream, headers: new Headers() };
+      },
+      async lookupClient() {
+        return { clientName: "Sample Client" };
       },
       /** @param {Record<string, unknown>} options */
       async completeAuthorization(options) {
@@ -121,7 +124,7 @@ describe("the callback", () => {
     assert.equal(res.headers.get("location"), "https://client.example.com/cb?code=x");
     assert.equal(seen.completed?.userId, "admin@example.com");
     assert.deepEqual(seen.completed?.scope, ["s.read"]);
-    assert.deepEqual(seen.completed?.props, { email: "Admin@Example.com", scopes: ["s.read"] });
+    assert.deepEqual(seen.completed?.props, { email: "Admin@Example.com", scopes: ["s.read"], client: "Sample Client", clientId: AUTH_REQUEST.clientId });
   });
 
   test("PLANT: anyone else is refused back to the client, and nothing is granted", async () => {
@@ -163,5 +166,15 @@ describe("registrationRefusal", () => {
     for (const uri of [`${GEMINI}/`, `${GEMINI}?x=1`, "https://vertexaisearch.cloud.google.com/oauth", GEMINI.toUpperCase()]) {
       assert.match(registrationRefusal(LIST, { redirect_uris: [GEMINI, uri] }) ?? "", /not allowlisted/, uri);
     }
+  });
+});
+
+describe("registrationLimited", () => {
+  test("PLANT: the sixth registration from one address in an hour is refused", async () => {
+    const store = new Map();
+    const kv = { get: async (/** @type {string} */ k) => store.get(k) ?? null, put: async (/** @type {string} */ k, /** @type {string} */ v) => void store.set(k, v) };
+    const register = () => registrationLimited(new Request(`${ORIGIN}/register`, { method: "POST", headers: { "CF-Connecting-IP": "192.0.2.1" } }), kv, 0);
+    for (let i = 0; i < 5; i++) assert.equal(await register(), null);
+    assert.equal((await register())?.status, 429);
   });
 });
