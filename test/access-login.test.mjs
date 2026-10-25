@@ -170,7 +170,11 @@ describe("finishSignIn", () => {
     assert.deepEqual(await finishSignIn(saas, input, keys), { ok: false, reason: "invalid-id-token" });
   });
 
-  test("a failed exchange or an answer with no ID token is a refusal, not a throw", async () => {
+  test("a failed or unanswered exchange, or an answer with no ID token, is a refusal, not a throw", async () => {
+    tokenEndpoint = async () => {
+      throw new DOMException("The operation timed out.", "TimeoutError");
+    };
+    assert.deepEqual(await finishSignIn(saas, input, keys), { ok: false, reason: "token-exchange-unanswered" });
     tokenEndpoint = async () => new Response("busy", { status: 503 });
     assert.deepEqual(await finishSignIn(saas, input, keys), { ok: false, reason: "token-exchange-503" });
     tokenEndpoint = async () => new Response("not json");

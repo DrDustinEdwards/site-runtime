@@ -28,6 +28,8 @@ export function authorizationUrl(saas: AccessSaas, input: { redirectUri: string;
 export type Jwk = JsonWebKey & { kid?: string };
 /** Finds the public key for a kid; `fresh` asks for a refetch past any cache. */
 export type KeySource = (kid: string, fresh: boolean) => Promise<Jwk | undefined>;
+/** Drops every cached key set, for a test whose stubs sign with a new key under the same kid. */
+export function forgetKeys(): void;
 /** The keys at a JWKS URL, cached per isolate. */
 export function remoteKeys(jwksUrl: string): KeySource;
 /** Why a JWT was refused. Only a fault in the token is a refusal; a key source that throws is not caught. */
@@ -39,5 +41,5 @@ export function verifyJwt(token: string, keys: KeySource, expect: { issuer: stri
 export function verifyIdToken(token: string, keys: KeySource, expect: { issuer: string; audience: string; now?: number }): Promise<Record<string, unknown> | null>;
 
 export type SignedIn = { ok: true; email: string; name?: string } | { ok: false; reason: string };
-/** Exchanges Access's code for tokens and verifies the ID token. */
-export function finishSignIn(saas: AccessSaas, input: { code: string; redirectUri: string; verifier: string; nonce: string }, keys?: KeySource): Promise<SignedIn>;
+/** Exchanges Access's code for tokens (within 15 seconds) and verifies the ID token. `now` in ms, for a test's clock. */
+export function finishSignIn(saas: AccessSaas, input: { code: string; redirectUri: string; verifier: string; nonce: string; now?: number }, keys?: KeySource): Promise<SignedIn>;
