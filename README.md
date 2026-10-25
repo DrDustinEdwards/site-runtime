@@ -4,14 +4,14 @@ The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-
 (the root export and `./headers`, `./csp`, `./csp-report`, `./check`, `./oshp`, `./owasp`), the rate limiter (`./rate-limit`,
 `./rate-limit/durable-object`), the members model (`./members`), the Access for SaaS sign-in (`./access-login`), the MCP
 servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-log`) and server scaffold (`./mcp-server`), the Access request-token check
-(`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), where a site's Anthropic calls go
+(`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), the security.txt file (`./security-txt`), one set of byte encodings (`./encoding`), where a site's Anthropic calls go
 (`./ai-gateway`), starting a Claude Code routine (`./routine`), the check on AI-written prose with the measure of an author's voice (`./prose`), the one sign-in every site
 offers (`./sign-in`, `./sign-in-client`, `./apple-secret`) and the Cloudflare Turnstile widget (`./turnstile`).
 
 No dependencies (`./sign-in` uses the site's own `better-auth` and
 `@better-auth/passkey`, 1.7.12 or later, which a site that imports it installs itself; they are not declared as peers,
 because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
-tag: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.11.0"`. `npm test` runs every test in `test/`.
+tag: `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.22.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
 
@@ -213,8 +213,33 @@ Nothing here scores text against an AI detector or aims to pass one.
 
 ## The /health response
 
-`./health` is the uptime probe's answer: `healthResponse({ ping, backup, now })` is 200 when `ping` resolves and 503 when
-it throws (logged as `health_db_down`), with `{ ok, db, backup, time }`, `no-store` and `noindex`.
+`./health` is the uptime probe's answer: `healthResponse({ ping, backup, sha, backupTtlMs, now })` is 200 when `ping`
+resolves and 503 when it throws (logged as `health_db_down`), with `{ ok, db, backup, sha, time }`, `no-store` and
+`noindex`. `ok` is false when the backup status carries a `warning`, so a monitor reading `ok` sees a stale dump, while
+the status stays 200 because the site is up. `sha` is the deployed commit, when the site knows it. The backup read is
+held per isolate for `backupTtlMs` (five minutes by default; 0 reads every time), because listing the R2 bucket is a
+billed Class A operation and the route is public.
+
+## security.txt
+
+`./security-txt` writes `/.well-known/security.txt` (RFC 9116), so every site tells a finder where to report a
+vulnerability.
+
+```js
+import { securityTxtResponse } from "@dustinedwards/site-runtime/security-txt";
+return securityTxtResponse({ origin: "https://example.com", contact: "security@example.com", expires: "2027-09-28T00:00:00Z" });
+```
+
+`securityTxt(fields)` is the text: Contact (an address becomes a `mailto:` URI), Expires, Policy when given,
+Preferred-Languages (`en` unless given) and Canonical. `securityTxtResponse(fields, headers)` serves it as text/plain,
+cached for an hour; `headers` adds to or replaces those. Expires is required: prefer a fixed date with a test that fails
+a month before it lapses, the prompt to confirm the address still works.
+
+## Byte encodings
+
+`./encoding` is the one set of byte encodings, Web APIs only (no Buffer, no `jose`): `toHex`/`fromHex`,
+`toBase64`/`fromBase64` (whitespace ignored, as GitHub wraps it), `base64url`/`fromBase64url` (no padding) and
+`sha256Hex`. Every encoder takes bytes or a string, which is encoded as UTF-8.
 
 ## Where a site's Anthropic calls go
 
