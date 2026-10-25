@@ -22,7 +22,7 @@ export function toHex(input) {
 /**
  * The bytes of a hex string, either case. Throws on an odd length or a character that is not hex.
  * @param {string} hex
- * @returns {Uint8Array}
+ * @returns {Uint8Array<ArrayBuffer>}
  */
 export function fromHex(hex) {
   if (hex.length % 2 || /[^0-9a-f]/i.test(hex)) throw new TypeError("not a hex string");
@@ -44,7 +44,7 @@ export function toBase64(input) {
  * The bytes of standard base64. Whitespace is dropped first, since GitHub wraps its base64 in lines and `atob` throws
  * on it; anything else that is not base64 throws.
  * @param {string} text
- * @returns {Uint8Array}
+ * @returns {Uint8Array<ArrayBuffer>}
  */
 export function fromBase64(text) {
   return Uint8Array.from(atob(text.replace(/\s+/g, "")), (c) => c.charCodeAt(0));
@@ -62,7 +62,7 @@ export function base64url(input) {
 /**
  * The bytes of URL-safe base64, padded or not.
  * @param {string} text
- * @returns {Uint8Array}
+ * @returns {Uint8Array<ArrayBuffer>}
  */
 export function fromBase64url(text) {
   const plain = text.replace(/-/g, "+").replace(/_/g, "/");
