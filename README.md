@@ -615,7 +615,7 @@ const refusal = authorizeCall(env, caller, SCOPES.write, { site: "sample.example
   var, a failed fetch or a body that is not JSON (its `status` then the HTTP status), and returns `{ status, ok, body }` otherwise, so a refusal by the API is
   an answer the server relays verbatim. `anonymous: true` sends no bearer (a public health read).
 - `checkRateLimit` is 30 requests a minute per identity on the family's limiter. A lower `perMinute` (registration's 5)
-  is honoured and a higher one is not; a missing or failing binding refuses, with `retryAfter` 60. `refuse` is the
+  is honored and a higher one is not; a missing or failing binding refuses, with `retryAfter` 60. `refuse` is the
   plain-text, `no-store`, `noindex` answer to go with it.
 - `authorizeCall` is the per-call check (rule 12.1): a caller, the administrator (`isAdminUser`) or a well-formed agent
   principal, and the scope the tool needs. `callerName` is its audit name.
