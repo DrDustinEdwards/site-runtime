@@ -5,12 +5,15 @@
  * workers-og is the site's dependency, passed in as its ImageResponse class, so this package stays free of WASM.
  *
  * What the renderer needs, learned on Foxhound and Foxing:
- * - Text is escaped for `<` and `>` only. workers-og does not decode entities in text, so an escaped `&` shows on the
- *   card as the five characters "&amp;". Card text sits only in element content, never in an attribute.
+ * - workers-og does not decode entities in text: "&amp;" shows on the card as five characters, and "&lt;" as four. So
+ *   card text keeps `&` as is, and `<` and `>`, which would start a tag, become the look-alike marks ‹ and ›. Card text
+ *   sits only in element content, never in an attribute.
  * - Whitespace between two tags becomes a text child of the flex box, which takes part in justify-content and needs
  *   display:flex on its parent. `renderShareCard` removes it.
  * - A render error happens while the PNG streams, after ImageResponse returns, and used to end as an empty image.
  *   `renderShareCard` reads the whole PNG first, so a failure is a null the route can answer with a fallback.
+ * - A card's root sized `width:100%;height:100%` has nothing to be a percentage of and shrinks to its content (Foxing's
+ *   cards did). `renderShareCard` draws the card inside a box of the card's size, so a percentage resolves.
  * - Fonts are TTF, OTF or WOFF, one static weight per file: Satori cannot read WOFF2 or a variable font.
  */
 
@@ -19,12 +22,13 @@ export const SHARE_CARD_WIDTH = 1200;
 export const SHARE_CARD_HEIGHT = 630;
 
 /**
- * `value` as card text: `<` and `>` escaped, everything else as is (see the header for why `&` is left alone).
+ * `value` as card text: `<` and `>` become ‹ and ›, so no text can open a tag, and everything else stays as is (an
+ * entity would show literally; see the header).
  * @param {unknown} value
  * @returns {string}
  */
 export function cardText(value) {
-  return String(value).replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return String(value).replace(/</g, "\u2039").replace(/>/g, "\u203a");
 }
 
 /**
@@ -37,7 +41,9 @@ export function cardText(value) {
  */
 export async function renderShareCard(ImageResponse, html, { fonts, width = SHARE_CARD_WIDTH, height = SHARE_CARD_HEIGHT, headers = {} }) {
   try {
-    const image = new ImageResponse(html.replace(/>\s+</g, "><").trim(), { width, height, fonts });
+    const card = html.replace(/>\s+</g, "><").trim();
+    const sized = `<div style="display:flex;width:${width}px;height:${height}px;">${card}</div>`;
+    const image = new ImageResponse(sized, { width, height, fonts });
     const png = await new Response(image.body).arrayBuffer();
     if (png.byteLength === 0) throw new Error("empty PNG");
     return new Response(png, {

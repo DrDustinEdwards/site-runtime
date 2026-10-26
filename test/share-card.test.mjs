@@ -19,14 +19,14 @@ function fakeImageResponse(/** @type {Uint8Array | Error} */ out, /** @type {str
   };
 }
 
-test("a card's text keeps & and loses its tags; whitespace between tags goes; a failed render is null", async () => {
-  assert.equal(cardText("Pride & Prejudice <i>"), "Pride & Prejudice &lt;i&gt;");
+test("a card's text keeps & and cannot open a tag; whitespace between tags goes; the card sits in a box its size; a failed render is null", async () => {
+  assert.equal(cardText("Pride & Prejudice <i>"), "Pride & Prejudice \u2039i\u203a");
   const seen = [];
   const png = await renderShareCard(fakeImageResponse(new Uint8Array([137, 80]), seen), "<div>\n  <div>A</div>\n</div>", {
     fonts: [],
     headers: { "Cross-Origin-Resource-Policy": "cross-origin" },
   });
-  assert.equal(seen[0], "<div><div>A</div></div>");
+  assert.equal(seen[0], '<div style="display:flex;width:1200px;height:630px;"><div><div>A</div></div></div>');
   assert.equal(png?.headers.get("Content-Type"), "image/png");
   assert.equal(png?.headers.get("Cross-Origin-Resource-Policy"), "cross-origin");
   assert.equal((await png?.arrayBuffer())?.byteLength, 2);

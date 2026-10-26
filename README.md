@@ -224,10 +224,11 @@ billed Class A operation and the route is public.
 
 `./share-card` draws a site's own card HTML to the PNG a link preview shows. workers-og (Satori and resvg) stays the
 site's dependency and is passed in: `renderShareCard(ImageResponse, html, { fonts, width, height, headers })` removes the
-whitespace between tags (Satori makes it a flex child), reads the whole PNG so a failed render is `null` (logged as
+whitespace between tags (Satori makes it a flex child), draws the card inside a box of its size (so a root at
+`width:100%` fills the card rather than shrinking to its text), reads the whole PNG so a failed render is `null` (logged as
 `share_card_failed`) rather than an empty image, and answers `image/png` cached a week at the edge, with `headers` added
-(Foxhound's `Cross-Origin-Resource-Policy: cross-origin`). `cardText(value)` escapes `<` and `>` only: workers-og shows
-entities literally, so `escapeHtml` would put "&amp;" on the card. `googleFont(family, weight, { cache, cacheOrigin })`
+(Foxhound's `Cross-Origin-Resource-Policy: cross-origin`). `cardText(value)` leaves `&` as is and turns `<` and `>` into
+‹ and ›: workers-og shows entities literally, so `escapeHtml` would put "&amp;" or "&lt;" on the card. `googleFont(family, weight, { cache, cacheOrigin })`
 fetches one static weight as WOFF (Satori reads TTF, OTF and WOFF, not WOFF2 or a variable font) and keeps it a year in
 `cache`. The design, colors and fonts are each site's own. 1200 by 630 is `SHARE_CARD_WIDTH` by `SHARE_CARD_HEIGHT`.
 

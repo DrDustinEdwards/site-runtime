@@ -7,7 +7,7 @@
 export const SHARE_CARD_WIDTH: 1200;
 export const SHARE_CARD_HEIGHT: 630;
 
-/** `value` as card text: `<` and `>` escaped, `&` left as is (workers-og shows entities literally). */
+/** `value` as card text: `<` and `>` become ‹ and ›, `&` stays as is (workers-og shows entities literally). */
 export function cardText(value: unknown): string;
 
 /** The card's PNG (image/png, a week at the edge unless `headers` sets Cache-Control), or null when the render fails. */
