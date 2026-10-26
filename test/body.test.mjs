@@ -3,9 +3,9 @@ import { test } from "node:test";
 
 import { readCapped, readCappedBytes } from "../body.mjs";
 
-/** A body that arrives in the given chunks, and records whether the reader cancelled it. */
+/** A body that arrives in the given chunks, and records whether the reader canceled it. */
 function chunked(parts, { failAfter } = {}) {
-  const state = { cancelled: false };
+  const state = { canceled: false };
   let i = 0;
   const body = new ReadableStream({
     pull(controller) {
@@ -14,7 +14,7 @@ function chunked(parts, { failAfter } = {}) {
       controller.enqueue(new TextEncoder().encode(parts[i++]));
     },
     cancel() {
-      state.cancelled = true;
+      state.canceled = true;
     },
   });
   return { source: { body }, state };
@@ -30,10 +30,10 @@ test("no body is the empty string, not null", async () => {
   assert.deepEqual(await readCappedBytes({ body: null }, 10), new Uint8Array(0));
 });
 
-test("PLANT: one byte over the ceiling is null and the stream is cancelled, whatever Content-Length said", async () => {
+test("PLANT: one byte over the ceiling is null and the stream is canceled, whatever Content-Length said", async () => {
   const { source, state } = chunked(["abc", "def", "never read"]);
   assert.equal(await readCapped(source, 5), null);
-  assert.equal(state.cancelled, true);
+  assert.equal(state.canceled, true);
   const understated = new Request("https://example.com/", { method: "POST", body: "x".repeat(11), headers: { "content-length": "1" } });
   assert.equal(await readCapped(understated, 10), null);
 });

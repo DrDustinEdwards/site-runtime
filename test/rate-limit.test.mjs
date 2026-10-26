@@ -84,8 +84,8 @@ test("idle deadline is the end of the longest window", () => {
   assert.equal(idleDeadline(rules, T0 + 5), T0 + 3_600_000 - (T0 % 3_600_000));
 });
 
-function namespaceFor(behaviour) {
-  return { idFromName: (name) => name, get: () => ({ hit: behaviour }) };
+function namespaceFor(behavior) {
+  return { idFromName: (name) => name, get: () => ({ hit: behavior }) };
 }
 
 test("fail-closed path: a throwing or missing binding is unavailable and refuses with a 503", async () => {

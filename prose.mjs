@@ -534,7 +534,7 @@ const DETAIL_DRAFT_MIN_WORDS = 25;
 /** Words written in capitals that name a kind of thing, not a particular one: "DNA" is not a specific the way "Arlo" is. */
 const GENERIC_CAPS = new Set(["DNA", "RNA", "mRNA", "cDNA", "tRNA", "rRNA", "dsDNA", "ssDNA", "PCR", "ATP", "I"]);
 
-/** Specific things per 100 words: numbers, and capitalised words that do not open a sentence (names, places, species). @param {string} text */
+/** Specific things per 100 words: numbers, and capitalized words that do not open a sentence (names, places, species). @param {string} text */
 function detailRate(text) {
   let hits = 0;
   let total = 0;
