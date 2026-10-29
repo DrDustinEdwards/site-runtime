@@ -259,6 +259,11 @@ The widths and the three layouts are Astro's (MIT, credited in `image.mjs`): `co
 it and every screen width between (`SCREEN_WIDTHS`), `fixed` offers 1x and 2x, `full-width` every screen width, and none is
 ever wider than the original. `sizes` follows the layout.
 
+`breakpoints` replaces `SCREEN_WIDTHS` for every use. A site moving here with widths already in pages, feeds or caches
+passes them, so those URLs stay inside the closed set: dustinedwards.info's `?w=1024` links keep working with
+`breakpoints: [640, 1024, 1408]` (its 704 content use then serves 640, 704, 1024 and 1408). A width dropped from the set
+is a `400` for every page that still links it.
+
 Every set is closed. The binding bills each unique source and parameter set once a month (5,000 free, then $0.50 per
 1,000), so a width, format, crop or focal point outside the site's own set is a `400`, never a transform. Format and
 quality are not counted, so the AVIF and WebP of one size bill once. The format is in the URL (`f=avif`), never read from
@@ -284,10 +289,14 @@ headers.set(SPECULATION_RULES_HEADER.name, SPECULATION_RULES_HEADER.value);
 ```
 
 The rules cover same-origin links except `NEVER_PREFETCH` (`/admin`, `/api`, `/auth`, `/logout`, `/sign-out`,
-`/cdn-cgi`), the site's own `exclude` prefixes, downloads, links with a `target`, `rel=nofollow` and anything inside
+`/cdn-cgi`), the site's own `exclude` prefixes, links to files (`FILE_EXTENSIONS`: feeds, data, documents, archives
+and media such as `.md`, `.xml`, `.json`, `.txt`, `.rss`, `.pdf`, `.zip` and `.png`, lower case only), links with a query
+string (`excludeQueries: false` lets them through), downloads, links with a `target`, `rel=nofollow` and anything inside
 `data-no-prefetch`. A prefetch is a real GET, so a link that acts on a GET must be excluded. `eagerness` is `moderate` by
 default; `prerender: true` also prerenders on press, off by default because a prerendered page runs its scripts and
-analytics before the reader arrives. Checked in Playwright's Chromium under a strict CSP (2026-10-29).
+analytics before the reader arrives. Checked in Playwright's Chromium under a strict CSP (2026-10-29): a page link is
+prefetched; `.md`, `.xml` and `?q=` links are not. The query rule is a URLPattern object naming the pathname and the
+search; the glob spellings `/*?*` and `/*\?*` match every link, so excluding them stops all prefetch.
 
 ## Share cards
 
