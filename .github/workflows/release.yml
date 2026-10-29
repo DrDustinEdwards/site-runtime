@@ -1,0 +1,59 @@
+name: release
+
+# A release is the merge of its version bump, as in Capsomer: when package.json's version on main has no
+# v<version> tag yet, this tags that commit, publishes a GitHub release with GitHub's generated notes, and
+# starts the consumer bumps. Nobody pushes a tag by hand, and a session that cannot push tags can still
+# release by merging.
+#
+# A tag made with the workflow's own token starts no other workflow (GitHub's rule against loops), so
+# bump-consumers is called from here rather than left to its tag trigger. Run it by hand (Actions >
+# release > Run workflow) to release a version that merged without a tag.
+
+on:
+  push:
+    branches: [main]
+    paths: [package.json, .github/workflows/release.yml]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Tag and publish the release
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      created: ${{ steps.release.outputs.created }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(node -p 'require("./package.json").version')"
+          tag="v$version"
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
+            echo "$tag already exists; nothing to release."
+            echo "created=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA" >/dev/null
+          gh release create "$tag" --verify-tag --title "$tag" --generate-notes
+          echo "created=true" >> "$GITHUB_OUTPUT"
+
+  bump:
+    needs: tag
+    if: needs.tag.outputs.created == 'true'
+    uses: DrDustinEdwards/devkit/.github/workflows/bump-consumers.yml@766881e150d2de96689523c4e3530cc748c64cc0 # v0.17.0
+    with:
+      dry_run: false
+    secrets:
+      token: ${{ secrets.RENOVATE_TRIGGER_TOKEN }}
