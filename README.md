@@ -4,7 +4,7 @@ The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-
 (the root export and `./headers`, `./csp`, `./csp-report`, `./check`, `./oshp`, `./owasp`), the rate limiter (`./rate-limit`,
 `./rate-limit/durable-object`), the members model (`./members`), the Access for SaaS sign-in (`./access-login`), the MCP
 servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-log`) and server scaffold (`./mcp-server`), the Access request-token check
-(`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), the security.txt file (`./security-txt`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), where a site's Anthropic calls go
+(`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images (`./image`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), where a site's Anthropic calls go
 (`./ai-gateway`), starting a Claude Code routine (`./routine`), the check on AI-written prose with the measure of an author's voice (`./prose`), the one sign-in every site
 offers (`./sign-in`, `./sign-in-client`, `./apple-secret`) and the Cloudflare Turnstile widget (`./turnstile`).
 
@@ -219,6 +219,45 @@ resolves and 503 when it throws (logged as `health_db_down`), with `{ ok, db, ba
 the status stays 200 because the site is up. `sha` is the deployed commit, when the site knows it. The backup read is
 held per isolate for `backupTtlMs` (five minutes by default; 0 reads every time), because listing the R2 bucket is a
 billed Class A operation and the route is public.
+
+## Responsive images
+
+`./image` is a site's images end to end: the attributes a page writes and the route that serves each size from the one
+original in R2 through the Images binding. One `defineImages` call names each way the site shows images, so the page
+never asks for a size the route would refuse:
+
+```js
+import { defineImages, pictureHtml } from "@dustinedwards/site-runtime/image";
+
+export const images = defineImages({
+  uses: {
+    content: { layout: "constrained", width: 704 },   // the prose column
+    cover: { layout: "full-width", ratio: "16x9" },    // cut around the file's focal point
+    tile: { layout: "fixed", width: 160, ratio: "1x1" },
+  },
+});
+
+// The page: srcset, sizes, width, height, and AVIF then WebP sources for a <picture>.
+const attrs = images.attributes({ src: "/media/photo.jpg", width: 2400, height: 1600, focus: "0.4x0.3" }, "content");
+const html = pictureHtml(attrs, { alt: "The lab bench", priority: true }, escapeHtml);
+
+// The route, /media/*: the original, or one size for ?w=.
+return images.respond(request, { object: await env.MEDIA.get(key), images: env.IMAGES, cache: caches.default, reread: () => env.MEDIA.get(key) });
+```
+
+The widths and the three layouts are Astro's (MIT, credited in `image.mjs`): `constrained` offers the use's width, twice
+it and every screen width between (`SCREEN_WIDTHS`), `fixed` offers 1x and 2x, `full-width` every screen width, and none is
+ever wider than the original. `sizes` follows the layout.
+
+Every set is closed. The binding bills each unique source and parameter set once a month (5,000 free, then $0.50 per
+1,000), so a width, format, crop or focal point outside the site's own set is a `400`, never a transform. Format and
+quality are not counted, so the AVIF and WebP of one size bill once. The format is in the URL (`f=avif`), never read from
+`Accept`, because the edge cache is keyed by URL alone. A crop's URL carries the file's focal point (`fp=`, from the R2
+object's `focus` custom metadata), and the route refuses one that is not the file's own, so a moved focal point is a new
+URL rather than a stale crop. Quality 85 is always passed; without it the binding writes lossless WebP, larger than the
+original. An SVG is only ever served as an attachment. Without the binding (a checkout with no `images` in its
+`wrangler.jsonc`) the route serves the original and says so in `x-image`; a failed transform serves the original for five
+minutes and logs `image-transform-failed`.
 
 ## Share cards
 
