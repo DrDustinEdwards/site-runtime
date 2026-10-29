@@ -1,8 +1,8 @@
 {
   "name": "@dustinedwards/site-runtime",
-  "version": "0.24.0",
+  "version": "0.25.0",
   "private": true,
-  "description": "The portfolio sites' shared runtime. Today: OWASP Secure Headers Project defaults, a Content-Security-Policy built from a per-site list of what a site loads, the check a site runs in CI to prove its responses carry them, one exact rate limiter on a SQLite Durable Object, the members model: layers, permission bundles and end dates for an app with staff, the Access for SaaS sign-in, the MCP servers' consent page, sign-in handler, tool-call log and server scaffold, the Cloudflare Access request-token check, one HTML escape, one constant-time secret compare, the /health response, the security.txt file, the share-card image, one set of byte encodings (hex, base64, base64url, SHA-256), where a site's Anthropic calls go (AI Gateway or direct), starting a Claude Code routine, the check on AI-written prose with the measure of an author's voice, the one sign-in every site offers (passkey, email link, Google and Apple) and the Cloudflare Turnstile widget loader.",
+  "description": "The portfolio sites' shared runtime. Today: OWASP Secure Headers Project defaults, a Content-Security-Policy built from a per-site list of what a site loads, the check a site runs in CI to prove its responses carry them, one exact rate limiter on a SQLite Durable Object, the members model: layers, permission bundles and end dates for an app with staff, the Access for SaaS sign-in, the MCP servers' consent page, sign-in handler, tool-call log and server scaffold, the Cloudflare Access request-token check, one HTML escape, one constant-time secret compare, the /health response, the security.txt file, responsive images resized by the Images binding, link prefetch through speculation rules, the share-card image, one set of byte encodings (hex, base64, base64url, SHA-256), where a site's Anthropic calls go (AI Gateway or direct), starting a Claude Code routine, the check on AI-written prose with the measure of an author's voice, the one sign-in every site offers (passkey, email link, Google and Apple) and the Cloudflare Turnstile widget loader.",
   "type": "module",
   "exports": {
     ".": {
@@ -32,6 +32,14 @@
     "./health": {
       "types": "./health.d.mts",
       "default": "./health.mjs"
+    },
+    "./image": {
+      "types": "./image.d.mts",
+      "default": "./image.mjs"
+    },
+    "./prefetch": {
+      "types": "./prefetch.d.mts",
+      "default": "./prefetch.mjs"
     },
     "./share-card": {
       "types": "./share-card.d.mts",
@@ -160,6 +168,10 @@
     "html.d.mts",
     "health.mjs",
     "health.d.mts",
+    "image.mjs",
+    "image.d.mts",
+    "prefetch.mjs",
+    "prefetch.d.mts",
     "share-card.mjs",
     "share-card.d.mts",
     "security-txt.mjs",
