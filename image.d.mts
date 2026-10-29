@@ -87,3 +87,16 @@ export function pictureHtml(
   options: { alt: string; priority?: boolean; className?: string },
   escape: (value: string) => string,
 ): string;
+
+export type EditFormat = "image/jpeg" | "image/png" | "image/webp" | "image/avif";
+
+/**
+ * One picture turned, mirrored or shrunk through the Images binding, encoded as `format` (quality 85 unless said).
+ * Flip is applied before rotate; rotate is clockwise; `maxEdge` fits inside that square and never enlarges. Throws on
+ * options outside these, or none, before the binding is called.
+ */
+export function editImage(
+  images: ImagesLike,
+  input: ReadableStream | ArrayBuffer | ArrayBufferView,
+  options: { rotate?: 90 | 180 | 270; flip?: "h" | "v" | "hv"; maxEdge?: number; format: EditFormat; quality?: number },
+): Promise<Response>;
