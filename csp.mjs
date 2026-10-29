@@ -91,6 +91,7 @@ function checkSource(source) {
  *   nonce?: string,
  *   nonceStyles?: boolean,
  *   inlineScripts?: "unsafe-inline",
+ *   strictDynamic?: boolean,
  *   styleAttributesInline?: boolean,
  *   cloudflareWebAnalytics?: boolean,
  *   reportUri?: string,
@@ -110,6 +111,10 @@ function checkSource(source) {
  *   scripts neither a nonce nor hashes can cover (an edge-cached page that streams inline hydration scripts). A nonce
  *   is preferred, then hashes; this is the last resort, and it is refused beside a nonce or hashes, since a browser
  *   ignores 'unsafe-inline' when either is present and the page's inline scripts would stop running.
+ *   `strictDynamic`: `'strict-dynamic'` on script-src, so a script the nonce or a hash trusts may load others (a
+ *   bundler's route chunks). A browser then ignores 'self' and host sources, so it needs a nonce or script hashes
+ *   (without one nothing runs) and refuses the Cloudflare beacon, which the edge injects with no nonce. It is the only
+ *   way to write the keyword: as a raw script source it is refused.
  *   `styleAttributesInline`: `style-src-attr 'unsafe-inline'`, for pages that emit style attributes, which a nonce
  *   cannot cover; the one inline allowance offered, scoped to attributes, which run no code.
  *   `reportUri` / `reportTo`: where violations go. A policy with no sink hides the page it breaks, so one is required.
@@ -135,11 +140,17 @@ function checkSource(source) {
  * @returns {{ name: "Content-Security-Policy" | "Content-Security-Policy-Report-Only", value: string }}
  */
 export function buildContentSecurityPolicy(site) {
-  const { sources = {}, scriptHashes = [], styleHashes = [], nonce, nonceStyles = true, inlineScripts, styleAttributesInline = false, cloudflareWebAnalytics = false, reportUri, reportTo, reportOnly = false, framedBySameOrigin = false, baseUriSelf = false, denyUnlisted = false, noForms = false, extraDirectives = [] } = site;
+  const { sources = {}, scriptHashes = [], styleHashes = [], nonce, nonceStyles = true, inlineScripts, strictDynamic = false, styleAttributesInline = false, cloudflareWebAnalytics = false, reportUri, reportTo, reportOnly = false, framedBySameOrigin = false, baseUriSelf = false, denyUnlisted = false, noForms = false, extraDirectives = [] } = site;
   if (!reportUri && !reportTo) throw new Error("a policy needs a report sink (reportUri or reportTo)");
   if (inlineScripts !== undefined && inlineScripts !== "unsafe-inline") throw new Error(`inlineScripts is "unsafe-inline" or left out, not ${JSON.stringify(inlineScripts)}`);
   if (inlineScripts && (nonce !== undefined || scriptHashes.length > 0)) {
     throw new Error("inlineScripts cannot go with a nonce or script hashes: a browser then ignores 'unsafe-inline'; use the nonce or hashes alone");
+  }
+  if (strictDynamic && nonce === undefined && scriptHashes.length === 0) {
+    throw new Error("strictDynamic needs a nonce or script hashes: a browser then ignores 'self' and host sources, so no script would run");
+  }
+  if (strictDynamic && cloudflareWebAnalytics) {
+    throw new Error("strictDynamic cannot go with cloudflareWebAnalytics: 'strict-dynamic' ignores host sources, and the edge injects the beacon with no nonce, so it would be blocked");
   }
   if (nonce !== undefined && !/^[A-Za-z0-9+/_-]{16,}={0,2}$/.test(nonce)) throw new Error("the nonce is not a base64 value of at least 16 characters");
   const hashSource = (/** @type {string} */ h) => {
@@ -154,10 +165,16 @@ export function buildContentSecurityPolicy(site) {
     if (/^([a-z][a-z0-9+.-]*:\/\/)?\*(:(\d+|\*))?(\/.*)?$/i.test(host) || /^(https?|data|blob):$/i.test(host) || /^'unsafe-(inline|eval)'$/i.test(host)) {
       throw new Error(`${host} is not an acceptable script source: name the host`);
     }
+    if (/^'strict-dynamic'$/i.test(host)) throw new Error("'strict-dynamic' is not a script source here: pass strictDynamic: true, which checks it has a nonce or hashes to start from");
   }
-  // An extra directive may add a kind (frame-src, worker-src, upgrade-insecure-requests), never restate one of the fixed
-  // ones, and never reopen scripts through script-src-elem or script-src-attr.
-  const written = new Set(["default-src", "script-src", "script-src-elem", "script-src-attr", "object-src", "base-uri", "form-action", "frame-ancestors", "report-uri", "report-to"]);
+  // An extra directive may add a kind the builder leaves out (worker-src, manifest-src, upgrade-insecure-requests), never
+  // one it writes: a second directive of a name is ignored by browsers without a word. Nor may it reopen scripts or
+  // styles past the nonce through an -elem or -attr variant (as Astro, packages/astro/src/core/csp/config.ts).
+  const written = new Set([
+    "default-src", "script-src", "script-src-elem", "script-src-attr", "style-src", "style-src-elem", "style-src-attr",
+    "font-src", "img-src", "media-src", "connect-src", "frame-src", "object-src", "base-uri", "form-action",
+    "frame-ancestors", "report-uri", "report-to",
+  ]);
   for (const extra of extraDirectives) {
     const [name = "", ...values] = extra.trim().split(/\s+/);
     if (written.has(name.toLowerCase())) throw new Error(`${name} is written by the builder; pass its sources instead of an extra directive`);
@@ -168,7 +185,7 @@ export function buildContentSecurityPolicy(site) {
   const nonceSource = nonce === undefined ? [] : [`'nonce-${nonce}'`];
   const directives = [
     `default-src ${denyUnlisted ? "'none'" : "'self'"}`,
-    `script-src ${[...nonceSource, ...scriptHashes.map(hashSource), "'self'", ...(inlineScripts ? ["'unsafe-inline'"] : []), ...scriptHosts].join(" ")}`,
+    `script-src ${[...nonceSource, ...scriptHashes.map(hashSource), "'self'", ...(inlineScripts ? ["'unsafe-inline'"] : []), ...(strictDynamic ? ["'strict-dynamic'"] : []), ...scriptHosts].join(" ")}`,
     `style-src ${["'self'", ...(nonceStyles ? nonceSource : []), ...styleHashes.map(hashSource), ...list(sources.style)].join(" ")}`,
     ...(styleAttributesInline ? ["style-src-attr 'unsafe-inline'"] : []),
     `font-src ${["'self'", ...list(sources.font)].join(" ")}`,

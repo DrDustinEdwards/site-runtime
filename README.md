@@ -84,8 +84,18 @@ is refused rather than allowed from the site, and `noForms: true` writes `form-a
 `baseUriSelf: true` writes `base-uri 'self'`, for a page that sets a same-origin `<base>` (Foxing's EPUB reader). Scripts are `'self'`, the
 site's hashes or nonce, its listed hosts and, on request, the Cloudflare Web Analytics beacon. A script source of `*` (or
 `https://*` and the like), a bare scheme, or `'unsafe-inline'` or `'unsafe-eval'` in any case is refused, and a policy with
-no report sink is refused. `'unsafe-inline'` reaches script-src only through the named opt-in below. `extraDirectives` adds a kind the builder leaves out (`frame-src`, `worker-src`,
-`upgrade-insecure-requests`); one that restates a fixed directive or names `script-src-elem` or `script-src-attr` is refused.
+no report sink is refused. `'unsafe-inline'` reaches script-src only through the named opt-in below. `extraDirectives` adds a
+kind the builder leaves out (`worker-src`, `manifest-src`, `upgrade-insecure-requests`). One the builder writes is refused,
+since a browser silently ignores a second directive of the same name: `default-src`, `script-src`, `style-src`, `font-src`,
+`img-src`, `media-src`, `connect-src`, `frame-src`, the fixed ones and the sinks, and with them the `-elem` and `-attr`
+variants of `script-src` and `style-src`, which would reopen scripts or styles past the nonce. Frames and media go in
+`sources.frame` and `sources.media`; without them, `default-src` covers the site's own.
+
+**Strict dynamic.** `strictDynamic: true` puts `'strict-dynamic'` on script-src, so the scripts the nonce or hashes trust may
+load others (a bundler's route chunks) without listing them. A browser then ignores `'self'` and every host source, so the
+builder refuses it without a nonce or script hashes (nothing would run) and beside `cloudflareWebAnalytics: true` (the edge
+injects the beacon with no nonce, so it would be blocked). `'strict-dynamic'` as a raw script source is refused: the option
+is the one way to write it.
 
 **The beacon.** Cloudflare's edge injects `/beacon.min.js/v31...` into a proxied site's pages, so the script source is the
 host with a path prefix, not the bare file: `https://static.cloudflareinsights.com/beacon.min.js` and the same followed by `/`

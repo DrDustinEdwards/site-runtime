@@ -210,7 +210,7 @@ test("extra directives are added; an empty one, one that restates a fixed direct
   assert.deepEqual(policy.get("upgrade-insecure-requests"), []);
   assert.deepEqual(policy.get("worker-src"), ["'self'"]);
   assert.throws(() => buildContentSecurityPolicy({ ...SINK, extraDirectives: [" "] }), /a CSP directive is empty/);
-  for (const extra of ["script-src-elem 'unsafe-inline'", "script-src-attr 'unsafe-inline'", "form-action *", "frame-ancestors *"]) {
+  for (const extra of ["script-src-elem 'unsafe-inline'", "script-src-attr 'unsafe-inline'", "style-src-elem 'unsafe-inline'", "STYLE-SRC *", "img-src *", "connect-src *", "frame-src 'self'", "form-action *", "frame-ancestors *"]) {
     assert.throws(() => buildContentSecurityPolicy({ ...SINK, extraDirectives: [extra] }), /written by the builder/, extra);
   }
   assert.throws(() => buildContentSecurityPolicy({ ...SINK, extraDirectives: ["worker-src *"] }), /not an acceptable worker source/);
@@ -242,6 +242,17 @@ test("inlineScripts opts script-src into 'unsafe-inline' alone; beside a nonce o
   const headers = new Headers({ "Content-Security-Policy": buildContentSecurityPolicy(site).value });
   assert.ok(failures(checkSecurityHeaders(headers, { standard: {} })).some((r) => /'unsafe-inline'/.test(r.name)));
   assert.deepEqual(failures(checkSecurityHeaders(headers, { standard: {}, inlineScripts: "unsafe-inline" })), []);
+});
+
+test("strictDynamic follows the nonce or hashes; without one, beside the beacon, or as a raw source, it is refused", () => {
+  const nonce = generateNonce();
+  assert.deepEqual(directives({ ...SINK, nonce, strictDynamic: true }).get("script-src"), [`'nonce-${nonce}'`, "'self'", "'strict-dynamic'"]);
+  assert.ok(directives({ ...SINK, scriptHashes: [HASH], strictDynamic: true }).get("script-src")?.includes("'strict-dynamic'"));
+  assert.throws(() => buildContentSecurityPolicy({ ...SINK, strictDynamic: true }), /needs a nonce or script hashes/);
+  assert.throws(() => buildContentSecurityPolicy({ ...SINK, nonce, strictDynamic: true, cloudflareWebAnalytics: true }), /cannot go with cloudflareWebAnalytics/);
+  for (const raw of ["'strict-dynamic'", "'STRICT-DYNAMIC'"]) {
+    assert.throws(() => buildContentSecurityPolicy({ ...SINK, nonce, sources: { script: [raw] } }), /pass strictDynamic: true/, raw);
+  }
 });
 
 test("reportingEndpoints takes https or loopback http and refuses what a browser ignores", () => {
