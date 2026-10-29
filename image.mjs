@@ -111,6 +111,7 @@ export function imageSizes({ layout, width }) {
 export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAGE_QUALITY }) {
   const names = /** @type {U[]} */ (Object.keys(uses));
   if (names.length === 0) throw new Error("defineImages: name at least one use.");
+  if (!breakpoints.every((w) => Number.isInteger(w) && w > 0)) throw new Error("defineImages: breakpoints are whole-pixel widths.");
   const widths = new Set();
   const ratios = new Set();
   for (const name of names) {

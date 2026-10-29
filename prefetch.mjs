@@ -18,14 +18,36 @@ export const SPECULATION_RULES_PATH = "/speculation-rules.json";
 /** The paths no site prefetches: its signed-in areas, its APIs and anything that acts on a GET. */
 export const NEVER_PREFETCH = ["/admin", "/api", "/auth", "/logout", "/sign-out", "/cdn-cgi"];
 
+/**
+ * The extensions no site prefetches: files a reader downloads or a reader's tool fetches (feeds, data, documents,
+ * archives, media), never a page. A prefetch of one spends bytes on a file that opens elsewhere, if at all. Matched in
+ * lower case only: `href_matches` takes no ignoreCase, so a site linking "/paper.PDF" names it in `data-no-prefetch`.
+ */
+export const FILE_EXTENSIONS = [
+  ...["md", "txt", "xml", "json", "rss", "atom", "csv", "ics", "bib", "ris"],
+  ...["pdf", "epub", "docx", "xlsx", "pptx"],
+  ...["zip", "gz", "tar"],
+  ...["png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "mp3", "mp4", "webm"],
+];
+
+/**
+ * A link with a query string: a search, a filter or a sized image, each a fresh origin request the reader may never
+ * make. A URLPattern object, not the glob: "/*?*" (an optional wildcard) and "/*\\?*" (a search of `*`, empty
+ * included) both match every link, so excluding either silently stops all prefetch. The pathname is given so that
+ * protocol, host and port come from the rules file's URL (same origin) and only the search is required; an object
+ * naming the search alone also takes the file's own pathname and matches nothing on the page.
+ */
+const WITH_QUERY = { pathname: "/*", search: "(.+)" };
+
 const EAGERNESS = new Set(["conservative", "moderate", "eager"]);
 
 /**
- * The rule set: same-origin links, minus `exclude` (path prefixes, added to `NEVER_PREFETCH`), downloads, links that
- * open elsewhere, `rel=nofollow` and anything marked `data-no-prefetch`.
- * @param {{ exclude?: string[], eagerness?: "conservative" | "moderate" | "eager", prerender?: boolean }} [options]
+ * The rule set: same-origin links, minus `exclude` (path prefixes, added to `NEVER_PREFETCH`), links to files
+ * (`FILE_EXTENSIONS`), links with a query string unless `excludeQueries` is false, downloads, links that open
+ * elsewhere, `rel=nofollow` and anything marked `data-no-prefetch`.
+ * @param {{ exclude?: string[], excludeQueries?: boolean, eagerness?: "conservative" | "moderate" | "eager", prerender?: boolean }} [options]
  */
-export function speculationRules({ exclude = [], eagerness = "moderate", prerender = false } = {}) {
+export function speculationRules({ exclude = [], excludeQueries = true, eagerness = "moderate", prerender = false } = {}) {
   if (!EAGERNESS.has(eagerness)) throw new Error(`speculationRules: eagerness "${eagerness}" is not conservative, moderate or eager.`);
   for (const path of exclude) {
     if (!/^\/[^*?#]*$/.test(path)) throw new Error(`speculationRules: exclude "${path}" is not a path prefix such as /drafts.`);
@@ -35,6 +57,8 @@ export function speculationRules({ exclude = [], eagerness = "moderate", prerend
     and: [
       { href_matches: "/*" },
       ...prefixes.flatMap((p) => [{ not: { href_matches: p } }, { not: { href_matches: `${p.replace(/\/$/, "")}/*` } }]),
+      ...FILE_EXTENSIONS.map((ext) => ({ not: { href_matches: `/*.${ext}` } })),
+      ...(excludeQueries ? [{ not: { href_matches: WITH_QUERY } }] : []),
       { not: { selector_matches: "[download], [target]:not([target=_self]), [rel~=nofollow], [data-no-prefetch], [data-no-prefetch] a" } },
     ],
   };

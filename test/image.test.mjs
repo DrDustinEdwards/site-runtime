@@ -83,3 +83,25 @@ test("the route refuses anything outside its closed sets, crops around the file'
   assert.equal(svg.headers.get("content-disposition"), "attachment");
   assert.equal((await images.respond(new Request("https://example.com/media/a.jpg", { headers: { "if-none-match": '"e1"' } }), { object: object() })).status, 304);
 });
+
+test("a failed transform serves the original for five minutes, never caches it, and says so", async () => {
+  const failing = { input: () => { throw new Error("planted transform failure"); } };
+  const put = [];
+  const cache = /** @type {Cache} */ (/** @type {unknown} */ ({ match: async () => undefined, put: async (/** @type {Request} */ k) => put.push(k) }));
+  const at = new Request("https://example.com/media/a.jpg?w=640");
+  const res = await images.respond(at, { object: object(), images: failing, cache, reread: async () => object() });
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("x-image"), "original-fallback");
+  assert.equal(res.headers.get("cache-control"), "public, max-age=300");
+  assert.equal(await res.text(), "original");
+  assert.equal(put.length, 0);
+  // Nothing to read again: a 503 the browser retries, not an empty 200.
+  assert.equal((await images.respond(at, { object: object(), images: failing })).status, 503);
+});
+
+test("a site that keeps its old widths as breakpoints still serves its cached links", async () => {
+  const kept = defineImages({ uses: { content: { layout: "constrained", width: 704 } }, breakpoints: [640, 1024, 1408] });
+  assert.deepEqual(kept.widths, [640, 704, 1024, 1408]);
+  const res = await kept.respond(new Request("https://example.com/media/a.jpg?w=1024"), { object: object(), images: binding([]) });
+  assert.equal(res.status, 200);
+});
