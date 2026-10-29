@@ -117,6 +117,10 @@ export type CspSources = {
  * scripts neither a nonce nor hashes can cover (an edge-cached page that streams inline hydration scripts). A nonce
  * is preferred, then hashes; this is the last resort, and it is refused beside a nonce or hashes, since a browser
  * ignores 'unsafe-inline' when either is present and the page's inline scripts would stop running.
+ * `strictDynamic`: `'strict-dynamic'` on script-src, so a script the nonce or a hash trusts may load others (a
+ * bundler's route chunks). A browser then ignores 'self' and host sources, so it needs a nonce or script hashes
+ * (without one nothing runs) and refuses the Cloudflare beacon, which the edge injects with no nonce. It is the only
+ * way to write the keyword: as a raw script source it is refused.
  * `styleAttributesInline`: `style-src-attr 'unsafe-inline'`, for pages that emit style attributes, which a nonce
  * cannot cover; the one inline allowance offered, scoped to attributes, which run no code.
  * `reportUri` / `reportTo`: where violations go. A policy with no sink hides the page it breaks, so one is required.
@@ -134,6 +138,7 @@ export type SitePolicy = {
     nonce?: string;
     nonceStyles?: boolean;
     inlineScripts?: "unsafe-inline";
+    strictDynamic?: boolean;
     styleAttributesInline?: boolean;
     cloudflareWebAnalytics?: boolean;
     reportUri?: string;
