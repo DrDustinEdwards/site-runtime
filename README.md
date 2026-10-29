@@ -4,7 +4,7 @@ The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-
 (the root export and `./headers`, `./csp`, `./csp-report`, `./check`, `./oshp`, `./owasp`), the rate limiter (`./rate-limit`,
 `./rate-limit/durable-object`), the members model (`./members`), the Access for SaaS sign-in (`./access-login`), the MCP
 servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-log`) and server scaffold (`./mcp-server`), the Access request-token check
-(`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images (`./image`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), where a site's Anthropic calls go
+(`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images (`./image`), link prefetch (`./prefetch`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), where a site's Anthropic calls go
 (`./ai-gateway`), starting a Claude Code routine (`./routine`), the check on AI-written prose with the measure of an author's voice (`./prose`), the one sign-in every site
 offers (`./sign-in`, `./sign-in-client`, `./apple-secret`) and the Cloudflare Turnstile widget (`./turnstile`).
 
@@ -258,6 +258,26 @@ URL rather than a stale crop. Quality 85 is always passed; without it the bindin
 original. An SVG is only ever served as an attachment. Without the binding (a checkout with no `images` in its
 `wrangler.jsonc`) the route serves the original and says so in `x-image`; a failed transform serves the original for five
 minutes and logs `image-transform-failed`.
+
+## Link prefetch
+
+`./prefetch` starts loading the next page while the reader's pointer rests on its link, as Astro's `prefetch` does,
+with no script: Chrome and Edge read speculation rules from a file the `Speculation-Rules` header names, and other
+browsers ignore it. The header needs no CSP allowance (an inline rule set would need one on every page).
+
+```js
+import { SPECULATION_RULES_HEADER, SPECULATION_RULES_PATH, speculationRulesResponse } from "@dustinedwards/site-runtime/prefetch";
+
+if (url.pathname === SPECULATION_RULES_PATH) return speculationRulesResponse({ exclude: ["/drafts"] });
+// On every HTML response, beside the security headers:
+headers.set(SPECULATION_RULES_HEADER.name, SPECULATION_RULES_HEADER.value);
+```
+
+The rules cover same-origin links except `NEVER_PREFETCH` (`/admin`, `/api`, `/auth`, `/logout`, `/sign-out`,
+`/cdn-cgi`), the site's own `exclude` prefixes, downloads, links with a `target`, `rel=nofollow` and anything inside
+`data-no-prefetch`. A prefetch is a real GET, so a link that acts on a GET must be excluded. `eagerness` is `moderate` by
+default; `prerender: true` also prerenders on press, off by default because a prerendered page runs its scripts and
+analytics before the reader arrives. Checked in Playwright's Chromium under a strict CSP (2026-10-29).
 
 ## Share cards
 
