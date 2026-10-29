@@ -3,6 +3,6 @@
  * server always offer the same ways in.
  */
 import { passkeyClient } from "@better-auth/passkey/client";
-import { magicLinkClient } from "better-auth/client/plugins";
+import { emailOTPClient, magicLinkClient } from "better-auth/client/plugins";
 
-export const signInClientPlugins = () => [magicLinkClient(), passkeyClient()];
+export const signInClientPlugins = () => [magicLinkClient(), emailOTPClient(), passkeyClient()];
