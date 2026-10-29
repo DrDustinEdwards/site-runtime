@@ -369,12 +369,21 @@ const auth = betterAuth({
 });
 // the sign-in page's loader: signInMethods(env, { social: true }) -> { google, apple, turnstileSiteKey }
 // the browser: createAuthClient({ plugins: signInClientPlugins() }) from "@dustinedwards/site-runtime/sign-in-client"
+// sendMagicLink({ email, url, token, code }) mails the link and the code together
 ```
 
 - Passkey: its relying party is the host of `BETTER_AUTH_URL`, so a passkey made on the live site works there only. The
   site needs the plugin's `passkey` table, and `buildSecurityHeaders({ overrides: PASSKEY_OVERRIDES })` (`./headers`):
   OSHP's Permissions-Policy turns passkey sign-in off (`publickey-credentials-get=()`).
-- Email link: Better Auth's magic link. Passwords are off.
+- Email link and code: one mail, sent by the site's `sendMagicLink({ email, url, token, code })`, carries Better
+  Auth's magic link and a six-digit code (its email OTP). The link signs in the browser that opens it, often the mail
+  app's rather than the tab that asked (a private window, a phone); the code, posted as `{ email, otp }` to
+  `SIGN_IN_CODE_PATH` (`/sign-in/email-otp`), signs in the tab that asked. Both work once and last
+  `SIGN_IN_EXPIRES_IN_SECONDS` (15 minutes, `SIGN_IN_EXPIRES_IN_WORDS` for the mail; Better Auth's default 5 ran out
+  in Foxhound's live test). A code is stored hashed; three wrong tries spend it, and Better Auth allows three tries a
+  minute per address. Only the link request mails: the email OTP's own endpoints are in `disabledPaths`, so Turnstile
+  and the link's limit cover every sign-in mail. Capsomer 0.40.0's `magicLink` template takes the `code`. Passwords
+  are off.
 - Turnstile checks the email link when `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` are both set.
 - Google (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`) and Apple (`APPLE_CLIENT_ID`, the Services ID; `APPLE_TEAM_ID`,
   `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`, the .p8 text) when the site passes `social: true` and has the settings.
