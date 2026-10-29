@@ -269,7 +269,9 @@ Every set is closed. The binding bills each unique source and parameter set once
 quality are not counted, so the AVIF and WebP of one size bill once. The format is in the URL (`f=avif`), never read from
 `Accept`, because the edge cache is keyed by URL alone. A crop's URL carries the file's focal point (`fp=`, from the R2
 object's `focus` custom metadata), and the route refuses one that is not the file's own, so a moved focal point is a new
-URL rather than a stale crop. Quality 85 is always passed; without it the binding writes lossless WebP, larger than the
+URL rather than a stale crop. The edge cache key also carries the original's etag, so a file replaced under the same key (site-api's `PUT
+/media/:id/file`) is a new key for every size and nothing cached from the old bytes is served again; browsers that
+already hold a size or the original under `immutable` keep it until it expires. Quality 85 is always passed; without it the binding writes lossless WebP, larger than the
 original. An SVG is only ever served as an attachment. Without the binding (a checkout with no `images` in its
 `wrangler.jsonc`) the route serves the original and says so in `x-image`; a failed transform serves the original for five
 minutes and logs `image-transform-failed`.
