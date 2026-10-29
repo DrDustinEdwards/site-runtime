@@ -12,10 +12,10 @@ const images = defineImages({
 });
 
 /** An R2 object stand-in. */
-function object(type = "image/jpeg", focus) {
+function object(type = "image/jpeg", focus, etag = '"e1"') {
   return {
     body: new Response("original").body,
-    httpEtag: '"e1"',
+    httpEtag: etag,
     httpMetadata: { contentType: type },
     customMetadata: focus ? { focus } : {},
     writeHttpMetadata(/** @type {Headers} */ h) {
@@ -104,4 +104,19 @@ test("a site that keeps its old widths as breakpoints still serves its cached li
   assert.deepEqual(kept.widths, [640, 704, 1024, 1408]);
   const res = await kept.respond(new Request("https://example.com/media/a.jpg?w=1024"), { object: object(), images: binding([]) });
   assert.equal(res.status, 200);
+});
+
+test("a file replaced under the same key never answers a size cached from the old bytes", async () => {
+  const stored = new Map();
+  const cache = /** @type {Cache} */ (/** @type {unknown} */ ({
+    match: async (/** @type {Request} */ k) => stored.get(k.url)?.clone(),
+    put: async (/** @type {Request} */ k, /** @type {Response} */ r) => void stored.set(k.url, r),
+  }));
+  const at = () => new Request("https://example.com/media/a.jpg?w=640");
+  const seen = [];
+  await images.respond(at(), { object: object(), images: binding(seen), cache });
+  await images.respond(at(), { object: object(), images: binding(seen), cache });
+  assert.equal(seen.length, 1);
+  await images.respond(at(), { object: object("image/jpeg", undefined, '"e2"'), images: binding(seen), cache });
+  assert.equal(seen.length, 2);
 });

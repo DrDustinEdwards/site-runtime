@@ -198,10 +198,12 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
     if (fp !== null && fp !== stored) return new Response("Stale focal point", { status: 400 });
     if (!isRasterType(object.httpMetadata?.contentType)) return original(request, object, cacheControl);
 
-    // TRAP: the edge cache is keyed by URL alone and has no purge, so every input to the body goes into the key,
-    // the encoder's quality included, as a parameter never served or linked.
+    // TRAP: the edge cache is keyed by URL alone and has no purge, so every input to the body goes into the key, as
+    // parameters never served or linked: the encoder's quality, and the original's etag, so a file replaced under the
+    // same key (site-api's PUT /media/:id/file) is a new key for every size, never a stale one.
     const keyUrl = new URL(request.url);
     keyUrl.searchParams.set("__q", String(quality));
+    keyUrl.searchParams.set("__v", object.httpEtag);
     const cacheKey = new Request(keyUrl.toString(), { method: "GET" });
     const hit = cache ? await cache.match(cacheKey) : undefined;
     if (hit) return hit;
