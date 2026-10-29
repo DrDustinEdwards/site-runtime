@@ -4,7 +4,7 @@ The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-
 (the root export and `./headers`, `./csp`, `./csp-report`, `./check`, `./oshp`, `./owasp`), the rate limiter (`./rate-limit`,
 `./rate-limit/durable-object`), the members model (`./members`), the Access for SaaS sign-in (`./access-login`), the MCP
 servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-log`) and server scaffold (`./mcp-server`), the Access request-token check
-(`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images (`./image`), link prefetch (`./prefetch`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), where a site's Anthropic calls go
+(`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images and their edits (`./image`), link prefetch (`./prefetch`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), where a site's Anthropic calls go
 (`./ai-gateway`), starting a Claude Code routine (`./routine`), the check on AI-written prose with the measure of an author's voice (`./prose`), the one sign-in every site
 offers (`./sign-in`, `./sign-in-client`, `./apple-secret`) and the Cloudflare Turnstile widget (`./turnstile`).
 
@@ -275,6 +275,18 @@ already hold a size or the original under `immutable` keep it until it expires. 
 original. An SVG is only ever served as an attachment. Without the binding (a checkout with no `images` in its
 `wrangler.jsonc`) the route serves the original and says so in `x-image`; a failed transform serves the original for five
 minutes and logs `image-transform-failed`.
+
+`editImage(images, input, { rotate, flip, maxEdge, format, quality })` is the one edit a site writes back: a turn (`rotate`
+90, 180 or 270, clockwise), a mirror (`flip` `"h"`, `"v"` or `"hv"`, which Cloudflare applies before the turn), or a
+shrink (`maxEdge`, the longest edge, never enlarged), encoded as `format` at quality 85 unless said. `input` is a stream
+or bytes; the answer is the binding's `Response`. It is for writes a person asked for (an editor's turn, an upload shrunk
+before it is stored, a small copy shown to a model), each a billed transform; serving sizes stays with `respond` and its
+closed sets. A bad option, or none, throws before the binding is called.
+
+```js
+const turned = await editImage(env.IMAGES, object.body, { rotate: 90, format: "image/jpeg", quality: 92 });
+const shrunk = await editImage(env.IMAGES, bytes, { maxEdge: 4096, format: "image/webp" });
+```
 
 ## Link prefetch
 

@@ -261,6 +261,40 @@ export function pictureHtml(attrs, { alt, priority = false, className }, escape)
   return `<picture>${sources}${img}</picture>`;
 }
 
+const EDIT_FORMATS = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
+
+/**
+ * One picture edited through the Images binding: turned, mirrored or shrunk, and encoded as `format`. For the writes a
+ * site makes (a turn or mirror its editor asks for, an upload shrunk to a longest edge, a small copy to show a model),
+ * not for serving sizes: `respond` does that, from a closed set. Each call is a billed transform, so a caller edits only
+ * what a person asked for.
+ *
+ * Cloudflare applies `flip` before `rotate`, and turns clockwise. `maxEdge` fits the picture inside a square of that
+ * side and never enlarges it. Quality 85 unless said: with none the binding writes lossless WebP. Options outside these
+ * throw before the binding is called, so a bad request is never billed.
+ * @param {ImagesLike} images the Images binding
+ * @param {ReadableStream | ArrayBuffer | ArrayBufferView} input the picture's bytes
+ * @param {{ rotate?: 90 | 180 | 270, flip?: "h" | "v" | "hv", maxEdge?: number, format: "image/jpeg" | "image/png" | "image/webp" | "image/avif", quality?: number }} options
+ * @returns {Promise<Response>} the binding's response: the new bytes, with their content type
+ */
+export async function editImage(images, input, { rotate, flip, maxEdge, format, quality = IMAGE_QUALITY }) {
+  if (rotate !== undefined && rotate !== 90 && rotate !== 180 && rotate !== 270) throw new Error(`editImage: rotate is 90, 180 or 270, not ${rotate}.`);
+  if (flip !== undefined && flip !== "h" && flip !== "v" && flip !== "hv") throw new Error(`editImage: flip is "h", "v" or "hv", not ${flip}.`);
+  if (maxEdge !== undefined && !(Number.isInteger(maxEdge) && maxEdge > 0)) throw new Error(`editImage: maxEdge is a whole-pixel length, not ${maxEdge}.`);
+  if (!EDIT_FORMATS.has(format)) throw new Error(`editImage: format is one of ${[...EDIT_FORMATS].join(", ")}, not ${format}.`);
+  if (!(Number.isInteger(quality) && quality >= 1 && quality <= 100)) throw new Error(`editImage: quality is 1 to 100, not ${quality}.`);
+  if (rotate === undefined && flip === undefined && maxEdge === undefined) throw new Error("editImage: name a rotate, a flip or a maxEdge.");
+  /** @type {Record<string, unknown>} */
+  const transform = {};
+  if (flip) transform.flip = flip;
+  if (rotate) transform.rotate = rotate;
+  if (maxEdge) Object.assign(transform, { width: maxEdge, height: maxEdge, fit: "scale-down" });
+  // A Response reads any buffer or view as exactly its own bytes, never the larger allocation a view may sit in.
+  const stream = input instanceof ReadableStream ? input : /** @type {ReadableStream} */ (new Response(/** @type {BodyInit} */ (input)).body);
+  const result = await images.input(stream).transform(transform).output({ format, quality });
+  return result.response();
+}
+
 /**
  * @typedef {{ body: ReadableStream, httpEtag: string, httpMetadata?: { contentType?: string }, customMetadata?: Record<string, string>, writeHttpMetadata(headers: Headers): void }} R2ObjectLike
  * @typedef {{ input(stream: ReadableStream): { transform(options: object): { output(options: { format: string, quality?: number }): Promise<{ response(): Response }> } } }} ImagesLike

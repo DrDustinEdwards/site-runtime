@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { escapeHtml } from "../html.mjs";
-import { defineImages, pictureHtml } from "../image.mjs";
+import { defineImages, editImage, pictureHtml } from "../image.mjs";
 
 const images = defineImages({
   uses: {
@@ -119,4 +119,25 @@ test("a file replaced under the same key never answers a size cached from the ol
   assert.equal(seen.length, 1);
   await images.respond(at(), { object: object("image/jpeg", undefined, '"e2"'), images: binding(seen), cache });
   assert.equal(seen.length, 2);
+});
+
+test("an edit shrinks inside a square, reads a view's own bytes, and refuses a bad option unbilled", async () => {
+  const seen = [];
+  let read = "";
+  const images = {
+    input: (/** @type {ReadableStream} */ stream) => {
+      const done = new Response(stream).text().then((t) => void (read = t));
+      return { transform: (/** @type {object} */ t) => ({ output: async (/** @type {object} */ o) => (await done, seen.push({ ...t, ...o }), { response: () => new Response("edited") }) }) };
+    },
+  };
+  // A view into a larger buffer: only its own bytes reach the binding.
+  const view = new TextEncoder().encode("xxpicturexx").subarray(2, 9);
+  const res = await editImage(images, view, { rotate: 90, flip: "h", maxEdge: 4096, format: "image/jpeg" });
+  assert.equal(await res.text(), "edited");
+  assert.equal(read, "picture");
+  assert.deepEqual(seen[0], { flip: "h", rotate: 90, width: 4096, height: 4096, fit: "scale-down", format: "image/jpeg", quality: 85 });
+  for (const bad of [{ rotate: 45 }, { flip: "x" }, { maxEdge: 0 }, {}, { rotate: 90, format: "image/gif" }]) {
+    await assert.rejects(editImage(images, view, /** @type {any} */ ({ format: "image/png", ...bad })));
+  }
+  assert.equal(seen.length, 1);
 });
