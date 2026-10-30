@@ -286,6 +286,30 @@ original. An SVG is only ever served as an attachment. Without the binding (a ch
 `wrangler.jsonc`) the route serves the original and says so in `x-image`; a failed transform serves the original for five
 minutes and logs `image-transform-failed`.
 
+A page that renders JSX takes the same picture as props: `pictureProps(attrs, { alt, priority, className })` returns
+`{ sources: [{ type, srcSet, sizes, media }], img: { src, srcSet, sizes, width, height, alt, className, loading,
+fetchPriority, decoding } }`, plain objects with no React import, and `pictureHtml` is those props written out, so the
+two never differ. An unset prop is `undefined`, which JSX leaves out; with no `sources` the page writes the `<img>`
+alone (germomics' `Picture` falling back to the original). A site adds its own props beside them, as julieedwards.info's
+`object-position` from the focal point:
+
+```jsx
+const { sources, img } = pictureProps(images.attributes(photo, "content"), { alt: photo.alt });
+<picture>
+  {sources.map((s) => <source key={s.type + (s.media ?? "")} {...s} />)}
+  <img {...img} style={{ objectPosition: objectPosition(photo.focus) }} />
+</picture>
+```
+
+A GIF stays animated. The binding keeps every frame unless `output()` is given `anim: false`, and writes them as
+animated WebP; Cloudflare's formats list (Images, Limits) gives animation for WebP and GIF output and not for AVIF, so a
+GIF is offered no animated AVIF. For WCAG 2.2.2 and Lighthouse's "use video formats for animated content", a GIF's
+`sources` lead with its first frame under `media="(prefers-reduced-motion: reduce)"` (AVIF then WebP, `still=1` in the
+URL, which the route writes with `anim: false`), then the animated WebP. `still=1` is in the closed set for a GIF only:
+it is a second billed transform of each size, so the route refuses it, and any other value, for every other file. An
+animation over 50 megapixels in all its frames is served by Cloudflare untransformed. A long animation is still better
+as a `<video>`.
+
 `editImage(images, input, { rotate, flip, maxEdge, format, quality })` is the one edit a site writes back: a turn (`rotate`
 90, 180 or 270, clockwise), a mirror (`flip` `"h"`, `"v"` or `"hv"`, which Cloudflare applies before the turn), or a
 shrink (`maxEdge`, the longest edge, never enlarged), encoded as `format` at quality 85 unless said. `input` is a stream
@@ -400,6 +424,36 @@ ctx.waitUntil(ctx.exports.Renderer.purgePages("save page /about"));
 
 Fresh and stale lifetimes go in `Cloudflare-CDN-Cache-Control`, never `s-maxage`, which implies proxy-revalidate and
 stops Cloudflare serving stale. The browser's `max-age` stays 0, because a purge cannot reach a browser.
+
+## The images audit
+
+`images-audit --origin <origin> [--from <host>]` checks a live site's images and media as served, with plain fetch and
+no browser: the home page and up to 24 sitemap pages, at most 8 originals (2 MB of each) and 6 size URLs a page. Each
+finding is a GitHub annotation, `::error title=<item>::<proof URL> <detail>` or `::warning ...`, the contract devkit-live
+runs every area's check by; it exits 0 with no errors, 1 with errors, and 2 when it could not run (a bad origin, or a
+home page that does not answer 200). `--from` fetches from where the site is served now and judges every URL as the
+origin, for a site not yet on its domain.
+
+| Item | Finds |
+|---|---|
+| A2 | a raster `<img>` wider than 300 px (its width attribute, else the file) with no `srcset` and `sizes` (a `<picture>` source's counts) |
+| A3 | a `/media` size URL that does not answer `image/avif` for `f=avif` (not a GIF's: it has none) |
+| A4 | an `<img>` without `width` and `height` |
+| A5 | more than two `fetchpriority="high"` images on a page, or a lazy one |
+| A7 | an original with no srcset more than 1.5 times its width attribute (the size read from the PNG, JPEG, WebP, GIF or AVIF header) |
+| A12 | a srcset size URL without `immutable` in Cache-Control |
+| B1, B2 | an `<img>` with no alt; an alt that is the file name, "image", "photo" or a URL |
+| C1 | og:image missing, not absolute https, not 200 or not an image |
+| C2 | og:image not 1200 by 630 (a warning when at least 1200 wide); og:image:width, height, type or alt missing or not the file's |
+| C3 | twitter:card not `summary_large_image`; no twitter:image:alt |
+| C8 | a warning: a sitemap page with content images (raster, not decorative, in `<main>`) and no `image:image` entry |
+| D2 | a JPEG, WebP or PNG original on the site (its host or a subdomain) whose EXIF holds a GPS IFD |
+| E1 | a youtube.com (not youtube-nocookie.com) or Vimeo player in the page with no facade; an iframe with no title |
+| E2 | a `<video>` without a poster, controls or a captions track, or with `preload="auto"` |
+| E3 | a warning: an `<audio>` with a preload other than none or metadata |
+
+It reads the HTML the server sends, so an image a script adds later is not seen. `auditImages` and `readImage` are
+exported from the bin for its test.
 
 ## Share cards
 

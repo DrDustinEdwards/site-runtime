@@ -14,6 +14,9 @@
  * - With no `quality` the binding writes lossless WebP, larger than a lossy original, so 85 (Cloudflare's default) is
  *   always passed.
  * - A stored SVG is script running as the site, so it is only ever served as an attachment.
+ * - A GIF's sizes stay animated: the binding keeps every frame unless told `anim: false`, and writes them as animated
+ *   WebP. Cloudflare documents animation for WebP and GIF output, not AVIF, so a GIF is offered no AVIF. Its first frame,
+ *   `still=1`, is offered under prefers-reduced-motion (WCAG 2.2.2), from the same closed widths.
  *
  * The widths, the sizes rule and the three layouts are Astro's (packages/astro/src/assets/layout.ts, Astro 7.4), under
  * its MIT license:
@@ -126,11 +129,12 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
 
   /**
    * The URL of one size: `?w=` alone is a WebP at that width, `f=avif` asks for AVIF, `r=` a crop and `fp=` the focal
-   * point that crop is cut around (so a new focal point is a new URL, never a stale cached crop).
+   * point that crop is cut around (so a new focal point is a new URL, never a stale cached crop), and `still=1` an
+   * animation's first frame.
    * @param {string} src
-   * @param {{ width: number, format?: keyof typeof IMAGE_FORMATS, ratio?: string, focus?: string | null }} options
+   * @param {{ width: number, format?: keyof typeof IMAGE_FORMATS, ratio?: string, focus?: string | null, still?: boolean }} options
    */
-  function url(src, { width, format = "webp", ratio, focus }) {
+  function url(src, { width, format = "webp", ratio, focus, still = false }) {
     const params = new URLSearchParams({ w: String(width) });
     if (format !== "webp") params.set("f", format);
     if (ratio) {
@@ -138,6 +142,7 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
       const fp = focusOf(focus);
       if (fp) params.set("fp", fp);
     }
+    if (still) params.set("still", "1");
     return `${src}${src.includes("?") ? "&" : "?"}${params}`;
   }
 
@@ -145,7 +150,8 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
    * What a page writes for one image used one way: `src` (the WebP at the use's width, or the original), `srcset` and
    * `sizes` for the `<img>`, `sources` for a `<picture>` (AVIF then WebP), and `width` and `height` so nothing shifts
    * as it loads (the crop's when the use has a ratio). An image the site has no size for, or one that is not a raster,
-   * gets no srcset: the original, unsized, is better than a guess.
+   * gets no srcset: the original, unsized, is better than a guess. A GIF's sources are its first frame under
+   * prefers-reduced-motion (AVIF then WebP), then the animated WebP.
    * @param {StoredImage} image
    * @param {U} useName
    */
@@ -159,13 +165,20 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
     const shape = use.ratio ? RATIO.exec(use.ratio) : null;
     const aspect = shape ? Number(shape[2]) / Number(shape[1]) : image.height / image.width;
     const shown = use.layout === "full-width" ? image.width : Math.min(/** @type {number} */ (use.width), image.width);
-    const srcsetOf = (/** @type {keyof typeof IMAGE_FORMATS} */ format) =>
-      offered.map((w) => `${url(image.src, { width: w, format, ratio: use.ratio, focus: image.focus })} ${w}w`).join(", ");
+    const srcsetOf = (/** @type {keyof typeof IMAGE_FORMATS} */ format, still = false) =>
+      offered.map((w) => `${url(image.src, { width: w, format, ratio: use.ratio, focus: image.focus, still })} ${w}w`).join(", ");
+    const sources = GIF_PATH.test(image.src)
+      ? [
+          { type: IMAGE_FORMATS.avif, srcset: srcsetOf("avif", true), media: REDUCED_MOTION },
+          { type: IMAGE_FORMATS.webp, srcset: srcsetOf("webp", true), media: REDUCED_MOTION },
+          { type: IMAGE_FORMATS.webp, srcset: srcsetOf("webp") },
+        ]
+      : [{ type: IMAGE_FORMATS.avif, srcset: srcsetOf("avif") }, { type: IMAGE_FORMATS.webp, srcset: srcsetOf("webp") }];
     return {
       src: url(image.src, { width: offered.find((w) => w >= shown) ?? offered[offered.length - 1], ratio: use.ratio, focus: image.focus }),
       srcset: srcsetOf("webp"),
       sizes: use.sizes ?? imageSizes(use),
-      sources: [{ type: IMAGE_FORMATS.avif, srcset: srcsetOf("avif") }, { type: IMAGE_FORMATS.webp, srcset: srcsetOf("webp") }],
+      sources,
       width: shown,
       height: Math.round(shown * aspect),
     };
@@ -187,15 +200,19 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
     const format = query.get("f") ?? "webp";
     const ratio = query.get("r");
     const fp = query.get("fp");
+    const still = query.get("still");
     // Closed sets: anything outside them is a 400, never a billed transform.
     if (!widths.has(width)) return new Response("Unsupported width", { status: 400 });
     if (!(format in IMAGE_FORMATS)) return new Response("Unsupported format", { status: 400 });
     if (ratio !== null && !ratios.has(ratio)) return new Response("Unsupported crop", { status: 400 });
     if (fp !== null && (ratio === null || focusOf(fp) !== fp)) return new Response("Unsupported focal point", { status: 400 });
+    if (still !== null && still !== "1") return new Response("Unsupported still", { status: 400 });
     if (!object) return new Response("Not found", { status: 404 });
     // The focal point in the URL must be the file's own, or any caller could mint crops.
     const stored = focusOf(object.customMetadata?.[FOCUS_METADATA]);
     if (fp !== null && fp !== stored) return new Response("Stale focal point", { status: 400 });
+    // A still is a second billed transform of each size, so only a GIF has one.
+    if (still !== null && mediaType(object.httpMetadata?.contentType) !== "image/gif") return new Response("Unsupported still", { status: 400 });
     if (!isRasterType(object.httpMetadata?.contentType)) return original(request, object, cacheControl);
 
     // TRAP: the edge cache is keyed by URL alone and has no purge, so every input to the body goes into the key, as
@@ -222,7 +239,9 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
       : { width, fit: "scale-down" };
     let response;
     try {
-      const result = await images.input(object.body).transform(transform).output({ format: IMAGE_FORMATS[/** @type {keyof typeof IMAGE_FORMATS} */ (format)], quality });
+      // `anim` is left to the binding's default (every frame kept) unless the URL asks for the still.
+      const output = { format: IMAGE_FORMATS[/** @type {keyof typeof IMAGE_FORMATS} */ (format)], quality, ...(still ? { anim: false } : {}) };
+      const result = await images.input(object.body).transform(transform).output(output);
       response = result.response();
     } catch (error) {
       console.error(JSON.stringify({ alert: "image-transform-failed", url: request.url, detail: error instanceof Error ? error.message : String(error) }));
@@ -236,7 +255,7 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
     }
     const headers = new Headers(response.headers);
     headers.set("cache-control", cacheControl);
-    headers.set("x-image", `w=${width}${ratio ? ` r=${ratio}` : ""} ${format}`);
+    headers.set("x-image", `w=${width}${ratio ? ` r=${ratio}` : ""}${still ? " still" : ""} ${format}`);
     const out = new Response(response.body, { headers });
     if (cache) await cache.put(cacheKey, out.clone());
     return out;
@@ -246,19 +265,50 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
 }
 
 /**
- * `<picture>` markup for `attributes()`, for a page that writes HTML as a string. `alt` is required: an image with
- * nothing to say passes "". Lazy by default; the page's first large image passes `priority`.
+ * What a `<picture>` for `attributes()` holds, as plain objects with JSX's prop names, for a page that renders JSX:
+ * `sources` for the `<source>` elements and `img` for the `<img>`. `alt` is required: an image with nothing to say
+ * passes "". Lazy by default; the page's first large image passes `priority`. An unset prop is undefined, which JSX
+ * leaves out. With no `sources` the page writes the `<img>` alone.
+ * @param {ReturnType<ReturnType<typeof defineImages>["attributes"]>} attrs
+ * @param {{ alt: string, priority?: boolean, className?: string }} options
+ */
+export function pictureProps(attrs, { alt, priority = false, className }) {
+  return {
+    sources: attrs.sources.map((s) => ({ type: s.type, srcSet: s.srcset, sizes: attrs.sizes, media: s.media })),
+    img: {
+      src: attrs.src,
+      srcSet: attrs.srcset,
+      sizes: attrs.sizes,
+      width: attrs.width,
+      height: attrs.height,
+      alt,
+      className,
+      loading: priority ? /** @type {const} */ ("eager") : /** @type {const} */ ("lazy"),
+      fetchPriority: priority ? /** @type {const} */ ("high") : undefined,
+      decoding: /** @type {const} */ ("async"),
+    },
+  };
+}
+
+/** The HTML attribute for each JSX prop `pictureProps` names differently. */
+const HTML_NAMES = /** @type {Record<string, string>} */ ({ srcSet: "srcset", className: "class", fetchPriority: "fetchpriority" });
+
+/**
+ * `<picture>` markup for `attributes()`, for a page that writes HTML as a string: `pictureProps` written out, so the
+ * two never differ.
  * @param {ReturnType<ReturnType<typeof defineImages>["attributes"]>} attrs
  * @param {{ alt: string, priority?: boolean, className?: string }} options
  * @param {(value: string) => string} escape the site's HTML attribute escape (`escapeHtml` from ./html)
  */
-export function pictureHtml(attrs, { alt, priority = false, className }, escape) {
-  const a = (/** @type {string} */ name, /** @type {unknown} */ value) => (value === undefined || value === null ? "" : ` ${name}="${escape(String(value))}"`);
-  const loading = priority ? `${a("loading", "eager")}${a("fetchpriority", "high")}` : a("loading", "lazy");
-  const img = `<img${a("src", attrs.src)}${a("srcset", attrs.srcset)}${a("sizes", attrs.sizes)}${a("width", attrs.width)}${a("height", attrs.height)}${a("alt", alt)}${a("class", className)}${loading}${a("decoding", "async")}>`;
-  if (attrs.sources.length === 0) return img;
-  const sources = attrs.sources.map((s) => `<source${a("type", s.type)}${a("srcset", s.srcset)}${a("sizes", attrs.sizes)}>`).join("");
-  return `<picture>${sources}${img}</picture>`;
+export function pictureHtml(attrs, options, escape) {
+  const { sources, img } = pictureProps(attrs, options);
+  const tag = (/** @type {string} */ name, /** @type {Record<string, unknown>} */ props) =>
+    `<${name}${Object.entries(props)
+      .filter(([, value]) => value !== undefined && value !== null)
+      .map(([prop, value]) => ` ${HTML_NAMES[prop] ?? prop}="${escape(String(value))}"`)
+      .join("")}>`;
+  if (sources.length === 0) return tag("img", img);
+  return `<picture>${sources.map((s) => tag("source", s)).join("")}${tag("img", img)}</picture>`;
 }
 
 const EDIT_FORMATS = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
@@ -302,6 +352,8 @@ export async function editImage(images, input, { rotate, flip, maxEdge, format, 
 
 const RASTER_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/avif", "image/gif"]);
 const RASTER_PATH = /\.(png|jpe?g|webp|avif|gif)(?:$|[?#])/i;
+const GIF_PATH = /\.gif(?:$|[?#])/i;
+const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
 
 /** @param {string} path */
 function isRasterPath(path) {
@@ -309,8 +361,13 @@ function isRasterPath(path) {
 }
 
 /** @param {string | undefined} type */
+function mediaType(type) {
+  return (type ?? "").split(";")[0].trim().toLowerCase();
+}
+
+/** @param {string | undefined} type */
 function isRasterType(type) {
-  return RASTER_TYPES.has((type ?? "").split(";")[0].trim().toLowerCase());
+  return RASTER_TYPES.has(mediaType(type));
 }
 
 /**

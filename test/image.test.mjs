@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { escapeHtml } from "../html.mjs";
-import { defineImages, editImage, pictureHtml } from "../image.mjs";
+import { defineImages, editImage, pictureHtml, pictureProps } from "../image.mjs";
 
 const images = defineImages({
   uses: {
@@ -53,6 +53,11 @@ test("a page asks only for sizes the route serves: Astro's widths, capped at the
   const html = pictureHtml(attrs, { alt: 'A "plot"', priority: true }, escapeHtml);
   assert.match(html, /^<picture><source type="image\/avif"/);
   assert.match(html, /alt="A &quot;plot&quot;" loading="eager" fetchpriority="high"/);
+  // The JSX props are the same picture: one source of truth.
+  const props = pictureProps(attrs, { alt: "A plot" });
+  assert.deepEqual(props.sources[0], { type: "image/avif", srcSet: attrs.sources[0].srcset, sizes: attrs.sizes, media: undefined });
+  assert.equal(props.img.srcSet, attrs.srcset);
+  assert.deepEqual([props.img.loading, props.img.fetchPriority], ["lazy", undefined]);
 
   const seen = [];
   for (const url of attrs.srcset?.split(", ").map((s) => s.split(" ")[0]) ?? []) {
@@ -82,6 +87,27 @@ test("the route refuses anything outside its closed sets, crops around the file'
   const svg = await images.respond(at(""), { object: object("image/svg+xml") });
   assert.equal(svg.headers.get("content-disposition"), "attachment");
   assert.equal((await images.respond(new Request("https://example.com/media/a.jpg", { headers: { "if-none-match": '"e1"' } }), { object: object() })).status, 304);
+});
+
+test("a GIF stays animated, offers no AVIF of its motion, and its still frame is only for reduced motion", async () => {
+  const attrs = images.attributes({ src: "/media/loop.gif", width: 800, height: 600 }, "content");
+  assert.deepEqual(attrs.sources.map((s) => [s.type, s.media ?? null]), [
+    ["image/avif", "(prefers-reduced-motion: reduce)"],
+    ["image/webp", "(prefers-reduced-motion: reduce)"],
+    ["image/webp", null],
+  ]);
+  assert.match(attrs.sources[0].srcset, /\/media\/loop\.gif\?w=640&f=avif&still=1 640w/);
+  assert.match(pictureHtml(attrs, { alt: "" }, escapeHtml), /<source type="image\/avif" srcset="[^"]+" sizes="[^"]+" media="\(prefers-reduced-motion: reduce\)">/);
+
+  const seen = [];
+  const at = (/** @type {string} */ q) => new Request(`https://example.com/media/loop.gif${q}`);
+  assert.equal((await images.respond(at("?w=640"), { object: object("image/gif"), images: binding(seen) })).status, 200);
+  assert.equal((await images.respond(at("?w=640&still=1"), { object: object("image/gif"), images: binding(seen) })).status, 200);
+  assert.deepEqual(seen.map((s) => /** @type {{ anim?: boolean }} */ (s).anim), [undefined, false]);
+  // A still is one more billed transform per size, so nothing but a GIF has one.
+  assert.equal((await images.respond(at("?w=640&still=1"), { object: object("image/jpeg"), images: binding(seen) })).status, 400);
+  assert.equal((await images.respond(at("?w=640&still=0"), { object: object("image/gif"), images: binding(seen) })).status, 400);
+  assert.equal(seen.length, 2);
 });
 
 test("a failed transform serves the original for five minutes, never caches it, and says so", async () => {
