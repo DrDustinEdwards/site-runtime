@@ -4,7 +4,7 @@ The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-
 (the root export and `./headers`, `./csp`, `./csp-report`, `./check`, `./oshp`, `./owasp`), the rate limiter (`./rate-limit`,
 `./rate-limit/durable-object`), the members model (`./members`), the Access for SaaS sign-in (`./access-login`), the MCP
 servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-log`) and server scaffold (`./mcp-server`), the Access request-token check
-(`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images and their edits (`./image`), link prefetch (`./prefetch`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), where a site's Anthropic calls go
+(`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images and their edits (`./image`), link prefetch (`./prefetch`), preloads and Early Hints (`./preload`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), where a site's Anthropic calls go
 (`./ai-gateway`), starting a Claude Code routine (`./routine`), the check on AI-written prose with the measure of an author's voice (`./prose`), the one sign-in every site
 offers (`./sign-in`, `./sign-in-client`, `./apple-secret`), the Cloudflare Turnstile widget and its server check (`./turnstile`), the same-origin check for
 resource routes (`./origin`), the trailing-slash redirect (`./url`), one structured log line and its scrubbers (`./log`) and the 404 counter
@@ -317,6 +317,33 @@ default; `prerender: true` also prerenders on press, off by default because a pr
 analytics before the reader arrives. Checked in Playwright's Chromium under a strict CSP (2026-10-29): a page link is
 prefetched; `.md`, `.xml` and `?q=` links are not. The query rule is a URLPattern object naming the pathname and the
 search; the glob spellings `/*?*` and `/*\?*` match every link, so excluding them stops all prefetch.
+
+## Preloads and Early Hints
+
+`./preload` takes a site's preloads once and gives both the React Router `links` entries and the `Link` response header
+built from the same list. The header is what Cloudflare Early Hints reads: with the zone's Early Hints on (Speed >
+Settings > Content Optimization), a 200, 301 or 302 response for a path with no extension (or .html, .htm, .php) that
+carries `Link` with rel=preload or rel=preconnect is answered first with a 103 naming them, so the font or image starts
+while the Worker still renders. The hints are cached per URI, ignoring the query, and may not be sent for a response
+already in cache ([Cloudflare](https://developers.cloudflare.com/cache/advanced-configuration/early-hints/)).
+
+```js
+// app/preloads.ts, imported by root.tsx and workers/app.ts
+import { preloads } from "@dustinedwards/site-runtime/preload";
+import fontUrl from "./fonts/ui.woff2?url";
+
+export const PRELOADS = preloads([{ href: fontUrl, as: "font", type: "font/woff2" }]);
+
+// root.tsx
+export const links: Route.LinksFunction = () => [/* the rest */, ...PRELOADS.links];
+// workers/app.ts, on HTML responses, beside the security headers. Append: a route may already send a Link.
+if (PRELOADS.header) headers.append("Link", PRELOADS.header);
+```
+
+A font is always fetched in anonymous CORS mode, so a font preload without `crossorigin` is a second request for the
+same file. Every `as: "font"` entry gets `crossorigin=anonymous` (in the tag and the header) unless it names
+`use-credentials`. `{ rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" }` adds a
+preconnect. An href must be a path or an https URL, ASCII only (percent-encode the rest), with no `<`, `>` or `"`.
 
 ## Share cards
 
