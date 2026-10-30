@@ -4,27 +4,31 @@
  */
 export function parsePolicy(policy: string): Map<string, string[]>;
 /**
- * @param {Headers} headers a real response's headers
- * @param {{ standard?: Readonly<Record<string, string>>, csp?: boolean, cloudflareWebAnalytics?: boolean, inlineScripts?: "unsafe-inline", formTargets?: readonly string[] }} [options]
- *   `standard`: the floor (default STANDARD_SECURITY_HEADERS; a site passes the set it declared). `csp`: grade the
- *   policy too; false for a response that carries none by design, such as a feed or an image.
- *   `cloudflareWebAnalytics`: the site is Cloudflare-proxied with Web Analytics on, so the policy must let the injected
- *   beacon run (its script path prefix) and report (connect-src with the site itself).
- *   `inlineScripts`: the site built its policy with the same opt-in (buildContentSecurityPolicy), so `'unsafe-inline'`
- *   is accepted on script-src alone; script-src-elem, script-src-attr and worker-src are still refused it.
- *   `formTargets`: the off-site form targets the site passed the builder, accepted after 'self' on form-action.
- * @returns {CheckResult[]}
+ * `site`: an id in the registry (./sites); the floor and the opt-ins come from its entry. `standard`: the floor without
+ * one (default STANDARD_SECURITY_HEADERS). `csp`: grade the policy too; false for a response that carries none by design.
+ * `cloudflareWebAnalytics`: the policy must let the injected beacon run and report. `inlineScripts`: `'unsafe-inline'` is
+ * accepted on script-src alone. `formTargets`: off-site form targets accepted after 'self'. `framedBySameOrigin` /
+ * `baseUriSelf`: true accepts 'self' beside 'none' on frame-ancestors and base-uri, false 'none' alone; left out, either.
  */
-export function checkSecurityHeaders(headers: Headers, { standard, csp, cloudflareWebAnalytics, inlineScripts, formTargets }?: {
+export type CheckOptions = {
+    site?: string;
     standard?: Readonly<Record<string, string>>;
     csp?: boolean;
     cloudflareWebAnalytics?: boolean;
     inlineScripts?: "unsafe-inline";
     formTargets?: readonly string[];
-}): CheckResult[];
+    framedBySameOrigin?: boolean;
+    baseUriSelf?: boolean;
+};
+/** Every check on one response, passing or failing, each with the checklist item it proves. */
+export function checkSecurityHeaders(headers: Headers, options?: CheckOptions): CheckResult[];
+/** The failed results, warnings left out. */
 export function failures(results: CheckResult[]): CheckResult[];
+/** `id`: the checklist item (T2, H1, C4, ...). `warn`: advice that fails nothing. */
 export type CheckResult = {
+    id: string;
     name: string;
     pass: boolean;
     detail: string;
+    warn?: boolean;
 };

@@ -1,6 +1,7 @@
 /**
  * The one receiver for Content-Security-Policy violation reports. A POST always gets 204; the body is read to 16 KB at most; at most 10 violations are logged,
- * each URL cut to its origin and path; the site's limiter is asked first; nothing is stored.
+ * each URL cut to its origin and path; extension and browser-scheme violations are dropped; a first-seen (directive, blocked
+ * origin) logs `csp_new_blocked` once per isolate; the site's limiter is asked first; nothing is stored.
  */
 /** The largest body read; the rest is never read. */
 export const MAX_REPORT_BYTES: 16384;

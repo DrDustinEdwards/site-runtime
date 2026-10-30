@@ -11,6 +11,7 @@
  */
 
 import { OWASP_RECOMMENDED } from "./owasp-headers.mjs";
+import { siteOverrides } from "./sites.mjs";
 
 /**
  * The OSHP recommendations this package does not put in the standard set, and why. Each would break a normal site if
@@ -44,25 +45,20 @@ export const STANDARD_SECURITY_HEADERS = Object.freeze(
  */
 export const LOGOUT_HEADERS = Object.freeze({ "Clear-Site-Data": OWASP_RECOMMENDED["Clear-Site-Data"] ?? "" });
 
+/** The passkey override (PASSKEY_OVERRIDES) lives with the registry, which applies it to every site that opts in. */
+export { PASSKEY_OVERRIDES } from "./sites.mjs";
+
 /**
- * The override a site that offers passkey sign-in (`./sign-in`) passes to buildSecurityHeaders. OSHP's
- * Permissions-Policy sets `publickey-credentials-get=()`, which refuses every passkey sign-in on the page; this allows
- * it for the site's own pages and still for no frame. Every other directive stays OSHP's.
- *
- * @type {Readonly<Record<string, HeaderOverride>>}
+ * Cross-Origin-Resource-Policy per response kind. Pages, APIs and anything behind a sign-in keep the standard's
+ * `same-origin`; public media meant to be loaded by other origins (an og:image a link preview shows, a feed a reader
+ * fetches) is `cross-origin`, so a site marks those responses and not every response. The check accepts `cross-origin`
+ * only on these kinds.
+ * @param {string | null | undefined} contentType the response's Content-Type
+ * @returns {"cross-origin" | "same-origin"}
  */
-export const PASSKEY_OVERRIDES = Object.freeze({
-  "Permissions-Policy": Object.freeze({
-    value: [
-      ...(STANDARD_SECURITY_HEADERS["Permissions-Policy"] ?? "")
-        .split(",")
-        .map((d) => d.trim())
-        .filter((d) => d && !d.startsWith("publickey-credentials-get=")),
-      "publickey-credentials-get=(self)",
-    ].join(", "),
-    reason: "Passkey sign-in (./sign-in) calls navigator.credentials.get, which OSHP's publickey-credentials-get=() refuses; allowed for the site's own pages only.",
-  }),
-});
+export function corpFor(contentType) {
+  return /^\s*(image\/|application\/(rss|atom)\+xml|application\/feed\+json)/i.test(contentType ?? "") ? "cross-origin" : "same-origin";
+}
 
 /**
  * @typedef {{ value: string | null, reason: string }} HeaderOverride
@@ -75,10 +71,15 @@ export const PASSKEY_OVERRIDES = Object.freeze({
  * change something; one that says what the standard already says is refused, so the list stays the list of real
  * deviations.
  *
- * @param {{ overrides?: Readonly<Record<string, HeaderOverride>> }} [site]
+ * `site` is an id in the registry (./sites), whose declared overrides are used; `overrides` is the older form, for a
+ * site not yet built from the registry. Not both.
+ *
+ * @param {{ site?: string, overrides?: Readonly<Record<string, HeaderOverride>> }} [options]
  * @returns {Record<string, string>}
  */
-export function buildSecurityHeaders({ overrides = {} } = {}) {
+export function buildSecurityHeaders({ site, overrides } = {}) {
+  if (site !== undefined && overrides !== undefined) throw new Error("pass site or overrides, not both: a site's deviations live in its registry entry");
+  overrides = site === undefined ? (overrides ?? {}) : siteOverrides(site);
   /** @type {Record<string, string>} */
   const set = { ...STANDARD_SECURITY_HEADERS };
   for (const [name, { value, reason }] of Object.entries(overrides)) {
