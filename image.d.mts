@@ -62,10 +62,12 @@ export interface R2ObjectLike {
   writeHttpMetadata(headers: Headers): void;
 }
 
+export interface ImagesOutput {
+  output(options: { format: string; quality?: number; anim?: boolean }): Promise<{ response(): Response }>;
+}
+
 export interface ImagesLike {
-  input(stream: ReadableStream): {
-    transform(options: object): { output(options: { format: string; quality?: number }): Promise<{ response(): Response }> };
-  };
+  input(stream: ReadableStream): ImagesOutput & { transform(options: object): ImagesOutput };
 }
 
 export function defineImages<U extends string>(config: {
@@ -118,9 +120,9 @@ export function pictureHtml(
 export type EditFormat = "image/jpeg" | "image/png" | "image/webp" | "image/avif";
 
 /**
- * One picture turned, mirrored or shrunk through the Images binding, encoded as `format` (quality 85 unless said).
- * Flip is applied before rotate; rotate is clockwise; `maxEdge` fits inside that square and never enlarges. Throws on
- * options outside these, or none, before the binding is called.
+ * One picture turned, mirrored, shrunk or only re-encoded through the Images binding, encoded as `format` (quality 85
+ * unless said). Flip is applied before rotate; rotate is clockwise; `maxEdge` fits inside that square and never
+ * enlarges. Throws on options outside these before the binding is called.
  */
 export function editImage(
   images: ImagesLike,

@@ -312,14 +312,16 @@ as a `<video>`.
 
 `editImage(images, input, { rotate, flip, maxEdge, format, quality })` is the one edit a site writes back: a turn (`rotate`
 90, 180 or 270, clockwise), a mirror (`flip` `"h"`, `"v"` or `"hv"`, which Cloudflare applies before the turn), or a
-shrink (`maxEdge`, the longest edge, never enlarged), encoded as `format` at quality 85 unless said. `input` is a stream
-or bytes; the answer is the binding's `Response`. It is for writes a person asked for (an editor's turn, an upload shrunk
-before it is stored, a small copy shown to a model), each a billed transform; serving sizes stays with `respond` and its
-closed sets. A bad option, or none, throws before the binding is called.
+shrink (`maxEdge`, the longest edge, never enlarged), encoded as `format` at quality 85 unless said; a `format` alone
+re-encodes the picture as it is (site-api's upload turning HEIC into JPEG). `input` is a stream or bytes; the answer is
+the binding's `Response`. It is for writes a person asked for (an editor's turn, an upload shrunk or converted before it
+is stored, a small copy shown to a model), each a billed transform; serving sizes stays with `respond` and its closed
+sets. A bad option throws before the binding is called.
 
 ```js
 const turned = await editImage(env.IMAGES, object.body, { rotate: 90, format: "image/jpeg", quality: 92 });
 const shrunk = await editImage(env.IMAGES, bytes, { maxEdge: 4096, format: "image/webp" });
+const jpeg = await editImage(env.IMAGES, heicBytes, { format: "image/jpeg" });
 ```
 
 ## Link prefetch

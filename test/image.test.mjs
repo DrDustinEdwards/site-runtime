@@ -147,7 +147,7 @@ test("a file replaced under the same key never answers a size cached from the ol
   assert.equal(seen.length, 2);
 });
 
-test("an edit shrinks inside a square, reads a view's own bytes, and refuses a bad option unbilled", async () => {
+test("an edit shrinks inside a square, reads a view's own bytes, re-encodes on a format alone, and refuses a bad option unbilled", async () => {
   const seen = [];
   let read = "";
   const images = {
@@ -162,8 +162,13 @@ test("an edit shrinks inside a square, reads a view's own bytes, and refuses a b
   assert.equal(await res.text(), "edited");
   assert.equal(read, "picture");
   assert.deepEqual(seen[0], { flip: "h", rotate: 90, width: 4096, height: 4096, fit: "scale-down", format: "image/jpeg", quality: 85 });
-  for (const bad of [{ rotate: 45 }, { flip: "x" }, { maxEdge: 0 }, {}, { rotate: 90, format: "image/gif" }]) {
+  for (const bad of [{ rotate: 45 }, { flip: "x" }, { maxEdge: 0 }, { rotate: 90, format: "image/gif" }]) {
     await assert.rejects(editImage(images, view, /** @type {any} */ ({ format: "image/png", ...bad })));
   }
   assert.equal(seen.length, 1);
+  // A format alone (HEIC to JPEG on upload) re-encodes with no transform.
+  const reencoded = [];
+  const direct = { input: () => ({ transform: () => assert.fail("no transform for a re-encode"), output: async (/** @type {object} */ o) => (reencoded.push(o), { response: () => new Response("jpeg") }) }) };
+  assert.equal(await (await editImage(direct, view, { format: "image/jpeg" })).text(), "jpeg");
+  assert.deepEqual(reencoded, [{ format: "image/jpeg", quality: 85 }]);
 });
