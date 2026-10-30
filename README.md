@@ -363,7 +363,7 @@ it shows nothing signed in. Everything else stays `private, no-store`.
 ```
 
 ```js
-import { WorkerEntrypoint, cache } from "cloudflare:workers";
+import { WorkerEntrypoint } from "cloudflare:workers";
 import { cacheKey, forReader, publicPageHeaders, purgeTags, settleCacheHeaders } from "@dustinedwards/site-runtime/edge-cache";
 
 // A public route: stored a day, served stale a week while it re-renders, tagged "pages".
@@ -373,6 +373,12 @@ export class Renderer extends WorkerEntrypoint {
   async fetch(request) {
     const response = await requestHandler(request, context); // then the security headers and the Link header
     return settleCacheHeaders(response); // last: anything but a shared 200 leaves private, no-store
+  }
+
+  // A purge reaches only the cache of the entrypoint that calls it, so the Renderer purges its own; RPC methods
+  // bypass the cache. Never throws; `false` is logged.
+  async purgePages(why) {
+    await purgeTags(this.ctx.cache, ["pages"], why);
   }
 }
 
@@ -384,8 +390,8 @@ export default {
   },
 };
 
-// After a write that changes a public page. Never throws; `false` is logged.
-ctx.waitUntil(purgeTags(cache, ["pages"], "save page /about"));
+// In the gateway, after a write that changes a public page. A purge from the gateway itself would clear nothing.
+ctx.waitUntil(ctx.exports.Renderer.purgePages("save page /about"));
 ```
 
 Fresh and stale lifetimes go in `Cloudflare-CDN-Cache-Control`, never `s-maxage`, which implies proxy-revalidate and

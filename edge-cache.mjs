@@ -86,7 +86,8 @@ export function forReader(response, request) {
  * Drops every stored response carrying one of `tags`. Never throws: a failed purge is a stale page until it expires
  * and a log line, not a failed save. `null` when this runtime has no purge (Miniflare), else whether it purged.
  * @param {{ purge?: (o: { tags: string[] }) => Promise<{ success: boolean, errors?: unknown[] }> } | undefined} cache
- *   `cache` from "cloudflare:workers"
+ *   the Renderer's `this.ctx.cache`: a purge reaches only the cache of the entrypoint that calls it, so one made in the
+ *   gateway clears nothing
  * @param {string[]} tags
  * @param {string} why one phrase naming the write, for the log line
  * @param {(line: string) => void} [log]
