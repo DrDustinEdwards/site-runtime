@@ -1,8 +1,8 @@
 {
   "name": "@dustinedwards/site-runtime",
-  "version": "0.36.0",
+  "version": "0.37.0",
   "private": true,
-  "description": "The portfolio sites' shared runtime. Today: OWASP Secure Headers Project defaults, a Content-Security-Policy built from a per-site list of what a site loads, the check a site runs in CI to prove its responses carry them, one exact rate limiter on a SQLite Durable Object, the members model: layers, permission bundles and end dates for an app with staff, the Access for SaaS sign-in, the MCP servers' consent page, sign-in handler, tool-call log and server scaffold, the Cloudflare Access request-token check and admin check, one HTML escape, one constant-time secret compare, the /health response, the security.txt file, responsive images resized by the Images binding and the edits a site writes back (turn, mirror, shrink), link prefetch through speculation rules, preloads declared once for the page and the Early Hints header, public pages stored at the edge and purged by tag, the share-card image and its route (edge cache, cross-origin, 503 on failure), one set of byte encodings (hex, base64, base64url, SHA-256), the signed token behind emailed links (with key rotation), where a site's Anthropic calls go (AI Gateway or direct), starting a Claude Code routine, the check on AI-written prose with the measure of an author's voice, the one sign-in every site offers (passkey, email link and code, Google and Apple, and a code-only request for a phone app), the Cloudflare Turnstile widget loader and its fail-closed server check, the same-origin check for resource routes, the trailing-slash redirect, the static _headers file, one structured log line with its scrubbers, and the 404 counter.",
+  "description": "The portfolio sites' shared runtime. Today: OWASP Secure Headers Project defaults, a Content-Security-Policy built from a per-site list of what a site loads, the site registry the builder and the check share, the check a site runs in CI to prove its responses carry them and the live check against a deployed site, one exact rate limiter on a SQLite Durable Object, the members model: layers, permission bundles and end dates for an app with staff, the Access for SaaS sign-in, the MCP servers' consent page, sign-in handler, tool-call log and server scaffold, the Cloudflare Access request-token check and admin check, one HTML escape, one constant-time secret compare, the /health response, the security.txt file, responsive images resized by the Images binding and the edits a site writes back (turn, mirror, shrink), link prefetch through speculation rules, preloads declared once for the page and the Early Hints header, public pages stored at the edge and purged by tag, the share-card image and its route (edge cache, cross-origin, 503 on failure), one set of byte encodings (hex, base64, base64url, SHA-256), the signed token behind emailed links (with key rotation), where a site's Anthropic calls go (AI Gateway or direct), starting a Claude Code routine, the check on AI-written prose with the measure of an author's voice, the one sign-in every site offers (passkey, email link and code, Google and Apple, and a code-only request for a phone app), the Cloudflare Turnstile widget loader and its fail-closed server check, the same-origin check for resource routes, the trailing-slash redirect, the static _headers file, one structured log line with its scrubbers, and the 404 counter.",
   "type": "module",
   "exports": {
     ".": {
@@ -97,6 +97,10 @@
       "types": "./oshp-suite.d.mts",
       "default": "./oshp-suite.mjs"
     },
+    "./sites": {
+      "types": "./sites.d.mts",
+      "default": "./sites.mjs"
+    },
     "./owasp": {
       "types": "./owasp-headers.d.mts",
       "default": "./owasp-headers.mjs"
@@ -163,7 +167,7 @@
     }
   },
   "bin": {
-    "check-security-headers": "./bin/check-security-headers.mjs",
+    "site-runtime-security": "./bin/site-runtime-security.mjs",
     "site-runtime-speed": "./bin/speed.mjs"
   },
   "files": [
@@ -173,10 +177,14 @@
     "headers.d.mts",
     "csp.mjs",
     "csp.d.mts",
+    "csp-bypasses.mjs",
+    "csp-bypasses.d.mts",
     "csp-report.mjs",
     "csp-report.d.mts",
     "check.mjs",
     "check.d.mts",
+    "sites.mjs",
+    "sites.d.mts",
     "oshp-suite.mjs",
     "oshp-suite.d.mts",
     "owasp-headers.mjs",
