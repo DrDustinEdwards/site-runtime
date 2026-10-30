@@ -34,7 +34,7 @@ export interface PurgeCache {
 export function purgeTags(cache: PurgeCache | undefined, tags: string[], why: string, log?: (line: string) => void): Promise<boolean | null>;
 
 /** Mixes the `purgePages(why, tags?)` RPC method into the Renderer: `class Renderer extends withPurgePages(WorkerEntrypoint)`. */
-export function withPurgePages<T extends abstract new (...args: any[]) => { ctx: { cache?: PurgeCache } }>(
+export function withPurgePages<T extends abstract new (...args: any[]) => object>(
   Base: T,
 ): T & (abstract new (...args: any[]) => { purgePages(why: string, tags?: string[]): Promise<boolean | null> });
 
