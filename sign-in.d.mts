@@ -1,6 +1,10 @@
 /** The one sign-in every family site offers (sign-in.mjs): passkey, email link, optional Google and Apple. */
 import type { passkey } from "@better-auth/passkey";
-import type { captcha, emailOTP, magicLink } from "better-auth/plugins";
+import type { BetterAuthPlugin } from "better-auth";
+import type { emailOTP, magicLink } from "better-auth/plugins";
+import type { limit } from "./rate-limit/index.mjs";
+
+export { CONFIRM_PATH, confirmSignInLink } from "./sign-in-link.mjs";
 
 type SignInEnv = {
   BETTER_AUTH_URL: string;
@@ -25,6 +29,13 @@ export const SIGN_IN_CODE_PATH: "/sign-in/email-otp";
 export const APP_CODE_PATH: "/email-otp/send-verification-otp";
 /** The app's code request's limit per address: three a minute. */
 export const APP_CODE_RATE_LIMIT: Readonly<{ window: 60; max: 3 }>;
+
+/** How recent a sign-in must be for Better Auth's fresh-session endpoints: 600 seconds (session.freshAge). */
+export const FRESH_SECONDS: 600;
+/** Sign-in mails per address: five an hour. */
+export const LINK_EMAIL_RULES: readonly [Readonly<{ limit: 5; windowSeconds: 3600 }>];
+/** Typed sign-in codes per address, right or wrong: ten a day. */
+export const CODE_EMAIL_RULES: readonly [Readonly<{ limit: 10; windowSeconds: 86400 }>];
 
 /** The hook that blanks an account row's OAuth tokens before Better Auth writes it. */
 type NoOAuthTokensHook = {
@@ -52,14 +63,23 @@ export function signInOptions(
     appCode?: boolean;
     /** Mails the app's six-digit sign-in code (only a sign-in code is ever passed). Required with `appCode: true`. */
     sendSignInCode?: (data: { email: string; code: string }, ctx?: unknown) => Promise<void> | void;
+    /** The page the mailed link opens, whose button's POST goes to confirmSignInLink. Default CONFIRM_PATH. */
+    confirmPath?: string;
+    /** The site's RateLimiter Durable Object namespace (`./rate-limit`): turns on the per-address limits. */
+    emailLimiter?: Parameters<typeof limit>[0];
   },
 ): Promise<{
   emailAndPassword: { enabled: false };
-  /** Typed one by one, so a site's auth.api knows the magic-link, email OTP and passkey endpoints. */
-  plugins: [ReturnType<typeof magicLink>, ReturnType<typeof emailOTP>, ReturnType<typeof passkey>, ...ReturnType<typeof captcha>[]];
+  /**
+   * Typed one by one, so a site's auth.api knows the magic-link, email OTP and passkey endpoints; then the sign-out
+   * hook, the captcha and the per-address limit, which add none.
+   */
+  plugins: [ReturnType<typeof magicLink>, ReturnType<typeof emailOTP>, ReturnType<typeof passkey>, ...BetterAuthPlugin[]];
   disabledPaths: string[];
   socialProviders: { google?: { clientId: string; clientSecret: string }; apple?: { clientId: string; clientSecret: string } };
   account: { accountLinking: { enabled: true; disableImplicitLinking: true } };
+  /** A site that sets its own session options keeps this: `session: { ...signIn.session, ... }`. */
+  session: { freshAge: typeof FRESH_SECONDS };
   /** Present with `social: true`: no OAuth token is stored. Merge a site's own hooks beside it. */
   databaseHooks?: { account: { create: NoOAuthTokensHook; update: NoOAuthTokensHook } };
   /** `customRules` holds APP_CODE_PATH's three a minute with `appCode: true`. */

@@ -6,18 +6,29 @@
  *
  * - PASSKEY: the main way in, phishing-proof because the browser ties it to this site's domain. Its relying party is the
  *   host of BETTER_AUTH_URL, so a passkey made on the live site works only there. The site's headers need
- *   PASSKEY_OVERRIDES (`./headers`), or OSHP's Permissions-Policy refuses every passkey sign-in.
+ *   PASSKEY_OVERRIDES (`./headers`), or OSHP's Permissions-Policy refuses every passkey sign-in. A new passkey must be
+ *   discoverable (residentKey "required"), so it signs in from the browser's own list without an email typed first.
  * - EMAIL LINK AND CODE: first sign-in, a new device, recovery. No passwords: emailAndPassword is off. The one mail
  *   carries a link and a six-digit code (Better Auth's email OTP). The link signs in the browser that opens it, which
  *   is the mail app's, often not the tab that asked (a private window, a phone); the code is typed into the tab that
  *   asked, so that tab signs in too (Foxhound's live test, 2026-10-29). Both work once and last 15 minutes
- *   (SIGN_IN_EXPIRES_IN_SECONDS). A wrong code counts: three and the code is spent, though the link still works. Only
- *   the link request mails: the email OTP plugin's own send endpoints are off (disabledPaths), so the Turnstile check
- *   and the five a minute on the link request cover every sign-in mail.
- * - WHAT THE MAIL CARRIES: the site's sendMagicLink({ email, url, token, code }) gets Better Auth's link (`url`, which
- *   holds `token`) and the six-digit `code`. The mail must carry both, the link untouched and the code as text (Capsomer's
- *   magicLink template takes `code`), and say they last SIGN_IN_EXPIRES_IN_WORDS. A mail without the code leaves the tab
- *   that asked with nothing to type. Neither is ever logged: each signs in, so a send error must have them cut out.
+ *   (SIGN_IN_EXPIRES_IN_SECONDS), and both are stored hashed. A wrong code counts: three and the code is spent, though
+ *   the link still works. Only the link request mails: the email OTP plugin's own send endpoints are off
+ *   (disabledPaths), so the Turnstile check and the five a minute on the link request cover every sign-in mail.
+ * - THE LINK OPENS A PAGE, NOT A SIGN-IN: Better Auth's link is a GET that signs in, so a mail scanner that opens every
+ *   link would spend it. The mailed URL is the site's confirm page (`confirmPath`, CONFIRM_PATH by default) with the
+ *   token in its query; the page shows one button, and its route action passes the POST to confirmSignInLink
+ *   (`./sign-in-link.mjs`), which runs the verify. A GET of the page signs nobody in.
+ * - PER ADDRESS, AS WELL AS PER IP (`emailLimiter`, the site's RateLimiter Durable Object): five sign-in mails an hour
+ *   and ten typed codes a day per address, so someone spread over many addresses can neither bomb one inbox nor guess
+ *   its code across re-sent links (each new link brings a new code with a fresh three tries). Counted in a before
+ *   hook, so the form's auth.api call and a POST straight to /api/auth spend the same budget; a failing counter lets
+ *   the request through, as Foxhound's did (its RULES.md 4.10: a Durable Object hiccup must never lock a person out).
+ * - WHAT THE MAIL CARRIES: the site's sendMagicLink({ email, url, token, code }) gets the confirm page's link (`url`,
+ *   which holds `token`) and the six-digit `code`. The mail must carry both, the link untouched and the code as text
+ *   (Capsomer's magicLink template takes `code`), and say they last SIGN_IN_EXPIRES_IN_WORDS. A mail without the code
+ *   leaves the tab that asked with nothing to type. Neither is ever logged: each signs in, so a send error must have
+ *   them cut out.
  * - THE APP'S CODE, only when the site asks (`appCode: true`, with `sendSignInCode`). A phone app cannot open the link
  *   (it opens in the phone's browser) and cannot show the Turnstile widget, so it asks for a code alone at
  *   /email-otp/send-verification-otp (APP_CODE_PATH) and signs in at SIGN_IN_CODE_PATH. That one path is turned back on;
@@ -33,6 +44,9 @@
  * - GOOGLE AND APPLE only when the site asks (`social: true`) and has the settings: GOOGLE_CLIENT_ID and
  *   GOOGLE_CLIENT_SECRET; APPLE_CLIENT_ID, APPLE_TEAM_ID, APPLE_KEY_ID and APPLE_PRIVATE_KEY (`./apple-secret` makes the
  *   secret). Apple comes with Google, since an iPhone app that offers Google sign-in must offer Apple's too.
+ * - FRESH: adding a passkey, unlinking Google or Apple, deleting the account and listing sessions need a sign-in in
+ *   the last FRESH_SECONDS (Better Auth's freshAge, which defaults to a day). Session lengths are the site's own.
+ * - SIGN-OUT CLEARS THE BROWSER: Better Auth's /sign-out answers with LOGOUT_HEADERS (`./headers`, Clear-Site-Data).
  * - ACCOUNTS ARE JOINED ONLY BY A SIGNED-IN PERSON (linkSocial), never by a matching email at sign-in, the recurring
  *   takeover path.
  * - RATE LIMITED IN THE DATABASE, keyed on Cloudflare's client address: Better Auth counts each request in one atomic
@@ -43,9 +57,15 @@
  * Async, because Apple's secret is signed with WebCrypto. A site builds its auth once per isolate and keeps the promise.
  */
 import { passkey } from "@better-auth/passkey";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { captcha, emailOTP, magicLink } from "better-auth/plugins";
 
 import { appleClientSecret } from "./apple-secret.mjs";
+import { LOGOUT_HEADERS } from "./headers.mjs";
+import { emailKey, limit, mustStop } from "./rate-limit/index.mjs";
+import { CONFIRM_PATH, confirmLinkURL } from "./sign-in-link.mjs";
+
+export { CONFIRM_PATH, confirmSignInLink } from "./sign-in-link.mjs";
 
 /**
  * How long a sign-in link and its code work: 15 minutes. Better Auth's default is 5, which ran out while a person
@@ -66,6 +86,18 @@ export const APP_CODE_PATH = "/email-otp/send-verification-otp";
 
 /** The app's code request, held tighter than the default: three a minute, since no Turnstile sits in front of it. */
 export const APP_CODE_RATE_LIMIT = Object.freeze({ window: 60, max: 3 });
+
+/**
+ * How recent a sign-in must be for Better Auth's fresh-session endpoints (session.freshAge): 10 minutes. Better Auth's
+ * default is a day, so a session cookie taken any time in its first day could add a passkey of its own.
+ */
+export const FRESH_SECONDS = 10 * 60;
+
+/** Sign-in mails per address: five an hour, Foxhound's limit (the link request, and the app's code request). */
+export const LINK_EMAIL_RULES = Object.freeze([Object.freeze({ limit: 5, windowSeconds: 60 * 60 })]);
+
+/** Typed sign-in codes per address, right or wrong: ten a day, far above the one or two a person types. */
+export const CODE_EMAIL_RULES = Object.freeze([Object.freeze({ limit: 10, windowSeconds: 24 * 60 * 60 })]);
 
 /** What every account write stores in place of Google's and Apple's tokens (`social: true`). */
 const NO_OAUTH_TOKENS = Object.freeze({
@@ -108,12 +140,18 @@ export function turnstileSiteKey(env) {
  *   GOOGLE_CLIENT_ID?: string, GOOGLE_CLIENT_SECRET?: string,
  *   APPLE_CLIENT_ID?: string, APPLE_TEAM_ID?: string, APPLE_KEY_ID?: string, APPLE_PRIVATE_KEY?: string,
  * }} env
- * @param {{ siteName: string, sendMagicLink: SendMagicLink, social?: boolean, appCode?: boolean, sendSignInCode?: SendSignInCode }} site
+ * @param {{
+ *   siteName: string, sendMagicLink: SendMagicLink, social?: boolean, appCode?: boolean, sendSignInCode?: SendSignInCode,
+ *   confirmPath?: string, emailLimiter?: Parameters<typeof limit>[0],
+ * }} site
  */
-export async function signInOptions(env, { siteName, sendMagicLink, social = false, appCode = false, sendSignInCode }) {
+export async function signInOptions(
+  env,
+  { siteName, sendMagicLink, social = false, appCode = false, sendSignInCode, confirmPath = CONFIRM_PATH, emailLimiter },
+) {
   if (appCode && typeof sendSignInCode !== "function") throw new Error("appCode: true needs sendSignInCode to mail the code");
+  if (!confirmPath.startsWith("/") || confirmPath.startsWith("//")) throw new Error("confirmPath is a path on the site");
   const url = new URL(env.BETTER_AUTH_URL);
-  /** @type {any[]} */
   const otp = emailOTP({
     expiresIn: SIGN_IN_EXPIRES_IN_SECONDS,
     allowedAttempts: 3,
@@ -127,6 +165,7 @@ export async function signInOptions(env, { siteName, sendMagicLink, social = fal
   });
   const link = magicLink({
     expiresIn: SIGN_IN_EXPIRES_IN_SECONDS,
+    storeToken: "hashed",
     // One request, one mail: the link's request makes the code too, through the plugin's own server-only endpoint,
     // so the code is stored the plugin's way (hashed, with its attempt count) and the newest code replaces the last.
     sendMagicLink: async (data, ctx) => {
@@ -136,15 +175,27 @@ export async function signInOptions(env, { siteName, sendMagicLink, social = fal
         // @ts-expect-error the endpoint context Better Auth hands a plugin's hook
         context,
       });
-      await sendMagicLink({ email: data.email, url: data.url, token: data.token, code }, ctx);
+      await sendMagicLink({ email: data.email, url: confirmLinkURL(data.url, confirmPath), token: data.token, code }, ctx);
     },
   });
-  const plugins = [link, otp, passkey({ rpID: url.hostname, rpName: siteName, origin: url.origin })];
+  /** @type {import("better-auth").BetterAuthPlugin[]} */
+  const plugins = [
+    link,
+    otp,
+    passkey({
+      rpID: url.hostname,
+      rpName: siteName,
+      origin: url.origin,
+      authenticatorSelection: { residentKey: "required", userVerification: "preferred" },
+    }),
+    SIGN_OUT_CLEARS,
+  ];
   if (turnstileSiteKey(env) && env.TURNSTILE_SECRET_KEY) {
     plugins.push(
       captcha({ provider: "cloudflare-turnstile", secretKey: env.TURNSTILE_SECRET_KEY, endpoints: ["/sign-in/magic-link"] }),
     );
   }
+  if (emailLimiter) plugins.push(emailLimit(emailLimiter));
 
   /** @type {Record<string, { clientId: string, clientSecret: string }>} */
   const socialProviders = {};
@@ -163,6 +214,7 @@ export async function signInOptions(env, { siteName, sendMagicLink, social = fal
     disabledPaths: appCode ? OTP_OFF_PATHS.filter((path) => path !== APP_CODE_PATH) : [...OTP_OFF_PATHS],
     socialProviders,
     account: { accountLinking: { enabled: true, disableImplicitLinking: true } },
+    session: { freshAge: FRESH_SECONDS },
     ...(social ? { databaseHooks: { account: { create: noTokens, update: noTokens } } } : {}),
     rateLimit: appCode
       ? { enabled: true, storage: "database", customRules: { [APP_CODE_PATH]: { ...APP_CODE_RATE_LIMIT } } }
@@ -170,6 +222,60 @@ export async function signInOptions(env, { siteName, sendMagicLink, social = fal
     advanced: { ipAddress: { ipAddressHeaders: ["cf-connecting-ip"] } },
     // Apple returns to the site with a form POST from its own origin.
     trustedOrigins: socialProviders.apple ? ["https://appleid.apple.com"] : [],
+  };
+}
+
+/**
+ * Better Auth's /sign-out answers with Clear-Site-Data. A plugin's after hook rather than the options' `hooks.after`,
+ * which a site with a hook of its own would replace without a word.
+ */
+const SIGN_OUT_CLEARS = {
+  id: "sign-out-clears-site-data",
+  hooks: {
+    after: [
+      {
+        /** @param {{ path?: string }} ctx */
+        matcher: (ctx) => ctx.path === "/sign-out",
+        handler: createAuthMiddleware(async (ctx) => {
+          for (const [name, value] of Object.entries(LOGOUT_HEADERS)) ctx.setHeader(name, value);
+        }),
+      },
+    ],
+  },
+};
+
+/** The endpoints that spend an address's budget, and which one. */
+const EMAIL_LIMITED = { "/sign-in/magic-link": LINK_EMAIL_RULES, [APP_CODE_PATH]: LINK_EMAIL_RULES, [SIGN_IN_CODE_PATH]: CODE_EMAIL_RULES };
+
+/**
+ * The per-address limit as a plugin's before hook. The captcha plugin and Better Auth's per-IP limit run first (both
+ * on the request, before any hook), so a request without a Turnstile pass spends nothing of an address's budget.
+ * @param {Parameters<typeof limit>[0]} namespace
+ */
+function emailLimit(namespace) {
+  return {
+    id: "sign-in-email-limit",
+    hooks: {
+      before: [
+        {
+          /** @param {{ path?: string }} ctx */
+          matcher: (ctx) => Object.hasOwn(EMAIL_LIMITED, ctx.path ?? ""),
+          handler: createAuthMiddleware(async (ctx) => {
+            const path = /** @type {keyof typeof EMAIL_LIMITED} */ (ctx.path);
+            const rules = EMAIL_LIMITED[path];
+            const key = await emailKey(rules === CODE_EMAIL_RULES ? "code-email" : "link-email", ctx.body?.email);
+            if (!key) return;
+            const verdict = await limit(namespace, key, [...rules], { onUnavailable: "allow" });
+            if (!mustStop(verdict, "allow")) return;
+            throw new APIError(
+              "TOO_MANY_REQUESTS",
+              { code: "EMAIL_RATE_LIMITED", message: "Too many tries for this address. Try again later." },
+              { "Retry-After": String(verdict.retryAfterSeconds) },
+            );
+          }),
+        },
+      ],
+    },
   };
 }
 
