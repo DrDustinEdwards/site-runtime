@@ -49,6 +49,10 @@
       "types": "./edge-cache.d.mts",
       "default": "./edge-cache.mjs"
     },
+    "./server-timing": {
+      "types": "./server-timing.d.mts",
+      "default": "./server-timing.mjs"
+    },
     "./share-card": {
       "types": "./share-card.d.mts",
       "default": "./share-card.mjs"
@@ -159,7 +163,8 @@
     }
   },
   "bin": {
-    "check-security-headers": "./bin/check-security-headers.mjs"
+    "check-security-headers": "./bin/check-security-headers.mjs",
+    "site-runtime-speed": "./bin/speed.mjs"
   },
   "files": [
     "index.mjs",
@@ -204,6 +209,9 @@
     "preload.d.mts",
     "edge-cache.mjs",
     "edge-cache.d.mts",
+    "server-timing.mjs",
+    "server-timing.d.mts",
+    "speed.mjs",
     "share-card.mjs",
     "share-card.d.mts",
     "security-txt.mjs",

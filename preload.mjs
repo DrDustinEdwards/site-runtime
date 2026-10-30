@@ -53,3 +53,35 @@ export function preloads(entries) {
     .join(", ");
   return { links, header };
 }
+
+/**
+ * The root route's stylesheets in a React Router server build (`build.assets.routes.root.css`), as preload entries:
+ * the CSS every page blocks on, named by its hashed URL.
+ * @param {{ assets: { routes: Record<string, { css?: string[] } | undefined> } }} build
+ * @returns {Preload[]}
+ */
+export function rootStylesheets(build) {
+  return (build.assets.routes.root?.css ?? []).map((href) => ({ href, as: "style" }));
+}
+
+/**
+ * `response` with each non-empty `Link` header value appended, when it is HTML. Appended, so a route's own Link (a
+ * markdown alternate, a webmention endpoint) stays; rebuilt when its headers are immutable.
+ * @param {Response} response
+ * @param {...string} values `preloads(...).header` values
+ */
+export function withPreloadHeader(response, ...values) {
+  const links = values.filter(Boolean);
+  if (!links.length || !(response.headers.get("Content-Type") ?? "").startsWith("text/html")) return response;
+  const append = (/** @type {Headers} */ headers) => {
+    for (const link of links) headers.append("Link", link);
+  };
+  try {
+    append(response.headers);
+    return response;
+  } catch {
+    const headers = new Headers(response.headers);
+    append(headers);
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+  }
+}

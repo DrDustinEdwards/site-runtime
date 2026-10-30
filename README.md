@@ -4,7 +4,7 @@ The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-
 (the root export and `./headers`, `./csp`, `./csp-report`, `./check`, `./oshp`, `./owasp`), the rate limiter (`./rate-limit`,
 `./rate-limit/durable-object`), the members model (`./members`), the Access for SaaS sign-in (`./access-login`), the MCP
 servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-log`) and server scaffold (`./mcp-server`), the Access request-token check
-(`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images and their edits (`./image`), link prefetch (`./prefetch`), preloads and Early Hints (`./preload`), the edge page cache (`./edge-cache`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), the signed token behind emailed links (`./signed-token`), where a site's Anthropic calls go
+(`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images and their edits (`./image`), link prefetch (`./prefetch`), preloads and Early Hints (`./preload`), the edge page cache (`./edge-cache`), the Server-Timing header (`./server-timing`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), the signed token behind emailed links (`./signed-token`), where a site's Anthropic calls go
 (`./ai-gateway`), starting a Claude Code routine (`./routine`), the check on AI-written prose with the measure of an author's voice (`./prose`), the one sign-in every site
 offers (`./sign-in`, `./sign-in-client`, `./apple-secret`), the Cloudflare Turnstile widget and its server check (`./turnstile`), the same-origin check for
 resource routes (`./origin`), the trailing-slash redirect (`./url`), one structured log line and its scrubbers (`./log`) and the 404 counter
@@ -340,9 +340,12 @@ export const PRELOADS = preloads([{ href: fontUrl, as: "font", type: "font/woff2
 
 // root.tsx
 export const links: Route.LinksFunction = () => [/* the rest */, ...PRELOADS.links];
-// workers/app.ts, on HTML responses, beside the security headers. Append: a route may already send a Link.
-if (PRELOADS.header) headers.append("Link", PRELOADS.header);
+// workers/app.ts, in the Renderer: appended to HTML only, after any Link a route already sends.
+return withPreloadHeader(page, PRELOADS.header, preloads(rootStylesheets(await serverBuild())).header);
 ```
+
+`rootStylesheets(build)` is the root route's CSS in a React Router server build as preload entries, the stylesheet every
+page blocks on. `withPreloadHeader(response, ...headers)` appends each non-empty value to an HTML response's `Link`.
 
 A font is always fetched in anonymous CORS mode, so a font preload without `crossorigin` is a second request for the
 same file. Every `as: "font"` entry gets `crossorigin=anonymous` (in the tag and the header) unless it names
@@ -399,7 +402,57 @@ ctx.waitUntil(ctx.exports.Renderer.purgePages("save page /about"));
 ```
 
 Fresh and stale lifetimes go in `Cloudflare-CDN-Cache-Control`, never `s-maxage`, which implies proxy-revalidate and
-stops Cloudflare serving stale. The browser's `max-age` stays 0, because a purge cannot reach a browser.
+stops Cloudflare serving stale. The browser's `max-age` stays 0, because a purge cannot reach a browser. When a
+re-render fails, the Workers cache serves the stored page (`Cf-Cache-Status: STALE`) with no `stale-if-error` needed,
+as long as nothing sends `must-revalidate`, `proxy-revalidate` or `s-maxage`
+([Workers cache](https://developers.cloudflare.com/workers/cache/configuration/)).
+
+What else the scheme does, and the helpers that do it:
+
+- **The key.** `cacheKey(url, { dimensions })` drops `TRACKING_PARAMS` (`utm_*`, `gclid`, `fbclid`, `msclkid` and the
+  other click ids and campaign tags) and sorts the rest, so a campaign link gets the stored page. `dimensions` is what
+  else a page varies by, such as a theme read from a cookie: `cacheKey(url, { dimensions: { theme } })`.
+- **Nothing personal.** `settleCacheHeaders(response, request)` also refuses to store a response with `Set-Cookie`, and
+  one rendered for a request with a cookie when `request` is passed. `privateRender(response)` is the same for a page
+  the gateway renders itself for one reader.
+- **Returning readers.** `settleCacheHeaders` stamps a stored page with `Last-Modified`, the time it was rendered. It
+  stays the same until a purge or a deploy renders the page again, so `forReader` answers a reader who already holds
+  it (`If-Modified-Since`, or `If-None-Match` for a page with its own `ETag`) with a 304 and no body.
+- **Cookies that change nothing private.** `forReader(page, request, { publicCookies: ["theme"] })` keeps the shared
+  header for a request carrying only those, so the browser may keep the page in its back/forward cache.
+- **Pages that change on a schedule.** `publicPageHeaders({ until: nextPublishAt })` keeps a page that lists posts fresh
+  no later than the next scheduled one (a minute at least): it goes live with no write to purge on.
+- **Purging.** `class Renderer extends withPurgePages(WorkerEntrypoint)` gives the Renderer its `purgePages(why, tags?)`
+  RPC method. In the gateway, `purgeAfterWrite(request, response, ctx, why)` asks for it after an accepted write.
+  From a cron or a queue, which have no Renderer of their own, `purgeViaRenderer(why)` asks over `exports` from
+  "cloudflare:workers". `schedulePurgeHook()` is a site-api publish hook that does that after a schedule changes a page.
+
+```js
+class Renderer extends withPurgePages(WorkerEntrypoint) {
+  async fetch(request) {
+    return settleCacheHeaders(await timedRender(() => render(request)), request);
+  }
+}
+// gateway
+const redirect = canonicalRedirect(request, { host: "example.com" });
+if (redirect) return redirect;
+if (isWrite) {
+  const response = await carrel.handle(request, ctx);
+  purgeAfterWrite(request, response, ctx, `carrel ${request.method} ${url.pathname}`);
+  return response;
+}
+const page = await ctx.exports.Renderer.fetch(request, { cf: { cacheKey: cacheKey(url, { dimensions: { theme } }) } });
+return forReader(page, request, { publicCookies: ["theme"] });
+// site-api
+createSiteApi({ adapter, key, hooks: [indexNow, schedulePurgeHook()] });
+```
+
+## Server-Timing
+
+`./server-timing` puts how long the Worker spent on a response in `Server-Timing`, which DevTools shows and field
+monitoring reads. `timedRender(async (marks) => render())` adds a `render` mark; `timed(marks, "d1", fn)` adds one for
+a wait inside it. In a Worker the clock moves only across I/O, so the marks measure the waits (D1, R2, fetch), which is
+what makes a render slow. A stored page keeps the marks of the render that stored it.
 
 ## Share cards
 
@@ -703,6 +756,11 @@ import { slashRedirect } from "@dustinedwards/site-runtime/url";
 const redirect = slashRedirect(request, { except: ["/api/*"] });
 if (redirect) return redirect;
 ```
+
+`canonicalRedirect(request, { host, except })` is the whole canonical address in one hop: plaintext to https (not on
+localhost), `www.<host>` to `host` when `host` is given, and the trailing slash, so `http://www.example.com/x/` is one
+redirect to `https://example.com/x`, never a chain. Sent `private, no-store`: the edge key holds no scheme, so a stored
+redirect would loop. Use it first in the gateway in place of separate https, www and slash redirects.
 
 ## One log line
 
