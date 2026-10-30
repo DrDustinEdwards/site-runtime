@@ -4,7 +4,7 @@ The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-
 (the root export and `./headers`, `./csp`, `./csp-report`, `./check`, `./oshp`, `./owasp`), the rate limiter (`./rate-limit`,
 `./rate-limit/durable-object`), the members model (`./members`), the Access for SaaS sign-in (`./access-login`), the MCP
 servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-log`) and server scaffold (`./mcp-server`), the Access request-token check
-(`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images and their edits (`./image`), link prefetch (`./prefetch`), preloads and Early Hints (`./preload`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), where a site's Anthropic calls go
+(`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images and their edits (`./image`), link prefetch (`./prefetch`), preloads and Early Hints (`./preload`), the edge page cache (`./edge-cache`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), where a site's Anthropic calls go
 (`./ai-gateway`), starting a Claude Code routine (`./routine`), the check on AI-written prose with the measure of an author's voice (`./prose`), the one sign-in every site
 offers (`./sign-in`, `./sign-in-client`, `./apple-secret`), the Cloudflare Turnstile widget and its server check (`./turnstile`), the same-origin check for
 resource routes (`./origin`), the trailing-slash redirect (`./url`), one structured log line and its scrubbers (`./log`) and the 404 counter
@@ -344,6 +344,52 @@ A font is always fetched in anonymous CORS mode, so a font preload without `cros
 same file. Every `as: "font"` entry gets `crossorigin=anonymous` (in the tag and the header) unless it names
 `use-credentials`. `{ rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" }` adds a
 preconnect. An href must be a path or an https URL, ASCII only (percent-encode the rest), with no `<`, `>` or `"`.
+
+## Edge page cache
+
+`./edge-cache` stores a site's public pages at the edge through the Workers cache and drops them by tag when the site
+writes: the scheme dustinedwards.info runs. A stored page is handed to every reader, so only a page that is the same
+for all of them may be stored: its CSP trusts inline scripts by hash, not a per-request nonce, it sets no cookie and
+it shows nothing signed in. Everything else stays `private, no-store`.
+
+```jsonc
+// wrangler.jsonc: the gateway runs on every request; the Renderer's responses are stored. No `cross_version_cache`,
+// so the Worker version stays in the key and every deploy starts cold.
+"cache": { "enabled": true },
+"exports": {
+  "default": { "type": "worker", "cache": { "enabled": false } },
+  "Renderer": { "type": "worker", "cache": { "enabled": true } }
+}
+```
+
+```js
+import { WorkerEntrypoint, cache } from "cloudflare:workers";
+import { cacheKey, forReader, publicPageHeaders, purgeTags, settleCacheHeaders } from "@dustinedwards/site-runtime/edge-cache";
+
+// A public route: stored a day, served stale a week while it re-renders, tagged "pages".
+export const headers = () => publicPageHeaders();
+
+export class Renderer extends WorkerEntrypoint {
+  async fetch(request) {
+    const response = await requestHandler(request, context); // then the security headers and the Link header
+    return settleCacheHeaders(response); // last: anything but a shared 200 leaves private, no-store
+  }
+}
+
+export default {
+  async fetch(request, env, ctx) {
+    // Signed-in paths, APIs and writes answer here, before the Renderer.
+    const page = await ctx.exports.Renderer.fetch(request, { cf: { cacheKey: cacheKey(request.url) } });
+    return forReader(page, request); // a request with a cookie is told no-store for the browser
+  },
+};
+
+// After a write that changes a public page. Never throws; `false` is logged.
+ctx.waitUntil(purgeTags(cache, ["pages"], "save page /about"));
+```
+
+Fresh and stale lifetimes go in `Cloudflare-CDN-Cache-Control`, never `s-maxage`, which implies proxy-revalidate and
+stops Cloudflare serving stale. The browser's `max-age` stays 0, because a purge cannot reach a browser.
 
 ## Share cards
 
