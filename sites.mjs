@@ -134,6 +134,10 @@ export const SITES = Object.freeze([
   // src/security-headers.ts, src/dashboard-csp.ts
   { id: "capsid-portal", origin: "https://portal.dustinedwards.info", headers: capsidCoop },
   { id: "capsid-mcp", origin: "https://mcp.dustinedwards.info", headers: capsidCoop },
+  // The Capsid explorer, Enarratio's site and the Foxhound admin MCP declare nothing: the standard exactly.
+  { id: "capsid", origin: "https://capsid.dustinedwards.info" },
+  { id: "enarratio", origin: "https://enarratio.dustinedwards.info" },
+  { id: "foxhound-mcp", origin: "https://admin-mcp.foxhoundapp.com" },
   {
     // scripts/security-headers.ts
     id: "capsomer",
