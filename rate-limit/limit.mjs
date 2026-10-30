@@ -1,3 +1,5 @@
+import { sha256Hex } from "../encoding.mjs";
+
 /**
  * @typedef {"ok" | "limited" | "unavailable"} Status
  * @typedef {{ status: Status, used: number, limit: number, retryAfterSeconds: number, window?: number, detail?: string }} Verdict
@@ -73,6 +75,17 @@ export function limitedResponse(verdict) {
 export function ipKey(prefix, request) {
   const ip = request.headers.get("CF-Connecting-IP")?.trim();
   return { key: `${prefix}:${ip || "anon"}`, anonymous: !ip };
+}
+
+/**
+ * A key for an email address: `prefix:` and the SHA-256 of the address trimmed and lower-cased, so `A@x.test ` shares
+ * `a@x.test`'s bucket and the counter's name never holds the address. Null for an empty or missing address.
+ * @param {string} prefix
+ * @param {unknown} email
+ */
+export async function emailKey(prefix, email) {
+  const address = typeof email === "string" ? email.trim().toLowerCase() : "";
+  return address ? `${prefix}:${await sha256Hex(address)}` : null;
 }
 
 /**
