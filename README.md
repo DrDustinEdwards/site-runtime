@@ -6,12 +6,14 @@ The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-
 servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-log`) and server scaffold (`./mcp-server`), the Access request-token check
 (`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images and their edits (`./image`), link prefetch (`./prefetch`), preloads and Early Hints (`./preload`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), where a site's Anthropic calls go
 (`./ai-gateway`), starting a Claude Code routine (`./routine`), the check on AI-written prose with the measure of an author's voice (`./prose`), the one sign-in every site
-offers (`./sign-in`, `./sign-in-client`, `./apple-secret`) and the Cloudflare Turnstile widget (`./turnstile`).
+offers (`./sign-in`, `./sign-in-client`, `./apple-secret`), the Cloudflare Turnstile widget and its server check (`./turnstile`), the same-origin check for
+resource routes (`./origin`), the trailing-slash redirect (`./url`), one structured log line and its scrubbers (`./log`) and the 404 counter
+(`./not-found`).
 
 No dependencies (`./sign-in` uses the site's own `better-auth` and
 `@better-auth/passkey`, 1.7.12 or later, which a site that imports it installs itself; they are not declared as peers,
 because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
-tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.23.0"`. `npm test` runs every test in `test/`.
+tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.31.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
 
@@ -132,6 +134,10 @@ A POST always gets 204 (an error status makes browsers send the report again). T
 at most 10 violations are logged, one JSON line each, with every URL cut to its origin and path, and no address, user
 agent or cookie. `allow` is the site's rate limiter, asked before the body is read; `allowOrigin` names the one origin
 that may report from another host (the CORS preflight). Nothing is stored.
+
+Pass `allow`. A receiver without it still works, since Capsomer, julieedwards.info and Foxing call it that way today and
+refusing would end their reports in silence, but it logs `csp_report_unlimited` once per isolate as a warning, so the
+gap shows in the site's logs.
 
 ## A request body, read to a ceiling
 
@@ -351,6 +357,26 @@ whitespace between tags (Satori makes it a flex child), draws the card inside a 
 fetches one static weight as WOFF (Satori reads TTF, OTF and WOFF, not WOFF2 or a variable font) and keeps it a year in
 `cache`. The design, colors and fonts are each site's own. 1200 by 630 is `SHARE_CARD_WIDTH` by `SHARE_CARD_HEIGHT`.
 
+`shareCardResponse(ImageResponse, { html, fonts, cacheKey, cache, ctx, width, height, headers })` is the whole card route:
+
+```js
+import { googleFont, shareCardResponse } from "@dustinedwards/site-runtime/share-card";
+import { ImageResponse } from "workers-og";
+
+return shareCardResponse(ImageResponse, {
+  cacheKey: `https://og.example.com/book/${book.slug}?v=${book.updatedAt}`, // whatever changes the card
+  html: () => cardHtml(book),                                              // called on a miss only
+  fonts: async () => [{ name: "DM Sans", data: await googleFont("DM Sans", 500, { cache: caches.default }), weight: 500, style: "normal" }],
+  ctx,                                                                     // the cache write goes in ctx.waitUntil
+});
+```
+
+It answers from `cache` (the Workers zone cache unless given) when `cacheKey` is there, else renders with
+`Cross-Origin-Resource-Policy: cross-origin` (`SHARE_CARD_HEADERS`: other sites' previews load the card, and the family's
+default is same-origin), keeps the PNG under `cacheKey`, and answers a failed render with a 503 (`Retry-After: 300`,
+`no-store`), never an empty image. `html` and `fonts` may be values or functions, so a cache hit builds no HTML and
+fetches no font. A route that wants another fallback (Foxing redirects to the book's cover) keeps `renderShareCard`.
+
 ## security.txt
 
 `./security-txt` writes `/.well-known/security.txt` (RFC 9116), so every site tells a finder where to report a
@@ -409,6 +435,7 @@ const auth = betterAuth({
 // the sign-in page's loader: signInMethods(env, { social: true }) -> { google, apple, turnstileSiteKey }
 // the browser: createAuthClient({ plugins: signInClientPlugins() }) from "@dustinedwards/site-runtime/sign-in-client"
 // sendMagicLink({ email, url, token, code }) mails the link and the code together
+// a phone app: signInOptions(env, { ..., appCode: true, sendSignInCode: ({ email, code }) => mailCode(email, code) })
 ```
 
 - Passkey: its relying party is the host of `BETTER_AUTH_URL`, so a passkey made on the live site works there only. The
@@ -423,6 +450,22 @@ const auth = betterAuth({
   minute per address. Only the link request mails: the email OTP's own endpoints are in `disabledPaths`, so Turnstile
   and the link's limit cover every sign-in mail. Capsomer 0.40.0's `magicLink` template takes the `code`. Passwords
   are off.
+- What the mail must carry: `sendMagicLink({ email, url, token, code })` gets the link (`url`, which holds `token`) and
+  the six-digit `code`. The mail carries both, the link untouched and the code as text, and says they last
+  `SIGN_IN_EXPIRES_IN_WORDS`. A mail without the code leaves the tab that asked with nothing to type. Neither is ever
+  logged: each signs in, so a send error has `url`, `token` and `code` cut out (Foxhound's `send-auth-email.ts`).
+- A phone app's code: `appCode: true` with `sendSignInCode({ email, code })`. An app cannot open the link (it opens in
+  the phone's browser) or show the Turnstile widget, so it asks for a code alone at `APP_CODE_PATH`
+  (`/email-otp/send-verification-otp`) and signs in at `SIGN_IN_CODE_PATH`. That one path comes off `disabledPaths`;
+  the rest stay off. It is the same plugin's code (sign-in only, hashed, three tries, `SIGN_IN_EXPIRES_IN_SECONDS`), and
+  only a sign-in code is mailed: a request for any other kind mails nothing. With no Turnstile in front of it, it is
+  held to three a minute (`APP_CODE_RATE_LIMIT`, in `rateLimit.customRules`). A site that spreads its own `rateLimit`
+  keeps `...signIn.rateLimit`. This replaces a second `emailOTP` plugin beside the shared one (Foxing's), which does
+  not work: the shared `disabledPaths` turn its send path off (404), and Better Auth 1.7.12 logs an endpoint conflict.
+- No OAuth tokens: with `social: true` the options carry `databaseHooks.account`, which blank Google's and Apple's
+  access, refresh and ID tokens on every account write Better Auth makes (createOAuthUser, linkAccount, updateAccount).
+  Nothing in sign-in reads them, so none are stored. A site with hooks of its own merges them:
+  `databaseHooks: { ...signIn.databaseHooks, user: { ... } }`.
 - Turnstile checks the email link when `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` are both set.
 - Google (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`) and Apple (`APPLE_CLIENT_ID`, the Services ID; `APPLE_TEAM_ID`,
   `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`, the .p8 text) when the site passes `social: true` and has the settings.
@@ -451,9 +494,27 @@ useEffect(() => mountTurnstile(ref.current, siteKey), [siteKey]);
   inputs and buttons.
 - The widget leaves its token in a hidden `cf-turnstile-response` input inside the element, so the form sends it with its
   fields. `{ onToken }` is for a form that sends it another way, such as Better Auth's `x-captcha-response` header.
-- Browser only. The token is checked on the server, by `./sign-in`'s captcha plugin.
+- Browser only. The token is checked on the server, by `./sign-in`'s captcha plugin, or for any other form by
+  `verifyTurnstile`.
 
-**Tests.** `test/turnstile.test.mjs`, against a fake document.
+```js
+import { verifyTurnstile } from "@dustinedwards/site-runtime/turnstile";
+const check = await verifyTurnstile(form.get("cf-turnstile-response"), env.TURNSTILE_SECRET_KEY, {
+  remoteIp: request.headers.get("cf-connecting-ip"),
+  hostname: url.hostname,   // optional: the widget ran on this site
+  action: "estimate",       // optional: the widget's data-action
+});
+if (!check.ok) return refuse(check.errors);
+```
+
+`verifyTurnstile(token, secret, { remoteIp, hostname, action, timeoutMs })` fails closed and never throws. Only
+Cloudflare's `success: true` (with the expected `hostname` and `action`, when given) is `ok: true`. No secret, no token or
+one over 2048 characters, siteverify unreachable, slow past `timeoutMs` (10 seconds) or answering an error status or
+something that is not JSON: each is `ok: false`, with `errors` holding Cloudflare's codes or one of `missing-secret`,
+`missing-input-response`, `siteverify-unreachable`, `not-success`, `hostname-mismatch`, `action-mismatch`. Never wrap it
+in a catch that returns a pass.
+
+**Tests.** `test/turnstile.test.mjs`, against a fake document and a fake siteverify.
 
 ## Starting a Claude Code routine
 
@@ -473,6 +534,82 @@ const fired = await fireRoutine(config, "job: ...");
 - `fireRoutine` never throws: `{ ok: true, sessionUrl }`, or `{ ok: false, retry, error }` with `retry` true for the
   hourly limit (30 per routine, 100 per account) and for an unreachable or failing service.
 - Each fire is a new session; the endpoint has no idempotency key, so the caller keeps a fire from repeating.
+
+## The same-origin check
+
+`./origin` refuses a cross-origin request that changes something, on the routes no framework check covers. React
+Router checks the Origin of a document's action, but a resource route (no default export: an API endpoint, a form post
+answered with a redirect, an admin JSON route) never reaches that check, and a Worker route outside React Router has
+none (dustinedwards.info's admin middleware and theme route).
+
+```js
+import { refuseCrossOrigin } from "@dustinedwards/site-runtime/origin";
+const refused = refuseCrossOrigin(request, SECURITY_HEADERS); // null for GET, HEAD, OPTIONS and a same-origin request
+if (refused) return refused;
+```
+
+- `originVerdict(origin, requestUrl)` is `{ ok, reason }`: an absent Origin passes (`absent`; only non-browser clients
+  and a no-script form post omit it, and a hostile page cannot make a browser leave it out), the request's own origin
+  passes (`same-origin`), and anything else is refused (`cross-origin`), the string `"null"` of a sandboxed frame
+  included. The request's own origin, not a configured one, so the check holds on workers.dev, a preview and the live
+  domain alike.
+- `originRefusal(headers)` is the 403: `ORIGIN_REFUSAL` as plain text, `no-store`, saying nothing about the route.
+
+## One address per page
+
+`slashRedirect(request, { except })` (`./url`) sends `/x/` to `/x` with its query, so a page is not indexed, cached and
+counted twice: 301 for GET and HEAD, 308 otherwise (a form body survives). "/" is never redirected, nor a path in
+`except` (exact, or a prefix written with a trailing `*`). The Location is absolute on the request's own origin, so
+`//attacker.example/` cannot become a protocol-relative redirect off the site. Null when there is nothing to redirect.
+
+```js
+import { slashRedirect } from "@dustinedwards/site-runtime/url";
+const redirect = slashRedirect(request, { except: ["/api/*"] });
+if (redirect) return redirect;
+```
+
+## One log line
+
+`./log` writes one JSON line per event, `event` first, so Workers Logs and a tail filter on its name:
+
+```js
+import { logEvent } from "@dustinedwards/site-runtime/log";
+logEvent("checkout_failed", { path: url.pathname, error }, { level: "error", tokenPath: /\/(u|p|invite)\/[^/?#\s'"]+/g });
+// {"event":"checkout_failed","path":"/u/[token]","error":"Error: ..."}
+```
+
+Every string field is scrubbed first, with the scrubbers Foxhound's Sentry options used, exported (`scrubText`,
+`scrubUrl`, `scrubFields`, `EMAIL_PATTERN`, `STRIPE_KEY_PATTERN`) so a site's error reports cut the same things: email
+addresses, a URL's query and fragment (in text, and the whole of a field named for a url or path), Stripe keys, a failed
+Drizzle query's bound parameters, and with `tokenPath` the token segment of the site's own routes. Fields named for
+headers, cookies, queries or console arguments are dropped; an Error becomes its name and message. The scrubbers are
+the net, not the rule: never log a token, a code or a secret on purpose. The package's own lines (`share_card_failed`,
+`not_found_count_failed`, `access_keys_unreachable`, `csp_report_unlimited`) go through it.
+
+## The 404 counter
+
+`./not-found` counts the 404s a site serves, per path per UTC day, in its D1, so a broken link or a moved page shows
+up. The table is Foxhound's `page_404_daily` exactly (`id` a random UUID, `day` UTC midnight in epoch milliseconds,
+`path`, `hit_count`, unique on day and path), so Foxhound switches with no migration; another site adds `NOT_FOUND_SQL`
+as its next migration.
+
+```js
+import { countNotFound } from "@dustinedwards/site-runtime/not-found";
+const response = await handler(request, env, ctx);
+countNotFound(env.DB, request, response, ctx); // a 404 to a GET, written in ctx.waitUntil
+return response;
+```
+
+- Only the pathname, cut to 512 characters (`NOT_FOUND_PATH_MAX`), never the query (it can carry a token), and no
+  referrer, user agent or address. `notFoundKey(url, now)` is the row's `{ day, path }`.
+- GET only. React Router's data request (`/x.data`, `/_.data` for the home page) counts as its page, so a client
+  navigation and a document load of the same missing page add to one row.
+- One upsert, so two 404s at once cannot both insert or lose a hit. Written in `ctx.waitUntil`, so it never holds or
+  fails the response; a failed write is logged (`not_found_count_failed`). `db` may be a function, called inside the
+  background write, so a missing binding is logged too. `recordNotFound(db, url, now)` is the awaited write.
+
+**Tests.** `test/log.test.mjs`, `test/url.test.mjs` (a `//` path stays on the site) and `test/not-found.test.mjs` (on
+an in-memory SQLite with `NOT_FOUND_SQL`).
 
 ## A constant-time secret compare
 
@@ -513,11 +650,33 @@ const service = typeof verdict.claims.common_name === "string" ? verdict.claims.
 - The keys come from `https://<team domain>/cdn-cgi/access/certs`, cached per isolate. A kid not in the cache refetches, at
   most once every 30 seconds, so a forged kid cannot hammer the endpoint. A key set that cannot be fetched **throws**: an
   outage is not a refusal.
-- Who the claims name (an email, a service token's `common_name`), any case folding, a local development bypass and what a
-  refusal shows stay with each site.
+- What a refusal shows stays with each site.
+
+`accessAdmin` is the admin check txasm, Foxing, Foxhound and Germomics had each copied:
+
+```js
+import { accessAdmin, accessSignInUrl, safeAdminNext } from "@dustinedwards/site-runtime/access";
+const admin = await accessAdmin(request, env);                                // ADMIN_EMAILS, else ADMIN_EMAIL
+const same = await accessAdmin(request, env, { admins: [session.user.email] }); // Access must name this signed-in user
+if (!admin) return redirect(accessSignInUrl(request));                        // /admin/access?next=<this page>
+```
+
+- `accessAdmin(request, env, { admins })` is `{ email }` or null and never throws. The token is the header or the
+  `CF_Authorization` cookie; its email, trimmed and lower-cased, must be in `admins` (a list or a comma-separated
+  string, compared in lower case; default `adminEmails(env)`). An empty list admits nobody. Keys that cannot be fetched
+  are null, logged as `access_keys_unreachable`.
+- Local development: `ACCESS_DEV_BYPASS="1"` passes the first admin with no token, and only on a `localhost` URL, so a
+  stray copy of the setting in production does nothing.
+- `adminEmails(env)` reads `ADMIN_EMAILS`, else `ADMIN_EMAIL`, split on commas, trimmed and lower-cased.
+- `AccessSecrets` is the type a site's `Env` extends: `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`, `ACCESS_DEV_BYPASS?`.
+- For a site whose Access application covers one path (txasm: `/admin/access`, which sets the domain-wide cookie and
+  comes back), `accessSignInUrl(request, { path })` is that path with the current page as `next`, and
+  `safeAdminNext(next, { prefix, path })` is where to land after it: `next` when it is under `prefix` (`/admin`) and not
+  the Access path, else `prefix`.
 
 **Tests.** `test/html.test.mjs`, `test/compare.test.mjs` (both the XOR path and a stubbed `crypto.subtle.timingSafeEqual`)
-and `test/access.test.mjs` (a key pair made in the test and a fake certs endpoint). Each PLANT test fails when the guard it
+and `test/access.test.mjs` (a key pair made in the test and a fake certs endpoint; `accessAdmin`'s case folding, its
+localhost-only bypass and its refusal when the keys cannot be fetched). Each PLANT test fails when the guard it
 names is removed.
 
 ## The test suite
@@ -549,6 +708,29 @@ changed set of failures.
 `style-src-attr 'unsafe-inline'` is allowed: several sites emit inline style attributes, and styles cannot run code.
 
 `bin/check-security-headers.mjs <url>...` runs the same check against live URLs (exit 1 on a failure, 2 if a URL cannot be fetched).
+
+## Static assets: the `_headers` file
+
+Cloudflare's asset server answers a static file without running the Worker, so the Worker's header set never reaches
+it. `headersFile(set, { paths, comment })` (`./headers`) writes the `_headers` file that carries the same set to those
+files: `set` on `/*` minus any Content-Security-Policy (a page's policy names what that page loads and may carry a
+nonce), then each entry of `paths`, a path pattern and the headers it adds or changes. Cloudflare joins a header that
+two matching rules set, so a path that changes a header of the set first detaches the `/*` value with `! Name`.
+`comment` lines lead the file as `# ...`.
+
+```js
+import { headersFile } from "@dustinedwards/site-runtime/headers";
+writeFileSync("public/_headers", headersFile(SECURITY_HEADERS, {
+  comment: "GENERATED by scripts/gen-headers.mjs. Do not edit.",
+  paths: {
+    "/favicon.svg": { "Cross-Origin-Resource-Policy": "cross-origin" },
+    "/assets/*": { "Cache-Control": "public, max-age=31536000, immutable" },
+  },
+}));
+```
+
+A site generates the file from the set its Worker applies (a build step or a script) and fails CI when the committed
+file differs, as Foxhound's `scripts/gen-headers.mjs --check` does.
 
 ## Adopting it
 

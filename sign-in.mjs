@@ -14,6 +14,19 @@
  *   (SIGN_IN_EXPIRES_IN_SECONDS). A wrong code counts: three and the code is spent, though the link still works. Only
  *   the link request mails: the email OTP plugin's own send endpoints are off (disabledPaths), so the Turnstile check
  *   and the five a minute on the link request cover every sign-in mail.
+ * - WHAT THE MAIL CARRIES: the site's sendMagicLink({ email, url, token, code }) gets Better Auth's link (`url`, which
+ *   holds `token`) and the six-digit `code`. The mail must carry both, the link untouched and the code as text (Capsomer's
+ *   magicLink template takes `code`), and say they last SIGN_IN_EXPIRES_IN_WORDS. A mail without the code leaves the tab
+ *   that asked with nothing to type. Neither is ever logged: each signs in, so a send error must have them cut out.
+ * - THE APP'S CODE, only when the site asks (`appCode: true`, with `sendSignInCode`). A phone app cannot open the link
+ *   (it opens in the phone's browser) and cannot show the Turnstile widget, so it asks for a code alone at
+ *   /email-otp/send-verification-otp (APP_CODE_PATH) and signs in at SIGN_IN_CODE_PATH. That one path is turned back on;
+ *   every other email OTP path stays off. The code is the same plugin's (sign-in only, stored hashed, three tries, 15
+ *   minutes); sendSignInCode({ email, code }) mails it, and only for a sign-in: a request for any other kind of code
+ *   mails nothing. With no Turnstile in front of it, it is held to three a minute per address (APP_CODE_RATE_LIMIT).
+ * - NO OAUTH TOKENS: with `social: true` the options carry `databaseHooks.account`, which blank Google's and Apple's
+ *   tokens on every account write Better Auth makes (createOAuthUser, linkAccount, updateAccount). Sign-in reads none of
+ *   them, so none are stored. A site with hooks of its own merges them: `databaseHooks: { ...signIn.databaseHooks, user }`.
  * - TURNSTILE on the email link when TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY are both set (a key without its secret
  *   would show a widget nothing checks; a secret without its key would refuse everyone). The link is the one endpoint
  *   that mails a stranger. The widget is `./turnstile`.
@@ -48,9 +61,24 @@ export const SIGN_IN_EXPIRES_IN_WORDS = "15 minutes";
 /** Where a page posts the code: Better Auth's email OTP sign-in, which signs in, or makes the account, as the link does. */
 export const SIGN_IN_CODE_PATH = "/sign-in/email-otp";
 
+/** Where a phone app asks for a code alone (`appCode: true`): the email OTP plugin's own send endpoint. */
+export const APP_CODE_PATH = "/email-otp/send-verification-otp";
+
+/** The app's code request, held tighter than the default: three a minute, since no Turnstile sits in front of it. */
+export const APP_CODE_RATE_LIMIT = Object.freeze({ window: 60, max: 3 });
+
+/** What every account write stores in place of Google's and Apple's tokens (`social: true`). */
+const NO_OAUTH_TOKENS = Object.freeze({
+  accessToken: null,
+  refreshToken: null,
+  idToken: null,
+  accessTokenExpiresAt: null,
+  refreshTokenExpiresAt: null,
+});
+
 /** The email OTP plugin's endpoints that are off: every one that mails or reads a code outside the link request. */
 const OTP_OFF_PATHS = [
-  "/email-otp/send-verification-otp",
+  APP_CODE_PATH,
   "/email-otp/check-verification-otp",
   "/email-otp/verify-email",
   "/email-otp/request-password-reset",
@@ -62,6 +90,7 @@ const OTP_OFF_PATHS = [
 
 /**
  * @typedef {(data: { email: string, url: string, token: string, code: string }, ctx?: unknown) => Promise<void> | void} SendMagicLink
+ * @typedef {(data: { email: string, code: string }, ctx?: unknown) => Promise<void> | void} SendSignInCode
  */
 
 /**
@@ -79,18 +108,21 @@ export function turnstileSiteKey(env) {
  *   GOOGLE_CLIENT_ID?: string, GOOGLE_CLIENT_SECRET?: string,
  *   APPLE_CLIENT_ID?: string, APPLE_TEAM_ID?: string, APPLE_KEY_ID?: string, APPLE_PRIVATE_KEY?: string,
  * }} env
- * @param {{ siteName: string, sendMagicLink: SendMagicLink, social?: boolean }} site
+ * @param {{ siteName: string, sendMagicLink: SendMagicLink, social?: boolean, appCode?: boolean, sendSignInCode?: SendSignInCode }} site
  */
-export async function signInOptions(env, { siteName, sendMagicLink, social = false }) {
+export async function signInOptions(env, { siteName, sendMagicLink, social = false, appCode = false, sendSignInCode }) {
+  if (appCode && typeof sendSignInCode !== "function") throw new Error("appCode: true needs sendSignInCode to mail the code");
   const url = new URL(env.BETTER_AUTH_URL);
   /** @type {any[]} */
   const otp = emailOTP({
     expiresIn: SIGN_IN_EXPIRES_IN_SECONDS,
     allowedAttempts: 3,
     storeOTP: "hashed",
-    // Never called: its endpoints are off, and the code goes out in the link's mail below.
-    sendVerificationOTP: async () => {
-      throw new Error("sign-in codes are sent only with the sign-in link");
+    // Called only through APP_CODE_PATH, which is open only with appCode; otherwise the code goes out in the link's
+    // mail below. Only a sign-in code is mailed: the other kinds belong to endpoints that stay off.
+    sendVerificationOTP: async ({ email, otp: code, type }, ctx) => {
+      if (!appCode || !sendSignInCode) throw new Error("sign-in codes are sent only with the sign-in link");
+      if (type === "sign-in") await sendSignInCode({ email, code }, ctx);
     },
   });
   const link = magicLink({
@@ -124,13 +156,17 @@ export async function signInOptions(env, { siteName, sendMagicLink, social = fal
     socialProviders.apple = { clientId: env.APPLE_CLIENT_ID, clientSecret: appleSecret };
   }
 
+  const noTokens = { before: async () => ({ data: { ...NO_OAUTH_TOKENS } }) };
   return {
     emailAndPassword: { enabled: false },
     plugins,
-    disabledPaths: OTP_OFF_PATHS,
+    disabledPaths: appCode ? OTP_OFF_PATHS.filter((path) => path !== APP_CODE_PATH) : [...OTP_OFF_PATHS],
     socialProviders,
     account: { accountLinking: { enabled: true, disableImplicitLinking: true } },
-    rateLimit: { enabled: true, storage: "database" },
+    ...(social ? { databaseHooks: { account: { create: noTokens, update: noTokens } } } : {}),
+    rateLimit: appCode
+      ? { enabled: true, storage: "database", customRules: { [APP_CODE_PATH]: { ...APP_CODE_RATE_LIMIT } } }
+      : { enabled: true, storage: "database" },
     advanced: { ipAddress: { ipAddressHeaders: ["cf-connecting-ip"] } },
     // Apple returns to the site with a form POST from its own origin.
     trustedOrigins: socialProviders.apple ? ["https://appleid.apple.com"] : [],

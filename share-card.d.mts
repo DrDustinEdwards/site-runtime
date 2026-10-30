@@ -23,3 +23,24 @@ export function googleFont(
   weight: number,
   options?: { cache?: Cache; cacheOrigin?: string; fetch?: typeof fetch },
 ): Promise<ArrayBuffer | null>;
+
+/** Cross-Origin-Resource-Policy: cross-origin, which every card carries. */
+export const SHARE_CARD_HEADERS: Readonly<{ "Cross-Origin-Resource-Policy": "cross-origin" }>;
+
+/**
+ * The card route's answer: the cached PNG under `cacheKey`, else the render (html and fonts may be functions, called on a
+ * miss only), kept in `cache` (default the zone cache; in `ctx.waitUntil` when given), else a 503 with Retry-After: 300.
+ */
+export function shareCardResponse(
+  ImageResponse: new (html: string, options: { width: number; height: number; fonts: any[] }) => Response,
+  options: {
+    html: string | (() => string | Promise<string>);
+    fonts: unknown[] | (() => unknown[] | Promise<unknown[]>);
+    cacheKey?: string | Request;
+    cache?: Cache;
+    ctx?: { waitUntil(promise: Promise<unknown>): void };
+    width?: number;
+    height?: number;
+    headers?: Record<string, string>;
+  },
+): Promise<Response>;

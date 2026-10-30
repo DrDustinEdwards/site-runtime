@@ -7,7 +7,11 @@
  *   function that removes it. Browser only: call it from an effect, never during a server render.
  * - The widget puts its token in a hidden `cf-turnstile-response` input inside `el`, so a form that holds `el` sends the
  *   token with its other fields. `onToken` is for a form that sends it another way (Better Auth's x-captcha-response header).
- * - The token is checked on the server, never here: `./sign-in` turns on Better Auth's captcha plugin for the email link.
+ * - The token is checked on the server: `./sign-in` turns on Better Auth's captcha plugin for the email link, and any other
+ *   form checks it with `verifyTurnstile(token, secret, { remoteIp, hostname, action })`, which fails closed: no
+ *   secret, no token, an unreachable or erroring siteverify, an answer that is not JSON, a hostname or action that is
+ *   not the one expected, all are `ok: false`. Only `success: true` from Cloudflare passes. Never wrap it in a catch
+ *   that returns a pass.
  */
 
 export const TURNSTILE_ORIGIN = "https://challenges.cloudflare.com";
@@ -68,4 +72,46 @@ export function mountTurnstile(el, siteKey, options = {}) {
     removed = true;
     if (widgetId !== undefined) /** @type {{ turnstile?: Turnstile }} */ (globalThis).turnstile?.remove(widgetId);
   };
+}
+
+/** Cloudflare's server-side check of a widget token. */
+export const SITEVERIFY_URL = `${TURNSTILE_ORIGIN}/turnstile/v0/siteverify`;
+
+/** Cloudflare's own limit on a token's length (developers.cloudflare.com/turnstile/get-started/server-side-validation). */
+const MAX_TOKEN_LENGTH = 2048;
+
+/**
+ * Checks a widget token with siteverify. Fails closed: every path but Cloudflare's `success: true` (and, when given,
+ * the expected `hostname` and `action`) is `ok: false`, with Cloudflare's error codes or one of ours (`missing-secret`,
+ * `missing-input-response`, `siteverify-unreachable`, `hostname-mismatch`, `action-mismatch`). Never throws.
+ * @param {string | null | undefined} token
+ * @param {string | null | undefined} secret
+ * @param {{ remoteIp?: string | null, hostname?: string, action?: string, timeoutMs?: number, fetch?: typeof fetch }} [options]
+ * @returns {Promise<{ ok: boolean, errors: string[], hostname?: string, action?: string }>}
+ */
+export async function verifyTurnstile(token, secret, { remoteIp, hostname, action, timeoutMs = 10_000, fetch: post = fetch } = {}) {
+  if (!secret) return { ok: false, errors: ["missing-secret"] };
+  if (typeof token !== "string" || token.length === 0 || token.length > MAX_TOKEN_LENGTH) {
+    return { ok: false, errors: ["missing-input-response"] };
+  }
+  const body = new URLSearchParams({ secret, response: token });
+  if (remoteIp) body.set("remoteip", remoteIp);
+  /** @type {{ success?: unknown, "error-codes"?: unknown, hostname?: unknown, action?: unknown }} */
+  let answer;
+  try {
+    const res = await post(SITEVERIFY_URL, { method: "POST", body, signal: AbortSignal.timeout(timeoutMs) });
+    if (!res.ok) return { ok: false, errors: ["siteverify-unreachable"] };
+    answer = await res.json();
+  } catch {
+    return { ok: false, errors: ["siteverify-unreachable"] };
+  }
+  const errors = Array.isArray(answer?.["error-codes"]) ? answer["error-codes"].map(String) : [];
+  const seen = {
+    ...(typeof answer?.hostname === "string" ? { hostname: answer.hostname } : {}),
+    ...(typeof answer?.action === "string" ? { action: answer.action } : {}),
+  };
+  if (answer?.success !== true) return { ok: false, errors: errors.length ? errors : ["not-success"], ...seen };
+  if (hostname !== undefined && seen.hostname !== hostname) return { ok: false, errors: ["hostname-mismatch"], ...seen };
+  if (action !== undefined && seen.action !== action) return { ok: false, errors: ["action-mismatch"], ...seen };
+  return { ok: true, errors: [], ...seen };
 }

@@ -22,3 +22,32 @@ export function verifyAccessRequest(
   request: Request,
   options: { teamDomain: string | undefined; audience: string | undefined; cookie?: boolean; keys?: KeySource; now?: number },
 ): Promise<AccessVerdict>;
+
+/** The Access settings a site's Env declares for `accessAdmin`. */
+export type AccessSecrets = {
+  /** https://<team>.cloudflareaccess.com */
+  ACCESS_TEAM_DOMAIN: string;
+  /** The Access application's Audience (AUD) tag. */
+  ACCESS_AUD: string;
+  /** "1" lets a localhost URL in with no token, as the first admin. Development only. */
+  ACCESS_DEV_BYPASS?: string;
+};
+
+/** ADMIN_EMAILS, else ADMIN_EMAIL, split on commas, trimmed and lower-cased; unset is []. */
+export function adminEmails(env: { ADMIN_EMAILS?: string; ADMIN_EMAIL?: string }): string[];
+
+/**
+ * The admin Access signed this request for (header or CF_Authorization cookie, email compared in lower case), or null.
+ * Never throws. `admins` defaults to `adminEmails(env)`; ACCESS_DEV_BYPASS="1" on localhost passes the first admin.
+ */
+export function accessAdmin(
+  request: Request,
+  env: Partial<AccessSecrets> & { ADMIN_EMAILS?: string; ADMIN_EMAIL?: string },
+  options?: { admins?: string | readonly string[]; keys?: KeySource; now?: number },
+): Promise<{ email: string } | null>;
+
+/** `${path}?next=<this page>`; `path` defaults to "/admin/access". */
+export function accessSignInUrl(request: Request, options?: { path?: string }): string;
+
+/** `next` when it is under `prefix` (default "/admin") and not the Access `path` (default "/admin/access"), else `prefix`. */
+export function safeAdminNext(next: string | null | undefined, options?: { prefix?: string; path?: string }): string;
