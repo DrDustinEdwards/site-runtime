@@ -307,7 +307,7 @@ browsers ignore it. The header needs no CSP allowance (an inline rule set would 
 ```js
 import { SPECULATION_RULES_HEADER, SPECULATION_RULES_PATH, speculationRulesResponse } from "@dustinedwards/site-runtime/prefetch";
 
-if (url.pathname === SPECULATION_RULES_PATH) return speculationRulesResponse({ exclude: ["/drafts"] });
+if (url.pathname === SPECULATION_RULES_PATH) return speculationRulesResponse({ exclude: ["/drafts"] }, request);
 // On every HTML response, beside the security headers:
 headers.set(SPECULATION_RULES_HEADER.name, SPECULATION_RULES_HEADER.value);
 ```
