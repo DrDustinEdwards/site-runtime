@@ -111,3 +111,32 @@ export function logEvent(event, fields = {}, { level = "log", ...scrub } = {}) {
   else if (level === "warn") console.warn(line);
   else console.log(line);
 }
+
+/**
+ * The fields that tie a log line to its request, for a site to spread into its lines: `request_id` (the `cf-ray`
+ * header, empty when there is none), `method`, `path` (scrubbed, never the query) and, when given, the deployed `sha`.
+ * @param {Request} request
+ * @param {{ sha?: string } & ScrubOptions} [options]
+ * @returns {{ request_id: string, method: string, path: string, sha?: string }}
+ */
+export function requestFields(request, { sha, ...scrub } = {}) {
+  return {
+    request_id: request.headers.get("cf-ray") ?? "",
+    method: request.method,
+    path: scrubUrl(new URL(request.url).pathname, scrub),
+    ...(sha ? { sha } : {}),
+  };
+}
+
+/**
+ * Event names from the OWASP Logging Vocabulary
+ * (https://cheatsheetseries.owasp.org/cheatsheets/Logging_Vocabulary_Cheat_Sheet.html), so a site's security events
+ * carry the names a reader or a SIEM rule already knows.
+ */
+export const OWASP_EVENTS = Object.freeze({
+  signInSuccess: "authn_login_success",
+  signInFailure: "authn_login_fail",
+  authorizationFailure: "authz_fail",
+  inputValidationFailure: "input_validation_fail",
+  rateLimitExceeded: "excess_rate_limit_exceeded",
+});
