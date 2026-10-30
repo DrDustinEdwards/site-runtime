@@ -58,3 +58,12 @@ export type HeaderOverride = {
     value: string | null;
     reason: string;
 };
+
+/**
+ * A Cloudflare `_headers` file for static assets: `set` on `/*` minus any Content-Security-Policy, then each of `paths`
+ * (pattern to headers), detaching with `! Name` a header the `/*` block already sets. `comment` lines lead as `# ...`.
+ */
+export function headersFile(
+  set: Readonly<Record<string, string>>,
+  options?: { paths?: Readonly<Record<string, Readonly<Record<string, string>>>>; comment?: string | readonly string[] },
+): string;

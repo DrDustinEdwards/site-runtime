@@ -51,3 +51,23 @@ test("PLANT: a failed load is forgotten, so the next mount loads the script agai
   mountTurnstile(el("retry"), "key");
   assert.equal(scripts.length, 2);
 });
+
+test("PLANT: the server check passes only Cloudflare's success, and fails closed on everything else", async () => {
+  const { verifyTurnstile } = await load();
+  const answer = (/** @type {unknown} */ body, status = 200) => /** @type {typeof fetch} */ (async () => new Response(JSON.stringify(body), { status }));
+  const pass = { success: true, hostname: "example.com", action: "contact" };
+  assert.equal((await verifyTurnstile("t", "s", { fetch: answer(pass), hostname: "example.com", action: "contact" })).ok, true);
+  const refused = [
+    await verifyTurnstile("t", "", { fetch: answer(pass) }),
+    await verifyTurnstile("", "s", { fetch: answer(pass) }),
+    await verifyTurnstile("t", "s", { fetch: answer({ success: false, "error-codes": ["invalid-input-response"] }) }),
+    await verifyTurnstile("t", "s", { fetch: answer({}) }),
+    await verifyTurnstile("t", "s", { fetch: answer(pass, 500) }),
+    await verifyTurnstile("t", "s", { fetch: /** @type {typeof fetch} */ (async () => new Response("not json")) }),
+    await verifyTurnstile("t", "s", { fetch: /** @type {typeof fetch} */ (async () => { throw new Error("down"); }) }),
+    await verifyTurnstile("t", "s", { fetch: answer(pass), hostname: "other.example" }),
+    await verifyTurnstile("t", "s", { fetch: answer(pass), action: "sign-in" }),
+  ];
+  assert.deepEqual(refused.map((r) => r.ok), refused.map(() => false));
+  assert.deepEqual(refused[2]?.errors, ["invalid-input-response"]);
+});

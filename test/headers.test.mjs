@@ -116,3 +116,18 @@ test("applyHeaderSet throws on immutable headers, as documented, rather than ski
   assert.equal(rebuilt.headers.get("X-Frame-Options"), "deny");
   assert.equal(rebuilt.headers.get("Location"), "https://example.com/");
 });
+
+test("the static _headers file leaves out the policy and detaches a header a path changes", async () => {
+  const { headersFile } = await import("../headers.mjs");
+  const file = headersFile(
+    { "X-Frame-Options": "deny", "Cross-Origin-Resource-Policy": "same-origin", "Content-Security-Policy": "default-src 'self'" },
+    { paths: { "/favicon.svg": { "Cross-Origin-Resource-Policy": "cross-origin" }, "/assets/*": { "Cache-Control": "public, max-age=31536000, immutable" } }, comment: "Generated." },
+  );
+  assert.equal(
+    file,
+    "# Generated.\n/*\n  X-Frame-Options: deny\n  Cross-Origin-Resource-Policy: same-origin\n\n" +
+      "/favicon.svg\n  ! Cross-Origin-Resource-Policy\n  Cross-Origin-Resource-Policy: cross-origin\n\n" +
+      "/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n",
+  );
+  assert.throws(() => headersFile({ "X-A": "a\nb" }));
+});

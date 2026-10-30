@@ -7,3 +7,16 @@ export const TURNSTILE_ORIGIN: "https://challenges.cloudflare.com";
  * rendered. Browser only.
  */
 export function mountTurnstile(el: HTMLElement, siteKey: string, options?: { onToken?: (token: string) => void }): () => void;
+
+/** Cloudflare's server-side check of a widget token. */
+export const SITEVERIFY_URL: "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+/**
+ * Checks a widget token on the server. Fails closed and never throws: only Cloudflare's `success: true`, with the
+ * expected `hostname` and `action` when given, is `ok: true`. `errors` holds Cloudflare's codes or one of
+ * `missing-secret`, `missing-input-response`, `siteverify-unreachable`, `not-success`, `hostname-mismatch`, `action-mismatch`.
+ */
+export function verifyTurnstile(
+  token: string | null | undefined,
+  secret: string | null | undefined,
+  options?: { remoteIp?: string | null; hostname?: string; action?: string; timeoutMs?: number; fetch?: typeof fetch },
+): Promise<{ ok: boolean; errors: string[]; hostname?: string; action?: string }>;

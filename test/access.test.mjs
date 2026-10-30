@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, test } from "node:test";
 
-import { ACCESS_COOKIE, ACCESS_JWT_HEADER, REFETCH_COOLDOWN_MS, accessIssuer, accessKeys, accessToken, verifyAccessRequest } from "../access.mjs";
+import { ACCESS_COOKIE, ACCESS_JWT_HEADER, REFETCH_COOLDOWN_MS, accessAdmin, accessIssuer, accessKeys, accessToken, adminEmails, verifyAccessRequest } from "../access.mjs";
 import { encode, other, pair, publicJwk, keys, sign } from "./jwt.mjs";
 
 const TEAM = "sample.cloudflareaccess.com";
@@ -186,5 +186,28 @@ describe("accessKeys", () => {
 
   test("a team domain that is not a host throws, since no key set can be named for it", () => {
     assert.throws(() => accessKeys(""), /team domain/);
+  });
+});
+
+describe("accessAdmin", () => {
+  const env = { ACCESS_TEAM_DOMAIN: TEAM, ACCESS_AUD: AUD, ADMIN_EMAIL: " Admin@Example.com, second@example.com" };
+  test("passes a listed email in any case, and nobody else", async () => {
+    const token = await sign(claims({ email: "ADMIN@example.com" }));
+    assert.deepEqual(await accessAdmin(request({ [ACCESS_JWT_HEADER]: token }), env, { keys }), { email: "admin@example.com" });
+    assert.equal(await accessAdmin(request({ cookie: `${ACCESS_COOKIE}=${token}` }), env, { keys, admins: ["someone@example.com"] }), null);
+    assert.equal(await accessAdmin(request({ [ACCESS_JWT_HEADER]: token }), { ...env, ADMIN_EMAIL: "" }, { keys }), null);
+    assert.deepEqual(adminEmails({ ADMIN_EMAILS: "A@example.com,,b@example.com ", ADMIN_EMAIL: "c@example.com" }), ["a@example.com", "b@example.com"]);
+  });
+
+  test("PLANT: the development bypass opens localhost only, and keys that cannot be fetched refuse", async () => {
+    const bypass = { ...env, ACCESS_DEV_BYPASS: "1" };
+    assert.deepEqual(await accessAdmin(new Request("http://localhost:5173/admin"), bypass), { email: "admin@example.com" });
+    assert.equal(await accessAdmin(new Request("https://example.com/admin"), bypass, { keys }), null);
+    const logged = console.error;
+    console.error = () => {};
+    const down = async () => { throw new Error("certs unreachable"); };
+    const verdict = await accessAdmin(request({ [ACCESS_JWT_HEADER]: await sign(claims()) }), env, { keys: down });
+    console.error = logged;
+    assert.equal(verdict, null);
   });
 });
