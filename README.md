@@ -557,8 +557,9 @@ const auth = betterAuth({
   baseURL: env.BETTER_AUTH_URL,
   secret: env.BETTER_AUTH_SECRET,
   database: drizzleAdapter(db, { provider: "sqlite", schema }),
-  ...(await signInOptions(env, { siteName: "Foxing", sendMagicLink, social: true })),
+  ...(await signInOptions(env, { siteName: "Foxing", sendMagicLink, social: true, emailLimiter: env.AUTH_RATE_LIMITER })),
 });
+// the confirm page's action (CONFIRM_PATH, /sign-in/confirm): return confirmSignInLink(auth, request)
 // the sign-in page's loader: signInMethods(env, { social: true }) -> { google, apple, turnstileSiteKey }
 // the browser: createAuthClient({ plugins: signInClientPlugins() }) from "@dustinedwards/site-runtime/sign-in-client"
 // sendMagicLink({ email, url, token, code }) mails the link and the code together
@@ -567,19 +568,78 @@ const auth = betterAuth({
 
 - Passkey: its relying party is the host of `BETTER_AUTH_URL`, so a passkey made on the live site works there only. The
   site needs the plugin's `passkey` table, and `buildSecurityHeaders({ overrides: PASSKEY_OVERRIDES })` (`./headers`):
-  OSHP's Permissions-Policy turns passkey sign-in off (`publickey-credentials-get=()`).
+  OSHP's Permissions-Policy turns passkey sign-in off (`publickey-credentials-get=()`). A new passkey is made with
+  `authenticatorSelection: { residentKey: "required", userVerification: "preferred" }` (the passkey plugin's option,
+  spread over its defaults `preferred`/`preferred`), so it is discoverable: it signs in from the browser's list with no
+  email typed. Attestation stays `none` and the person's existing passkeys are excluded, as the plugin does.
 - Email link and code: one mail, sent by the site's `sendMagicLink({ email, url, token, code })`, carries Better
   Auth's magic link and a six-digit code (its email OTP). The link signs in the browser that opens it, often the mail
   app's rather than the tab that asked (a private window, a phone); the code, posted as `{ email, otp }` to
   `SIGN_IN_CODE_PATH` (`/sign-in/email-otp`), signs in the tab that asked. Both work once and last
   `SIGN_IN_EXPIRES_IN_SECONDS` (15 minutes, `SIGN_IN_EXPIRES_IN_WORDS` for the mail; Better Auth's default 5 ran out
-  in Foxhound's live test). A code is stored hashed; three wrong tries spend it, and Better Auth allows three tries a
+  in Foxhound's live test). The link's token and the code are stored hashed (the magic link's `storeToken: "hashed"`,
+  SHA-256; the email OTP's `storeOTP: "hashed"`), so a read of the `verification` table signs nobody in. Three wrong
+  tries spend a code, and Better Auth allows three tries a
   minute per address. Only the link request mails: the email OTP's own endpoints are in `disabledPaths`, so Turnstile
   and the link's limit cover every sign-in mail. Capsomer 0.40.0's `magicLink` template takes the `code`. Passwords
   are off.
-- What the mail must carry: `sendMagicLink({ email, url, token, code })` gets the link (`url`, which holds `token`) and
-  the six-digit `code`. The mail carries both, the link untouched and the code as text, and says they last
-  `SIGN_IN_EXPIRES_IN_WORDS`. A mail without the code leaves the tab that asked with nothing to type. Neither is ever
+- The link opens a page; only its button signs in. Better Auth's link is `GET /api/auth/magic-link/verify`, which signs
+  in on the GET, so a mail scanner that opens every link (Microsoft Defender's Safe Links, Mimecast, Proofpoint) spends
+  it or signs itself in. The mailed `url` is instead the site's own page, `confirmPath` (default `CONFIRM_PATH`,
+  `/sign-in/confirm`), with the link's `token` and `callbackURL` (and `newUserCallbackURL`, `errorCallbackURL` when set)
+  in its query. A site adds that one route: a page with one POST button and an action that returns
+  `confirmSignInLink(auth, request)`. The helper runs Better Auth's verify through `auth.handler`, so its limits run (the
+  magic link's five a minute per IP, keyed on `cf-connecting-ip`, which it passes on), and returns Better Auth's answer
+  untouched: a 302 to `callbackURL` with the session's `Set-Cookie`, a 302 to `errorCallbackURL` (else `callbackURL`)
+  with `?error=INVALID_TOKEN` for a spent, expired or unknown token, or 429. It reads the parameters from the POST's
+  URL (a form with no `action` posts to the page's own URL, query and all), else from the form's fields; anything but a
+  POST is 405, and no token is 400. With no `callbackURL` it sends `/`, since Better Auth answers a verify without one
+  with the session token as JSON. The page sends `Cache-Control: no-store` and `noindex`, loads nothing from another
+  origin (its URL holds the token, and OSHP's `Referrer-Policy: no-referrer` keeps it out of any request), and says
+  what pressing does: "Sign in to {site}". Better Auth's GET endpoint stays as it is (`confirmSignInLink` calls it), but
+  no mail carries it.
+
+  ```tsx
+  // app/routes/sign-in.confirm.tsx (React Router). The page shows a button; a GET never signs in.
+  import { confirmSignInLink } from "@dustinedwards/site-runtime/sign-in";
+  export const headers = () => ({ "Cache-Control": "no-store", "X-Robots-Tag": "noindex" });
+  export async function action({ request, context }: Route.ActionArgs) {
+    return confirmSignInLink(await getAuth(context.cloudflare.env), request);
+  }
+  export default function Confirm() {
+    return <Form method="post"><button type="submit">Sign in to Foxhound</button></Form>;
+  }
+  ```
+- Per address, as well as per IP: with `emailLimiter` (the site's `RateLimiter` Durable Object namespace,
+  `./rate-limit`), each address gets five sign-in mails an hour (`LINK_EMAIL_RULES`: the link request, and with
+  `appCode` the app's code request) and ten typed codes a day, right or wrong (`CODE_EMAIL_RULES`: `SIGN_IN_CODE_PATH`).
+  The per-IP limits do nothing against someone spread over many addresses aiming at one inbox, to bomb it with mail or
+  to guess its code: three wrong tries spend a code, but each new link brings a new code with three fresh tries, so ten
+  a day bounds the guesses across re-sent links. It is a plugin's before hook, so a POST straight to `/api/auth` and a
+  form's `auth.api` call spend the same budget; on a request to `/api/auth` it runs after Turnstile and Better Auth's
+  per-IP limit (both run on the request, before any hook), so a request without a Turnstile pass spends nothing. The key is `emailKey("link-email" | "code-email", email)` (`./rate-limit`): a SHA-256 of the address
+  trimmed and lower-cased, so the counter never holds the address; the keys are Foxhound's, so its counts carry over. A
+  refusal is Better Auth's error shape, 429 with `Retry-After` and `code: "EMAIL_RATE_LIMITED"`. A failing counter lets
+  the request through (`onUnavailable: "allow"`, logged as one line naming the bucket only), as Foxhound's did: a
+  Durable Object hiccup must never lock a person out. Without `emailLimiter` there is no per-address limit.
+- Fresh sign-in: `session.freshAge` is `FRESH_SECONDS` (10 minutes; Better Auth's default is a day). Better Auth 1.7.12
+  then answers 403 `SESSION_NOT_FRESH` unless the session was made in the last 10 minutes on: adding a passkey
+  (`/passkey/generate-register-options`, `/passkey/verify-registration`), unlinking Google or Apple
+  (`/unlink-account`) and listing sessions (`/list-sessions`), all through its `freshSessionMiddleware`; and deleting the
+  account (`/delete-user`, its own check, 400 `SESSION_EXPIRED`, when no deletion mail is set). Not fresh in 1.7.12:
+  removing or renaming a passkey (`/passkey/delete-passkey`, `/passkey/update-passkey`), changing the email
+  (`/change-email`), revoking sessions; a site that wants those fresh checks `session.createdAt` itself. A page that
+  lists sessions or adds a passkey asks for a new sign-in when it gets `SESSION_NOT_FRESH`. A site that sets its own
+  `session` options keeps this one: `session: { ...signIn.session, expiresIn, updateAge }`. Session lengths are the
+  site's for now.
+- Sign-out clears the browser: Better Auth's `/sign-out` (which deletes the session row and its cookie) answers with
+  `LOGOUT_HEADERS` (`./headers`: `Clear-Site-Data: "cache","cookies","storage"`). It is a plugin's after hook, not the
+  options' `hooks.after`, so a site with an after hook of its own keeps both with nothing to merge. Browsers apply
+  `"cookies"` to the whole registrable domain, so signing out of a site on a subdomain of dustinedwards.info clears the
+  cookies of its sibling subdomains too.
+- What the mail must carry: `sendMagicLink({ email, url, token, code })` gets the confirm page's link (`url`, which
+  holds `token`) and the six-digit `code`. The mail carries both, the link untouched and the code as text, and says they
+  last `SIGN_IN_EXPIRES_IN_WORDS`. A mail without the code leaves the tab that asked with nothing to type. Neither is ever
   logged: each signs in, so a send error has `url`, `token` and `code` cut out (Foxhound's `send-auth-email.ts`).
 - A phone app's code: `appCode: true` with `sendSignInCode({ email, code })`. An app cannot open the link (it opens in
   the phone's browser) or show the Turnstile widget, so it asks for a code alone at `APP_CODE_PATH`
@@ -602,8 +662,10 @@ const auth = betterAuth({
   site's D1 (`session`, `rateLimit`), never KV, which is eventually consistent.
 - Async, because Apple's secret is signed with WebCrypto: a site keeps the promise per isolate.
 
-**Tests.** `test/apple-secret.test.mjs` (a key made in the test, the signature verified). The rest is Better Auth's own
-plugins, set up; each site's tests sign in through it.
+**Tests.** `test/apple-secret.test.mjs` (a key made in the test, the signature verified) and `test/sign-in-link.test.mjs`
+(the mailed URL; only a POST reaches Better Auth's verify, with the client address passed on). The confirm step lives in
+`sign-in-link.mjs`, re-exported by `./sign-in`, so it is tested without Better Auth installed. The rest is Better Auth's
+own plugins, set up; each site's tests sign in through it.
 
 ## The Turnstile widget
 
@@ -899,6 +961,8 @@ if (mustStop(verdict, "refuse")) return limitedResponse(verdict);
 - `"allow"` still returns `status: "unavailable"` and logs one structured line (the key's bucket, never the address or account).
 - All rules for a key are checked first; if one is spent none is counted, and a refused request writes nothing.
 - An alarm clears an idle instance's rows after its longest window.
+- `emailKey(prefix, email)` is `prefix:` and the SHA-256 of the address trimmed and lower-cased (null for an empty one),
+  for a limit per address that never names it; `./sign-in`'s per-address limits use it.
 - `matchRule(request, rules)` matches `{ path, prefix?, methods? }` after percent-decoding, collapsing slashes, dropping a trailing
   slash and lower-casing, so `/LOGIN`, `/login///` and `/%4cogin` all match `/login`.
 

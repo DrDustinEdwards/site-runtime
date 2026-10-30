@@ -44,6 +44,13 @@ export function ipKey(prefix: string, request: Request): {
     anonymous: boolean;
 };
 /**
+ * A key for an email address: `prefix:` and the SHA-256 of the address trimmed and lower-cased, so `A@x.test ` shares
+ * `a@x.test`'s bucket and the counter's name never holds the address. Null for an empty or missing address.
+ * @param {string} prefix
+ * @param {unknown} email
+ */
+export function emailKey(prefix: string, email: unknown): Promise<string | null>;
+/**
  * A path as the router sees it: percent-decoded, repeated slashes collapsed, no trailing slash, lower case.
  * @param {string} pathname
  */
