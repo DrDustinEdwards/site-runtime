@@ -113,3 +113,34 @@ export function applyHeaderSet(headers, set = STANDARD_SECURITY_HEADERS, { overw
     if (overwrite || !headers.has(name)) headers.set(name, value);
   }
 }
+
+/** The headers a static `_headers` file leaves out: a page's policy names what that page loads, and may carry a nonce. */
+const POLICY_HEADERS = ["content-security-policy", "content-security-policy-report-only"];
+
+/**
+ * A Cloudflare `_headers` file for the static assets, which the asset server answers without running the Worker, so
+ * the Worker's header set never reaches them. `set` (the one the Worker applies) goes on `/*`, minus any
+ * Content-Security-Policy; `paths` adds or changes headers on a path pattern (`/assets/*`, `/favicon.svg`). Cloudflare
+ * joins a header that two matching rules set, so a path that changes a header of the set first detaches the `/*` value
+ * with `! Name`. `comment` lines lead the file, each as `# ...`.
+ * @param {Readonly<Record<string, string>>} set
+ * @param {{ paths?: Readonly<Record<string, Readonly<Record<string, string>>>>, comment?: string | readonly string[] }} [options]
+ * @returns {string}
+ */
+export function headersFile(set, { paths = {}, comment = [] } = {}) {
+  const line = (/** @type {string} */ name, /** @type {string} */ value) => {
+    if (/[\r\n:]/.test(name) || /[\r\n]/.test(value)) throw new Error(`header ${JSON.stringify(name)} cannot be written on one line`);
+    return `  ${name}: ${value}`;
+  };
+  const base = Object.entries(set).filter(([name]) => !POLICY_HEADERS.includes(name.toLowerCase()));
+  const baseNames = new Set(base.map(([name]) => name.toLowerCase()));
+  const notes = (typeof comment === "string" ? comment.split("\n") : comment).map((text) => (text ? `# ${text}` : "#"));
+  const blocks = [["/*", ...base.map(([name, value]) => line(name, value))].join("\n")];
+  for (const [pattern, headers] of Object.entries(paths)) {
+    if (!pattern.startsWith("/") || /\s/.test(pattern)) throw new Error(`${JSON.stringify(pattern)} is not a path pattern`);
+    const entries = Object.entries(headers);
+    const detach = entries.filter(([name]) => baseNames.has(name.toLowerCase())).map(([name]) => `  ! ${name}`);
+    blocks.push([pattern, ...detach, ...entries.map(([name, value]) => line(name, value))].join("\n"));
+  }
+  return `${notes.map((note) => `${note}\n`).join("")}${blocks.join("\n\n")}\n`;
+}

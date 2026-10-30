@@ -21,7 +21,7 @@ export function summarizeViolation(body: Record<string, unknown>): {
     disposition: "enforce" | "report" | undefined;
 };
 /**
- * `allow`: the site's rate limiter; false drops the report, still with 204. `allowOrigin`: the one origin whose
+ * `allow`: the site's rate limiter; false drops the report, still with 204. Without it, one `csp_report_unlimited` warning per isolate. `allowOrigin`: the one origin whose
  * pages report here from another host; it gets the Reporting API's CORS preflight. `headers`: the site's security
  * set, put on every response. `log`: where lines go (console.log).
  */

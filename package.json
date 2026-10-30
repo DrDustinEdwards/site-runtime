@@ -1,8 +1,8 @@
 {
   "name": "@dustinedwards/site-runtime",
-  "version": "0.29.0",
+  "version": "0.31.0",
   "private": true,
-  "description": "The portfolio sites' shared runtime. Today: OWASP Secure Headers Project defaults, a Content-Security-Policy built from a per-site list of what a site loads, the check a site runs in CI to prove its responses carry them, one exact rate limiter on a SQLite Durable Object, the members model: layers, permission bundles and end dates for an app with staff, the Access for SaaS sign-in, the MCP servers' consent page, sign-in handler, tool-call log and server scaffold, the Cloudflare Access request-token check, one HTML escape, one constant-time secret compare, the /health response, the security.txt file, responsive images resized by the Images binding and the edits a site writes back (turn, mirror, shrink), link prefetch through speculation rules, the share-card image, one set of byte encodings (hex, base64, base64url, SHA-256), where a site's Anthropic calls go (AI Gateway or direct), starting a Claude Code routine, the check on AI-written prose with the measure of an author's voice, the one sign-in every site offers (passkey, email link and code, Google and Apple) and the Cloudflare Turnstile widget loader.",
+  "description": "The portfolio sites' shared runtime. Today: OWASP Secure Headers Project defaults, a Content-Security-Policy built from a per-site list of what a site loads, the check a site runs in CI to prove its responses carry them, one exact rate limiter on a SQLite Durable Object, the members model: layers, permission bundles and end dates for an app with staff, the Access for SaaS sign-in, the MCP servers' consent page, sign-in handler, tool-call log and server scaffold, the Cloudflare Access request-token check and admin check, one HTML escape, one constant-time secret compare, the /health response, the security.txt file, responsive images resized by the Images binding and the edits a site writes back (turn, mirror, shrink), link prefetch through speculation rules, the share-card image and its route (edge cache, cross-origin, 503 on failure), one set of byte encodings (hex, base64, base64url, SHA-256), where a site's Anthropic calls go (AI Gateway or direct), starting a Claude Code routine, the check on AI-written prose with the measure of an author's voice, the one sign-in every site offers (passkey, email link and code, Google and Apple, and a code-only request for a phone app), the Cloudflare Turnstile widget loader and its fail-closed server check, the same-origin check for resource routes, the trailing-slash redirect, the static _headers file, one structured log line with its scrubbers, and the 404 counter.",
   "type": "module",
   "exports": {
     ".": {
@@ -128,6 +128,22 @@
     "./routine": {
       "types": "./routine.d.mts",
       "default": "./routine.mjs"
+    },
+    "./origin": {
+      "types": "./origin.d.mts",
+      "default": "./origin.mjs"
+    },
+    "./url": {
+      "types": "./url.d.mts",
+      "default": "./url.mjs"
+    },
+    "./log": {
+      "types": "./log.d.mts",
+      "default": "./log.mjs"
+    },
+    "./not-found": {
+      "types": "./not-found.d.mts",
+      "default": "./not-found.mjs"
     }
   },
   "bin": {
@@ -194,6 +210,14 @@
     "routine.d.mts",
     "prose.mjs",
     "prose.d.mts",
+    "origin.mjs",
+    "origin.d.mts",
+    "url.mjs",
+    "url.d.mts",
+    "log.mjs",
+    "log.d.mts",
+    "not-found.mjs",
+    "not-found.d.mts",
     "bin",
     "README.md"
   ],

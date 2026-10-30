@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { cardText, googleFont, renderShareCard } from "../share-card.mjs";
+import { cardText, googleFont, renderShareCard, shareCardResponse } from "../share-card.mjs";
 
 /** A stand-in for workers-og's ImageResponse: it records the HTML, and streams `bytes` or fails mid-stream. */
 function fakeImageResponse(/** @type {Uint8Array | Error} */ out, /** @type {string[]} */ seen) {
@@ -50,4 +50,23 @@ test("a Google Font is read once, then from the cache", async () => {
   assert.equal((await googleFont("DM Sans", 500, { cache, fetch: get }))?.byteLength, 3);
   assert.equal((await googleFont("DM Sans", 500, { cache, fetch: get }))?.byteLength, 3);
   assert.equal(calls, 2);
+});
+
+test("the card route serves the cache, renders and keeps a miss, and answers a failed render with a 503", async () => {
+  const store = new Map();
+  const cache = /** @type {Cache} */ (/** @type {unknown} */ ({
+    match: async (/** @type {string} */ k) => store.get(k)?.clone(),
+    put: async (/** @type {string} */ k, /** @type {Response} */ v) => void store.set(k, v),
+  }));
+  let built = 0;
+  const html = () => (built++, "<div></div>");
+  const ok = fakeImageResponse(new Uint8Array([137, 80]), []);
+  const first = await shareCardResponse(ok, { html, fonts: [], cacheKey: "https://og.invalid/a", cache });
+  assert.equal(first.headers.get("Cross-Origin-Resource-Policy"), "cross-origin");
+  assert.equal((await shareCardResponse(ok, { html, fonts: [], cacheKey: "https://og.invalid/a", cache })).status, 200);
+  assert.equal(built, 1);
+  const failed = await shareCardResponse(fakeImageResponse(new Error("font"), []), { html, fonts: [], cacheKey: "https://og.invalid/b", cache });
+  assert.equal(failed.status, 503);
+  assert.equal(failed.headers.get("Retry-After"), "300");
+  assert.equal(store.has("https://og.invalid/b"), false);
 });

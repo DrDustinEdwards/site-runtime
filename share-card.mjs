@@ -15,7 +15,15 @@
  * - A card's root sized `width:100%;height:100%` has nothing to be a percentage of and shrinks to its content (Foxing's
  *   cards did). `renderShareCard` draws the card inside a box of the card's size, so a percentage resolves.
  * - Fonts are TTF, OTF or WOFF, one static weight per file: Satori cannot read WOFF2 or a variable font.
+ *
+ * `shareCardResponse` is the whole route around the render, as Foxhound's /og and Foxing's card routes had it: the edge
+ * cache first (under the site's key, which carries whatever changes the card, such as the item's updated time), then
+ * the render with Cross-Origin-Resource-Policy: cross-origin (a card is an image other sites show, and the family's
+ * default is same-origin), then the PNG kept in the cache, and a 503 with Retry-After when the render fails, never an
+ * empty image.
  */
+
+import { logEvent } from "./log.mjs";
 
 /** The share-card size every family site uses, the size Open Graph previews draw at. */
 export const SHARE_CARD_WIDTH = 1200;
@@ -50,7 +58,7 @@ export async function renderShareCard(ImageResponse, html, { fonts, width = SHAR
       headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=0, s-maxage=604800, immutable", ...headers },
     });
   } catch (err) {
-    console.error(JSON.stringify({ event: "share_card_failed", error: String(err) }));
+    logEvent("share_card_failed", { error: err }, { level: "error" });
     return null;
   }
 }
@@ -81,4 +89,55 @@ export async function googleFont(family, weight, { cache, cacheOrigin = "https:/
   } catch {
     return null;
   }
+}
+
+/** The headers a card carries beside image/png: other sites' previews load it. */
+export const SHARE_CARD_HEADERS = Object.freeze({ "Cross-Origin-Resource-Policy": "cross-origin" });
+
+/**
+ * The card route's answer: the cached PNG under `cacheKey` when there is one, else the render of `html` with `fonts`
+ * (each may be a function, called only on a miss, so a hit fetches no font and builds no HTML), kept in `cache` (in
+ * `ctx.waitUntil` when given), or a 503 (`Retry-After: 300`, `no-store`) when the render fails. `cache` defaults to the
+ * Workers zone cache; with no `cacheKey` nothing is cached. `headers` are added to the PNG's (after SHARE_CARD_HEADERS).
+ * @param {new (html: string, options: { width: number, height: number, fonts: unknown[] }) => Response} ImageResponse
+ * @param {{
+ *   html: string | (() => string | Promise<string>),
+ *   fonts: unknown[] | (() => unknown[] | Promise<unknown[]>),
+ *   cacheKey?: string | Request,
+ *   cache?: Cache,
+ *   ctx?: { waitUntil(promise: Promise<unknown>): void },
+ *   width?: number,
+ *   height?: number,
+ *   headers?: Record<string, string>,
+ * }} options
+ * @returns {Promise<Response>}
+ */
+export async function shareCardResponse(ImageResponse, { html, fonts, cacheKey, cache = zoneCache(), ctx, width, height, headers = {} }) {
+  const store = cacheKey !== undefined ? cache : undefined;
+  const hit = await store?.match(cacheKey ?? "").catch(() => undefined);
+  if (hit) return hit;
+  let png = null;
+  try {
+    const [cardHtml, cardFonts] = await Promise.all([typeof html === "function" ? html() : html, typeof fonts === "function" ? fonts() : fonts]);
+    png = await renderShareCard(ImageResponse, cardHtml, { fonts: cardFonts, width, height, headers: { ...SHARE_CARD_HEADERS, ...headers } });
+  } catch (error) {
+    logEvent("share_card_failed", { error }, { level: "error" });
+  }
+  if (!png) {
+    return new Response("Card unavailable", {
+      status: 503,
+      headers: { "Content-Type": "text/plain; charset=utf-8", "Retry-After": "300", "Cache-Control": "no-store" },
+    });
+  }
+  if (store && cacheKey !== undefined) {
+    const put = store.put(cacheKey, png.clone()).catch((error) => logEvent("share_card_cache_failed", { error }, { level: "warn" }));
+    if (ctx) ctx.waitUntil(put);
+    else await put;
+  }
+  return png;
+}
+
+/** The Workers zone cache, when the runtime has one. @returns {Cache | undefined} */
+function zoneCache() {
+  return /** @type {{ caches?: { default?: Cache } }} */ (/** @type {unknown} */ (globalThis)).caches?.default;
 }

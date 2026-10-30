@@ -7,7 +7,9 @@
  * - The body is read up to 16 KB and no further, whatever Content-Length claims; a real report is well under 2 kB.
  * - At most 10 violations are logged from one request, one JSON line each, with every URL cut to its origin and
  *   path, so no query string reaches the log, and no address, user agent or cookie is ever logged.
- * - The site's own limiter, when it passes one, is asked first, so nobody can fill the logs.
+ * - The site's own limiter, when it passes one, is asked first, so nobody can fill the logs. A receiver with no `allow`
+ *   still works (Capsomer, julieedwards.info and Foxing call it so today, and refusing would end their reports in
+ *   silence), but logs `csp_report_unlimited` once per isolate as a warning, so the gap shows in the site's logs.
  * - Nothing is stored: a store the internet can write to is a storage-exhaustion primitive.
  *
  * Both wire formats are read: report-uri's `{"csp-report": {...}}` (application/csp-report) and the Reporting API's
@@ -15,6 +17,9 @@
  */
 
 import { readCapped } from "./body.mjs";
+import { logEvent } from "./log.mjs";
+
+let warnedUnlimited = false;
 
 /** The largest body read; the rest is never read. */
 export const MAX_REPORT_BYTES = 16_384;
@@ -119,6 +124,10 @@ export async function receiveCspReport(request, { allow, allowOrigin, headers = 
   const declared = Number(request.headers.get("Content-Length") ?? 0);
   if (Number.isFinite(declared) && declared > MAX_REPORT_BYTES) return answer(204);
   if (allow && !(await allow(request))) return answer(204);
+  if (!allow && !warnedUnlimited) {
+    warnedUnlimited = true;
+    logEvent("csp_report_unlimited", { note: "receiveCspReport has no allow: pass the site's rate limiter" }, { level: "warn" });
+  }
   const text = await readReport(request, MAX_REPORT_BYTES);
   if (text === null) return answer(204);
   let parsed;
