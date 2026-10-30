@@ -240,6 +240,17 @@ test("frame-ancestors must be present and refuse other origins; form-action, whe
   assert.deepEqual(failed(response({ "Content-Security-Policy": GOOD_POLICY.replace("frame-ancestors 'none'", "frame-ancestors 'self'") })), []);
 });
 
+test("PLANT: form-action may carry the off-site targets the site declared, and only those, after 'self'", () => {
+  const stripe = response({ "Content-Security-Policy": GOOD_POLICY.replace("form-action 'self'", "form-action 'self' https://checkout.stripe.com") });
+  const declared = { formTargets: ["https://checkout.stripe.com", "https://connect.stripe.com"] };
+  assert.deepEqual(failures(checkSecurityHeaders(stripe, declared)).map((r) => r.name), []);
+  failure(stripe, /form-action/);
+  const other = response({ "Content-Security-Policy": GOOD_POLICY.replace("form-action 'self'", "form-action 'self' https://evil.example") });
+  assert.equal(failures(checkSecurityHeaders(other, declared)).length, 1);
+  const withoutSelf = response({ "Content-Security-Policy": GOOD_POLICY.replace("form-action 'self'", "form-action https://checkout.stripe.com") });
+  assert.equal(failures(checkSecurityHeaders(withoutSelf, declared)).length, 1);
+});
+
 test("script-src-elem, script-src-attr and worker-src are held to the script rules", () => {
   for (const directive of ["script-src-elem", "script-src-attr", "worker-src"]) {
     for (const source of ["'unsafe-inline'", "'unsafe-eval'", "*", "https:"]) {

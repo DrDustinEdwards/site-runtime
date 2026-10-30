@@ -128,6 +128,9 @@ export type CspSources = {
  * `denyUnlisted`: `default-src 'none'` in place of 'self', so a kind the policy does not name (media, frames,
  * workers, the manifest) is refused rather than allowed from the site; for a static site that wants nothing more.
  * `noForms`: `form-action 'none'` in place of 'self', for a site with no forms.
+ * `formTargets`: https origins added to `form-action 'self'`, for a form whose POST redirects off the site (Stripe
+ * Checkout or Connect OAuth). Each is a bare https origin; none goes with `noForms`. The check accepts them when the
+ * site declares the same.
  * `baseUriSelf`: `base-uri 'self'` in place of 'none', for a page that writes a same-origin <base> (an EPUB reader
  * resolving a book's files); the check accepts either.
  */
@@ -148,6 +151,7 @@ export type SitePolicy = {
     baseUriSelf?: boolean;
     denyUnlisted?: boolean;
     noForms?: boolean;
+    formTargets?: readonly string[];
     extraDirectives?: readonly string[];
 };
 /**

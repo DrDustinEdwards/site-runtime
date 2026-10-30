@@ -5,20 +5,22 @@
 export function parsePolicy(policy: string): Map<string, string[]>;
 /**
  * @param {Headers} headers a real response's headers
- * @param {{ standard?: Readonly<Record<string, string>>, csp?: boolean, cloudflareWebAnalytics?: boolean, inlineScripts?: "unsafe-inline" }} [options]
+ * @param {{ standard?: Readonly<Record<string, string>>, csp?: boolean, cloudflareWebAnalytics?: boolean, inlineScripts?: "unsafe-inline", formTargets?: readonly string[] }} [options]
  *   `standard`: the floor (default STANDARD_SECURITY_HEADERS; a site passes the set it declared). `csp`: grade the
  *   policy too; false for a response that carries none by design, such as a feed or an image.
  *   `cloudflareWebAnalytics`: the site is Cloudflare-proxied with Web Analytics on, so the policy must let the injected
  *   beacon run (its script path prefix) and report (connect-src with the site itself).
  *   `inlineScripts`: the site built its policy with the same opt-in (buildContentSecurityPolicy), so `'unsafe-inline'`
  *   is accepted on script-src alone; script-src-elem, script-src-attr and worker-src are still refused it.
+ *   `formTargets`: the off-site form targets the site passed the builder, accepted after 'self' on form-action.
  * @returns {CheckResult[]}
  */
-export function checkSecurityHeaders(headers: Headers, { standard, csp, cloudflareWebAnalytics, inlineScripts }?: {
+export function checkSecurityHeaders(headers: Headers, { standard, csp, cloudflareWebAnalytics, inlineScripts, formTargets }?: {
     standard?: Readonly<Record<string, string>>;
     csp?: boolean;
     cloudflareWebAnalytics?: boolean;
     inlineScripts?: "unsafe-inline";
+    formTargets?: readonly string[];
 }): CheckResult[];
 export function failures(results: CheckResult[]): CheckResult[];
 export type CheckResult = {

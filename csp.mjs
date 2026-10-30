@@ -66,6 +66,9 @@ export const CLOUDFLARE_WEB_ANALYTICS = Object.freeze({
 });
 
 /** A source expression as a policy writes it: no space, no semicolon, no comma. @param {string} source */
+/** One https origin: a host name (no wildcard), an optional port, no path. */
+const FORM_TARGET = /^https:\/\/[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:\d{1,5})?$/;
+
 function checkSource(source) {
   if (typeof source !== "string" || source === "" || /[\s;,]/.test(source)) throw new Error(`${JSON.stringify(source)} is not a CSP source`);
   return source;
@@ -101,6 +104,7 @@ function checkSource(source) {
  *   baseUriSelf?: boolean,
  *   denyUnlisted?: boolean,
  *   noForms?: boolean,
+ *   formTargets?: readonly string[],
  *   extraDirectives?: readonly string[],
  * }} SitePolicy
  *   `scriptHashes` / `styleHashes`: `sha256-...` values (scriptHash), for responses that may not carry a nonce.
@@ -123,6 +127,10 @@ function checkSource(source) {
  *   `denyUnlisted`: `default-src 'none'` in place of 'self', so a kind the policy does not name (media, frames,
  *   workers, the manifest) is refused rather than allowed from the site; for a static site that wants nothing more.
  *   `noForms`: `form-action 'none'` in place of 'self', for a site with no forms.
+ *   `formTargets`: https origins added to `form-action 'self'`, for a form whose POST redirects off the site (Stripe
+ *   Checkout or Connect OAuth): browsers apply form-action to every redirect hop of a native submission, so 'self'
+ *   alone refuses one made before hydration or with no JS. Each is a bare https origin, never a wildcard or a path,
+ *   and none goes with `noForms`. The check accepts them when the site declares the same.
  *   `baseUriSelf`: `base-uri 'self'` in place of 'none', for a page that writes a same-origin <base> (an EPUB reader
  *   resolving a book's files); the check accepts either.
  */
@@ -140,7 +148,7 @@ function checkSource(source) {
  * @returns {{ name: "Content-Security-Policy" | "Content-Security-Policy-Report-Only", value: string }}
  */
 export function buildContentSecurityPolicy(site) {
-  const { sources = {}, scriptHashes = [], styleHashes = [], nonce, nonceStyles = true, inlineScripts, strictDynamic = false, styleAttributesInline = false, cloudflareWebAnalytics = false, reportUri, reportTo, reportOnly = false, framedBySameOrigin = false, baseUriSelf = false, denyUnlisted = false, noForms = false, extraDirectives = [] } = site;
+  const { sources = {}, scriptHashes = [], styleHashes = [], nonce, nonceStyles = true, inlineScripts, strictDynamic = false, styleAttributesInline = false, cloudflareWebAnalytics = false, reportUri, reportTo, reportOnly = false, framedBySameOrigin = false, baseUriSelf = false, denyUnlisted = false, noForms = false, formTargets = [], extraDirectives = [] } = site;
   if (!reportUri && !reportTo) throw new Error("a policy needs a report sink (reportUri or reportTo)");
   if (inlineScripts !== undefined && inlineScripts !== "unsafe-inline") throw new Error(`inlineScripts is "unsafe-inline" or left out, not ${JSON.stringify(inlineScripts)}`);
   if (inlineScripts && (nonce !== undefined || scriptHashes.length > 0)) {
@@ -153,6 +161,10 @@ export function buildContentSecurityPolicy(site) {
     throw new Error("strictDynamic cannot go with cloudflareWebAnalytics: 'strict-dynamic' ignores host sources, and the edge injects the beacon with no nonce, so it would be blocked");
   }
   if (nonce !== undefined && !/^[A-Za-z0-9+/_-]{16,}={0,2}$/.test(nonce)) throw new Error("the nonce is not a base64 value of at least 16 characters");
+  if (noForms && formTargets.length > 0) throw new Error("formTargets cannot go with noForms: form-action 'none' refuses every form");
+  for (const target of formTargets) {
+    if (!FORM_TARGET.test(target)) throw new Error(`${JSON.stringify(target)} is not a form target: name one https origin, with no wildcard or path`);
+  }
   const hashSource = (/** @type {string} */ h) => {
     if (!/^sha(256|384|512)-[A-Za-z0-9+/_-]+={0,2}$/.test(h)) throw new Error(`${JSON.stringify(h)} is not a hash source`);
     return `'${h}'`;
@@ -196,7 +208,7 @@ export function buildContentSecurityPolicy(site) {
     ...((sources.frame ?? []).length > 0 ? [`frame-src ${["'self'", ...list(sources.frame)].join(" ")}`] : []),
     "object-src 'none'",
     `base-uri ${baseUriSelf ? "'self'" : "'none'"}`,
-    `form-action ${noForms ? "'none'" : "'self'"}`,
+    `form-action ${noForms ? "'none'" : ["'self'", ...formTargets].join(" ")}`,
     `frame-ancestors ${framedBySameOrigin ? "'self'" : "'none'"}`,
     ...extraDirectives,
     ...(reportUri ? [`report-uri ${checkSource(reportUri)}`] : []),

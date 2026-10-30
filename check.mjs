@@ -43,16 +43,17 @@ function deniedFeatures(value) {
 
 /**
  * @param {Headers} headers a real response's headers
- * @param {{ standard?: Readonly<Record<string, string>>, csp?: boolean, cloudflareWebAnalytics?: boolean, inlineScripts?: "unsafe-inline" }} [options]
+ * @param {{ standard?: Readonly<Record<string, string>>, csp?: boolean, cloudflareWebAnalytics?: boolean, inlineScripts?: "unsafe-inline", formTargets?: readonly string[] }} [options]
  *   `standard`: the floor (default STANDARD_SECURITY_HEADERS; a site passes the set it declared). `csp`: grade the
  *   policy too; false for a response that carries none by design, such as a feed or an image.
  *   `cloudflareWebAnalytics`: the site is Cloudflare-proxied with Web Analytics on, so the policy must let the injected
  *   beacon run (its script path prefix) and report (connect-src with the site itself).
  *   `inlineScripts`: the site built its policy with the same opt-in (buildContentSecurityPolicy), so `'unsafe-inline'`
  *   is accepted on script-src alone; script-src-elem, script-src-attr and worker-src are still refused it.
+ *   `formTargets`: the off-site form targets the site passed the builder, accepted after 'self' on form-action.
  * @returns {CheckResult[]}
  */
-export function checkSecurityHeaders(headers, { standard = STANDARD_SECURITY_HEADERS, csp = true, cloudflareWebAnalytics = false, inlineScripts } = {}) {
+export function checkSecurityHeaders(headers, { standard = STANDARD_SECURITY_HEADERS, csp = true, cloudflareWebAnalytics = false, inlineScripts, formTargets = [] } = {}) {
   /** @type {CheckResult[]} */
   const results = [];
   const result = (/** @type {string} */ name, /** @type {boolean} */ pass, /** @type {string} */ detail) =>
@@ -125,11 +126,15 @@ export function checkSecurityHeaders(headers, { standard = STANDARD_SECURITY_HEA
     `got ${ancestors ? ancestors.join(" ") : "ABSENT (it does not fall back to default-src)"}`,
   );
   // form-action may be absent: an OAuth consent page leaves it out on purpose, since browsers apply it to every redirect
-  // hop and the last hop is the client's redirect_uri. When it is present it must keep forms on this origin.
+  // hop and the last hop is the client's redirect_uri. When it is present it must keep forms on this origin, beside
+  // the off-site targets the site declared (formTargets, as it passed them to the builder).
   const forms = policy.get("form-action");
+  const declaredForms = formTargets.length > 0;
   result(
-    "form-action, when set, is 'self' or 'none'",
-    !forms || (forms.length === 1 && (forms[0] === "'self'" || forms[0] === "'none'")),
+    `form-action, when set, is 'self' or 'none'${declaredForms ? " (and the declared formTargets)" : ""}`,
+    !forms ||
+      (forms.length === 1 && (forms[0] === "'self'" || forms[0] === "'none'")) ||
+      (forms[0] === "'self'" && forms.length > 1 && forms.slice(1).every((target) => formTargets.includes(target))),
     `got ${forms ? forms.join(" ") : "ABSENT"}`,
   );
   if (cloudflareWebAnalytics) {
