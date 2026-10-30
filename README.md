@@ -4,7 +4,7 @@ The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-
 (the root export and `./headers`, `./csp`, `./csp-report`, `./check`, `./oshp`, `./owasp`), the rate limiter (`./rate-limit`,
 `./rate-limit/durable-object`), the members model (`./members`), the Access for SaaS sign-in (`./access-login`), the MCP
 servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-log`) and server scaffold (`./mcp-server`), the Access request-token check
-(`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images and their edits (`./image`), link prefetch (`./prefetch`), preloads and Early Hints (`./preload`), the edge page cache (`./edge-cache`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), where a site's Anthropic calls go
+(`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images and their edits (`./image`), link prefetch (`./prefetch`), preloads and Early Hints (`./preload`), the edge page cache (`./edge-cache`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), the signed token behind emailed links (`./signed-token`), where a site's Anthropic calls go
 (`./ai-gateway`), starting a Claude Code routine (`./routine`), the check on AI-written prose with the measure of an author's voice (`./prose`), the one sign-in every site
 offers (`./sign-in`, `./sign-in-client`, `./apple-secret`), the Cloudflare Turnstile widget and its server check (`./turnstile`), the same-origin check for
 resource routes (`./origin`), the trailing-slash redirect (`./url`), one structured log line and its scrubbers (`./log`) and the 404 counter
@@ -83,6 +83,10 @@ The fixed parts are the same for every site: `default-src 'self'`, `object-src '
 pages, such as Capsomer's specimens; pair it with an `X-Frame-Options: sameorigin` override). Two make it stricter:
 `denyUnlisted: true` writes `default-src 'none'`, so a kind the policy does not name (media, frames, workers, the manifest)
 is refused rather than allowed from the site, and `noForms: true` writes `form-action 'none'`, for a site with no forms.
+`formTargets` adds https origins to `form-action 'self'` for a form whose POST redirects off the site (Stripe Checkout,
+Connect OAuth): browsers apply form-action to every redirect hop of a native submission, so `'self'` alone refuses one
+made before hydration or with no JS. Each is one bare https origin (no wildcard, path or `http:`), and none goes with
+`noForms`; pass the same list to the check.
 `baseUriSelf: true` writes `base-uri 'self'`, for a page that sets a same-origin `<base>` (Foxing's EPUB reader). Scripts are `'self'`, the
 site's hashes or nonce, its listed hosts and, on request, the Cloudflare Web Analytics beacon. A script source of `*` (or
 `https://*` and the like), a bare scheme, or `'unsafe-inline'` or `'unsafe-eval'` in any case is refused, and a policy with
@@ -450,6 +454,24 @@ a month before it lapses, the prompt to confirm the address still works.
 `toBase64`/`fromBase64` (whitespace ignored, as GitHub wraps it), `base64url`/`fromBase64url` (no padding) and
 `sha256Hex`. Every encoder takes bytes or a string, which is encoded as UTF-8.
 
+## Signed links
+
+`./signed-token` is the one stateless token behind links a site emails (unsubscribe, card update, an open pixel):
+`base64url(JSON payload).base64url(HMAC-SHA-256)`. It proves integrity, not secrecy, so a payload carries ids, never
+anything private, and each caller checks its own payload's fields.
+
+```js
+import { readSignedToken, signToken } from "@dustinedwards/site-runtime/signed-token";
+const keys = [env.EMAIL_TOKEN_KEY, env.EMAIL_TOKEN_KEY_PREVIOUS]; // hex, newest first
+const token = await signToken(keys, { a: accountId, k: "unsub" });
+const payload = await readSignedToken(keys, token); // null on any tamper or format failure
+```
+
+The first present key signs and every key verifies, so a key rotates without breaking links already in inboxes: put the
+new key first, keep the old one after it until the longest-lived link has aged out, then drop it. Empty entries are
+skipped. Give links their own key, never one that also encrypts data at rest. No key at all throws: that is a
+configuration error, not a bad link.
+
 ## Where a site's Anthropic calls go
 
 `./ai-gateway` is the one decision between Cloudflare AI Gateway and Anthropic directly, so every site logs the same way.
@@ -755,7 +777,8 @@ changed set of failures.
   (`https://*`), or bare scheme. `script-src-elem`, `script-src-attr` and `worker-src`, when present, are held to the same
   rules (`worker-src` may use `blob:`).
 - `object-src 'none'`, `base-uri 'none'` or `'self'`, `frame-ancestors 'none'` or `'self'`, `form-action` `'self'` or
-  `'none'` when set (an OAuth consent page leaves it out on purpose), and a report sink (`report-uri` or `report-to`).
+  `'none'` when set (an OAuth consent page leaves it out on purpose; `'self'` may be followed by the site's declared
+  `formTargets`), and a report sink (`report-uri` or `report-to`).
 
 `style-src-attr 'unsafe-inline'` is allowed: several sites emit inline style attributes, and styles cannot run code.
 

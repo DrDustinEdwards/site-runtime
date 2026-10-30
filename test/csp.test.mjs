@@ -216,19 +216,28 @@ test("extra directives are added; an empty one, one that restates a fixed direct
   assert.throws(() => buildContentSecurityPolicy({ ...SINK, extraDirectives: ["worker-src *"] }), /not an acceptable worker source/);
 });
 
+test("PLANT: formTargets adds https origins to form-action 'self'; a wildcard, a path, http or noForms is refused", () => {
+  assert.deepEqual(directives({ ...SINK, formTargets: ["https://checkout.stripe.com", "https://connect.stripe.com"] }).get("form-action"), ["'self'", "https://checkout.stripe.com", "https://connect.stripe.com"]);
+  for (const target of ["*", "https://*.stripe.com", "https:", "http://checkout.stripe.com", "https://checkout.stripe.com/pay", "checkout.stripe.com"]) {
+    assert.throws(() => buildContentSecurityPolicy({ ...SINK, formTargets: [target] }), /not a form target/, target);
+  }
+  assert.throws(() => buildContentSecurityPolicy({ ...SINK, noForms: true, formTargets: ["https://checkout.stripe.com"] }), /cannot go with noForms/);
+});
+
 test("every policy the builder writes passes the header check", () => {
   const sites = [
     SINK,
     { reportTo: "csp" },
     { ...SINK, nonce: generateNonce(), styleAttributesInline: true },
     { ...SINK, scriptHashes: [HASH], cloudflareWebAnalytics: true, sources: { script: ["https://js.example.com"], img: ["data:"], frame: ["https://player.example.com"] } },
+    { ...SINK, formTargets: ["https://checkout.stripe.com"] },
   ];
   for (const site of sites) {
     const headers = new Headers();
     applyHeaderSet(headers);
     const { name, value } = buildContentSecurityPolicy(site);
     headers.set(name, value);
-    assert.deepEqual(failures(checkSecurityHeaders(headers, { cloudflareWebAnalytics: Boolean(site.cloudflareWebAnalytics) })), [], JSON.stringify(site));
+    assert.deepEqual(failures(checkSecurityHeaders(headers, { cloudflareWebAnalytics: Boolean(site.cloudflareWebAnalytics), formTargets: site.formTargets })), [], JSON.stringify(site));
   }
 });
 
