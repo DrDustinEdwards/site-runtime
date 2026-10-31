@@ -10,7 +10,7 @@ export function signInClientPlugins(): [
 
 /**
  * The Signal API's signalAllAcceptedCredentials and signalCurrentUserDetails when the browser has them. `userId` is the
- * passkey's user handle (base64url) from the sign-in's WebAuthn response; without it, nothing is signalled.
+ * passkey's user handle (base64url) from the sign-in's WebAuthn response; without it, nothing is signaled.
  */
 export function signalPasskeys(options: {
   rpId: string;

@@ -890,7 +890,7 @@ its own and the notices by passing one function.
   Safari 26) and swallows a refusal. `userId` is a passkey's user handle, and @better-auth/passkey 1.7.12 makes a new
   random handle for every passkey and stores none (`generate-register-options`), so the one handle a page has is the
   passkey just used to sign in (`webauthn.response.response.userHandle`), and `signalPasskeys` reaches that passkey
-  alone. A deleted passkey is therefore signalled by its id, with `signalUnknownCredential`.
+  alone. A deleted passkey is therefore signaled by its id, with `signalUnknownCredential`.
 
 **Tests.** `test/apple-secret.test.mjs` (a key made in the test, the signature verified), `test/sign-in-link.test.mjs`
 (the mailed URL; only a POST reaches Better Auth's verify, with the client address passed on) and
