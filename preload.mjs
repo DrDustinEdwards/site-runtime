@@ -9,20 +9,24 @@
  * A font is always fetched in anonymous CORS mode, whatever its origin, so a font preload without `crossorigin` is a
  * different request and the file is fetched twice. Fonts get `crossorigin=anonymous` here unless the entry names
  * `use-credentials`.
+ *
+ * A responsive image preloads its set, not one file: `imageSrcSet` and `imageSizes` (the `<img>`'s srcset and sizes,
+ * `imagePreload` in ./image builds them) let the browser fetch the size it will show, in the tag and in the 103 alike.
  */
 
 const AS = new Set(["font", "image", "style", "script", "fetch"]);
 const CROSS_ORIGIN = new Set(["anonymous", "use-credentials"]);
 
 /**
- * @typedef {{ rel?: "preload", href: string, as: "font" | "image" | "style" | "script" | "fetch", type?: string, crossOrigin?: "anonymous" | "use-credentials" }} Preload
+ * @typedef {{ rel?: "preload", href: string, as: "font" | "image" | "style" | "script" | "fetch", type?: string, crossOrigin?: "anonymous" | "use-credentials", imageSrcSet?: string, imageSizes?: string, fetchPriority?: "high" | "low" | "auto" }} Preload
  * @typedef {{ rel: "preconnect", href: string, crossOrigin?: "anonymous" | "use-credentials" }} Preconnect
  */
 
 /**
  * The `links` entries and the `Link` header value for `entries`, in their order. Refuses an href that is not a path
  * or an https URL, or holds a character the header cannot carry unencoded (`<`, `>`, `"`, whitespace, non-ASCII), and a
- * `type` that is not a bare media type. `header` is empty for an empty list; a site sets nothing then.
+ * `type` that is not a bare media type, and image set fields on anything but an image or holding a character a quoted
+ * header value cannot carry. `header` is empty for an empty list; a site sets nothing then.
  * @param {(Preload | Preconnect)[]} entries
  */
 export function preloads(entries) {
@@ -36,11 +40,26 @@ export function preloads(entries) {
       throw new Error(`preloads: crossOrigin "${entry.crossOrigin}" is not anonymous or use-credentials.`);
     }
     if (rel === "preconnect") return { rel, href: entry.href, ...(entry.crossOrigin ? { crossOrigin: entry.crossOrigin } : {}) };
-    const { as, type } = /** @type {Preload} */ (entry);
+    const { as, type, imageSrcSet, imageSizes, fetchPriority } = /** @type {Preload} */ (entry);
     if (!AS.has(as)) throw new Error(`preloads: as "${as}" is not font, image, style, script or fetch.`);
     if (type !== undefined && !/^[\w.+-]+\/[\w.+-]+$/.test(type)) throw new Error(`preloads: type "${type}" is not a media type such as font/woff2.`);
+    for (const [name, value] of Object.entries({ imageSrcSet, imageSizes })) {
+      if (value === undefined) continue;
+      if (as !== "image") throw new Error(`preloads: ${name} is for an image, not ${as}.`);
+      if (!/^[\x20-\x7e]+$/.test(value) || /[<>"\\]/.test(value)) throw new Error(`preloads: ${name} "${value}" holds a character a Link header cannot carry.`);
+    }
+    if (fetchPriority !== undefined && !["high", "low", "auto"].includes(fetchPriority)) throw new Error(`preloads: fetchPriority "${fetchPriority}" is not high, low or auto.`);
     const crossOrigin = entry.crossOrigin ?? (as === "font" ? "anonymous" : undefined);
-    return { rel, href: entry.href, as, ...(type ? { type } : {}), ...(crossOrigin ? { crossOrigin } : {}) };
+    return {
+      rel,
+      href: entry.href,
+      as,
+      ...(type ? { type } : {}),
+      ...(crossOrigin ? { crossOrigin } : {}),
+      ...(imageSrcSet ? { imageSrcSet } : {}),
+      ...(imageSizes ? { imageSizes } : {}),
+      ...(fetchPriority ? { fetchPriority } : {}),
+    };
   });
   const header = links
     .map((link) => {
@@ -48,6 +67,9 @@ export function preloads(entries) {
       if ("as" in link) params.push(`as=${link.as}`);
       if ("type" in link) params.push(`type="${link.type}"`);
       if (link.crossOrigin) params.push(`crossorigin=${link.crossOrigin}`);
+      if ("imageSrcSet" in link) params.push(`imagesrcset="${link.imageSrcSet}"`);
+      if ("imageSizes" in link) params.push(`imagesizes="${link.imageSizes}"`);
+      if ("fetchPriority" in link) params.push(`fetchpriority=${link.fetchPriority}`);
       return params.join("; ");
     })
     .join(", ");

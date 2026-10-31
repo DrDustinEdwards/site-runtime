@@ -18,8 +18,8 @@
  *
  * `shareCardResponse` is the whole route around the render, as Foxhound's /og and Foxing's card routes had it: the edge
  * cache first (under the site's key, which carries whatever changes the card, such as the item's updated time), then
- * the render with Cross-Origin-Resource-Policy: cross-origin (a card is an image other sites show, and the family's
- * default is same-origin), then the PNG kept in the cache, and a 503 with Retry-After when the render fails, never an
+ * the render (every card, from either function, carries Cross-Origin-Resource-Policy: cross-origin: it is an image
+ * other sites show, and the default is same-origin), then the PNG kept in the cache, and a 503 with Retry-After when the render fails, never an
  * empty image.
  */
 
@@ -28,6 +28,11 @@ import { logEvent } from "./log.mjs";
 /** The share-card size every family site uses, the size Open Graph previews draw at. */
 export const SHARE_CARD_WIDTH = 1200;
 export const SHARE_CARD_HEIGHT = 630;
+/** What a card is served as: the page's og:image:type. */
+export const SHARE_CARD_TYPE = "image/png";
+
+/** The headers a card carries beside its type: other sites' previews load it. */
+export const SHARE_CARD_HEADERS = Object.freeze({ "Cross-Origin-Resource-Policy": "cross-origin" });
 
 /**
  * `value` as card text: `<` and `>` become ‹ and ›, so no text can open a tag, and everything else stays as is (an
@@ -40,8 +45,8 @@ export function cardText(value) {
 }
 
 /**
- * The card's PNG, or null when the render fails. `headers` are added to the PNG's (Content-Type image/png, and a
- * week at the edge unless `headers` sets Cache-Control).
+ * The card's PNG, or null when the render fails. `headers` are added to the PNG's (Content-Type image/png,
+ * SHARE_CARD_HEADERS, and a week at the edge unless `headers` sets Cache-Control).
  * @param {new (html: string, options: { width: number, height: number, fonts: unknown[] }) => Response} ImageResponse
  * @param {string} html
  * @param {{ fonts: unknown[], width?: number, height?: number, headers?: Record<string, string> }} options
@@ -55,7 +60,7 @@ export async function renderShareCard(ImageResponse, html, { fonts, width = SHAR
     const png = await new Response(image.body).arrayBuffer();
     if (png.byteLength === 0) throw new Error("empty PNG");
     return new Response(png, {
-      headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=0, s-maxage=604800, immutable", ...headers },
+      headers: { "Content-Type": SHARE_CARD_TYPE, "Cache-Control": "public, max-age=0, s-maxage=604800, immutable", ...SHARE_CARD_HEADERS, ...headers },
     });
   } catch (err) {
     logEvent("share_card_failed", { error: err }, { level: "error" });
@@ -91,8 +96,6 @@ export async function googleFont(family, weight, { cache, cacheOrigin = "https:/
   }
 }
 
-/** The headers a card carries beside image/png: other sites' previews load it. */
-export const SHARE_CARD_HEADERS = Object.freeze({ "Cross-Origin-Resource-Policy": "cross-origin" });
 
 /**
  * The card route's answer: the cached PNG under `cacheKey` when there is one, else the render of `html` with `fonts`
@@ -119,7 +122,7 @@ export async function shareCardResponse(ImageResponse, { html, fonts, cacheKey, 
   let png = null;
   try {
     const [cardHtml, cardFonts] = await Promise.all([typeof html === "function" ? html() : html, typeof fonts === "function" ? fonts() : fonts]);
-    png = await renderShareCard(ImageResponse, cardHtml, { fonts: cardFonts, width, height, headers: { ...SHARE_CARD_HEADERS, ...headers } });
+    png = await renderShareCard(ImageResponse, cardHtml, { fonts: cardFonts, width, height, headers });
   } catch (error) {
     logEvent("share_card_failed", { error }, { level: "error" });
   }

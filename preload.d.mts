@@ -1,6 +1,6 @@
 /**
  * Preloads declared once (preload.mjs): the React Router `links` entries and the `Link` header Cloudflare Early Hints
- * reads, from the same list. A font gets crossorigin=anonymous unless it names use-credentials.
+ * reads, from the same list. A font gets crossorigin=anonymous unless it names use-credentials; an image may name its srcset.
  */
 
 export type CrossOrigin = "anonymous" | "use-credentials";
@@ -13,6 +13,10 @@ export interface Preload {
   /** A media type such as font/woff2. */
   type?: string;
   crossOrigin?: CrossOrigin;
+  /** An image's srcset and sizes, so the browser preloads the size it will show. Images only. */
+  imageSrcSet?: string;
+  imageSizes?: string;
+  fetchPriority?: "high" | "low" | "auto";
 }
 
 export interface Preconnect {
@@ -28,6 +32,9 @@ export interface PreloadLink {
   as?: Preload["as"];
   type?: string;
   crossOrigin?: CrossOrigin;
+  imageSrcSet?: string;
+  imageSizes?: string;
+  fetchPriority?: "high" | "low" | "auto";
 }
 
 /** `links` for root.tsx's `links` export; `header` for `Link` on HTML responses (append it, empty for no entries). */

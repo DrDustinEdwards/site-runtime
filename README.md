@@ -13,7 +13,7 @@ resource routes (`./origin`), the trailing-slash redirect, the gone list and the
 No dependencies (`./sign-in` uses the site's own `better-auth` and
 `@better-auth/passkey`, 1.7.12 or later, which a site that imports it installs itself; they are not declared as peers,
 because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
-tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.62.0"`. `npm test` runs every test in `test/`.
+tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.63.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
 
@@ -371,7 +371,7 @@ original in R2 through the Images binding. One `defineImages` call names each wa
 never asks for a size the route would refuse:
 
 ```js
-import { defineImages, pictureHtml } from "@dustinedwards/site-runtime/image";
+import { defineImages, originalKey, pictureHtml } from "@dustinedwards/site-runtime/image";
 
 export const images = defineImages({
   uses: {
@@ -385,7 +385,8 @@ export const images = defineImages({
 const attrs = images.attributes({ src: "/media/photo.jpg", width: 2400, height: 1600, focus: "0.4x0.3" }, "content");
 const html = pictureHtml(attrs, { alt: "The lab bench", priority: true }, escapeHtml);
 
-// The route, /media/*: the original, or one size for ?w=.
+// The route, /media/*: the original, or one size for ?w=. originalKey turns photo.jpg.webp back into photo.jpg.
+const key = originalKey(params["*"], request);
 return images.respond(request, { object: await env.MEDIA.get(key), images: env.IMAGES, cache: caches.default, reread: () => env.MEDIA.get(key) });
 ```
 
@@ -404,15 +405,25 @@ quality are not counted, so the AVIF and WebP of one size bill once. The format 
 `Accept`, because the edge cache is keyed by URL alone. A crop's URL carries the file's focal point (`fp=`, from the R2
 object's `focus` custom metadata), and the route refuses one that is not the file's own, so a moved focal point is a new
 URL rather than a stale crop. The edge cache key also carries the original's etag, so a file replaced under the same key (site-api's `PUT
-/media/:id/file`) is a new key for every size and nothing cached from the old bytes is served again; browsers that
-already hold a size or the original under `immutable` keep it until it expires. Quality 85 is always passed; without it the binding writes lossless WebP, larger than the
+/media/:id/file`) is a new key for every size and nothing cached from the old bytes is served again.
+
+A browser holding a size under `immutable` keeps it for a year, so the page's URL must change too. A `StoredImage`'s
+`version` (the media row's `sha256`, or its updated time) goes into every size URL as `v=` (`imageVersion` gives the
+form: a hash's first 12 characters, a time in base 36), so a replaced, turned or cropped file is a new URL everywhere
+it is shown. `images.url(src, { version })` with no width is the original's versioned link. `v` is checked for shape
+and left out of the edge cache key, so it mints no transform, and an old version's URL keeps answering with the
+current picture. Each size URL ends in its format's extension (`/media/photo.jpg.webp?w=640`, `.avif` for AVIF), so a
+saved or indexed size is never a WebP named .jpg; the route reads the format from it, and `originalKey(key, request)`
+gives back the stored key (`photo.jpg`). A URL from before (`photo.jpg?w=640&f=avif`) still answers, from the same edge
+cache entry as its suffixed twin. Every file the route serves sends `Cross-Origin-Resource-Policy: cross-origin` when
+it is a picture (`corpFor`), so a link preview or a feed reader on another origin can show it. Quality 85 is always passed; without it the binding writes lossless WebP, larger than the
 original. An SVG is only ever served as an attachment. Without the binding (a checkout with no `images` in its
 `wrangler.jsonc`) the route serves the original and says so in `x-image`; a failed transform serves the original for five
 minutes and logs `image-transform-failed`.
 
 A page that renders JSX takes the same picture as props: `pictureProps(attrs, { alt, priority, className })` returns
 `{ sources: [{ type, srcSet, sizes, media }], img: { src, srcSet, sizes, width, height, alt, className, loading,
-fetchPriority, decoding } }`, plain objects with no React import, and `pictureHtml` is those props written out, so the
+fetchPriority, decoding, style } }`, plain objects with no React import, and `pictureHtml` is those props written out, so the
 two never differ. An unset prop is `undefined`, which JSX leaves out; with no `sources` the page writes the `<img>`
 alone (germomics' `Picture` falling back to the original). A site adds its own props beside them, as julieedwards.info's
 `object-position` from the focal point:
@@ -421,9 +432,27 @@ alone (germomics' `Picture` falling back to the original). A site adds its own p
 const { sources, img } = pictureProps(images.attributes(photo, "content"), { alt: photo.alt });
 <picture>
   {sources.map((s) => <source key={s.type + (s.media ?? "")} {...s} />)}
-  <img {...img} style={{ objectPosition: objectPosition(photo.focus) }} />
+  <img {...img} style={{ ...img.style, objectPosition: objectPosition(photo.focus) }} />
 </picture>
 ```
+
+The stored placeholder shows while the picture loads. Pass the media row's `placeholder` and `color` (site-api's
+upload makes both) in the `StoredImage`, and `attributes` gives a `background`: the blurred placeholder over the main
+color, at the focal point, covering the box. `pictureProps` puts it in `img.style`, `pictureHtml` in a `style`
+attribute. The loaded picture paints over it, so it is gone once loaded with no script and no shift. Only a JPEG,
+WebP or AVIF gets one: a PNG or GIF is often clear in places, where the placeholder would stay visible. A value
+outside site-api's contract is dropped. The page's CSP needs `styleAttributesInline` and `data:` in `img`.
+
+The page's largest image is preloaded as the set it shows, not one file: `preloads([imagePreload(attrs)])` names the
+AVIF source's `imagesrcset`, `imagesizes` and `type`, and `fetchpriority=high`, in the `<link>` and the Early Hints
+header alike.
+
+`shareImages: true` adds the share crop and the Article image set to the closed sets: `images.shareImage(photo)` is
+`{ url, width: 1200, height: 630, type: "image/jpeg" }`, cut 1.91:1 around the focal point (the og:image and
+twitter:image, with og:image:type from `type`), and `images.articleImages(photo)` is the 16:9, 4:3 and 1:1 set at 1200
+wide (WebP) for Article or BlogPosting `image`. Both are sizes of the stored original through the binding, so they add
+nothing to a Worker's bundle; a page with no picture uses a `./share-card`. Null and `[]` for an image with no known
+size or that is not a raster.
 
 A GIF stays animated. The binding keeps every frame unless `output()` is given `anim: false`, and writes them as
 animated WebP; Cloudflare's formats list (Images, Limits) gives animation for WebP and GIF output and not for AVIF, so a
@@ -501,6 +530,7 @@ A font is always fetched in anonymous CORS mode, so a font preload without `cros
 same file. Every `as: "font"` entry gets `crossorigin=anonymous` (in the tag and the header) unless it names
 `use-credentials`. `{ rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" }` adds a
 preconnect. An href must be a path or an https URL, ASCII only (percent-encode the rest), with no `<`, `>` or `"`.
+An image entry may carry `imageSrcSet`, `imageSizes` and `fetchPriority` (`imagePreload` in `./image` builds them).
 
 ## Edge page cache
 
@@ -647,8 +677,8 @@ exported from the bin for its test.
 site's dependency and is passed in: `renderShareCard(ImageResponse, html, { fonts, width, height, headers })` removes the
 whitespace between tags (Satori makes it a flex child), draws the card inside a box of its size (so a root at
 `width:100%` fills the card rather than shrinking to its text), reads the whole PNG so a failed render is `null` (logged as
-`share_card_failed`) rather than an empty image, and answers `image/png` cached a week at the edge, with `headers` added
-(Foxhound's `Cross-Origin-Resource-Policy: cross-origin`). `cardText(value)` leaves `&` as is and turns `<` and `>` into
+`share_card_failed`) rather than an empty image, and answers `image/png` (`SHARE_CARD_TYPE`, the page's og:image:type)
+cached a week at the edge with `Cross-Origin-Resource-Policy: cross-origin`, and `headers` added. `cardText(value)` leaves `&` as is and turns `<` and `>` into
 ‹ and ›: workers-og shows entities literally, so `escapeHtml` would put "&amp;" or "&lt;" on the card. `googleFont(family, weight, { cache, cacheOrigin })`
 fetches one static weight as WOFF (Satori reads TTF, OTF and WOFF, not WOFF2 or a variable font) and keeps it a year in
 `cache`. The design, colors and fonts are each site's own. 1200 by 630 is `SHARE_CARD_WIDTH` by `SHARE_CARD_HEIGHT`.
