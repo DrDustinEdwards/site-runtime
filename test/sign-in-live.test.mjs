@@ -1,6 +1,7 @@
 // The live sign-in check against a fake site: a site that does everything right has no errors, each planted gap fails
 // its own item (the confirm page found at the site's own path, as txasm's /signin/confirm), a site with no sign-in,
-// admin or MCP has no findings, and a site that does not answer cannot be checked.
+// admin or MCP has no findings (unless its registry entry declares a page, which must then answer), and a site that does
+// not answer cannot be checked.
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { after, before, test } from "node:test";
@@ -68,5 +69,7 @@ test("PLANT: each gap fails its own item, and no cookie value is printed", async
 test("a site with no sign-in, admin or MCP has no findings; one that does not answer cannot be checked", async () => {
   mode = "bare";
   assert.deepEqual(await signInFindings({ origin }), { findings: [], found: [] });
+  // A page the registry declares (dustinedwards.info's /lab) must answer, not be skipped as absent.
+  assert.deepEqual(errors(await signInFindings({ origin, probes: { admin: ["/lab"] } })), ["G1"]);
   await assert.rejects(signInFindings({ origin: "http://127.0.0.1:1" }), /did not answer/);
 });

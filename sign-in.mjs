@@ -23,7 +23,8 @@
  * - PER ADDRESS, AS WELL AS PER IP (`emailLimiter`, the site's RateLimiter Durable Object): five sign-in mails an hour
  *   per address, so someone spread over many addresses cannot bomb one inbox; three wrong codes an hour and ten a day
  *   per address, counted across links, so a new link brings a new code but no fresh tries; ten failed passkey or
- *   social sign-ins an hour per address and 100 a month per passkey (NIST SP 800-63B-4's cap). Checked in before hooks,
+ *   social sign-ins an hour per address (a Google or Apple callback counts once the provider has named the address)
+ *   and 100 a month per passkey (NIST SP 800-63B-4's cap). Checked in before hooks,
  *   so the form's auth.api call and a POST straight to /api/auth spend the same budget. A failing counter lets a mail
  *   or a passkey through (a Durable Object hiccup must never lock a person out, Foxhound's RULES.md 4.10), but refuses
  *   a typed code, which is the one thing a guesser can try a million of; the link in the mail still works.
@@ -54,6 +55,11 @@
  *   passkey delete and email change, which Better Auth leaves out, a before hook here). Listing and renaming passkeys
  *   do not. A site's own risky routes call requireFreshSession (`./sign-in-account.mjs`).
  * - SESSIONS END SESSION_SECONDS (30 days) after their sign-in, used or not: Better Auth's sliding refresh is off.
+ * - SESSION DETAILS, when the site asks (`sessionDetails: true`, with SESSION_DETAILS_SQL's columns): each session keeps
+ *   its coarse place (`coarseLocation` of request.cf) and a device id from a long-lived signed cookie (DEVICE_COOKIE),
+ *   both set when it is made, and its `updatedAt` and place move when it is read through /get-session, at most every
+ *   SESSION_TOUCH_SECONDS, after the answer. So the sessions list says where and when each was last used, and the
+ *   new-device notice knows a second browser of the same make from the first.
  * - SIGN-OUT CLEARS THE BROWSER: Better Auth's /sign-out answers with LOGOUT_HEADERS (`./headers`, Clear-Site-Data).
  * - EVERY AUTH EVENT IS LOGGED, AND EVERY CHANGE TO HOW A PERSON SIGNS IN IS TOLD TO THEM (`./sign-in-account.mjs`):
  *   one `./log` line per event, with OWASP's names, from a plugin's hooks, so a site gets it with no code; and with the
@@ -72,33 +78,54 @@
  * Async, because Apple's secret is signed with WebCrypto. A site builds its auth once per isolate and keeps the promise.
  */
 import { passkey } from "@better-auth/passkey";
+import { tryGetCurrentAuthEndpointContext } from "@better-auth/core/context";
 import { APIError, createAuthMiddleware, getOAuthState, getSessionFromCtx } from "better-auth/api";
 import { captcha, emailOTP, magicLink } from "better-auth/plugins";
 
 import { appleClientSecret } from "./apple-secret.mjs";
-import { fromBase64url } from "./encoding.mjs";
+import { base64url, fromBase64url } from "./encoding.mjs";
 import { LOGOUT_HEADERS } from "./headers.mjs";
 import { OWASP_EVENTS, logEvent } from "./log.mjs";
 import { emailKey, limit, mustStop } from "./rate-limit/index.mjs";
 import {
+  DEVICE_COOKIE,
+  DEVICE_COOKIE_SECONDS,
   FRESH_SECONDS,
   authEvent,
+  coarseLocation,
   deviceName,
   hadPasskey,
-  isNewDevice,
+  isNewSignInDevice,
   logAuthEvent,
   knownProvider,
   noticeDetail,
   outcome,
   sendNoticeSafely,
   sessionIsFresh,
+  sessionTouch,
+  signedInDeviceIds,
   signedInDevices,
 } from "./sign-in-account.mjs";
-import { CONFIRM_PATH, confirmLinkURL } from "./sign-in-link.mjs";
+import { CONFIRM_PATH, SIGN_IN_EXPIRES_IN_SECONDS, confirmLinkURL } from "./sign-in-link.mjs";
 
-export { CONFIRM_PATH, confirmSignInLink } from "./sign-in-link.mjs";
 export {
+  CONFIRM_PATH,
+  EMAIL_CONFIRM_PATH,
+  SIGN_IN_EXPIRES_IN_SECONDS,
+  SIGN_IN_EXPIRES_IN_WORDS,
+  SIGN_IN_LINK_WORDS,
+  confirmEmailLink,
+  confirmSignInLink,
+  emailConfirmURL,
+  emailLinkResult,
+  signInLinkProblem,
+} from "./sign-in-link.mjs";
+export {
+  AUTH_EVENTS_DEVICE_SQL,
   AUTH_EVENTS_SQL,
+  DEVICE_COOKIE,
+  SESSION_DETAILS_SQL,
+  SESSION_TOUCH_SECONDS,
   FRESH_SECONDS,
   PASSKEY_OFFER_DAYS,
   SECURITY_NOTICE_KINDS,
@@ -118,19 +145,9 @@ export {
   revokeSessionById,
   securityHistory,
   sessionRows,
+  sessionTouch,
   shouldOfferPasskey,
 } from "./sign-in-account.mjs";
-
-/**
- * How long a sign-in link and its code work: 10 minutes, NIST SP 800-63B-4's limit for an out-of-band sign-in ("the
- * authentication SHALL be considered invalid unless completed within 10 minutes", pages.nist.gov/800-63-4, read
- * 2026-10-31). Better Auth's default is 5, which ran out while a person found the mail and came back (Foxhound's live
- * test, 2026-10-29).
- */
-export const SIGN_IN_EXPIRES_IN_SECONDS = 10 * 60;
-
-/** The same, in words, for the mail and the page that says a link was sent. */
-export const SIGN_IN_EXPIRES_IN_WORDS = "10 minutes";
 
 /** Where a page posts the code: Better Auth's email OTP sign-in, which signs in, or makes the account, as the link does. */
 export const SIGN_IN_CODE_PATH = "/sign-in/email-otp";
@@ -219,6 +236,7 @@ export function turnstileSiteKey(env) {
  *   siteName: string, sendMagicLink: SendMagicLink, social?: boolean, appCode?: boolean, sendSignInCode?: SendSignInCode,
  *   confirmPath?: string, emailLimiter?: Parameters<typeof limit>[0], sendSecurityNotice?: SendSecurityNotice,
  *   eventsDb?: import("./sign-in-account.mjs").D1Like, turnstile?: typeof TURNSTILE_OFF_UNTIL_KEYS,
+ *   sessionDetails?: boolean,
  * }} site
  */
 export async function signInOptions(
@@ -234,6 +252,7 @@ export async function signInOptions(
     sendSecurityNotice,
     eventsDb,
     turnstile,
+    sessionDetails = false,
   },
 ) {
   if (turnstile !== undefined && turnstile !== TURNSTILE_OFF_UNTIL_KEYS) throw new Error(`turnstile is "${TURNSTILE_OFF_UNTIL_KEYS}" or left out`);
@@ -284,8 +303,9 @@ export async function signInOptions(
       },
     }),
     SIGN_OUT_CLEARS,
-    accountEvents(siteName, sendSecurityNotice, eventsDb ?? null),
+    accountEvents(siteName, sendSecurityNotice, eventsDb ?? null, sessionDetails),
   ];
+  if (sessionDetails) plugins.push(SESSION_TOUCH);
   if (turnstileSiteKey(env) && env.TURNSTILE_SECRET_KEY) {
     plugins.push(
       captcha({ provider: "cloudflare-turnstile", secretKey: env.TURNSTILE_SECRET_KEY, endpoints: ["/sign-in/magic-link"] }),
@@ -293,14 +313,16 @@ export async function signInOptions(
   } else plugins.push(noTurnstile(turnstile === TURNSTILE_OFF_UNTIL_KEYS));
   plugins.push(emailLimit(emailLimiter));
 
-  /** @type {Record<string, { clientId: string, clientSecret: string }>} */
+  // The provider's answer names the address a failed callback counts against (emailLimit).
+  const mapProfileToUser = providerAddress(emailLimiter);
+  /** @type {Record<string, { clientId: string, clientSecret: string, mapProfileToUser: typeof mapProfileToUser }>} */
   const socialProviders = {};
   if (social && env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) {
-    socialProviders.google = { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET };
+    socialProviders.google = { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET, mapProfileToUser };
   }
   const appleSecret = social ? await appleClientSecret(env) : null;
   if (appleSecret && env.APPLE_CLIENT_ID) {
-    socialProviders.apple = { clientId: env.APPLE_CLIENT_ID, clientSecret: appleSecret };
+    socialProviders.apple = { clientId: env.APPLE_CLIENT_ID, clientSecret: appleSecret, mapProfileToUser };
   }
 
   const noTokens = { before: async () => ({ data: { ...NO_OAUTH_TOKENS } }) };
@@ -310,7 +332,12 @@ export async function signInOptions(
     disabledPaths: appCode ? OTP_OFF_PATHS.filter((path) => path !== APP_CODE_PATH) : [...OTP_OFF_PATHS],
     socialProviders,
     account: { accountLinking: { enabled: true, disableImplicitLinking: true } },
-    session: { expiresIn: SESSION_SECONDS, disableSessionRefresh: true, freshAge: FRESH_SECONDS },
+    session: {
+      expiresIn: SESSION_SECONDS,
+      disableSessionRefresh: true,
+      freshAge: FRESH_SECONDS,
+      ...(sessionDetails ? { additionalFields: SESSION_FIELDS } : {}),
+    },
     ...(social ? { databaseHooks: { account: { create: noTokens, update: noTokens } } } : {}),
     rateLimit: appCode
       ? { enabled: true, storage: "database", customRules: { [APP_CODE_PATH]: { ...APP_CODE_RATE_LIMIT } } }
@@ -339,6 +366,62 @@ const SIGN_OUT_CLEARS = {
     ],
   },
 };
+
+/**
+ * The session columns `sessionDetails` writes (SESSION_DETAILS_SQL). Neither is taken from a client; the device id is
+ * never sent to one, since it is the cookie's value.
+ */
+const SESSION_FIELDS = Object.freeze({
+  location: Object.freeze({ type: "string", required: false, input: false }),
+  deviceId: Object.freeze({ type: "string", required: false, input: false, returned: false }),
+});
+
+/**
+ * With `sessionDetails`, a session read through /get-session (the browser's useSession, or the site's
+ * `auth.api.getSession`) moves its `updatedAt`, and fills its place, at most every SESSION_TOUCH_SECONDS (`sessionTouch`),
+ * after the answer through Better Auth's `runInBackgroundOrAwait`. The place is the request's `cf`, so a site's own
+ * `auth.api.getSession` passes the request as well: `getSession({ headers: request.headers, request, asResponse: false })`.
+ * A failed write is logged (`session_touch_failed`) and never fails the read.
+ */
+const SESSION_TOUCH = {
+  id: "sign-in-session-touch",
+  hooks: {
+    after: [
+      {
+        /** @param {{ path?: string }} ctx */
+        matcher: (ctx) => ctx.path === "/get-session",
+        handler: createAuthMiddleware(async (ctx) => {
+          const session = /** @type {{ session?: { token?: string, updatedAt?: Date, createdAt?: Date, location?: unknown } } | null} */ (
+            ctx.context.returned
+          )?.session;
+          if (!session?.token) return;
+          const update = sessionTouch(session, coarseLocation(/** @type {any} */ (ctx.request)));
+          if (!update) return;
+          const writing = ctx.context.internalAdapter.updateSession(session.token, update).then(
+            () => undefined,
+            (/** @type {unknown} */ error) => logEvent("session_touch_failed", { error }, { level: "error" }),
+          );
+          await ctx.context.runInBackgroundOrAwait(writing);
+        }),
+      },
+    ],
+  },
+};
+
+/**
+ * The device id for a new session: the signed DEVICE_COOKIE's when the browser brought one, else a new random one; the
+ * cookie is set again either way, so it lasts DEVICE_COOKIE_SECONDS from the latest sign-in.
+ * @param {any} ctx the endpoint making the session
+ * @returns {Promise<string | null>}
+ */
+async function deviceId(ctx) {
+  if (!ctx?.context?.createAuthCookie || typeof ctx.setSignedCookie !== "function") return null;
+  const cookie = ctx.context.createAuthCookie(DEVICE_COOKIE, { maxAge: DEVICE_COOKIE_SECONDS });
+  const brought = await Promise.resolve(ctx.getSignedCookie?.(cookie.name, ctx.context.secret)).catch(() => null);
+  const id = typeof brought === "string" && /^[\w-]{16,64}$/.test(brought) ? brought : base64url(crypto.getRandomValues(new Uint8Array(16)));
+  await ctx.setSignedCookie(cookie.name, id, ctx.context.secret, cookie.attributes);
+  return id;
+}
 
 /**
  * The link request without Turnstile keys: refused (503 TURNSTILE_NOT_SET), unless the site set
@@ -379,11 +462,14 @@ function noTurnstile(offUntilKeys) {
  * Its before hook holds passkey delete and email change to FRESH_SECONDS. A sign-in from a device the person's
  * sessions and history have not shown is told as `new-device`; a sign-in by link or code with no passkey left, by
  * someone whose history shows one, is a recovery: told, and every other session ended, as after an email change.
+ * With `details` (`sessionDetails`) a new session gets its place and device id (database hook), a sign-in's row its
+ * device id, and the new-device check reads device ids where the person has any (`isNewSignInDevice`).
  * @param {string} siteName
  * @param {SendSecurityNotice | undefined} sendSecurityNotice
  * @param {import("./sign-in-account.mjs").D1Like | null} db
+ * @param {boolean} details
  */
-function accountEvents(siteName, sendSecurityNotice, db) {
+function accountEvents(siteName, sendSecurityNotice, db, details) {
   /** @typedef {{ path?: string, query?: Record<string, unknown>, headers?: Headers, request?: Request, context?: any } | null | undefined} HookContext */
   /** @typedef {{ id: string, email: string, name?: string | null }} User */
   /** @type {WeakMap<object, string>} the address an update is about to replace, by the request it runs in */
@@ -408,7 +494,13 @@ function accountEvents(siteName, sendSecurityNotice, db) {
    * @param {Parameters<typeof logAuthEvent>[0]} event
    * @param {HookContext} ctx
    */
-  const log = (event, ctx) => logAuthEvent(event, { db, request: ctx?.request, userAgent: ctx?.headers?.get("user-agent") });
+  const log = (event, ctx) =>
+    logAuthEvent(event, {
+      db,
+      request: ctx?.request,
+      userAgent: ctx?.headers?.get("user-agent"),
+      ...(details ? { deviceId: ctx?.context?.newSession?.session?.deviceId ?? ctx?.context?.session?.session?.deviceId ?? null } : {}),
+    });
   /**
    * Ends every session of the user but `keep` (the one that made the change, when it is theirs).
    * @param {HookContext} ctx
@@ -431,7 +523,7 @@ function accountEvents(siteName, sendSecurityNotice, db) {
    * device, or neither. Read before this sign-in's own row is written.
    * @param {any} ctx
    * @param {User} user
-   * @param {{ session: { token: string, userAgent?: string | null } }} newSession
+   * @param {{ session: { token: string, userAgent?: string | null, deviceId?: string | null } }} newSession
    * @param {unknown} via
    * @returns {Promise<"recovery" | "new-device" | null>}
    */
@@ -440,12 +532,19 @@ function accountEvents(siteName, sendSecurityNotice, db) {
       const passkeys = await ctx.context.adapter.count({ model: "passkey", where: [{ field: "userId", value: user.id }] });
       if (passkeys === 0 && (await hadPasskey(db, user.id))) return "recovery";
     }
+    /** @type {{ token: string, userAgent?: string | null, deviceId?: string | null }[]} */
     const others = (await ctx.context.internalAdapter.listSessions(user.id)).filter(
       (/** @type {{ token: string }} */ row) => row.token !== newSession.session.token,
     );
-    const seen = others.map((/** @type {{ userAgent?: string | null }} */ row) => deviceName(row.userAgent));
-    if (db) seen.push(...(await signedInDevices(db, user.id)));
-    return isNewDevice(deviceName(newSession.session.userAgent ?? ctx.headers?.get("user-agent")), seen) ? "new-device" : null;
+    const names = others.map((row) => deviceName(row.userAgent));
+    const ids = details ? others.map((row) => row.deviceId ?? null) : [];
+    if (db) names.push(...(await signedInDevices(db, user.id)));
+    if (db && details) ids.push(...(await signedInDeviceIds(db, user.id)));
+    const device = {
+      id: details ? (newSession.session.deviceId ?? null) : null,
+      name: deviceName(newSession.session.userAgent ?? ctx.headers?.get("user-agent")),
+    };
+    return isNewSignInDevice(device, { ids, names }) ? "new-device" : null;
   };
   /** Runs a hook's work, and logs instead of throwing. @param {() => Promise<void>} run */
   const safely = async (run) => {
@@ -461,6 +560,23 @@ function accountEvents(siteName, sendSecurityNotice, db) {
     init: () => ({
       options: {
         databaseHooks: {
+          ...(details
+            ? {
+                session: {
+                  create: {
+                    // The place and device of the sign-in (`sessionDetails`); a failure leaves them blank, never the sign-in.
+                    before: async (/** @type {any} */ session, /** @type {any} */ ctx) => {
+                      try {
+                        return { data: { ...session, location: coarseLocation(ctx?.request), deviceId: await deviceId(ctx) } };
+                      } catch (error) {
+                        logEvent("auth_event_failed", { error }, { level: "error" });
+                        return { data: session };
+                      }
+                    },
+                  },
+                },
+              }
+            : {}),
           account: {
             create: {
               // A link, not a sign-up: the account joins a user who was signed in (/link-social) or who began the
@@ -617,15 +733,42 @@ function emailInToken(token) {
 /** The endpoints whose mails spend an address's budget, counted on each request. */
 const MAIL_LIMITED = new Set(["/sign-in/magic-link", APP_CODE_PATH]);
 
+/** The address Google or Apple named in a web sign-in's callback, by the request's auth context (`providerAddress`). */
+const callbackAddress = new WeakMap();
+
+/**
+ * The providers' `mapProfileToUser`: it maps nothing, and notes the address the provider answered with for the
+ * callback's request, so a failed callback counts against it (F1). When that address is already over
+ * SIGN_IN_FAILURE_RULES the callback stops here, before any account is read, and goes back to the sign-in's error page
+ * with `?error=EMAIL_RATE_LIMITED`.
+ * @param {Parameters<typeof limit>[0] | undefined} namespace
+ */
+function providerAddress(namespace) {
+  return async (/** @type {{ email?: unknown }} */ profile) => {
+    const ctx = /** @type {any} */ (tryGetCurrentAuthEndpointContext());
+    const key = typeof profile?.email === "string" ? await emailKey("sign-in-fail", profile.email) : null;
+    if (!ctx?.context || !key || !namespace) return {};
+    callbackAddress.set(ctx.context, key);
+    const verdict = await limit(namespace, key, [...SIGN_IN_FAILURE_RULES], { onUnavailable: "allow", peek: true });
+    if (!mustStop(verdict, "allow")) return {};
+    await logAuthEvent({ event: OWASP_EVENTS.rateLimitExceeded, fields: { endpoint: ctx.path, bucket: "sign-in-fail" }, level: "warn" });
+    const state = await getOAuthState().catch(() => null);
+    const back = new URL(state?.errorURL || state?.callbackURL || "/", ctx.context.baseURL);
+    back.searchParams.set("error", "EMAIL_RATE_LIMITED");
+    throw new APIError("FOUND", undefined, new Headers({ location: back.toString() }));
+  };
+}
+
 /**
  * The address a failed passkey or social sign-in counts against, and the passkey's own key: the passkey's owner (by
- * the credential id in the body), or the address in an ID token (the app's Google or Apple sign-in, read unchecked:
- * it only names a counter). An OAuth redirect names no address until the provider answers, so only the per-IP limit
- * holds it.
+ * the credential id in the body), the address in an ID token (the app's Google or Apple sign-in, read unchecked: it
+ * only names a counter), or the address the provider answered a web callback with (`providerAddress`). Before the
+ * provider answers, a callback names no address, so only the per-IP limit holds it.
  * @param {any} ctx
  * @returns {Promise<{ address: string | null, passkey: string | null }>}
  */
 async function failureKeys(ctx) {
+  if (ctx.path === "/callback/:id") return { address: callbackAddress.get(ctx.context) ?? null, passkey: null };
   if (ctx.path === "/passkey/verify-authentication") {
     const id = ctx.body?.response?.id;
     if (typeof id !== "string" || !id) return { address: null, passkey: null };
@@ -638,7 +781,7 @@ async function failureKeys(ctx) {
 }
 
 /** The endpoints whose failures count against an address and a passkey. */
-const FAILURE_LIMITED = new Set(["/passkey/verify-authentication", "/sign-in/social"]);
+const FAILURE_LIMITED = new Set(["/passkey/verify-authentication", "/sign-in/social", "/callback/:id"]);
 
 /**
  * The per-address limits as one plugin. Its before hooks run after the captcha plugin and Better Auth's per-IP limit

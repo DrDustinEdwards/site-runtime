@@ -5,21 +5,15 @@
  * anything are a passkey challenge (Better Auth stores one for five minutes) and a sign-out with no session.
  *
  * Each part runs only when the site has it, found by probing: a sign-in page (/login, /signin, /sign-in), Better Auth
- * (/api/auth/ok answers ok), admin pages (/admin, plus ELSEWHERE), an MCP server (/mcp answers 401, plus ELSEWHERE).
- * A site with none of them has no findings.
+ * (/api/auth/ok answers ok), admin pages (/admin, plus the registry's `signIn.admin`), an MCP server (/mcp answers 401,
+ * plus the registry's `signIn.mcp`). What a site serves beyond its own /admin and /mcp is its entry's `signIn` in the
+ * site registry (`./sites.mjs`), found by origin or alias. A site with none of them has no findings.
  */
+
+import { siteForOrigin } from "./sites.mjs";
 
 const UA = "Mozilla/5.0 (compatible; site-runtime-sign-in)";
 const TIMEOUT_MS = 15_000;
-
-/** What a site serves beyond its own /admin and /mcp, by production host: admin pages and MCP servers on other hosts. */
-export const ELSEWHERE = {
-  "dustinedwards.info": { mcp: ["https://admin-mcp.dustinedwards.info/mcp"] },
-  "foxing.app": { mcp: ["https://admin-mcp.foxing.app/mcp"] },
-  "capsid.dustinedwards.info": { admin: ["https://portal.dustinedwards.info/"] },
-  "txasm.org": { admin: ["/admin/access"] },
-  "foxhoundapp.com": { mcp: ["https://admin-mcp.foxhoundapp.com/mcp", "https://foxhoundapp.com/mcp"] },
-};
 
 /** Where a site's confirm page may be: next to each sign-in page found (txasm's is /signin/confirm), else /sign-in/confirm. */
 const CONFIRM_PATHS = ["/sign-in/confirm", "/signin/confirm", "/login/confirm"];
@@ -66,14 +60,15 @@ const keeps = (/** @type {string} */ cookie) => !/;\s*max-age=0\b/i.test(cookie)
 
 /**
  * The findings for one site. Throws when the site does not answer, so an outage never reads as findings.
- * @param {{ origin: string, from?: string }} site
+ * @param {{ origin: string, from?: string, probes?: import("./sites.mjs").SignInProbes }} site `probes` in place of the
+ *   registry entry's `signIn`
  * @returns {Promise<{ findings: Finding[], found: string[] }>}
  */
-export async function signInFindings({ origin, from }) {
+export async function signInFindings({ origin, from, probes }) {
   origin = origin.replace(/\/$/, "");
   const base = (from ?? origin).replace(/\/$/, "");
   const host = new URL(origin).hostname;
-  const elsewhere = /** @type {{ admin?: string[], mcp?: string[] }} */ (ELSEWHERE[/** @type {keyof typeof ELSEWHERE} */ (host)] ?? {});
+  const elsewhere = probes ?? siteForOrigin(origin)?.signIn ?? {};
   const home = await get(`${base}/`);
   if (home.status === 0 || home.status >= 500) throw new Error(`${base} did not answer: ${home.error ?? home.status}`);
 
@@ -161,10 +156,15 @@ export async function signInFindings({ origin, from }) {
   }
 
   // Admin pages: Cloudflare Access (a redirect to *.cloudflareaccess.com) or the Worker's 401/403, never the page (G1).
-  for (const path of ["/admin", ...(elsewhere.admin ?? [])]) {
+  for (const path of new Set(["/admin", ...(elsewhere.admin ?? [])])) {
     const url = new URL(path, `${base}/`).href;
     const r = await get(url);
     const end = await follow(url); // past a same-origin hop, such as a trailing slash
+    const declared = (elsewhere.admin ?? []).includes(path);
+    if (declared && (end.status === 404 || end.status === 0 || end.status >= 500)) {
+      flag("G1", "error", url, `a declared admin page answered ${end.status || end.error}, not a redirect to Access or a 401/403`);
+      continue;
+    }
     if (end.status === 404 || end.status === 0) continue;
     found.push(`admin ${url}`);
     const there = new URL(end.headers.get("location") ?? end.url, end.url);

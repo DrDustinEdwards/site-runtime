@@ -52,7 +52,11 @@ export type SiteEntry = {
     /** Items the site does not meet (S2, C3, C7, C9, I3, K1's cookie prefix), by id: reported as warnings, not errors. */
     deviations?: Readonly<Record<string, Deviation>>;
     assets?: SiteAssets;
+    /** What the live sign-in check probes beyond /admin and /mcp; a declared page or server that does not answer is an error. */
+    signIn?: SignInProbes;
 };
+/** Admin pages (a path on the site, or a URL on another host) and MCP server URLs the live sign-in check must find gated. */
+export type SignInProbes = { admin?: readonly string[]; mcp?: readonly string[] };
 /** The checklist items no family site can meet, by id, with why; the live check reports each as a notice. */
 export const FAMILY_DEVIATIONS: Readonly<Record<string, string>>;
 export { PASSKEY_OVERRIDES, permissionsAllowingSelf } from "./headers.mjs";

@@ -13,7 +13,7 @@ resource routes (`./origin`), the trailing-slash redirect, the gone list and the
 No dependencies (`./sign-in` uses the site's own `better-auth` and
 `@better-auth/passkey`, 1.7.12 or later, which a site that imports it installs itself; they are not declared as peers,
 because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
-tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.57.0"`. `npm test` runs every test in `test/`.
+tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.59.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
 
@@ -316,8 +316,8 @@ Nothing here scores text against an AI detector or aims to pass one.
 
 `./health` is the uptime probe's answer, in the IETF health check draft's shape (draft-inadarei-api-health-check-06,
 `application/health+json`): `healthResponse({ ping, backup, sha, checks, backupTtlMs, checkTimeoutMs, now })`, every
-field optional, with `{ status, ok, db, backup, sha, time, checks: [{ name, status, detail }] }`, `no-store` and
-`noindex`.
+field optional, with `{ status, ok, alerts, db, backup, sha, time, checks: [{ name, status, detail, alert }] }`,
+`no-store` and `noindex`.
 
 ```js
 import { healthResponse, r2Check } from "@dustinedwards/site-runtime/health";
@@ -330,7 +330,7 @@ return healthResponse({
 });
 ```
 
-- A check is `{ name, level, run }`, `level` "fail" by default or "warn". It fails when `run` throws, rejects, resolves
+- A check is `{ name, level, alert, run }`, `level` "fail" by default or "warn". It fails when `run` throws, rejects, resolves
   `false` or resolves `{ ok: false, detail }`, or does not answer within `checkTimeoutMs` (3000 by default), so /health
   never hangs on a binding. A thrown error's text is the detail, scrubbed by `./log` and cut to 200 characters; a failed
   "fail" check is logged as `health_check_failed`.
@@ -339,6 +339,10 @@ return healthResponse({
 - `status` is fail when a fail check failed, else warn when a warn check failed, else pass. 503 only for fail: a stale
   backup, a stopped cron or content drift is warn and 200, because the site is up. `ok` is `status !== "fail"`, so a
   keyword monitor on `"ok":true` pages only when the site is down; a warning is in `status` and the checks.
+- An alert (`alert: true` on the check) is a failure someone must hear of now while the site is up. It keeps its
+  level, warn, so the response stays 200 and `ok` true and devkit's worker-deploy, which rolls back when /health is not
+  ok, never rolls a deploy back for it; its result carries `alert: true`, `alerts` names it, and it is logged as
+  `health_alert`. A watcher (Capsid's) keys on `alerts` to raise a finding and mail a person.
 - `r2Check(name, bucket)` and `kvCheck(name, kv)` are the binding checks: a `head` or `get` of a fixed key, where no
   object is fine and a throw fails.
 - `imagesCheck(name, env.IMAGES)` asks the Images binding for `info` on a 1 x 1 GIF (it reads the header and
@@ -347,9 +351,9 @@ return healthResponse({
   `aiCheck(name, env.AI)` prove the binding is there and send or run nothing (a probe message would reach the consumer,
   and every AI call is billed). All four are level warn; spread one with `level: "fail"` to make it take the site down.
 - `authSpikeCheck(env.DB, { windowMinutes: 60, failures: 50, mails: 50 })` is the sign-in spike alert (F3), level
-  warn: it fails when failed sign-ins (`authn_login_fail`) or sign-in mails (`authn_token_created`) in the window pass
-  their ceiling, read from `./sign-in`'s `auth_events` table (`eventsDb`), with the counts as its detail. /health
-  shows it, and so the daily live check does.
+  warn and an alert: it fails when failed sign-ins (`authn_login_fail`) or sign-in mails (`authn_token_created`) in the
+  window pass their ceiling, read from `./sign-in`'s `auth_events` table (`eventsDb`), with the counts as its detail.
+  /health names it in `alerts`, and the watcher mails on it.
 - `sha` is the deployed commit, when the site knows it. The backup read is held per isolate for `backupTtlMs` (five
   minutes by default; 0 reads every time), because listing the R2 bucket is a billed Class A operation and the route is
   public.
@@ -770,6 +774,10 @@ const auth = betterAuth({
   })),
 });
 // the confirm page's action (CONFIRM_PATH, /sign-in/confirm): return confirmSignInLink(auth, request)
+// the confirm page's loader: signInLinkProblem(request.url, { signedIn }) -> null | "used" | "expired" | ... (SIGN_IN_LINK_WORDS)
+// the email-change mails: url: emailConfirmURL(url) (EMAIL_CONFIRM_PATH, /email/confirm); its action: confirmEmailLink(auth, request)
+// the email-change page: emailLinkResult(request.url) -> { done, problem }
+// where and when each session was last used: signInOptions(env, { ..., sessionDetails: true }) with SESSION_DETAILS_SQL
 // the sign-in page's loader: signInMethods(env, { social: true }) -> { google, apple, turnstileSiteKey }
 // the browser: createAuthClient({ plugins: signInClientPlugins() }) from "@dustinedwards/site-runtime/sign-in-client"
 // sendMagicLink({ email, url, token, code }) mails the link and the code together
@@ -814,6 +822,35 @@ const auth = betterAuth({
   React Router and Better Auth refuse with a 400), and says
   what pressing does: "Sign in to {site}". Better Auth's GET endpoint stays as it is (`confirmSignInLink` calls it), but
   no mail carries it.
+- What the confirm page says when the link failed (E6): Better Auth answers `?error=INVALID_TOKEN` for a used link and an
+  expired one alike, so the mailed URL carries `sent`, the time it was mailed (`confirmLinkURL`), and
+  `confirmSignInLink` carries it to `errorCallbackURL` (the confirm page itself when the site names none), txasm's way.
+  The page's loader calls `signInLinkProblem(request.url, { signedIn })`: null (show the button), `"used"` (within
+  `SIGN_IN_EXPIRES_IN_SECONDS` of the mail), `"expired"` (after), `"invalid"` (no send time: a link cut or edited, or
+  mailed before 0.59.0), `"missing"` (no token: cut short when copied), `"failed"` (any other error), or `"signed-in"`
+  (this browser is signed in, so nothing more to do). `SIGN_IN_LINK_WORDS[problem]` is `{ title, text }` in the
+  network's words; a site may use its own.
+- The email change's links open a page too (E1). Better Auth's `/verify-email` link acts on a GET (it approves the
+  change from the current address, and makes it from the new one), so both mails carry the site's own page instead:
+  `emailConfirmURL(url, confirmPath = EMAIL_CONFIRM_PATH)` in `user.changeEmail.sendChangeEmailConfirmation` and in
+  `emailVerification.sendVerificationEmail`, from the `url` Better Auth hands each (only the token is carried). The page
+  shows one button; its action returns `confirmEmailLink(auth, request, { callbackURL })`, which runs `/verify-email`
+  through `auth.handler` and answers with Better Auth's redirect to `callbackURL` (the page itself by default) with
+  `done=approved` (the current address approved; the new one is mailed), `done=changed` (the change is made, with the
+  session cookie for a browser that was signed out) or `error=`. GET is 405, no token 400. The page's loader reads
+  `emailLinkResult(request.url)`: `{ done }`, or `{ problem }` (`"expired"`, `"done"` for a change made already,
+  `"other-account"` when this browser is signed in to another account, `"invalid"`, `"failed"`, `"missing"`).
+
+  ```tsx
+  // app/routes/email.confirm.tsx (React Router): one route for both links.
+  export const headers = () => ({ "Cache-Control": "no-store", "X-Robots-Tag": "noindex" });
+  export const loader = ({ request }: Route.LoaderArgs) => emailLinkResult(request.url);
+  export async function action({ request, context }: Route.ActionArgs) {
+    return confirmEmailLink(await getAuth(context.cloudflare.env), request);
+  }
+  // sendChangeEmailConfirmation: ({ user, newEmail, url }) => mail(user.email, emailConfirmURL(url))
+  // sendVerificationEmail: ({ user, url }) => mail(user.email, emailConfirmURL(url))
+  ```
 
   ```tsx
   // app/routes/sign-in.confirm.tsx (React Router). The page shows a button; a GET never signs in.
@@ -830,8 +867,10 @@ const auth = betterAuth({
   `./rate-limit`), each address gets five sign-in mails an hour (`LINK_EMAIL_RULES`: the link request, and with
   `appCode` the app's code request); three wrong codes an hour and ten a day, counted across links
   (`CODE_EMAIL_RULES`: `SIGN_IN_CODE_PATH`); and ten failed passkey or social sign-ins an hour (`SIGN_IN_FAILURE_RULES`:
-  the passkey's owner, or the address in an app's ID token; an OAuth redirect names no address, so only the per-IP
-  limit holds it). Each passkey gets 100 failed sign-ins in 30 days (`PASSKEY_FAILURE_RULES`, by credential id; NIST
+  the passkey's owner, the address in an app's ID token, or for a web Google or Apple sign-in the address the provider
+  answered the callback with (F1): the providers' `mapProfileToUser` notes it, a failed callback counts against it, and
+  once it is spent the next callback goes back to the sign-in's error page with `?error=EMAIL_RATE_LIMITED` before any
+  account is read; before the provider answers, only the per-IP limit holds a callback). Each passkey gets 100 failed sign-ins in 30 days (`PASSKEY_FAILURE_RULES`, by credential id; NIST
   SP 800-63B-4's cap per authenticator). The per-IP limits do nothing against someone spread over many addresses
   aiming at one inbox, to bomb it with mail or to guess its code: three wrong tries spend a code, and a new link brings
   a new code but no fresh tries. Mails are counted when asked for; codes, passkeys and social sign-ins are checked
@@ -864,6 +903,21 @@ const auth = betterAuth({
   when it is older. A page that gets `SESSION_NOT_FRESH` asks for a new sign-in. A site that sets its own
   `session` options keeps this one: `session: { ...signIn.session, expiresIn, updateAge }`. Session lengths are the
   site's for now.
+- Session details (D5, E4), when the site passes `sessionDetails: true`. Each session keeps its coarse place
+  (`coarseLocation` of `request.cf`, "Austin, Texas, United States") and a device id: a random value in a signed cookie
+  (`DEVICE_COOKIE`, `__Secure-better-auth.device` on https, HttpOnly, SameSite=Lax), set at each sign-in and kept 400
+  days, stored on the session row and, with `eventsDb`, on each sign-in's `auth_events` row. Both are written when the
+  session is made (a database hook). When the session is read through `/get-session` (the browser's `useSession`, or
+  the site's `auth.api.getSession`), its `updatedAt` moves, and its place fills in or follows the person, at most every
+  `SESSION_TOUCH_SECONDS` (five minutes; `sessionTouch`, txasm's touch), after the answer through
+  `runInBackgroundOrAwait`. So `lastActiveAt` in the sessions list is when it was last used, not when it signed in
+  (refresh is off, so nothing else moves `updatedAt`; freshness counts from `createdAt`, so a touch never makes a
+  sign-in fresh). The place comes from the request's `cf`, so a site's own server-side read passes the request too:
+  `auth.api.getSession({ headers: request.headers, request, asResponse: false })`. A failed write is logged
+  (`session_touch_failed`) and never fails the read. The site adds `SESSION_DETAILS_SQL` (`ALTER TABLE session ADD
+  COLUMN location TEXT; ... device_id TEXT`, leaving out a column it has) and, with `eventsDb`, `AUTH_EVENTS_DEVICE_SQL`;
+  in a Drizzle schema the session table gains `location: text("location")` and `deviceId: text("device_id")`. The
+  device id is never sent to a browser (`returned: false`). A site that kept its own touch or place hook drops it.
 - Sign-out clears the browser: Better Auth's `/sign-out` (which deletes the session row and its cookie) answers with
   `LOGOUT_HEADERS` (`./headers`: `Clear-Site-Data: "cache","cookies","storage"`). It is a plugin's after hook, not the
   options' `hooks.after`, so a site with an after hook of its own keeps both with nothing to merge. Browsers apply
@@ -930,8 +984,10 @@ its own and the notices by passing one function.
   sendSecurityNotice })` calls `sendSecurityNotice(kind, { user, request, detail })` for `passkey-added`,
   `passkey-removed`, `sign-in-linked`, `sign-in-unlinked`, `email-changed` (twice, once to each address, the old one
   told to get in touch), `sessions-revoked` (every session, or every other one: `detail.scope`), `account-deleted`,
-  `new-device` (E3: a sign-in from a device the person has not signed in from, by `deviceName`, among their other
-  sessions and, with `eventsDb`, their history; a first sign-in is not one) and `recovery` (E4: a sign-in by link or
+  `new-device` (E3: a sign-in from a device the person has not signed in from, among their other sessions and, with
+  `eventsDb`, their history; a first sign-in is not one. With `sessionDetails`, a device is its device id, so a second
+  Mac running Chrome is new, and so is a browser that signed out or cleared its cookies, since Clear-Site-Data removes
+  the cookie; until a person has a device id on record, and without `sessionDetails`, a device is its `deviceName`) and `recovery` (E4: a sign-in by link or
   code with no passkey left, by someone whose history shows a passkey added, so it needs `eventsDb`; the notice says
   every other device was signed out and to add a passkey, which the page then offers) (`SECURITY_NOTICE_KINDS`). `user.email` is where it goes. `detail` is the words: `title` (the subject), `what`,
   `when` (UTC, in words) and `at`, `device` ("Safari on iPhone") and `location` ("Portland, Oregon, United States", from
@@ -965,9 +1021,9 @@ its own and the notices by passing one function.
   `/list-sessions` wants a fresh sign-in (SESSION_NOT_FRESH), so the page offers "sign in again" instead of failing.
   `device` is `deviceName(userAgent)`, a small parser of the browser and system (Edge, Opera, Samsung Internet,
   Firefox, Chrome, Safari; iPhone, iPad, Android, ChromeOS, Windows, Mac, Linux), null when the agent names neither.
-  `lastActiveAt` is Better Auth's `updatedAt`, which moves only when it extends the session (once per `updateAge`, a
-  day by default). Better Auth stores the address and the user agent, not a place, so `location` is null unless a site
-  keeps one on the session. A row carries no token: the rows go into the page, and another device's token there would
+  `lastActiveAt` is `updatedAt`: with `sessionDetails`, when the session was last used (within five minutes); without
+  it, the sign-in time, since refresh is off. Better Auth stores the address and the user agent, not a place, so
+  `location` is null unless `sessionDetails` (or the site) keeps one on the session. A row carries no token: the rows go into the page, and another device's token there would
   let a script on the page take over that session. Ending one is the page's own action calling
   `revokeSessionById(auth, request, id)` (Better Auth's `/revoke-session`, server-side; false when the id is not the
   asker's); every other is `/revoke-other-sessions`; all, `/revoke-sessions`.
@@ -980,8 +1036,8 @@ its own and the notices by passing one function.
   blank. `passkeyProvider(aaguid)` is the same for a page, "Passkey" when unknown, and `passkeyLabel(passkey)` is what
   a list shows: the name, else the provider.
 - The passkey list (A5): `await accountPasskeys(auth, request, env.DB)` gives the asker's passkeys, oldest first, as `{
-  id, name, provider, createdAt, lastUsedAt }` (`passkeyRows` over Better Auth's `listPasskeys`; no credential or
-  public key), or null when nobody is signed in. Better Auth 1.7.12 keeps no last-used time, so with `eventsDb` each
+  id, credentialId, name, provider, createdAt, lastUsedAt }` (`passkeyRows` over Better Auth's `listPasskeys`; the
+  public credential id for the Signal API, no public key), or null when nobody is signed in. Better Auth 1.7.12 keeps no last-used time, so with `eventsDb` each
   passkey sign-in's `auth_events` row carries the passkey's id in `change`, and `passkeyLastUsed(db, userId)` reads the
   newest per passkey: no migration beyond `AUTH_EVENTS_SQL`. Rows go after a year, so a passkey unused that long shows
   no date, and passkeys used before this version show none until their next sign-in. Rename is Better Auth's own
@@ -997,23 +1053,29 @@ its own and the notices by passing one function.
   table, and is not in the security history; it needs `eventsDb`.
 - Two ways in (A9): `needsSecondPasskey(rows)` is true with exactly one passkey; the account page then suggests adding
   another on a second device.
-- The WebAuthn Signal API (A6), in `./sign-in-client`: `signalUnknownCredential({ rpId, credentialId })` after a passkey
-  is deleted on the site, and after a sign-in fails with `PASSKEY_NOT_FOUND` (the passkey was deleted elsewhere), so
-  the provider stops offering it. A page's passkey button and autofill call `signInWithPasskey(authClient, { autoFill
-  })` in place of `authClient.signIn.passkey(...)`: the same call with `returnWebAuthnResponse`, which signals an
-  unknown credential itself (`rpId` defaults to the page's host). `signalAllAcceptedCredentials({ rpId, userId,
-  credentialIds })` and `signalCurrentUserDetails({ rpId, userId, name, displayName })` wrap the other two signals, and
-  `signalPasskeys` calls both after a passkey sign-in. Each runs only where the browser has it (Chrome 132,
-  Safari 26) and swallows a refusal. `userId` is a passkey's user handle, and @better-auth/passkey 1.7.12 makes a new
-  random handle for every passkey and stores none (`generate-register-options`), so the one handle a page has is the
-  passkey just used to sign in (`webauthn.response.response.userHandle`), and `signalPasskeys` reaches that passkey
-  alone. A deleted passkey is therefore signaled by its id, with `signalUnknownCredential`.
+- The WebAuthn Signal API (A6), in `./sign-in-client`. Each call runs only where the browser has it (Chrome 132,
+  Safari 26) and swallows a refusal; `rpId` defaults to the page's host. When a site calls each:
+
+  | Call | When |
+  | --- | --- |
+  | `signInWithPasskey(authClient, { autoFill })` | every passkey button and autofill, in place of `authClient.signIn.passkey(...)`: on `PASSKEY_NOT_FOUND` (deleted elsewhere) it signals that credential unknown, and on success it keeps the passkey's user handle (`passkeyUserHandle()`) for the calls below |
+  | `signalPasskeys({ credentialIds, name, displayName })` | after a passkey sign-in lands, and each time the account page's passkey list loads, with the rows' `credentialId`s and the account's address as `name` |
+  | `signalCurrentUserDetails({ name, displayName })` | after the email change is made (on the page `emailLinkResult` says `done: "changed"`, `name` the new address) and after the person renames themselves |
+  | `signalAllAcceptedCredentials({ credentialIds })` | inside `signalPasskeys`; alone where only the list matters |
+  | `signalUnknownCredential({ credentialId })` | after the person deletes a passkey on the site, with that row's `credentialId` |
+
+  `userId` is a passkey's user handle, and @better-auth/passkey 1.7.12 makes a new random handle for every passkey and
+  stores none (`generate-register-options`), so the one handle a page can know is that of the passkey that signed in
+  on this browser (`webauthn.response.response.userHandle`), which `signInWithPasskey` keeps in localStorage per relying
+  party; a page may pass `userId` itself. Without one the calls do nothing, and they reach that passkey alone. A
+  deleted passkey is therefore signaled by its id, with `signalUnknownCredential`.
 
 **Tests.** `test/apple-secret.test.mjs` (a key made in the test, the signature verified), `test/sign-in-link.test.mjs`
-(the mailed URL; only a POST reaches Better Auth's verify, with the client address passed on) and
+(the mailed URL; only a POST reaches Better Auth's verify, with the client address passed on; a failed link read as
+used, expired, invalid or missing; the email-change page) and
 `test/sign-in-account.test.mjs` (user agents, which event a request was, a notice that fails to send, the security
-history and new-device decision, the spike check, `requireFreshSession`, the passkey list's last-used dates and the
-offer's 30 days). The confirm step
+history and new-device decision, by device id and by name, the session touch, the spike check, `requireFreshSession`,
+the passkey list's last-used dates and the offer's 30 days). The confirm step
 and the account security live in `sign-in-link.mjs` and `sign-in-account.mjs`, re-exported by `./sign-in`, so they are
 tested without Better Auth installed. The rest is Better Auth's own plugins, set up; each site's tests sign in through
 it.
@@ -1032,10 +1094,12 @@ outside request can: it sends no mail, makes no account and holds no token, and 
   must never set a session cookie (B7): the site's own path, the first that answers among `/confirm` beside each sign-in
   page found and `/sign-in/confirm`, `/signin/confirm` (txasm's), `/login/confirm`. A missing confirm page is a warning
   until every site has the route.
-- Admin (`/admin`, and `ELSEWHERE` in `sign-in-live.mjs` for pages on another host): a request with no sign-in gets a
-  redirect to `*.cloudflareaccess.com` or a 401/403, never the page (G1; another redirect is a warning), with
-  `no-store` and, on anything but a redirect, `noindex` (D10).
-- MCP (`/mcp`, and the servers `ELSEWHERE` names, such as Foxhound's merchant and admin servers): the 401 names its `resource_metadata` and that metadata names the
+- Admin (`/admin`, and the pages the site's registry entry names in `signIn.admin`, `./sites`: dustinedwards.info's
+  `/lab`, txasm's `/admin/access`, all of Desk and the Portal): a request with no sign-in gets a redirect to
+  `*.cloudflareaccess.com` or a 401/403, never the page (G1; another redirect is a warning), with `no-store` and, on
+  anything but a redirect, `noindex` (D10). A declared page that answers 404 or 5xx is an error, not skipped.
+- MCP (`/mcp`, and the servers the entry names in `signIn.mcp`, such as Foxhound's merchant and admin servers): the
+  401 names its `resource_metadata` and that metadata names the
   server and its authorization server (H1, RFC 9728); the authorization server offers PKCE `S256` only (H2) and Client
   ID Metadata Documents (H4), per the MCP authorization spec of 2025-11-25.
 
@@ -1411,8 +1475,8 @@ Cloudflare Access application's policies through the Cloudflare API and compares
 admin list, so a person removed from one and not the other is found.
 
 ```sh
-CLOUDFLARE_API_TOKEN=... ADMIN_EMAILS="a@example.com,b@example.com" \
-  npx site-runtime-access-drift --account <account id> --app "<application name>" [--admins-file admins.txt]
+CLOUDFLARE_API_TOKEN=... ACCESS_CLIENT_ID=... ACCESS_CLIENT_SECRET=... \
+  npx site-runtime-access-drift --account <account id> --app "<application name>" --admins-url https://example.com/admin/access-drift
 ```
 
 - The token needs Access: Apps and Policies Read on the account (and Zero Trust Read when a policy uses an email
@@ -1423,40 +1487,40 @@ CLOUDFLARE_API_TOKEN=... ADMIN_EMAILS="a@example.com,b@example.com" \
   exclude, read the same way. A reusable policy listed without its rules is read on its own. Any other include rule
   (an email domain, everyone, an identity provider's group) and any Bypass policy lets in people no list can name, so
   it is reported and counts as drift. Require rules only narrow and are not read; Service Auth policies are not people.
-- The site's list is `ADMIN_EMAILS` (the same variable `./access`'s `adminEmails` reads), or `--admins-file` (one
-  address per line or comma-separated, `#` comments). Addresses compare in lower case.
+- The site's list comes from the site, so no copy of it is kept in GitHub. The site serves it at a path its Access
+  application covers (`ADMIN_LIST_PATH`, `/admin/access-drift`, or its own) with `adminListResponse(request, env, {
+  admins: adminEmails(env) })`: a GET that Access let through with a service token (a verified Access token for the
+  application, `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD`, naming a `common_name` and no person; with `clientId`, that token
+  alone) gets `{ salt, hashes }`, a fresh random salt and the SHA-256 of `salt:address` for each admin (`adminHash`).
+  Anything else is 404. The job reads it with `--admins-url` and the service token's `ACCESS_CLIENT_ID` and
+  `ACCESS_CLIENT_SECRET` (sent as `CF-Access-Client-Id` and `-Secret`; a redirect means Access refused it), hashes each
+  address Access lets in with the same salt and compares (`fetchAdminList`, `accessDriftHashed`). The service token is
+  let in by a Service Auth policy on the application, which the check does not read as people. On your own machine,
+  `ADMIN_EMAILS` or `--admins-file` (one address per line or comma-separated, `#` comments) stand in for the site.
+  Addresses compare in lower case.
 - Each difference prints as `::error title=I2 access drift::<address or rule> ...`, the address masked
   (`d***@example.com`) because a public repo's Actions logs are public; `--show-addresses` prints it whole on your own
-  machine. The difference is one of: let in by Access but not an admin,
-  an admin Access does not let in, or an open rule. Exit 0 when they match, 1 on drift, 2 when it cannot run (no
-  token, no such application, an API refusal).
+  machine. The difference is one of: let in by Access but not an admin, an admin Access does not let in (from the
+  site's hashes only a count: "1 of the app's 3 admins is not let in by Access"), or an open rule. Exit 0 when they
+  match, 1 on drift, 2 when it cannot run (no token, no service token, no such application, an API refusal, an empty
+  list).
 
-A site runs it weekly in CI, with the token and the admin list as repository secrets (a variable would show in the
-step's log header), the list kept equal to the Worker's `ADMIN_EMAILS`:
+A site runs it daily through devkit's reusable `access-drift.yml`, which fails while a secret or input is missing (no
+skip-and-pass), with a caller of a few lines (devkit `examples/access-drift-caller.yml`):
 
 ```yaml
 name: access-drift
-on:
-  schedule: [{ cron: "17 6 * * 1" }]
-  workflow_dispatch:
-permissions: { contents: read }
+on: { schedule: [{ cron: "17 6 * * *" }], workflow_dispatch: {} }
 jobs:
   drift:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with: { node-version: 24 }
-      - run: npm ci --ignore-scripts
-      - run: npx site-runtime-access-drift --account "$CLOUDFLARE_ACCOUNT_ID" --app "example-admin"
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.ACCESS_READ_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          ADMIN_EMAILS: ${{ secrets.ADMIN_EMAILS }}
+    uses: DrDustinEdwards/devkit/.github/workflows/access-drift.yml@<full sha> # vX.Y.Z
+    with: { app: example-login, admins-url: "https://example.com/admin/access-drift", account: "${{ vars.CLOUDFLARE_ACCOUNT_ID }}", site-runtime-ref: v0.59.0 }
+    secrets: { ACCESS_READ_TOKEN: "${{ secrets.ACCESS_READ_TOKEN }}", ACCESS_CLIENT_ID: "${{ secrets.ACCESS_CLIENT_ID }}", ACCESS_CLIENT_SECRET: "${{ secrets.ACCESS_CLIENT_SECRET }}" }
 ```
 
 A failed run is the alert. `test/access-drift.test.mjs` runs it against a fake API: direct addresses, a group with its
-own exclude, an email list, a reusable policy, a domain rule and a Bypass policy.
+own exclude, an email list, a reusable policy, a domain rule and a Bypass policy; and the site's hashed list, served to
+a service token only and compared by hash.
 
 ## What the check requires
 

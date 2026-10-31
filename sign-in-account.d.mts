@@ -45,7 +45,7 @@ export const AUTH_EVENTS_SQL: string;
 /** Writes one event's row; a failed write is logged (`auth_event_write_failed`) and never throws. */
 export function recordAuthEvent(
   db: D1Like,
-  row: { event: string; fields: Record<string, unknown>; userAgent?: string | null; request?: Request | null; at?: number },
+  row: { event: string; fields: Record<string, unknown>; userAgent?: string | null; request?: Request | null; at?: number; deviceId?: string | null },
 ): Promise<void>;
 export type SecurityHistoryEntry = {
   kind: "sign-in" | "passkey-added" | "passkey-removed" | "sign-in-linked" | "sign-in-unlinked" | "email-changed" | "recovery";
@@ -59,10 +59,31 @@ export type SecurityHistoryEntry = {
 export function securityHistory(db: D1Like, userId: string, limit?: number): Promise<SecurityHistoryEntry[]>;
 /** The devices (deviceName) a person has signed in from, from their history. */
 export function signedInDevices(db: D1Like, userId: string): Promise<(string | null)[]>;
+/** The device ids a person has signed in from, from their history (`sessionDetails`, AUTH_EVENTS_DEVICE_SQL). */
+export function signedInDeviceIds(db: D1Like, userId: string): Promise<string[]>;
 /** Whether a person's history shows a passkey added. */
 export function hadPasskey(db: D1Like, userId: string): Promise<boolean>;
 /** Whether a sign-in's device is new: the person has signed in before, never from this device. */
 export function isNewDevice(device: string | null, seen: (string | null)[]): boolean;
+/** isNewDevice by device id where the person's sessions or history carry any, else by device name. */
+export function isNewSignInDevice(device: { id: string | null; name: string | null }, seen: { ids: (string | null)[]; names: (string | null)[] }): boolean;
+
+/** A session's last activity is written at most once in this many seconds: 300. */
+export const SESSION_TOUCH_SECONDS: 300;
+/** The device cookie's name before Better Auth's prefix: "device" (`__Secure-better-auth.device` on https). */
+export const DEVICE_COOKIE: "device";
+/** How long the device cookie lasts from the latest sign-in: 400 days, in seconds. */
+export const DEVICE_COOKIE_SECONDS: number;
+/** The session columns `sessionDetails` needs: `location` and `device_id`. */
+export const SESSION_DETAILS_SQL: string;
+/** The `auth_events` column `device_id`, with `sessionDetails` and `eventsDb`. */
+export const AUTH_EVENTS_DEVICE_SQL: string;
+/** What to write to a session on use (updatedAt, and the place when known), or null: at most every 5 minutes. */
+export function sessionTouch(
+  session: { updatedAt?: Date | string | null; createdAt?: Date | string | null; location?: unknown },
+  place: string | null,
+  now?: number,
+): { updatedAt: Date; location?: string } | null;
 /** Failed sign-ins and sign-in mails since `sinceMs`. */
 export function authEventCounts(db: D1Like, sinceMs: number): Promise<{ failures: number; mails: number }>;
 /** Deletes rows with no user after 30 days and every row after a year: a daily job. */
@@ -112,9 +133,9 @@ export function passkeyProvider(aaguid: string | null | undefined, userAgent?: s
 export function passkeyLabel(passkey: { name?: string | null; aaguid?: string | null }): string;
 
 /** A row of Better Auth's `listPasskeys`. */
-export type PasskeyRow = { id: string; name?: string | null; aaguid?: string | null; createdAt?: Date | string | null };
-/** One passkey as the account page lists it. */
-export type AccountPasskey = { id: string; name: string; provider: string; createdAt: Date | null; lastUsedAt: Date | null };
+export type PasskeyRow = { id: string; name?: string | null; aaguid?: string | null; credentialID?: string | null; createdAt?: Date | string | null };
+/** One passkey as the account page lists it; `credentialId` (public, base64url) is for the Signal API. */
+export type AccountPasskey = { id: string; credentialId: string | null; name: string; provider: string; createdAt: Date | null; lastUsedAt: Date | null };
 /** The passkeys as a page lists them, oldest first, with `lastUsed` from passkeyLastUsed. */
 export function passkeyRows(passkeys: PasskeyRow[], lastUsed?: Map<string, Date>): AccountPasskey[];
 /** When each of a person's passkeys last signed them in, by passkey id, from `auth_events` (the last year). */
@@ -166,7 +187,7 @@ export function authEvent(facts: EndpointFacts): AuthEvent | null;
 /** Writes the event's line with the address hashed (`email_key`), never in clear; with `db`, its `auth_events` row too. */
 export function logAuthEvent(
   event: Pick<AuthEvent, "event" | "fields" | "level" | "email">,
-  where?: { db?: D1Like | null; userAgent?: string | null; request?: Request | null },
+  where?: { db?: D1Like | null; userAgent?: string | null; request?: Request | null; deviceId?: string | null },
 ): Promise<void>;
 
 /** "Google", "Apple", else the provider id. */

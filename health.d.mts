@@ -1,7 +1,8 @@
 /**
  * The /health response (health.mjs), in the IETF health check draft's shape: `application/health+json`,
- * `{ status, ok, db?, backup?, sha?, time, checks }`, no-store and noindex. 503 only when a "fail" check failed; a failed
- * "warn" check (the backup's warning among them) is status "warn" and 200. `ok` is `status !== "fail"`. Each check is
+ * `{ status, ok, alerts?, db?, backup?, sha?, time, checks }`, no-store and noindex. 503 only when a "fail" check failed; a
+ * failed "warn" check (the backup's warning among them) is status "warn" and 200. `ok` is `status !== "fail"`. `alerts`
+ * names the failed checks marked `alert` (each also `alert: true` in `checks`), for a watcher to mail on. Each check is
  * raced against `checkTimeoutMs` (default 3000). The backup read is held per isolate for `backupTtlMs` (default 5 minutes).
  */
 
@@ -15,6 +16,8 @@ export const CHECK_DETAIL_MAX: number;
 export interface HealthCheck {
   name: string;
   level?: "fail" | "warn";
+  /** A failure someone should hear of now: the result carries `alert: true` and the body's `alerts` names it. */
+  alert?: boolean;
   run: () => Promise<unknown>;
 }
 
@@ -23,6 +26,8 @@ export interface CheckResult {
   name: string;
   status: "pass" | "warn" | "fail";
   detail?: string;
+  /** Only on a failed alert check. */
+  alert?: true;
 }
 
 /** `ping` becomes check "db" (level fail); a backup status with `warning` fails check "backup" (level warn). */
@@ -41,7 +46,7 @@ export function r2Check(name: string, bucket: { head(key: string): Promise<unkno
 /** A check that a KV namespace answers: a `get` of a fixed key; null passes, a throw fails. */
 export function kvCheck(name: string, kv: { get(key: string): Promise<unknown> }): HealthCheck;
 /**
- * The sign-in spike alert (F3), level warn: fails when failed sign-ins or sign-in mails in the last `windowMinutes`
+ * The sign-in spike alert (F3), level warn and `alert: true`: fails when failed sign-ins or sign-in mails in the last `windowMinutes`
  * (60) pass `failures` (50) or `mails` (50), read from ./sign-in's `auth_events` table (AUTH_EVENTS_SQL, `eventsDb`).
  */
 export function authSpikeCheck(

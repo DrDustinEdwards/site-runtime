@@ -16,7 +16,9 @@
  *   and `authEventCounts` gives /health's spike check (`./health` authSpikeCheck) its counts.
  * - FRESH SIGN-IN (A7, D6): `requireFreshSession` for a site's own risky routes (export, delete), the same 10-minute
  *   rule `./sign-in` holds Better Auth's endpoints to.
- * - THE SESSIONS LIST (D5): `sessionRows` turns Better Auth's `listSessions` rows into what a page shows.
+ * - THE SESSIONS LIST (D5): `sessionRows` turns Better Auth's `listSessions` rows into what a page shows. With
+ *   `sessionDetails` (`./sign-in`) each session also keeps its coarse place and when it was last used
+ *   (`sessionTouch`), and a long-lived random device id from a cookie (E4's new-device notice reads it).
  * - PASSKEYS (A3, A5, A9): `passkeyProvider` names a passkey's provider from its AAGUID, so a list never shows a blank;
  *   `accountPasskeys` gives a page each passkey with its name, provider, when made and when last used (with
  *   `eventsDb`); `shouldOfferPasskey` and `dismissPasskeyOffer` keep the offer of a passkey after another sign-in to
@@ -105,6 +107,63 @@ function countryName(code) {
   }
 }
 
+// ---- session details: place, last active, device ---------------------------------------------------
+
+/** How often a session's last activity is written: at most once in five minutes (txasm's touch). */
+export const SESSION_TOUCH_SECONDS = 5 * 60;
+
+/**
+ * The device cookie (`sessionDetails`): a random id, signed, set at each sign-in and kept 400 days (the longest a
+ * browser keeps a cookie, RFC 6265bis), stored on the session row as `deviceId`. Better Auth names it with its prefix:
+ * `__Secure-better-auth.device` on https. Clear-Site-Data at sign-out clears it, so the next sign-in there is a new device.
+ */
+export const DEVICE_COOKIE = "device";
+export const DEVICE_COOKIE_SECONDS = 400 * 24 * 60 * 60;
+
+/**
+ * The session columns `sessionDetails` needs, as a migration a site adds (drop a line for a column it has already;
+ * txasm and Foxhound have `location`). In a Drizzle schema: `location: text("location")`, `deviceId: text("device_id")`.
+ * With `eventsDb`, AUTH_EVENTS_DEVICE_SQL as well.
+ */
+export const SESSION_DETAILS_SQL = `ALTER TABLE session ADD COLUMN location TEXT;
+ALTER TABLE session ADD COLUMN device_id TEXT;
+`;
+
+/** The `auth_events` column for the device id of each sign-in, with `sessionDetails` and `eventsDb`. */
+export const AUTH_EVENTS_DEVICE_SQL = `ALTER TABLE auth_events ADD COLUMN device_id TEXT;
+`;
+
+/**
+ * What to write to a session on use, or null when nothing: `updatedAt` now once SESSION_TOUCH_SECONDS have passed since
+ * the last write (with `location` when it is known), or at once when the row has no place yet and this request has one
+ * (txasm's rule). Better Auth's sliding refresh is off (`./sign-in`), so nothing else moves `updatedAt`, and freshness
+ * counts from `createdAt`, so a touch never makes a sign-in look recent.
+ * @param {{ updatedAt?: Date | string | null, createdAt?: Date | string | null, location?: unknown }} session
+ * @param {string | null} place `coarseLocation` of the request, null when unknown
+ * @param {number} [now]
+ * @returns {{ updatedAt: Date, location?: string } | null}
+ */
+export function sessionTouch(session, place, now = Date.now()) {
+  const last = new Date(session.updatedAt ?? session.createdAt ?? 0).getTime();
+  const stale = !(now - last < SESSION_TOUCH_SECONDS * 1000);
+  const placeless = Boolean(place) && !session.location;
+  if (!stale && !placeless) return null;
+  return { updatedAt: new Date(now), ...(place ? { location: place } : {}) };
+}
+
+/**
+ * Whether a sign-in's device is new to the person, by device id when their sessions or history carry any (a browser
+ * that brought no cookie, or another person's, is new), else by `deviceName` of the user agent as before. A first
+ * sign-in is no new device.
+ * @param {{ id: string | null, name: string | null }} device
+ * @param {{ ids: (string | null)[], names: (string | null)[] }} seen
+ */
+export function isNewSignInDevice(device, seen) {
+  const ids = seen.ids.filter(Boolean);
+  if (ids.length > 0 && device.id) return !ids.includes(device.id);
+  return isNewDevice(device.name, seen.names);
+}
+
 // ---- the sessions list ---------------------------------------------------------------------------
 
 /**
@@ -113,9 +172,9 @@ function countryName(code) {
 
 /**
  * Better Auth's `listSessions` rows as a page shows them, the current session first, then the most recently active:
- * `device` (deviceName, null when the user agent names nothing), `signedInAt`, `lastActiveAt` (Better Auth moves
- * `updatedAt` only when it extends a session, once per `updateAge`, a day by default, so it is coarse), `current`, and
- * `location` when the site stores one on the session. No token: a row goes into the page, and another device's token
+ * `device` (deviceName, null when the user agent names nothing), `signedInAt`, `lastActiveAt` (`updatedAt`, which
+ * with `sessionDetails` moves on use, at most every SESSION_TOUCH_SECONDS; without it Better Auth never moves it, since
+ * refresh is off, so it is the sign-in time), `current`, and `location` when the site stores one on the session. No token: a row goes into the page, and another device's token
  * there would let a script on the page take over that session. `revokeSessionById` ends one by its `id`.
  * @param {SessionRow[]} sessions
  * @param {string | null | undefined} currentToken the token of the session that asks (`getSession`'s `session.token`)
@@ -301,14 +360,15 @@ export function passkeyLabel(passkey) {
 }
 
 /**
- * @typedef {{ id: string, name?: string | null, aaguid?: string | null, createdAt?: Date | string | null }} PasskeyRow
+ * @typedef {{ id: string, name?: string | null, aaguid?: string | null, credentialID?: string | null, createdAt?: Date | string | null }} PasskeyRow
  *   A row of Better Auth's `listPasskeys`.
- * @typedef {{ id: string, name: string, provider: string, createdAt: Date | null, lastUsedAt: Date | null }} AccountPasskey
+ * @typedef {{ id: string, credentialId: string | null, name: string, provider: string, createdAt: Date | null, lastUsedAt: Date | null }} AccountPasskey
  */
 
 /**
- * The passkeys as a page lists them, oldest first: `id` (for rename and delete), `name` (passkeyLabel), `provider`,
- * `createdAt` and `lastUsedAt` (from `passkeyLastUsed`, null when unknown). No credential or public key.
+ * The passkeys as a page lists them, oldest first: `id` (for rename and delete), `credentialId` (the public credential
+ * id, base64url, for the Signal API in `./sign-in-client`), `name` (passkeyLabel), `provider`, `createdAt` and
+ * `lastUsedAt` (from `passkeyLastUsed`, null when unknown). No public key.
  * @param {PasskeyRow[]} passkeys
  * @param {Map<string, Date>} [lastUsed]
  * @returns {AccountPasskey[]}
@@ -317,6 +377,7 @@ export function passkeyRows(passkeys, lastUsed = new Map()) {
   return passkeys
     .map((passkey) => ({
       id: passkey.id,
+      credentialId: passkey.credentialID ?? null,
       name: passkeyLabel(passkey),
       provider: passkeyProvider(passkey.aaguid),
       createdAt: passkey.createdAt ? new Date(passkey.createdAt) : null,
@@ -518,12 +579,13 @@ export function authEvent({ path, params, body, returned, signedIn, userId, link
  * Writes an event's line, the address hashed as `emailKey` hashes it (`email_key`), never in clear; with `db`, also
  * its `auth_events` row (`recordAuthEvent`).
  * @param {Pick<AuthEvent, "event" | "fields" | "level" | "email">} event
- * @param {{ db?: D1Like | null, userAgent?: string | null, request?: Request | null }} [where]
+ * @param {{ db?: D1Like | null, userAgent?: string | null, request?: Request | null, deviceId?: string | null }} [where]
+ *   `deviceId` (string or null) only with `sessionDetails`, whose migration adds the column
  */
-export async function logAuthEvent({ event, fields, level, email }, { db, userAgent, request } = {}) {
+export async function logAuthEvent({ event, fields, level, email }, { db, userAgent, request, deviceId } = {}) {
   const key = typeof email === "string" ? await emailKey("email", email) : null;
   logEvent(event, { ...fields, ...(key ? { email_key: key } : {}) }, level ? { level } : {});
-  if (db) await recordAuthEvent(db, { event, fields, userAgent: userAgent ?? request?.headers.get("user-agent"), request });
+  if (db) await recordAuthEvent(db, { event, fields, userAgent: userAgent ?? request?.headers.get("user-agent"), request, deviceId });
 }
 
 // ---- the event table and the security history ----------------------------------------------------------
@@ -554,16 +616,23 @@ CREATE INDEX IF NOT EXISTS auth_events_at ON auth_events (at, event);
 `;
 
 /**
- * Writes one event's row. A failed write is logged (`auth_event_write_failed`) and never stops the sign-in.
+ * Writes one event's row. A failed write is logged (`auth_event_write_failed`) and never stops the sign-in. `deviceId`
+ * (string or null) writes the `device_id` column too (AUTH_EVENTS_DEVICE_SQL); left out, the row is written without it.
  * @param {D1Like} db
- * @param {{ event: string, fields: Record<string, unknown>, userAgent?: string | null, request?: Request | null, at?: number }} row
+ * @param {{ event: string, fields: Record<string, unknown>, userAgent?: string | null, request?: Request | null, at?: number, deviceId?: string | null }} row
  */
-export async function recordAuthEvent(db, { event, fields, userAgent, request, at = Date.now() }) {
+export async function recordAuthEvent(db, { event, fields, userAgent, request, at = Date.now(), deviceId }) {
   const text = (/** @type {unknown} */ value) => (typeof value === "string" && value ? value : null);
+  const values = [at, event, text(fields.change) ?? text(fields.scope) ?? text(fields.passkey_id), text(fields.via), text(fields.user_id), deviceName(userAgent), coarseLocation(request)];
+  const withDevice = deviceId !== undefined;
   try {
     await db
-      .prepare("INSERT INTO auth_events (at, event, change, via, user_id, device, location) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)")
-      .bind(at, event, text(fields.change) ?? text(fields.scope) ?? text(fields.passkey_id), text(fields.via), text(fields.user_id), deviceName(userAgent), coarseLocation(request))
+      .prepare(
+        withDevice
+          ? "INSERT INTO auth_events (at, event, change, via, user_id, device, location, device_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"
+          : "INSERT INTO auth_events (at, event, change, via, user_id, device, location) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+      )
+      .bind(...values, ...(withDevice ? [text(deviceId)] : []))
       .run();
   } catch (error) {
     logEvent("auth_event_write_failed", { event, error }, { level: "error" });
@@ -618,6 +687,19 @@ export async function signedInDevices(db, userId) {
     .bind(userId)
     .all();
   return results.map((row) => row.device ?? null);
+}
+
+/**
+ * The device ids a person has signed in from, from their history (`sessionDetails` with AUTH_EVENTS_DEVICE_SQL).
+ * @param {D1Like} db @param {string} userId
+ * @returns {Promise<string[]>}
+ */
+export async function signedInDeviceIds(db, userId) {
+  const { results } = await db
+    .prepare(`SELECT DISTINCT device_id FROM auth_events WHERE user_id = ?1 AND event = '${OWASP_EVENTS.signInSuccess}' AND device_id IS NOT NULL`)
+    .bind(userId)
+    .all();
+  return results.map((row) => String(row.device_id));
 }
 
 /** Whether a person's history shows a passkey added, so a sign-in with none left is a recovery. @param {D1Like} db @param {string} userId */

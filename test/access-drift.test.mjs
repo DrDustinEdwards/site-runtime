@@ -1,10 +1,12 @@
 // The access drift check against a fake Cloudflare API: an Allow policy's direct addresses, an Access group (with its
 // own exclude) and an email list are read, an excluded address is left out, a domain rule and a Bypass policy count as
-// open, and the token goes only in the Authorization header.
+// open, and the token goes only in the Authorization header. The site's own list reaches the job hashed, and only
+// through Access with a service token.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { accessAllowed, accessDrift, parseAdminList } from "../access-drift.mjs";
+import { accessAllowed, accessDrift, accessDriftHashed, adminListResponse, fetchAdminList, parseAdminList } from "../access-drift.mjs";
+import { keys, sign } from "./jwt.mjs";
 
 const TOKEN = "sample-token";
 /** @type {Record<string, unknown>} */
@@ -53,4 +55,32 @@ test("drift lists who Access lets in and the app does not, the reverse, and the 
     accessAllowed({ accountId: "acc", appName: "Missing", token: TOKEN, fetch: /** @type {typeof fetch} */ (fakeFetch) }),
     /no Access application named "Missing"/,
   );
+});
+
+test("the site serves its list hashed to an Access service token only, and the job compares hashes", async () => {
+  const env = { ACCESS_TEAM_DOMAIN: "sample.cloudflareaccess.com", ACCESS_AUD: "aud-1" };
+  const now = Math.floor(Date.now() / 1000);
+  const token = (/** @type {Record<string, unknown>} */ who) => sign({ iss: "https://sample.cloudflareaccess.com", aud: ["aud-1"], iat: now, exp: now + 60, ...who });
+  const ask = async (/** @type {Record<string, unknown>} */ who) =>
+    adminListResponse(new Request("https://example.com/admin/access-drift", { headers: { "cf-access-jwt-assertion": await token(who) } }), env, {
+      admins: ["Owner@example.com", "staff@example.com", "new@example.com"],
+      keys,
+    });
+  assert.equal((await ask({ email: "owner@example.com" })).status, 404, "a person, even an admin, gets nothing");
+  assert.equal((await adminListResponse(new Request("https://example.com/admin/access-drift"), env, { admins: ["a@example.com"], keys })).status, 404);
+  const answer = await ask({ common_name: "drift.access" });
+  assert.equal(answer.headers.get("cache-control"), "no-store");
+  const text = await answer.text();
+  assert.doesNotMatch(text, /example\.com/, "no address leaves the site");
+
+  /** @type {Headers | undefined} */
+  let sent;
+  const list = await fetchAdminList("https://example.com/admin/access-drift", {
+    clientId: "id.access",
+    clientSecret: "sample-secret",
+    fetch: /** @type {typeof fetch} */ (async (_url, init) => ((sent = new Headers(init?.headers)), new Response(text))),
+  });
+  assert.equal(sent?.get("cf-access-client-id"), "id.access");
+  const drift = await accessDriftHashed({ emails: new Set(["owner@example.com", "staff@example.com", "extra@example.com"]), open: [] }, list);
+  assert.deepEqual(drift, { onlyInAccess: ["extra@example.com"], onlyInAppCount: 1, admins: 3, open: [] });
 });
