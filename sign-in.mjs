@@ -11,7 +11,7 @@
  * - EMAIL LINK AND CODE: first sign-in, a new device, recovery. No passwords: emailAndPassword is off. The one mail
  *   carries a link and a six-digit code (Better Auth's email OTP). The link signs in the browser that opens it, which
  *   is the mail app's, often not the tab that asked (a private window, a phone); the code is typed into the tab that
- *   asked, so that tab signs in too (Foxhound's live test, 2026-10-29). Both work once and last 15 minutes
+ *   asked, so that tab signs in too (Foxhound's live test, 2026-10-29). Both work once and last 10 minutes
  *   (SIGN_IN_EXPIRES_IN_SECONDS), and both are stored hashed. A wrong code counts: three and the code is spent, though
  *   the link still works. Only the link request mails: the email OTP plugin's own send endpoints are off
  *   (disabledPaths), so the Turnstile check and the five a minute on the link request cover every sign-in mail.
@@ -45,7 +45,8 @@
  *   GOOGLE_CLIENT_SECRET; APPLE_CLIENT_ID, APPLE_TEAM_ID, APPLE_KEY_ID and APPLE_PRIVATE_KEY (`./apple-secret` makes the
  *   secret). Apple comes with Google, since an iPhone app that offers Google sign-in must offer Apple's too.
  * - FRESH: adding a passkey, unlinking Google or Apple, deleting the account and listing sessions need a sign-in in
- *   the last FRESH_SECONDS (Better Auth's freshAge, which defaults to a day). Session lengths are the site's own.
+ *   the last FRESH_SECONDS (Better Auth's freshAge, which defaults to a day).
+ * - SESSIONS END SESSION_SECONDS (30 days) after their sign-in, used or not: Better Auth's sliding refresh is off.
  * - SIGN-OUT CLEARS THE BROWSER: Better Auth's /sign-out answers with LOGOUT_HEADERS (`./headers`, Clear-Site-Data).
  * - EVERY AUTH EVENT IS LOGGED, AND EVERY CHANGE TO HOW A PERSON SIGNS IN IS TOLD TO THEM (`./sign-in-account.mjs`):
  *   one `./log` line per event, with OWASP's names, from a plugin's hooks, so a site gets it with no code; and with the
@@ -84,15 +85,15 @@ export {
 } from "./sign-in-account.mjs";
 
 /**
- * How long a sign-in link and its code work: 15 minutes. Better Auth's default is 5, which ran out while a person
- * found the mail and came back (Foxhound's live test, 2026-10-29); Supabase and Stytch default to an hour
- * (supabase.com/docs/guides/auth/auth-email-passwordless, stytch.com/docs/api-reference/consumer/api/magic-links/via-email/send-magic-link,
- * read 2026-10-29). A quarter of an hour covers a slow inbox and keeps a forwarded or leaked mail's window short.
+ * How long a sign-in link and its code work: 10 minutes, NIST SP 800-63B-4's limit for an out-of-band sign-in ("the
+ * authentication SHALL be considered invalid unless completed within 10 minutes", pages.nist.gov/800-63-4, read
+ * 2026-10-31). Better Auth's default is 5, which ran out while a person found the mail and came back (Foxhound's live
+ * test, 2026-10-29).
  */
-export const SIGN_IN_EXPIRES_IN_SECONDS = 15 * 60;
+export const SIGN_IN_EXPIRES_IN_SECONDS = 10 * 60;
 
 /** The same, in words, for the mail and the page that says a link was sent. */
-export const SIGN_IN_EXPIRES_IN_WORDS = "15 minutes";
+export const SIGN_IN_EXPIRES_IN_WORDS = "10 minutes";
 
 /** Where a page posts the code: Better Auth's email OTP sign-in, which signs in, or makes the account, as the link does. */
 export const SIGN_IN_CODE_PATH = "/sign-in/email-otp";
@@ -108,6 +109,14 @@ export const APP_CODE_RATE_LIMIT = Object.freeze({ window: 60, max: 3 });
  * default is a day, so a session cookie taken any time in its first day could add a passkey of its own.
  */
 export const FRESH_SECONDS = 10 * 60;
+
+/**
+ * How long a session lasts from its sign-in, however much it is used: 30 days, NIST SP 800-63B-4's overall timeout for
+ * AAL1 ("SHOULD be no more than 30 days"). Better Auth's default is 7 days that slide forward with every use, so a
+ * session in steady use never ends; refresh is off, so this is a cap. Admin pages sit behind Cloudflare Access, whose
+ * own session is the admin's shorter limit.
+ */
+export const SESSION_SECONDS = 30 * 24 * 60 * 60;
 
 /** Sign-in mails per address: five an hour, Foxhound's limit (the link request, and the app's code request). */
 export const LINK_EMAIL_RULES = Object.freeze([Object.freeze({ limit: 5, windowSeconds: 60 * 60 })]);
@@ -248,7 +257,7 @@ export async function signInOptions(
     disabledPaths: appCode ? OTP_OFF_PATHS.filter((path) => path !== APP_CODE_PATH) : [...OTP_OFF_PATHS],
     socialProviders,
     account: { accountLinking: { enabled: true, disableImplicitLinking: true } },
-    session: { freshAge: FRESH_SECONDS },
+    session: { expiresIn: SESSION_SECONDS, disableSessionRefresh: true, freshAge: FRESH_SECONDS },
     ...(social ? { databaseHooks: { account: { create: noTokens, update: noTokens } } } : {}),
     rateLimit: appCode
       ? { enabled: true, storage: "database", customRules: { [APP_CODE_PATH]: { ...APP_CODE_RATE_LIMIT } } }

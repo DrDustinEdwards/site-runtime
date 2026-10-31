@@ -28,9 +28,9 @@ type SignInEnv = {
   APPLE_PRIVATE_KEY?: string;
 };
 
-/** How long a sign-in link and its code work: 15 minutes. */
+/** How long a sign-in link and its code work: 10 minutes. */
 export const SIGN_IN_EXPIRES_IN_SECONDS: number;
-/** The same, in words: "15 minutes". */
+/** The same, in words: "10 minutes". */
 export const SIGN_IN_EXPIRES_IN_WORDS: string;
 /** Where a page posts { email, otp } to sign in with the code: "/sign-in/email-otp". */
 export const SIGN_IN_CODE_PATH: "/sign-in/email-otp";
@@ -42,6 +42,8 @@ export const APP_CODE_RATE_LIMIT: Readonly<{ window: 60; max: 3 }>;
 
 /** How recent a sign-in must be for Better Auth's fresh-session endpoints: 600 seconds (session.freshAge). */
 export const FRESH_SECONDS: 600;
+/** How long a session lasts from its sign-in, used or not: 30 days, in seconds (session.expiresIn, refresh off). */
+export const SESSION_SECONDS: 2592000;
 /** Sign-in mails per address: five an hour. */
 export const LINK_EMAIL_RULES: readonly [Readonly<{ limit: 5; windowSeconds: 3600 }>];
 /** Typed sign-in codes per address, right or wrong: ten a day. */
@@ -95,7 +97,7 @@ export function signInOptions(
   socialProviders: { google?: { clientId: string; clientSecret: string }; apple?: { clientId: string; clientSecret: string } };
   account: { accountLinking: { enabled: true; disableImplicitLinking: true } };
   /** A site that sets its own session options keeps this: `session: { ...signIn.session, ... }`. */
-  session: { freshAge: typeof FRESH_SECONDS };
+  session: { expiresIn: typeof SESSION_SECONDS; disableSessionRefresh: true; freshAge: typeof FRESH_SECONDS };
   /** Present with `social: true`: no OAuth token is stored. Merge a site's own hooks beside it. */
   databaseHooks?: { account: { create: NoOAuthTokensHook; update: NoOAuthTokensHook } };
   /** `customRules` holds APP_CODE_PATH's three a minute with `appCode: true`. */
