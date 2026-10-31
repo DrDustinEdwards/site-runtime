@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { checkSecurityHeaders, failures } from "../check.mjs";
+import { checkSecurityHeaders, declined, failures } from "../check.mjs";
 import { buildContentSecurityPolicy, buildStagedPolicy, generateNonce } from "../csp.mjs";
 import { buildSecurityHeaders } from "../headers.mjs";
 import { SITES, bsw, capsomer as capsomerEntry, dustinedwardsInfo, siteForOrigin } from "../sites.mjs";
 import { staticHeaders } from "../static-site.mjs";
+import { sitesDeviationsSource, sitesValuesSource } from "../update-sites-values.mjs";
+import { readFileSync } from "node:fs";
+import * as values from "../sites-values.mjs";
 
 const ENDPOINTS = { "Reporting-Endpoints": 'csp-endpoint="https://example.com/csp-report"' };
 /** The opt-ins the policy builder takes; the rest (passkey, inlineStyles, uploads, coep, integrityPolicy) are not the policy's. */
@@ -50,4 +53,21 @@ test("an undeclared deviation fails: an opt-in another site declared, or a gap l
 test("an origin is found by its alias, and by nothing else", () => {
   assert.equal(siteForOrigin("https://txasm.org/path")?.id, "txasm");
   assert.equal(siteForOrigin("https://example.com"), undefined);
+});
+
+test("sites-values.mjs and sites-deviations.mjs are written from sites.mjs, and every reason is written", () => {
+  assert.equal(readFileSync(new URL("../sites-values.mjs", import.meta.url), "utf8"), sitesValuesSource(), "run node update-sites-values.mjs");
+  assert.equal(readFileSync(new URL("../sites-deviations.mjs", import.meta.url), "utf8"), sitesDeviationsSource(), "run node update-sites-values.mjs");
+  for (const entry of SITES) {
+    for (const [name, { reason }] of Object.entries({ ...entry.headers, ...entry.optIns, ...entry.deviations })) assert.ok(reason?.trim().length >= 12, `${entry.id} ${name} gives no reason`);
+    const worker = values.siteEntry(entry.id);
+    assert.deepEqual(buildSecurityHeaders({ site: worker }), buildSecurityHeaders({ site: entry }), entry.id);
+    assert.deepEqual(staticHeaders(worker).file, staticHeaders(entry).file, entry.id);
+    for (const id of Object.keys(entry.deviations ?? {})) assert.deepEqual(declined(worker, id), declined(entry, id), `${entry.id} ${id}`);
+    // A Worker's own CI check passes the entry it imported; its deviations are still graded as declared.
+    if (!entry.assets?.policy && !entry.id.endsWith("-mcp")) {
+      const headers = page(worker);
+      assert.deepEqual(checkSecurityHeaders(headers, { site: worker }), checkSecurityHeaders(headers, { site: entry.id }), entry.id);
+    }
+  }
 });

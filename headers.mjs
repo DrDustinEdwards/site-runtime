@@ -127,7 +127,8 @@ export function buildSecurityHeaders({ site, overrides, coep } = {}) {
   /** @type {Record<string, string>} */
   const set = { ...STANDARD_SECURITY_HEADERS };
   for (const [name, { value, reason }] of Object.entries(overrides)) {
-    if (typeof reason !== "string" || reason.trim().length < 12) throw new Error(`the override of ${name} gives no reason`);
+    // A registry entry's reasons are kept out of a Worker's bundle (sites-reasons.mjs); the registry's own test holds them.
+    if (site === undefined && (typeof reason !== "string" || reason.trim().length < 12)) throw new Error(`the override of ${name} gives no reason`);
     if (value === (STANDARD_SECURITY_HEADERS[name] ?? undefined)) throw new Error(`the override of ${name} says what the standard already says`);
     if (value === null) {
       if (!(name in set)) throw new Error(`the override of ${name} removes a header the standard does not send`);
