@@ -736,8 +736,8 @@ const auth = betterAuth({
   Auth's magic link and a six-digit code (its email OTP). The link signs in the browser that opens it, often the mail
   app's rather than the tab that asked (a private window, a phone); the code, posted as `{ email, otp }` to
   `SIGN_IN_CODE_PATH` (`/sign-in/email-otp`), signs in the tab that asked. Both work once and last
-  `SIGN_IN_EXPIRES_IN_SECONDS` (15 minutes, `SIGN_IN_EXPIRES_IN_WORDS` for the mail; Better Auth's default 5 ran out
-  in Foxhound's live test). The link's token and the code are stored hashed (the magic link's `storeToken: "hashed"`,
+  `SIGN_IN_EXPIRES_IN_SECONDS` (10 minutes, NIST SP 800-63B-4's limit for an out-of-band sign-in;
+  `SIGN_IN_EXPIRES_IN_WORDS` for the mail; Better Auth's default 5 ran out in Foxhound's live test). The link's token and the code are stored hashed (the magic link's `storeToken: "hashed"`,
   SHA-256; the email OTP's `storeOTP: "hashed"`), so a read of the `verification` table signs nobody in. Three wrong
   tries spend a code, and Better Auth allows three tries a
   minute per address. Only the link request mails: the email OTP's own endpoints are in `disabledPaths`, so Turnstile
@@ -782,6 +782,10 @@ const auth = betterAuth({
   refusal is Better Auth's error shape, 429 with `Retry-After` and `code: "EMAIL_RATE_LIMITED"`. A failing counter lets
   the request through (`onUnavailable: "allow"`, logged as one line naming the bucket only), as Foxhound's did: a
   Durable Object hiccup must never lock a person out. Without `emailLimiter` there is no per-address limit.
+- Session length: `session.expiresIn` is `SESSION_SECONDS` (30 days, NIST SP 800-63B-4's overall timeout at AAL1)
+  with `disableSessionRefresh`, so a session ends 30 days after its sign-in however often it is used (Better Auth's
+  default is 7 days sliding forward with each use, which never ends a session in use). Admin pages are behind
+  Cloudflare Access, whose session (24 hours by default) is the admin's limit.
 - Fresh sign-in: `session.freshAge` is `FRESH_SECONDS` (10 minutes; Better Auth's default is a day). Better Auth 1.7.12
   then answers 403 `SESSION_NOT_FRESH` unless the session was made in the last 10 minutes on: adding a passkey
   (`/passkey/generate-register-options`, `/passkey/verify-registration`), unlinking Google or Apple
