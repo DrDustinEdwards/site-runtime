@@ -1,9 +1,8 @@
 /**
  * A count of the 404s a site serves, per path, referring site and UTC day, in the site's D1, so a broken link or a
- * moved page shows up, and where the link to it is (Foxhound's page_404_daily, job J21, moved here; Rank Math's 404
- * Monitor without its personal data). `id` a random UUID, `day` UTC midnight in epoch milliseconds (Drizzle's
+ * moved page shows up, and where the link to it is (Rank Math's 404 Monitor without its personal data). `id` a random UUID, `day` UTC midnight in epoch milliseconds (Drizzle's
  * timestamp_ms), `path`, `referrer_host`, `kind` ("page", or "probe" for an exploit scanner's guess) and `hit_count`,
- * unique on (day, path, referrer_host). Foxhound and txasm, which have the first shape, run NOT_FOUND_UPGRADE_SQL.
+ * unique on (day, path, referrer_host). A site with the first shape (no referrer or kind) runs NOT_FOUND_UPGRADE_SQL.
  *
  * - Only the pathname is kept, cut to NOT_FOUND_PATH_MAX characters. The query never is: it can carry a token (a magic
  *   link, a reset code, an unsubscribe link), and the table is read by people who should never see one. Of the Referer
@@ -13,7 +12,7 @@
  *   navigation and a document load of the same missing page add to one row.
  * - One upsert, so two 404s at once on one path cannot both insert or lose a hit.
  * - Written in `ctx.waitUntil`, so the count never holds or fails the response. A failed write is logged
- *   (`not_found_count_failed`), since a count that stops in silence is how Foxhound's table sat empty.
+ *   (`not_found_count_failed`), since a count that stops in silence leaves the table empty with nobody told.
  */
 
 import { logEvent } from "./log.mjs";
@@ -27,10 +26,15 @@ export const NOT_FOUND_TABLE = "page_404_daily";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * The paths exploit scanners ask for: WordPress's admin, any `.php`, `/.env`, `/.git/`, `/cgi-bin/`, phpMyAdmin. Their
- * rows are kind "probe", so the report leaves them out of the broken links by default.
+ * The paths exploit scanners ask for, never a page of a site's: WordPress (`/wp-admin`, `/wp-content`, any `/wp-`),
+ * server scripts (`.php`, `.asp`, `.jsp`, `.cgi`, `/cgi-bin/`, `/xmlrpc`), dumps and config files (`.sql`, `.bak`,
+ * `.env`, `.ini`, `.yml`, `.db`, `/config.json`, `/config/`, `env.js`), dotfiles but `/.well-known/` (`/.env`,
+ * `/.git/`), phpMyAdmin and phpinfo, credential files (`credentials.json`, `aws-exports.js`, `appsettings.json`) and
+ * AI-key paths (`/openai/`, `/anthropic/`, `/bedrock/`, `/llm/`). Their rows are kind "probe", so the report leaves
+ * them out of the broken links by default.
  */
-export const NOT_FOUND_PROBE = /\/(?:wp-admin|cgi-bin|phpmyadmin)(?:\/|$)|\.php$|\/\.env|\/\.git(?:\/|$)/i;
+export const NOT_FOUND_PROBE =
+  /\.(?:php\d?|aspx?|jsp|cgi|env|ini|sql|bak|db|sqlite|ya?ml)$|\/wp-|\/\.(?!well-known\/)[a-z]|\/xmlrpc|\/cgi-bin(?:\/|$)|phpmyadmin|phpinfo|\/config(?:\/|\.(?:js|json)$)|env\.js$|\/(?:bedrock|anthropic|openai|llm)\/|(?:credential|secret|service-account|aws-exports|appsettings)[^/]*\.[a-z0-9]+$/i;
 
 /** The migration for a site without the table: it adds it as its next file under `migrations/`. */
 export const NOT_FOUND_SQL = `CREATE TABLE IF NOT EXISTS page_404_daily (
@@ -45,7 +49,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS page_404_daily_day_path_referrer_uq ON page_40
 `;
 
 /**
- * The migration for Foxhound's and txasm's table (day, path, hit_count, unique index page_404_daily_day_path_uq): the
+ * The migration for a table of the first shape (day, path, hit_count, unique index page_404_daily_day_path_uq): the
  * two columns, and the unique key moved to (day, path, referrer_host). Existing rows become kind "page" with no
  * referrer. Apply it with the version that brings it: the new upsert needs the new key, and the old one needs the old.
  */

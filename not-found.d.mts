@@ -1,17 +1,20 @@
 /**
- * A count of the 404s a site serves, per path, referring host and UTC day, in its D1 (not-found.mjs); Foxhound's
- * page_404_daily table with `referrer_host` and `kind` added.
+ * A count of the 404s a site serves, per path, referring host and UTC day, in its D1 (not-found.mjs): the
+ * page_404_daily table with `referrer_host` and `kind`.
  */
 
 /** The longest path stored: 512. */
 export const NOT_FOUND_PATH_MAX: number;
 /** "page_404_daily". */
 export const NOT_FOUND_TABLE: "page_404_daily";
-/** The paths exploit scanners ask for (wp-admin, any .php, /.env, /.git/, /cgi-bin/, phpMyAdmin): kind "probe". */
+/**
+ * The paths exploit scanners ask for (any /wp-, server scripts, .sql, .bak, .env and other config files, /config.json,
+ * dotfiles but /.well-known/, /cgi-bin/, phpMyAdmin, credential files, AI-key paths): kind "probe".
+ */
 export const NOT_FOUND_PROBE: RegExp;
 /** The migration for a new site: the table (id, day, path, referrer_host, kind, hit_count), unique on (day, path, referrer_host). */
 export const NOT_FOUND_SQL: string;
-/** The migration for Foxhound's and txasm's table: adds referrer_host and kind, moves the unique key to (day, path, referrer_host). */
+/** The migration for a table of the first shape: adds referrer_host and kind, moves the unique key to (day, path, referrer_host). */
 export const NOT_FOUND_UPGRADE_SQL: string;
 
 /** The part of a D1 binding this uses. */

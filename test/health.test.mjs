@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import { healthResponse } from "../health.mjs";
 
-test("a stale backup warns at 200; a database that throws fails at 503; the backup read is held for the TTL", async () => {
+test("a stale backup warns at 200 with ok true; a database that throws fails at 503; the backup read is held for the TTL", async () => {
   let reads = 0;
   const backup = async () => (reads++, { last_ok: "2026-10-24T00:00:00Z", warning: "backup older than 26 hours" });
   const at = (/** @type {number} */ ms) => new Date(Date.UTC(2026, 9, 25) + ms);
@@ -12,7 +12,7 @@ test("a stale backup warns at 200; a database that throws fails at 503; the back
   assert.equal(first.headers.get("Content-Type"), "application/health+json; charset=utf-8");
   assert.deepEqual({ ...(await first.json()), backup: undefined }, {
     status: "warn",
-    ok: false,
+    ok: true,
     db: "up",
     backup: undefined,
     sha: "abc123",
@@ -21,7 +21,7 @@ test("a stale backup warns at 200; a database that throws fails at 503; the back
   });
   const down = await healthResponse({ ping: async () => { throw new Error("D1"); }, backup, now: at(60_000) });
   assert.equal(down.status, 503);
-  assert.equal((await down.json()).status, "fail");
+  assert.deepEqual((({ status, ok }) => ({ status, ok }))(await down.json()), { status: "fail", ok: false });
   assert.equal(reads, 1);
   await healthResponse({ ping: async () => 1, backup, now: at(5 * 60_000) });
   assert.equal(reads, 2);

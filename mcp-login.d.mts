@@ -8,6 +8,8 @@ import type { AccessEnv } from "./access-login.d.mts";
 export interface LoginEnv extends AccessEnv {
   /** The server's public origin, for the /callback address; the request's origin when unset. */
   PUBLIC_ORIGIN?: string;
+  /** The deployed commit, for the default /health's `sha`. */
+  DEPLOY_SHA?: string;
   OAUTH_PROVIDER: OAuthHelpers;
 }
 
@@ -27,8 +29,8 @@ export type LoginOptions<E extends LoginEnv> = {
   admits?: { consent: string; refusal: string };
   /** Whether the consent page's write box starts ticked for the scopes a client asked for. Default: it asked for write. */
   wantsWrite?(requested: string[]): boolean;
-  /** The /health answer. Default: "ok". */
-  health?(env: E): Response;
+  /** The /health answer. Default: healthResponse({ sha: env.DEPLOY_SHA }) from ./health (application/health+json, no-store, noindex). */
+  health?(env: E): Response | Promise<Response>;
   /** The server's serverInfo name and version: when set, every callback writes a `sign-in` row to TOOL_CALL_LOG. */
   audit?: { name: string; version: string };
   /**

@@ -22,11 +22,20 @@ export function logEvent(
   fields?: Record<string, unknown>,
   options?: ScrubOptions & { level?: "log" | "warn" | "error" },
 ): void;
-/** `{ request_id, method, path, sha? }` for a log line: `cf-ray` (or ""), the method, the scrubbed pathname. */
+/** `{ request_id, method, path, status?, sha? }` for a log line: `cf-ray` (or ""), the method, the scrubbed pathname. */
 export function requestFields(
   request: Request,
-  options?: { sha?: string } & ScrubOptions,
-): { request_id: string; method: string; path: string; sha?: string };
+  options?: { sha?: string; status?: number } & ScrubOptions,
+): { request_id: string; method: string; path: string; status?: number; sha?: string };
+/**
+ * A fetch handler that writes one `request` line per request: requestFields with status and sha, `route` when
+ * `route(request)` names one, and ms. 5xx and throws (as 500, rethrown) at error, 4xx at warn. `sha` is a string or a
+ * function of the arguments after the request (`(env) => env.DEPLOY_SHA`).
+ */
+export function withRequestLog<A extends unknown[]>(
+  handler: (request: Request, ...rest: A) => Response | Promise<Response>,
+  options?: { sha?: string | ((...rest: A) => string | undefined); route?: (request: Request) => string | undefined } & ScrubOptions,
+): (request: Request, ...rest: A) => Promise<Response>;
 /** OWASP Logging Vocabulary event names for sign-in, sessions, account changes, authorization, input validation and rate limiting. */
 export const OWASP_EVENTS: Readonly<{
   signInSuccess: "authn_login_success";
