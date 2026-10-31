@@ -38,6 +38,12 @@ export type LoginOptions<E extends LoginEnv> = {
   revokeExistingGrants?: boolean;
 };
 
+/**
+ * Where a redirect URI sends the access, as the consent page says it: the host (the scheme, as `cursor://`, for an
+ * app's private-use scheme), whether it is an app on this computer (a loopback host or a private-use scheme), and the
+ * warning to show then. An unparsable URI comes back as itself, not local.
+ */
+export function describeRedirect(uri: string): { host: string; local: boolean; warning: string | null };
 /** The consent page's one inline <style>, for the page's Content-Security-Policy hash. */
 export const CONSENT_STYLE: string;
 /** The provider's defaultHandler: /health, /authorize (consent page and form, urlencoded only, 64 KiB at most) and /callback. */

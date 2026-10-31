@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, test } from "node:test";
 
-import { ACCESS_COOKIE, ACCESS_JWT_HEADER, ACCESS_LOGOUT_PATH, ADMIN_SEEN_COOKIE, REFETCH_COOLDOWN_MS, accessAdmin, adminIdle, accessIssuer, accessKeys, accessToken, adminEmails, verifyAccessRequest } from "../access.mjs";
+import { ACCESS_COOKIE, ACCESS_JWT_HEADER, ACCESS_LOGOUT_PATH, ADMIN_SEEN_COOKIE, BACKGROUND_HEADER, REFETCH_COOLDOWN_MS, accessAdmin, adminIdle, accessIssuer, accessKeys, accessToken, adminEmails, verifyAccessRequest } from "../access.mjs";
 import { encode, other, pair, publicJwk, keys, sign } from "./jwt.mjs";
 
 const TEAM = "sample.cloudflareaccess.com";
@@ -230,4 +230,26 @@ test("PLANT: an admin idle past the hour is sent to Access's logout; the seen co
   console.log = log;
   assert.equal(copied.idle, true);
   assert.ok(seen.startsWith(`${ADMIN_SEEN_COOKIE}=`));
+});
+
+test("PLANT: a background request is timed but does not keep the admin awake; a host's own session is timed like a token", async () => {
+  const token = await sign(claims({ iat: now - 1800 }));
+  const poll = new Request("https://example.com/admin/feed", { headers: { cookie: `${ACCESS_COOKIE}=${token}`, [BACKGROUND_HEADER]: "1" } });
+  assert.deepEqual(await adminIdle(poll, { now: now * 1000 }), { idle: false });
+  const prefetch = new Request("https://example.com/admin", { headers: { cookie: `${ACCESS_COOKIE}=${token}`, "sec-purpose": "prefetch;prerender" } });
+  assert.deepEqual(await adminIdle(prefetch, { now: now * 1000 }), { idle: false });
+  // No Access token: the session the host hands in is what is timed, and its seen cookie is good for it alone.
+  const session = { id: "opaque-1", signedInAt: (now - 5400) * 1000 };
+  const bare = (cookie = "") => new Request("https://portal.example.com/", { headers: { cookie } });
+  const fresh = await adminIdle(bare(), { session, now: (now - 1800) * 1000 });
+  const seen = /** @type {{ cookie: string }} */ (fresh).cookie.split(";")[0];
+  assert.equal((await adminIdle(bare(seen), { session, now: now * 1000 })).idle, false);
+  const log = console.log;
+  console.log = () => {};
+  const other = await adminIdle(bare(seen), { session: { ...session, id: "opaque-2" }, now: now * 1000 });
+  console.log = log;
+  assert.equal(other.idle, true);
+  // A second Access app's check keeps its own cookie, so this one's is left alone.
+  const lab = await adminIdle(bare(), { session, now: (now - 1800) * 1000, cookieName: "__Host-lab-seen" });
+  assert.ok(/** @type {{ cookie: string }} */ (lab).cookie.startsWith("__Host-lab-seen="));
 });

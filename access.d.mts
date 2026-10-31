@@ -58,13 +58,20 @@ export const ADMIN_IDLE_SECONDS: number;
 export const ADMIN_SEEN_COOKIE: "__Host-admin-seen";
 /** Access's logout path, which revokes the session everywhere and clears the cookie. */
 export const ACCESS_LOGOUT_PATH: "/cdn-cgi/access/logout";
+/** The request header (`X-Background: 1`) a page sets on its polling fetches: adminIdle checks them but they do not count as activity. */
+export const BACKGROUND_HEADER: "x-background";
+/** A signed-in session that is not an Access token on the request: an opaque id only the server can make, and the sign-in time. */
+export type IdleSession = { id: string; signedInAt: number };
 /**
  * The idle check for a request on an admin path: a redirect to Access's logout after `idleSeconds` (default an hour)
- * without a request, else the Set-Cookie that records this one (none when the request carries no Access token).
+ * without a request, else the Set-Cookie that records this one (none when the request carries no Access token and no
+ * `session` is given, or is a background request: `X-Background: 1` or `Sec-Purpose: prefetch`). `session.signedInAt`
+ * and `now` are epoch milliseconds. `cookieName` (default ADMIN_SEEN_COOKIE, a `__Host-` name) gives each Access app
+ * on one site its own seen cookie.
  */
 export function adminIdle(
   request: Request,
-  options?: { idleSeconds?: number; now?: number },
+  options?: { idleSeconds?: number; now?: number; session?: IdleSession | null; cookieName?: string },
 ): Promise<{ idle: true; response: Response } | { idle: false; cookie?: string }>;
 /**
  * `adminIdle` around a site's handler: on a path under `prefixes` (default `/admin`; `/` for a site that is all admin),
@@ -73,5 +80,5 @@ export function adminIdle(
 export function withAdminIdle(
   request: Request,
   handle: () => Promise<Response>,
-  options?: { prefixes?: readonly string[]; idleSeconds?: number },
+  options?: { prefixes?: readonly string[]; idleSeconds?: number; session?: IdleSession | null; cookieName?: string },
 ): Promise<Response>;

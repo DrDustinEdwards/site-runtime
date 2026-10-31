@@ -74,7 +74,7 @@ export function signalUnknownCredential({ rpId, credentialId }) {
  * `returnWebAuthnResponse` on, and when the site does not know the passkey (PASSKEY_NOT_FOUND, deleted here from
  * another device) it tells the provider with signalUnknownCredential, so the browser stops offering it. Returns
  * Better Auth's answer. `rpId` defaults to the page's host, which is the relying party `./sign-in` sets.
- * @template {{ error?: { code?: string } | null, webauthn?: { response?: { id?: string } } }} R
+ * @template {{ error?: object | null, webauthn?: { response?: { id?: string } } }} R
  * @param {{ signIn: { passkey(options?: Record<string, unknown>): Promise<R> } }} client
  * @param {Record<string, unknown> & { rpId?: string }} [options] the passkey sign-in's own options (`autoFill`, `fetchOptions`)
  * @returns {Promise<R>}
@@ -83,6 +83,7 @@ export async function signInWithPasskey(client, { rpId, ...options } = {}) {
   const result = await client.signIn.passkey({ ...options, returnWebAuthnResponse: true });
   const credentialId = result?.webauthn?.response?.id;
   const host = rpId ?? /** @type {any} */ (globalThis).location?.hostname;
-  if (result?.error?.code === "PASSKEY_NOT_FOUND" && credentialId && host) await signalUnknownCredential({ rpId: host, credentialId });
+  const code = /** @type {{ code?: unknown } | null | undefined} */ (result?.error)?.code;
+  if (code === "PASSKEY_NOT_FOUND" && credentialId && host) await signalUnknownCredential({ rpId: host, credentialId });
   return result;
 }
