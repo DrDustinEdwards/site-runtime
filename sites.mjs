@@ -3,6 +3,9 @@
  * (`buildSecurityHeaders({ site })`), the check (`checkSecurityHeaders(headers, { site })`) and the live check
  * (bin/site-runtime-security.mjs) all read it, so a site cannot build one set and be graded against another.
  *
+ * Change this file, then run `node update-sites-values.mjs`: the package serves it as sites-values.mjs (the values, what
+ * a Worker bundles) and sites-reasons.mjs (the reasons and deviations, which only the check reads).
+ *
  * An entry is filled from the site's own code (the file is named beside it), with the reason that code gives. A
  * deviation an audit marked as a gap is left out on purpose, so the check keeps failing it until the site is fixed:
  * dustinedwards.info's nine-feature Permissions-Policy and one-year HSTS, germomics' wildcard script hosts, and `Cross-Origin-Resource-Policy: cross-origin` on every response (a site marks shared
@@ -150,7 +153,7 @@ const doorOptIns = {
 const IMMUTABLE = { "Cache-Control": "public, max-age=31536000, immutable" };
 /** The build's content-hashed output: Vite's /assets/, and devkit siteScript's /islands/ where a site has them. */
 const hashed = (/** @type {string[]} */ ...patterns) => Object.fromEntries(patterns.map((p) => [p, IMMUTABLE]));
-const sharedImage = { "Cross-Origin-Resource-Policy": corpFor("image/png") };
+const sharedImage = { "Cross-Origin-Resource-Policy": /* @__PURE__ */ corpFor("image/png") };
 const staticPages = (/** @type {string[]} */ patterns, /** @type {string} */ where) => ({
   value: patterns,
   reason: `run_worker_first leaves them to the asset server (${where}), so they take the set from _headers alone.`,
@@ -184,9 +187,9 @@ export const dustinedwardsInfo = {
   deviations: { C3: beaconNotStrict },
   assets: {
     paths: {
-      ...hashed("/assets/*", "/islands/*"),
+      .../* @__PURE__ */ hashed("/assets/*", "/islands/*"),
       // Pictures at static paths that other origins load: the share card, and those a page or Carrel's preview draws.
-      ...Object.fromEntries(
+      .../* @__PURE__ */ Object.fromEntries(
         ["/diagrams/*", "/phage-hunters/*", "/dustin-edwards-og-image.png", "/dustin-edwards-logo.svg", "/dustin-edwards-logo-dark.svg"].map((p) => [p, sharedImage]),
       ),
     },
@@ -222,9 +225,9 @@ export const foxhound = {
   assets: {
     paths: {
       // The favicons and PNGs beside a Foxhound link (the RSS channel image) are images other origins load.
-      "/*.ico": { "Cross-Origin-Resource-Policy": corpFor("image/x-icon") },
+      "/*.ico": { "Cross-Origin-Resource-Policy": /* @__PURE__ */ corpFor("image/x-icon") },
       "/*.png": sharedImage,
-      ...hashed("/assets/*", "/islands/*"),
+      .../* @__PURE__ */ hashed("/assets/*", "/islands/*"),
     },
   },
   // The merchants' MCP server on the site, and the admin's on its own host.
@@ -246,7 +249,7 @@ export const foxing = {
     denyUnlisted: unlistedStaged,
   },
   deviations: { C3: beaconNotStrict },
-  assets: { paths: hashed("/assets/*", "/islands/*") },
+  assets: { paths: /* @__PURE__ */ hashed("/assets/*", "/islands/*") },
   signIn: { mcp: ["https://admin-mcp.foxing.app/mcp"] },
 };
 
@@ -275,7 +278,7 @@ export const germomics = {
   deviations: { C3: beaconNotStrict },
   assets: {
     paths: {
-      ...hashed("/assets/*"),
+      .../* @__PURE__ */ hashed("/assets/*"),
       // The fonts sit at stable names scripts/fetch-fonts.mjs rewrites in place: a day, then the ETag.
       "/fonts/*": { "Cache-Control": "public, max-age=86400" },
     },
@@ -296,7 +299,7 @@ export const julieedwardsInfo = {
   deviations: { C3: beaconNotStrict },
   assets: {
     paths: {
-      "/assets/*": { ...IMMUTABLE, "Cross-Origin-Resource-Policy": corpFor("text/css") },
+      "/assets/*": { ...IMMUTABLE, "Cross-Origin-Resource-Policy": /* @__PURE__ */ corpFor("text/css") },
       "/opengraph-image.png": sharedImage,
     },
   },
@@ -315,7 +318,7 @@ export const bsw = {
     trustedTypes: typesStaged,
   },
   deviations: { C3: beaconNotStrict },
-  assets: { paths: hashed("/assets/*", "/islands/*", "/brand/*") },
+  assets: { paths: /* @__PURE__ */ hashed("/assets/*", "/islands/*", "/brand/*") },
 };
 
 // app/lib/security-headers.ts; SITE_ORIGIN is txasm.org (app/lib/site-meta.ts), served from workers.dev until cutover.
@@ -334,7 +337,7 @@ export const txasm = {
     denyUnlisted: unlistedStaged,
   },
   deviations: { C3: beaconNotStrict },
-  assets: { paths: hashed("/assets/*") },
+  assets: { paths: /* @__PURE__ */ hashed("/assets/*", "/islands/*") },
   // Its Access application covers /admin/access only (app/lib/access.server.ts).
   signIn: { admin: ["/admin/access"] },
 };
@@ -369,7 +372,7 @@ export const carrelDesk = {
     trustedTypes: typesStaged,
     denyUnlisted: unlistedStaged,
   },
-  assets: { paths: hashed("/assets/*") },
+  assets: { paths: /* @__PURE__ */ hashed("/assets/*") },
   // All of Desk is behind Access.
   signIn: { admin: ["/"] },
 };
@@ -381,7 +384,7 @@ export const capsidPortal = {
   optIns: {
     denyUnlisted: { value: true, reason: "The dashboard loads only its own scripts, styles and data: images (src/dashboard-csp.ts)." },
     coep: /* @__PURE__ */ coepStaged("every Portal page sits behind Access"),
-    integrityPolicy: { value: "report-only", reason: "Vite writes the dashboard's <script> and modulepreload tags with no integrity; Report-Only until they carry it and the reports show none missing." },
+    integrityPolicy: { value: "report-only", reason: "The build's tags carry integrity (subresourceIntegrity, ./sri, dashboard/vite.config.ts), but each view is a chunk loaded with import(), which only an import map could give integrity; Report-Only while the reports name them." },
     trustedTypes: typesStaged,
   },
   deviations: {
@@ -462,7 +465,7 @@ export const capsomer = {
     cloudflareWebAnalytics: /* @__PURE__ */ beacon("scripts/security-headers.ts"),
     framedBySameOrigin: { value: true, reason: "The site frames its own states pages and specimens; no other origin may." },
     coep: /* @__PURE__ */ coepStaged("the site frames its own states pages and specimens, each of which must carry it too"),
-    integrityPolicy: { value: "report-only", reason: "Vite writes the pages' <script> and modulepreload tags with no integrity; Report-Only until they carry it and the reports show none missing." },
+    integrityPolicy: { value: "report-only", reason: "The build's tags carry integrity (subresourceIntegrity, ./sri, site/vite.config.ts), but the admin and some states pages load chunks with import(), which only an import map could give integrity; Report-Only while the reports name them." },
     trustedTypes: typesStagedStatic,
     denyUnlisted: unlistedStaged,
   },
@@ -470,7 +473,7 @@ export const capsomer = {
   assets: {
     skipWorker: /* @__PURE__ */ staticPages(["/assets/*"], "wrangler.jsonc"),
     policy: { sources: { img: ["data:"], connect: ["https://raw.githubusercontent.com/DrDustinEdwards/capsomer/results/results.json"] } },
-    paths: hashed("/assets/*"),
+    paths: /* @__PURE__ */ hashed("/assets/*"),
   },
 };
 

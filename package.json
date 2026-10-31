@@ -103,7 +103,7 @@
     },
     "./sites": {
       "types": "./sites.d.mts",
-      "default": "./sites.mjs"
+      "default": "./sites-values.mjs"
     },
     "./owasp": {
       "types": "./owasp-headers.d.mts",
@@ -210,6 +210,8 @@
     "check.d.mts",
     "sites.mjs",
     "sites.d.mts",
+    "sites-values.mjs",
+    "sites-deviations.mjs",
     "owasp-headers.mjs",
     "owasp-headers.d.mts",
     "update-owasp.mjs",

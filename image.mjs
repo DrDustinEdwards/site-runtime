@@ -18,6 +18,12 @@
  * - A GIF's sizes stay animated: the binding keeps every frame unless told `anim: false`, and writes them as animated
  *   WebP. Cloudflare documents animation for WebP and GIF output, not AVIF, so a GIF is offered no AVIF. Its first frame,
  *   `still=1`, is offered under prefers-reduced-motion (WCAG 2.2.2), from the same closed widths.
+ * - A size URL is `immutable` for a year, so the edge cache key carrying the original's etag is not enough: a browser
+ *   holding the old size keeps it. The page's URL carries the file's version (`v=`, from its stored hash or updated
+ *   time), so a replaced picture is a new URL. `v` is never in the edge cache key, so it mints no transform, and an old
+ *   version's URL still answers, with the current picture.
+ * - A size URL ends in its own format's extension (`photo.jpg.webp?w=640`), so a saved or indexed size is never a WebP
+ *   named .jpg. `originalKey` gives the route the stored key back; a URL from before, with no such suffix, still answers.
  *
  * The widths, the sizes rule and the three layouts are Astro's (packages/astro/src/assets/layout.ts, Astro 7.4), under
  * its MIT license:
@@ -39,7 +45,7 @@
  *   SOFTWARE.
  */
 
-import { UPLOAD_HEADERS } from "./headers.mjs";
+import { corpFor, UPLOAD_HEADERS } from "./headers.mjs";
 
 /**
  * Astro's "limited" screen widths, the set it uses for images it generates ahead of time. A site's closed set starts
@@ -50,6 +56,17 @@ export const SCREEN_WIDTHS = [640, 750, 828, 1080, 1280, 1668, 2048, 2560];
 /** The formats the route writes, in the order a `<picture>` offers them: the first a browser takes wins. */
 export const IMAGE_FORMATS = /** @type {const} */ ({ avif: "image/avif", webp: "image/webp" });
 
+/** The extension a size URL ends in, for each format the route writes; `jpg` is the share crop's (`shareImages`). */
+const FORMAT_EXTENSIONS = /** @type {const} */ ({ avif: "avif", webp: "webp", jpeg: "jpg" });
+
+/**
+ * The share crop (1200 by 630, 1.91:1, the Open Graph size) and the Article image set Google asks for (16:9, 4:3 and 1:1,
+ * each at least 50,000 pixels), all at 1200 wide, which `shareImages: true` adds to a site's closed sets. The share crop
+ * is a JPEG, the one format every link preview reads.
+ */
+export const SHARE_IMAGE = /** @type {const} */ ({ width: 1200, ratio: "40x21", format: "jpeg" });
+export const ARTICLE_IMAGE_RATIOS = /** @type {const} */ (["16x9", "4x3", "1x1"]);
+
 /** Cloudflare's documented default; omitting it makes the binding write lossless WebP. */
 export const IMAGE_QUALITY = 85;
 
@@ -58,6 +75,47 @@ export const FOCUS_METADATA = "focus";
 
 const FOCUS = /^(0(?:\.\d{1,3})?|1(?:\.0{1,3})?)x(0(?:\.\d{1,3})?|1(?:\.0{1,3})?)$/;
 const RATIO = /^([1-9]\d{0,1})x([1-9]\d{0,1})$/;
+const VERSION = /^[A-Za-z0-9_-]{1,40}$/;
+const PLACEHOLDER = /^data:image\/(png|jpeg|gif|webp|avif);base64,[A-Za-z0-9+/]+={0,2}$/;
+const COLOR = /^#[0-9a-f]{6}$/i;
+
+/**
+ * A file's version as a size URL writes it (`v=`), or null: the first 12 characters of a hex hash (site-api's sha256),
+ * or a time (a Date, epoch milliseconds or an ISO string, such as the row's updated time) in base 36.
+ * @param {unknown} value
+ * @returns {string | null}
+ */
+export function imageVersion(value) {
+  if (typeof value === "string" && /^[0-9a-f]{12,}$/i.test(value)) return value.slice(0, 12).toLowerCase();
+  const time = value instanceof Date ? value.getTime() : typeof value === "number" ? value : typeof value === "string" ? Date.parse(value) : NaN;
+  return Number.isFinite(time) && time > 0 ? Math.trunc(time).toString(36) : null;
+}
+
+/**
+ * The stored key a size URL names: `photo.jpg` for `photo.jpg.webp?w=640`. A request with no `w`, or a key whose suffix
+ * does not follow a raster extension (a URL from before suffixes, `photo.webp?w=640`), is the key as it is.
+ * @param {string} key the path the route matched, such as React Router's `params["*"]`
+ * @param {Request | URL | string} request
+ * @returns {string}
+ */
+export function originalKey(key, request) {
+  const url = new URL(typeof request === "string" ? request : request instanceof URL ? request.href : request.url);
+  return url.searchParams.has("w") ? (suffixed(key)?.stored ?? key) : key;
+}
+
+/**
+ * The format a path's last extension names, and the path without it, when what is left still ends in a raster
+ * extension; else null.
+ * @param {string} path
+ */
+function suffixed(path) {
+  const m = /\.(avif|webp|jpg)$/i.exec(path);
+  if (!m) return null;
+  const stored = path.slice(0, m.index);
+  if (!isRasterPath(stored)) return null;
+  const ext = m[1].toLowerCase();
+  return { stored, format: ext === "jpg" ? "jpeg" : ext };
+}
 
 /**
  * A focal point as the URL and the binding write it, or null when `value` is not one.
@@ -100,8 +158,9 @@ export function imageSizes({ layout, width }) {
 /**
  * @typedef {{ layout: "constrained" | "fixed" | "full-width", width?: number, sizes?: string }} ImageUse
  *   How a page uses one image: its layout and the CSS width it shows at (`sizes` overrides the computed one).
- * @typedef {{ src: string, width: number | null, height: number | null, focus?: string | null }} StoredImage
- *   One stored image: where the route serves it, its real size and its focal point.
+ * @typedef {{ src: string, width: number | null, height: number | null, focus?: string | null, version?: unknown, placeholder?: string | null, color?: string | null }} StoredImage
+ *   One stored image: where the route serves it, its real size, its focal point, its version (`imageVersion`: the
+ *   stored hash or updated time) and the placeholder and main color stored at upload (site-api's media row).
  */
 
 /**
@@ -109,12 +168,13 @@ export function imageSizes({ layout, width }) {
  *
  * `uses` names each way the site shows images (`{ content: { layout: "constrained", width: 704 } }`); the closed width
  * set is every width any use can ask for. `ratios` are the crops a use may ask for ("16x9"), cut around the file's
- * focal point, or the binding's own guess where it has none.
+ * focal point, or the binding's own guess where it has none. `shareImages: true` adds the share crop and the Article set
+ * (SHARE_IMAGE, ARTICLE_IMAGE_RATIOS) for `shareImage` and `articleImages`.
  *
  * @template {string} U
- * @param {{ uses: Record<U, ImageUse & { ratio?: string }>, breakpoints?: number[], quality?: number }} config
+ * @param {{ uses: Record<U, ImageUse & { ratio?: string }>, breakpoints?: number[], quality?: number, shareImages?: boolean }} config
  */
-export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAGE_QUALITY }) {
+export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAGE_QUALITY, shareImages = false }) {
   const names = /** @type {U[]} */ (Object.keys(uses));
   if (names.length === 0) throw new Error("defineImages: name at least one use.");
   if (!breakpoints.every((w) => Number.isInteger(w) && w > 0)) throw new Error("defineImages: breakpoints are whole-pixel widths.");
@@ -129,24 +189,36 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
     if (use.ratio) ratios.add(use.ratio);
     for (const w of imageWidths({ layout: use.layout, width: use.width, breakpoints })) widths.add(w);
   }
+  const formats = new Set(["avif", "webp"]);
+  if (shareImages) {
+    widths.add(SHARE_IMAGE.width);
+    for (const r of [SHARE_IMAGE.ratio, ...ARTICLE_IMAGE_RATIOS]) ratios.add(r);
+    formats.add(SHARE_IMAGE.format);
+  }
 
   /**
-   * The URL of one size: `?w=` alone is a WebP at that width, `f=avif` asks for AVIF, `r=` a crop and `fp=` the focal
-   * point that crop is cut around (so a new focal point is a new URL, never a stale cached crop), and `still=1` an
-   * animation's first frame.
+   * The URL of one size: the path ends in the format's extension, `?w=` is the width, `r=` a crop and `fp=` the focal
+   * point that crop is cut around (so a new focal point is a new URL, never a stale cached crop), `still=1` an
+   * animation's first frame, and `v=` the file's version, so a replaced file is a new URL. With no width it is the
+   * original, versioned.
    * @param {string} src
-   * @param {{ width: number, format?: keyof typeof IMAGE_FORMATS, ratio?: string, focus?: string | null, still?: boolean }} options
+   * @param {{ width?: number, format?: keyof typeof FORMAT_EXTENSIONS, ratio?: string, focus?: string | null, still?: boolean, version?: unknown }} options
    */
-  function url(src, { width, format = "webp", ratio, focus, still = false }) {
-    const params = new URLSearchParams({ w: String(width) });
-    if (format !== "webp") params.set("f", format);
+  function url(src, { width, format = "webp", ratio, focus, still = false, version }) {
+    const at = src.indexOf("?");
+    const [path, query] = at < 0 ? [src, ""] : [src.slice(0, at), src.slice(at + 1)];
+    const params = new URLSearchParams(query);
+    const v = imageVersion(version);
+    if (v) params.set("v", v);
+    if (width === undefined) return params.size ? `${path}?${params}` : path;
+    params.set("w", String(width));
     if (ratio) {
       params.set("r", ratio);
       const fp = focusOf(focus);
       if (fp) params.set("fp", fp);
     }
     if (still) params.set("still", "1");
-    return `${src}${src.includes("?") ? "&" : "?"}${params}`;
+    return `${path}.${FORMAT_EXTENSIONS[format]}?${params}`;
   }
 
   /**
@@ -161,7 +233,7 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
   function attributes(image, useName) {
     const use = uses[useName];
     if (!use) throw new Error(`defineImages: no use named "${useName}".`);
-    const plain = { src: image.src, srcset: undefined, sizes: undefined, sources: [], width: image.width ?? undefined, height: image.height ?? undefined };
+    const plain = { src: image.src, srcset: undefined, sizes: undefined, sources: [], width: image.width ?? undefined, height: image.height ?? undefined, background: undefined };
     if (!image.width || !image.height || !isRasterPath(image.src)) return plain;
     const offered = imageWidths({ layout: use.layout, width: use.width, originalWidth: image.width, breakpoints }).filter((w) => widths.has(w));
     if (offered.length === 0) return plain;
@@ -169,7 +241,7 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
     const aspect = shape ? Number(shape[2]) / Number(shape[1]) : image.height / image.width;
     const shown = use.layout === "full-width" ? image.width : Math.min(/** @type {number} */ (use.width), image.width);
     const srcsetOf = (/** @type {keyof typeof IMAGE_FORMATS} */ format, still = false) =>
-      offered.map((w) => `${url(image.src, { width: w, format, ratio: use.ratio, focus: image.focus, still })} ${w}w`).join(", ");
+      offered.map((w) => `${url(image.src, { width: w, format, ratio: use.ratio, focus: image.focus, still, version: image.version })} ${w}w`).join(", ");
     const sources = GIF_PATH.test(image.src)
       ? [
           { type: IMAGE_FORMATS.avif, srcset: srcsetOf("avif", true), media: REDUCED_MOTION },
@@ -178,13 +250,44 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
         ]
       : [{ type: IMAGE_FORMATS.avif, srcset: srcsetOf("avif") }, { type: IMAGE_FORMATS.webp, srcset: srcsetOf("webp") }];
     return {
-      src: url(image.src, { width: offered.find((w) => w >= shown) ?? offered[offered.length - 1], ratio: use.ratio, focus: image.focus }),
+      src: url(image.src, { width: offered.find((w) => w >= shown) ?? offered[offered.length - 1], ratio: use.ratio, focus: image.focus, version: image.version }),
       srcset: srcsetOf("webp"),
       sizes: use.sizes ?? imageSizes(use),
       sources,
       width: shown,
       height: Math.round(shown * aspect),
+      background: placeholderBackground(image),
     };
+  }
+
+  /**
+   * The share crop for og:image and twitter:image: 1200 by 630 around the focal point, as a JPEG, with the tags' width,
+   * height and type. Null for an image with no known size or that is not a raster (the page then uses a ./share-card).
+   * @param {StoredImage} image
+   */
+  function shareImage(image) {
+    if (!shareImages) throw new Error("defineImages: shareImage needs shareImages: true.");
+    if (!image.width || !image.height || !isRasterPath(image.src)) return null;
+    const { width, ratio, format } = SHARE_IMAGE;
+    return { url: url(image.src, { width, ratio, format, focus: image.focus, version: image.version }), width, height: cropHeight(width, ratio), type: "image/jpeg" };
+  }
+
+  /**
+   * The Article or BlogPosting `image` set: 16:9, 4:3 and 1:1 at 1200 wide around the focal point (a GIF's first frame),
+   * as WebP, each with its size and type. Empty for an image with no known size or that is not a raster.
+   * @param {StoredImage} image
+   */
+  function articleImages(image) {
+    if (!shareImages) throw new Error("defineImages: articleImages needs shareImages: true.");
+    if (!image.width || !image.height || !isRasterPath(image.src)) return [];
+    const width = SHARE_IMAGE.width;
+    const still = GIF_PATH.test(image.src);
+    return ARTICLE_IMAGE_RATIOS.map((ratio) => ({
+      url: url(image.src, { width, ratio, focus: image.focus, still, version: image.version }),
+      width,
+      height: cropHeight(width, ratio),
+      type: IMAGE_FORMATS.webp,
+    }));
   }
 
   /**
@@ -200,13 +303,18 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
     if (requested === null) return original(request, object, cacheControl);
 
     const width = Number(requested);
-    const format = query.get("f") ?? "webp";
+    const suffix = suffixed(new URL(request.url).pathname);
+    const named = query.get("f");
+    if (suffix && named !== null && named !== suffix.format) return new Response("Unsupported format", { status: 400 });
+    const format = suffix?.format ?? named ?? "webp";
+    const version = query.get("v");
     const ratio = query.get("r");
     const fp = query.get("fp");
     const still = query.get("still");
     // Closed sets: anything outside them is a 400, never a billed transform.
     if (!widths.has(width)) return new Response("Unsupported width", { status: 400 });
-    if (!(format in IMAGE_FORMATS)) return new Response("Unsupported format", { status: 400 });
+    if (!formats.has(format)) return new Response("Unsupported format", { status: 400 });
+    if (version !== null && !VERSION.test(version)) return new Response("Unsupported version", { status: 400 });
     if (ratio !== null && !ratios.has(ratio)) return new Response("Unsupported crop", { status: 400 });
     if (fp !== null && (ratio === null || focusOf(fp) !== fp)) return new Response("Unsupported focal point", { status: 400 });
     if (still !== null && still !== "1") return new Response("Unsupported still", { status: 400 });
@@ -220,8 +328,15 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
 
     // TRAP: the edge cache is keyed by URL alone and has no purge, so every input to the body goes into the key, as
     // parameters never served or linked: the encoder's quality, and the original's etag, so a file replaced under the
-    // same key (site-api's PUT /media/:id/file) is a new key for every size, never a stale one.
+    // same key (site-api's PUT /media/:id/file) is a new key for every size, never a stale one. The page's `v` is left
+    // out: the etag already names the bytes, and a `v` in the key would let any caller mint a transform per value. The
+    // format goes in as `f`, so a URL from before suffixes and its suffixed twin are one entry.
     const keyUrl = new URL(request.url);
+    keyUrl.searchParams.delete("v");
+    if (suffix) {
+      keyUrl.pathname = suffix.stored;
+      if (format !== "webp") keyUrl.searchParams.set("f", format);
+    }
     keyUrl.searchParams.set("__q", String(quality));
     keyUrl.searchParams.set("__v", object.httpEtag);
     const cacheKey = new Request(keyUrl.toString(), { method: "GET" });
@@ -236,14 +351,13 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
       return new Response(object.body, { headers });
     }
 
-    const shape = ratio ? RATIO.exec(ratio) : null;
-    const transform = shape
-      ? { width, height: Math.round((width * Number(shape[2])) / Number(shape[1])), fit: "cover", gravity: fp ?? "auto" }
+    const transform = ratio
+      ? { width, height: cropHeight(width, ratio), fit: "cover", gravity: fp ?? "auto" }
       : { width, fit: "scale-down" };
     let response;
     try {
       // `anim` is left to the binding's default (every frame kept) unless the URL asks for the still.
-      const output = { format: IMAGE_FORMATS[/** @type {keyof typeof IMAGE_FORMATS} */ (format)], quality, ...(still ? { anim: false } : {}) };
+      const output = { format: `image/${format}`, quality, ...(still ? { anim: false } : {}) };
       const result = await images.input(object.body).transform(transform).output(output);
       response = result.response();
     } catch (error) {
@@ -258,6 +372,7 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
     }
     const headers = new Headers(response.headers);
     for (const [name, value] of Object.entries(UPLOAD_HEADERS)) headers.set(name, value);
+    headers.set("cross-origin-resource-policy", "cross-origin");
     headers.set("cache-control", cacheControl);
     headers.set("x-image", `w=${width}${ratio ? ` r=${ratio}` : ""}${still ? " still" : ""} ${format}`);
     const out = new Response(response.body, { headers });
@@ -265,7 +380,7 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
     return out;
   }
 
-  return { widths: [...widths].sort((a, b) => a - b), ratios: [...ratios], url, attributes, respond };
+  return { widths: [...widths].sort((a, b) => a - b), ratios: [...ratios], url, attributes, shareImage, articleImages, respond };
 }
 
 /**
@@ -277,6 +392,7 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
  * @param {{ alt: string, priority?: boolean, className?: string }} options
  */
 export function pictureProps(attrs, { alt, priority = false, className }) {
+  const style = attrs.background ? { background: attrs.background } : undefined;
   return {
     sources: attrs.sources.map((s) => ({ type: s.type, srcSet: s.srcset, sizes: attrs.sizes, media: s.media })),
     img: {
@@ -290,7 +406,25 @@ export function pictureProps(attrs, { alt, priority = false, className }) {
       loading: priority ? /** @type {const} */ ("eager") : /** @type {const} */ ("lazy"),
       fetchPriority: priority ? /** @type {const} */ ("high") : undefined,
       decoding: /** @type {const} */ ("async"),
+      style,
     },
+  };
+}
+
+/**
+ * The preload for a page's LCP image (`./preload`): the first `<source>` any browser may take (AVIF, typed so a
+ * browser without it skips the preload), its srcset and sizes, and fetchpriority=high. With no sources, the `<img>`'s.
+ * @param {ReturnType<ReturnType<typeof defineImages>["attributes"]>} attrs
+ */
+export function imagePreload(attrs) {
+  const source = attrs.sources.find((s) => !s.media);
+  const srcset = source?.srcset ?? attrs.srcset;
+  return {
+    href: attrs.src,
+    as: /** @type {const} */ ("image"),
+    ...(source ? { type: source.type } : {}),
+    ...(srcset ? { imageSrcSet: srcset, ...(attrs.sizes ? { imageSizes: attrs.sizes } : {}) } : {}),
+    fetchPriority: /** @type {const} */ ("high"),
   };
 }
 
@@ -309,7 +443,7 @@ export function pictureHtml(attrs, options, escape) {
   const tag = (/** @type {string} */ name, /** @type {Record<string, unknown>} */ props) =>
     `<${name}${Object.entries(props)
       .filter(([, value]) => value !== undefined && value !== null)
-      .map(([prop, value]) => ` ${HTML_NAMES[prop] ?? prop}="${escape(String(value))}"`)
+      .map(([prop, value]) => ` ${HTML_NAMES[prop] ?? prop}="${escape(prop === "style" ? `background:${/** @type {{ background: string }} */ (value).background}` : String(value))}"`)
       .join("")}>`;
   if (sources.length === 0) return tag("img", img);
   return `<picture>${sources.map((s) => tag("source", s)).join("")}${tag("img", img)}</picture>`;
@@ -363,6 +497,30 @@ const RASTER_PATH = /\.(png|jpe?g|webp|avif|gif)(?:$|[?#])/i;
 const GIF_PATH = /\.gif(?:$|[?#])/i;
 const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
 
+/** @param {number} width @param {string} ratio */
+function cropHeight(width, ratio) {
+  const [, w, h] = /** @type {RegExpExecArray} */ (RATIO.exec(ratio));
+  return Math.round((width * Number(h)) / Number(w));
+}
+
+/**
+ * The CSS background an image shows while it loads: its stored placeholder over its main color, placed at its focal
+ * point and covering the box, so the loaded picture paints over it with no shift and no script. Only for a JPEG, WebP
+ * or AVIF: a PNG or GIF is often clear in places, where the placeholder would stay visible behind it. Values outside
+ * site-api's contract (MediaPlaceholder, MediaColor) are dropped, so nothing else reaches the style.
+ * @param {StoredImage} image
+ * @returns {string | undefined}
+ */
+function placeholderBackground({ src, placeholder, color, focus }) {
+  if (!/\.(jpe?g|webp|avif)(?:$|[?#])/i.test(src)) return undefined;
+  const picture = typeof placeholder === "string" && placeholder.length <= 2048 && PLACEHOLDER.test(placeholder) ? placeholder : null;
+  const fill = typeof color === "string" && COLOR.test(color) ? color.toLowerCase() : null;
+  if (!picture && !fill) return undefined;
+  if (!picture) return /** @type {string} */ (fill);
+  const [x, y] = (focusOf(focus) ?? "0.5x0.5").split("x").map((n) => `${Math.round(Number(n) * 100)}%`);
+  return `${fill ? `${fill} ` : ""}url("${picture}") ${x} ${y}/cover no-repeat`;
+}
+
 /** @param {string} path */
 function isRasterPath(path) {
   return RASTER_PATH.test(path);
@@ -388,6 +546,8 @@ function objectHeaders(object, cacheControl) {
   headers.set("etag", object.httpEtag);
   headers.set("cache-control", cacheControl);
   for (const [name, value] of Object.entries(UPLOAD_HEADERS)) headers.set(name, value);
+  // A picture is shown by other origins (a link preview, a feed reader); anything else stays same-origin.
+  headers.set("cross-origin-resource-policy", corpFor(headers.get("content-type")));
   // An SVG served inline from the site's own origin is script running as the site. Keyed on the stored type, so a file
   // renamed to .png is caught.
   if ((headers.get("content-type") ?? "").toLowerCase().startsWith("image/svg+xml")) headers.set("content-disposition", "attachment");
