@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { authEvent, deviceName, passkeyProvider, sendNoticeSafely } from "../sign-in-account.mjs";
+import { accountSessions, authEvent, deviceName, passkeyProvider, revokeSessionById, sendNoticeSafely } from "../sign-in-account.mjs";
 
 test("a user agent reads as the browser and system a person would name", () => {
   const cases = [
@@ -75,4 +75,25 @@ test("a notice that fails to send never throws, and its log line holds no addres
     console.error = original;
   }
   assert.deepEqual(lines, [{ event: "security_notice_failed", kind: "passkey-added", user_id: "u1", error: "Error: mail to [email] refused" }]);
+});
+
+test("revokeSessionById ends only the asker's own session, and the rows carry no token", async () => {
+  const sessions = [
+    { id: "a", token: "tok-a", userAgent: null, createdAt: "2026-10-30T00:00:00Z" },
+    { id: "b", token: "tok-b", userAgent: null, createdAt: "2026-10-31T00:00:00Z" },
+  ];
+  const revoked = [];
+  const auth = {
+    api: {
+      getSession: async () => ({ session: { token: "tok-a" } }),
+      listSessions: async () => sessions,
+      revokeSession: async ({ body }) => revoked.push(body.token),
+    },
+  };
+  const request = new Request("https://example.com/account");
+  const rows = await accountSessions(auth, request);
+  assert.deepEqual(rows.map((row) => [row.id, row.current, "token" in row]), [["a", true, false], ["b", false, false]]);
+  assert.equal(await revokeSessionById(auth, request, "b"), true);
+  assert.equal(await revokeSessionById(auth, request, "someone-elses"), false);
+  assert.deepEqual(revoked, ["tok-b"]);
 });

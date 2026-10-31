@@ -8,13 +8,15 @@ import type { SendSecurityNotice } from "./sign-in-account.mjs";
 export { CONFIRM_PATH, confirmSignInLink } from "./sign-in-link.mjs";
 export {
   SECURITY_NOTICE_KINDS,
+  accountSessions,
   coarseLocation,
   deviceName,
   passkeyLabel,
   passkeyProvider,
+  revokeSessionById,
   sessionRows,
 } from "./sign-in-account.mjs";
-export type { NoticeDetail, SecurityNoticeKind, SendSecurityNotice } from "./sign-in-account.mjs";
+export type { AccountSession, NoticeDetail, SecurityNoticeKind, SendSecurityNotice } from "./sign-in-account.mjs";
 
 type SignInEnv = {
   BETTER_AUTH_URL: string;
