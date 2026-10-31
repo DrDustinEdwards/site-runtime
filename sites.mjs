@@ -22,6 +22,13 @@ export { PASSKEY_OVERRIDES, permissionsAllowingSelf };
 const beacon = (/** @type {string} */ where) => ({ value: true, reason: `Cloudflare Web Analytics is on; the edge injects the beacon (${where}).` });
 const passkey = { value: true, reason: "The family sign-in offers a passkey (./sign-in)." };
 const STRICT_ORIGIN = "strict-origin-when-cross-origin";
+
+// A page that posts a form without JavaScript (the sign-in link's confirm page) sends `Origin: null` under no-referrer,
+// and React Router and Better Auth refuse it with a 400, so the emailed link never signs anyone in.
+const signInReferrer = {
+  value: STRICT_ORIGIN,
+  reason: "no-referrer makes browsers send `Origin: null` on same-origin form POSTs, which React Router and Better Auth refuse; the sign-in link's confirm page is one.",
+};
 const popupSignIn = {
   "Cross-Origin-Opener-Policy": {
     value: null,
@@ -88,6 +95,7 @@ export const foxhound = {
 export const foxing = {
   id: "foxing",
   origin: "https://foxing.app",
+  headers: { "Referrer-Policy": signInReferrer },
   optIns: {
     cloudflareWebAnalytics: /* @__PURE__ */ beacon("workers/security-headers.ts"),
     baseUriSelf: { value: true, reason: "The reader (/read/:slug): Readium writes a same-origin <base> so a book's images and CSS resolve." },
@@ -121,6 +129,7 @@ export const txasm = {
   id: "txasm",
   origin: "https://txasm.dustin-edwards.workers.dev",
   aliases: ["https://txasm.org"],
+  headers: { "Referrer-Policy": signInReferrer },
   optIns: { cloudflareWebAnalytics: /* @__PURE__ */ beacon("app/lib/security-headers.ts"), passkey },
 };
 

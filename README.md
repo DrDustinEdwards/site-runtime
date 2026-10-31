@@ -755,7 +755,9 @@ const auth = betterAuth({
   URL (a form with no `action` posts to the page's own URL, query and all), else from the form's fields; anything but a
   POST is 405, and no token is 400. With no `callbackURL` it sends `/`, since Better Auth answers a verify without one
   with the session token as JSON. The page sends `Cache-Control: no-store` and `noindex`, loads nothing from another
-  origin (its URL holds the token, and OSHP's `Referrer-Policy: no-referrer` keeps it out of any request), and says
+  origin (its URL holds the token; a sign-in site's `Referrer-Policy: strict-origin-when-cross-origin`, in `./sites`,
+  gives another origin the origin alone, while OSHP's `no-referrer` would make the button post `Origin: null`, which
+  React Router and Better Auth refuse with a 400), and says
   what pressing does: "Sign in to {site}". Better Auth's GET endpoint stays as it is (`confirmSignInLink` calls it), but
   no mail carries it.
 
