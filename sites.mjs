@@ -23,8 +23,11 @@ export { PASSKEY_OVERRIDES, permissionsAllowingSelf };
 const beacon = (/** @type {string} */ where) => ({ value: true, reason: `Cloudflare Web Analytics is on; the edge injects the beacon (${where}).` });
 const passkey = { value: true, reason: "The family sign-in offers a passkey (./sign-in)." };
 const STRICT_ORIGIN = "strict-origin-when-cross-origin";
-const capsidCoop = {
-  "Cross-Origin-Opener-Policy": { value: null, reason: "COOP is on trial as Report-Only (COOP_REPORT_ONLY) pending a demonstrated case and a ruling (capsid src/security-headers.ts)." },
+const popupSignIn = {
+  "Cross-Origin-Opener-Policy": {
+    value: null,
+    reason: "AI clients (claude.ai among them) open /authorize in a popup and wait for it through window.opener; same-origin would sever that opener and the sign-in would never return.",
+  },
 };
 
 /**
@@ -124,9 +127,13 @@ export const carrel = { id: "carrel", origin: "https://carrel.dustinedwards.info
 export const carrelDesk = { id: "carrel-desk", origin: "https://desk.dustinedwards.info" };
 
 // src/security-headers.ts, src/dashboard-csp.ts
-export const capsidPortal = { id: "capsid-portal", origin: "https://portal.dustinedwards.info", headers: capsidCoop };
+export const capsidPortal = { id: "capsid-portal", origin: "https://portal.dustinedwards.info" };
 
-export const capsidMcp = { id: "capsid-mcp", origin: "https://mcp.dustinedwards.info", headers: capsidCoop };
+// src/security-headers.ts: its only page is the /authorize consent dialog MCP clients open.
+export const capsidMcp = { id: "capsid-mcp", origin: "https://mcp.dustinedwards.info", headers: popupSignIn };
+
+// workers/security-headers.ts: Carrel's AI door.
+export const carrelMcp = { id: "carrel-mcp", origin: "https://carrel-mcp.dustinedwards.info", headers: popupSignIn };
 
 // The Capsid explorer, Enarratio's site and the Foxhound admin MCP declare nothing: the standard exactly.
 export const capsid = { id: "capsid", origin: "https://capsid.dustinedwards.info" };
@@ -156,7 +163,7 @@ export const prelum = { id: "prelum", origin: "https://prelum.dustinedwards.info
 
 /** @type {readonly SiteEntry[]} */
 export const SITES = /* @__PURE__ */ Object.freeze([
-  dustinedwardsInfo, foxhound, foxing, germomics, julieedwardsInfo, bsw, txasm, carrel, carrelDesk, capsidPortal, capsidMcp, capsid, enarratio, foxhoundMcp, capsomer, prelum,
+  dustinedwardsInfo, foxhound, foxing, germomics, julieedwardsInfo, bsw, txasm, carrel, carrelDesk, capsidPortal, capsidMcp, carrelMcp, capsid, enarratio, foxhoundMcp, capsomer, prelum,
 ]);
 
 /**

@@ -23,7 +23,7 @@ export type SiteEntry = {
 export { PASSKEY_OVERRIDES, permissionsAllowingSelf } from "./headers.mjs";
 /** One export per entry, so a Worker bundles only its own. */
 export const dustinedwardsInfo: SiteEntry, foxhound: SiteEntry, foxing: SiteEntry, germomics: SiteEntry, julieedwardsInfo: SiteEntry,
-    bsw: SiteEntry, txasm: SiteEntry, carrel: SiteEntry, carrelDesk: SiteEntry, capsidPortal: SiteEntry, capsidMcp: SiteEntry,
+    bsw: SiteEntry, txasm: SiteEntry, carrel: SiteEntry, carrelDesk: SiteEntry, capsidPortal: SiteEntry, capsidMcp: SiteEntry, carrelMcp: SiteEntry,
     capsid: SiteEntry, enarratio: SiteEntry, foxhoundMcp: SiteEntry, capsomer: SiteEntry, prelum: SiteEntry;
 export const SITES: readonly SiteEntry[];
 /** The entry for an id; an unknown id throws. */
