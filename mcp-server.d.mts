@@ -1,5 +1,22 @@
-/** The admin MCP servers' shared scaffold: era router, API leg, door checks, tool scope and step-up, the tool-call wrapper and cache hints (mcp-server.mjs). */
+/** The admin MCP servers' shared scaffold: era router, API leg, door headers, door checks, tool scope and step-up, the tool-call wrapper and cache hints (mcp-server.mjs). */
 import type { AuditEnv } from "./audit-log.d.mts";
+import type { SiteEntry } from "./sites.mjs";
+
+/**
+ * The door's fetch handler: every response (404s and the OAuth library's redirects included) with the entry's full set,
+ * X-Robots-Tag noindex, Cache-Control no-store, the consent page's policy on HTML (its style by hash, no form-action)
+ * and a load-nothing policy on everything else, both reporting to `reportPath` (default /csp-report) through
+ * Reporting-Endpoints. It answers GET /.well-known/security.txt and the report sink itself; a 101 passes as it is.
+ */
+export function withMcpHeaders<Env>(
+  handler: (request: Request, env: Env, ctx: unknown) => Response | Promise<Response>,
+  options: {
+    site: SiteEntry;
+    securityTxt: { contact: string; expires: Date | string; policy?: string };
+    reportPath?: string;
+    allowReport?: (request: Request, env: Env) => boolean | Promise<boolean>;
+  },
+): (request: Request, env: Env, ctx: unknown) => Promise<Response>;
 
 /** One request routed to the era that can answer it; omit `isLegacyRequest` for a modern-only server. */
 export function routeMcpEra<F, O extends object, E, C>(

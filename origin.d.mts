@@ -14,8 +14,6 @@ export function originRefusal(headers?: Record<string, string>): Response;
  * `sameSite: true`; with no Sec-Fetch-Site, an Origin that passes), else the refusal.
  */
 export function refuseCrossSite(request: Request, headers?: Record<string, string>, options?: { sameSite?: boolean }): Response | null;
-/** The older name of refuseCrossSite. */
-export const refuseCrossOrigin: typeof refuseCrossSite;
 /** The resource isolation policy (web.dev/articles/fetch-metadata) for signed-in routes. */
 export function isolationVerdict(request: Request): {
   ok: boolean;

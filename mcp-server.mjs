@@ -1,15 +1,19 @@
 // The admin MCP servers' shared scaffold (shared-code sweep round 2, item 4): the era router with its prior-era shim, the
-// API leg's transport, the door's checks (rate limit, Origin, token audience), the per-tool scope with its step-up
-// challenge, the one wrapper every tool call runs through, and the list cache hints. Each admin MCP (dustinedwards-info,
+// API leg's transport, the door's headers, the door's checks (rate limit, Origin, token audience), the per-tool scope with
+// its step-up challenge, the one wrapper every tool call runs through, and the list cache hints. Each admin MCP (dustinedwards-info,
 // foxing) is a wrapper over its site's own API, which owns every rule; nothing here interprets one.
 //
 // No dependency, like the rest of the package: the MCP SDK and `agents` are the caller's, and the era router is handed
 // their two functions.
 
 import { appendAudit, correlationId, loggedArgs, loggedResult, recordAudit } from "./audit-log.mjs";
+import { buildPolicy, reportingEndpoints, scriptHash } from "./csp.mjs";
+import { receiveCspReport } from "./csp-report.mjs";
+import { applyHeaderSet, buildSecurityHeaders } from "./headers.mjs";
 import { limit } from "./rate-limit/limit.mjs";
-import { isAdminUser } from "./mcp-login.mjs";
+import { CONSENT_STYLE, isAdminUser } from "./mcp-login.mjs";
 import { originRefusal, originVerdict } from "./origin.mjs";
+import { securityTxtResponse } from "./security-txt.mjs";
 
 // ---------------------------------------------------------------------------------------------------------------------
 // THE ERA ROUTER, and the prior-era shim.
@@ -42,6 +46,64 @@ import { originRefusal, originVerdict } from "./origin.mjs";
 export async function routeMcpEra(request, env, ctx, { factory, options, createMcpHandler, isLegacyRequest }) {
   const legacy = isLegacyRequest && (await isLegacyRequest(request.clone())) ? "stateless" : "reject";
   return createMcpHandler(factory, { ...options, legacy })(request, env, ctx);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// THE DOOR'S HEADERS. Every response an MCP Worker sends, its 404s and the OAuth library's redirects included, leaves
+// through one wrapper, so none goes out without the family's set: the site's registry entry (CORP, Permissions-Policy,
+// HSTS, X-Frame-Options, X-DNS-Prefetch-Control and the rest), never cached or indexed, and a policy that lets no page
+// frame the door. The consent page is its only page: one inline <style>, trusted by hash, and no form-action, because
+// approving posts into a redirect chain that ends at whatever redirect_uri the client named, and a browser checks
+// form-action on every hop (Capsid shipped form-action 'self' once and broke sign-in for 26 days). Everything else may
+// load nothing. The wrapper also answers security.txt and the policy's report sink, so the door needs no route of its own.
+// ---------------------------------------------------------------------------------------------------------------------
+
+const REPORT_GROUP = "csp-endpoint";
+/** The consent style's hash, once per isolate. @type {Promise<string> | undefined} */
+let consentHash;
+
+/**
+ * The door's fetch handler: `handler` with every response wearing the set. GET /.well-known/security.txt is answered
+ * from `securityTxt` (RFC 9116, ./security-txt) and `reportPath` (default /csp-report) by the CSP receiver
+ * (./csp-report), with `allowReport` as its rate limiter. A WebSocket upgrade (101) cannot be rebuilt and carries no
+ * document, so it passes as it is; every other response is rebuilt, since a library's headers may be immutable, and
+ * its body streams through untouched.
+ *
+ * @template Env
+ * @param {(request: Request, env: Env, ctx: unknown) => Response | Promise<Response>} handler
+ * @param {{
+ *   site: import("./sites.mjs").SiteEntry,
+ *   securityTxt: { contact: string, expires: Date | string, policy?: string },
+ *   reportPath?: string,
+ *   allowReport?: (request: Request, env: Env) => boolean | Promise<boolean>,
+ * }} options `site`: the door's registry entry, whose declared deviations (a popup sign-in's COOP) the set keeps
+ * @returns {(request: Request, env: Env, ctx: unknown) => Promise<Response>}
+ */
+export function withMcpHeaders(handler, { site, securityTxt, reportPath = "/csp-report", allowReport }) {
+  const set = { ...buildSecurityHeaders({ site }), "X-Robots-Tag": "noindex, nofollow" };
+  const sinks = [`report-uri ${reportPath}`, `report-to ${REPORT_GROUP}`];
+  const nonHtml = buildPolicy(["default-src 'none'", "base-uri 'none'", "form-action 'none'", "frame-ancestors 'none'", ...sinks]);
+  return async (request, env, ctx) => {
+    const url = new URL(request.url);
+    const response =
+      url.pathname === "/.well-known/security.txt" && (request.method === "GET" || request.method === "HEAD")
+        ? securityTxtResponse({ origin: url.origin, ...securityTxt })
+        : url.pathname === reportPath
+          ? await receiveCspReport(request, allowReport ? { allow: (r) => allowReport(r, env) } : {})
+          : await handler(request, env, ctx);
+    if (response.status === 101 || /** @type {Response & { webSocket?: unknown }} */ (response).webSocket) return response;
+    const headers = new Headers(response.headers);
+    applyHeaderSet(headers, set);
+    if (!/(^|,)\s*no-store\s*(,|$)/i.test(headers.get("Cache-Control") ?? "")) headers.set("Cache-Control", "no-store");
+    if (/^\s*text\/html/i.test(headers.get("Content-Type") ?? "")) {
+      consentHash ??= scriptHash(CONSENT_STYLE);
+      headers.set("Content-Security-Policy", buildPolicy(["default-src 'none'", `style-src '${await consentHash}'`, "base-uri 'none'", "frame-ancestors 'none'", ...sinks]));
+    } else {
+      headers.set("Content-Security-Policy", nonHtml);
+    }
+    headers.set("Reporting-Endpoints", reportingEndpoints(REPORT_GROUP, new URL(reportPath, url.origin)));
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+  };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

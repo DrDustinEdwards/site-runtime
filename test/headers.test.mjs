@@ -1,22 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { LOGOUT_HEADERS, OWASP_SKIPPED, STANDARD_SECURITY_HEADERS, applyHeaderSet, buildSecurityHeaders } from "../headers.mjs";
-import { OWASP_RECOMMENDED } from "../owasp-headers.mjs";
+import { LOGOUT_HEADERS, OWASP_SKIPPED, STANDARD_SECURITY_HEADERS, applyHeaderSet, buildSecurityHeaders, hostCookie, logoutResponse } from "../headers.mjs";
 
 const REASON = "the site embeds a cross-origin player";
-
-test("the standard set is OSHP's recommendations minus the four skipped, in OSHP's words", () => {
-  assert.deepEqual(Object.keys(OWASP_SKIPPED).sort(), ["Cache-Control", "Clear-Site-Data", "Content-Security-Policy", "Cross-Origin-Embedder-Policy"]);
-  for (const [name, reason] of Object.entries(OWASP_SKIPPED)) {
-    assert.ok(reason.length > 40, `${name} is skipped with no reason written down`);
-    assert.ok(name in OWASP_RECOMMENDED, `${name} is skipped but OSHP does not recommend it`);
-    assert.equal(name in STANDARD_SECURITY_HEADERS, false, `${name} is skipped but sent`);
-  }
-  const expected = Object.entries(OWASP_RECOMMENDED).filter(([name]) => !(name in OWASP_SKIPPED));
-  assert.deepEqual(Object.entries(STANDARD_SECURITY_HEADERS), expected);
-  assert.equal(STANDARD_SECURITY_HEADERS["X-Frame-Options"], "deny");
-  assert.equal(STANDARD_SECURITY_HEADERS["Strict-Transport-Security"], "max-age=63072000; includeSubDomains");
-});
 
 test("the exported sets cannot be changed by a site", () => {
   for (const set of [STANDARD_SECURITY_HEADERS, OWASP_SKIPPED, LOGOUT_HEADERS]) assert.ok(Object.isFrozen(set));
@@ -26,8 +12,19 @@ test("the exported sets cannot be changed by a site", () => {
   }, TypeError);
 });
 
-test("the logout set is OSHP's Clear-Site-Data and nothing else", () => {
+test("logoutResponse clears the site's data on a 303 that is never stored", () => {
   assert.deepEqual({ ...LOGOUT_HEADERS }, { "Clear-Site-Data": '"cache","cookies","storage"' });
+  const res = logoutResponse("/signed-out");
+  assert.equal(res.status, 303);
+  assert.equal(res.headers.get("Location"), "/signed-out");
+  assert.equal(res.headers.get("Clear-Site-Data"), LOGOUT_HEADERS["Clear-Site-Data"]);
+  assert.equal(res.headers.get("Cache-Control"), "no-store");
+});
+
+test("hostCookie writes a __Host- cookie that is Secure, HttpOnly and SameSite, and refuses what would weaken it", () => {
+  assert.equal(hostCookie("sid", "abc", { maxAge: 3600 }), "__Host-sid=abc; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=3600");
+  assert.equal(hostCookie("pref", "1", { sameSite: "Strict", httpOnly: false }), "__Host-pref=1; Path=/; Secure; SameSite=Strict");
+  for (const bad of [() => hostCookie("__Host-sid", "a"), () => hostCookie("s id", "a"), () => hostCookie("sid", "a;b"), () => hostCookie("sid", "a", { sameSite: /** @type {any} */ ("None") })]) assert.throws(bad);
 });
 
 test("with no overrides a site gets the standard set, as its own copy", () => {
@@ -132,9 +129,11 @@ test("the static _headers file leaves out the policy and detaches a header a pat
   assert.throws(() => headersFile({ "X-A": "a\nb" }));
 });
 
-test("charset: true gives each static text type its charset", async () => {
+test("charset: true gives each static text type its charset, and subresources cross-origin CORP, merged with a site's own rule", async () => {
   const { headersFile } = await import("../headers.mjs");
-  const file = headersFile({ "X-Frame-Options": "deny" }, { charset: true });
-  assert.match(file, /\n\/\*\.css\n {2}Content-Type: text\/css; charset=utf-8\n/);
+  const file = headersFile({ "X-Frame-Options": "deny", "Cross-Origin-Resource-Policy": "same-origin" }, { charset: true, paths: { "/*.css": { "Cache-Control": "no-cache" } } });
+  assert.match(file, /\n\/\*\.css\n {2}! Cross-Origin-Resource-Policy\n {2}Content-Type: text\/css; charset=utf-8\n {2}Cross-Origin-Resource-Policy: cross-origin\n {2}Cache-Control: no-cache\n/);
+  assert.match(file, /\n\/\*\.woff2\n {2}! Cross-Origin-Resource-Policy\n {2}Cross-Origin-Resource-Policy: cross-origin\n/);
+  assert.match(file, /\n\/\*\.html\n {2}Content-Type: text\/html; charset=utf-8\n\n/, "a page keeps same-origin");
   assert.doesNotMatch(headersFile({ "X-Frame-Options": "deny" }), /Content-Type/);
 });

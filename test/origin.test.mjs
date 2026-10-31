@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isolationVerdict, refuseCrossOrigin, refuseCrossSite } from "../origin.mjs";
+import { isolationVerdict, refuseCrossSite } from "../origin.mjs";
 
 const URL_ = "https://app.example.com/api/x";
 const post = (/** @type {Record<string, string>} */ headers) => new Request(URL_, { method: "POST", headers });
@@ -13,7 +13,6 @@ test("refuseCrossSite: Fetch Metadata decides when sent, the Origin check when n
   assert.equal(refuseCrossSite(post({ "Sec-Fetch-Site": "same-site" }), {}, { sameSite: true }), null);
   assert.equal(refuseCrossSite(post({ Origin: "https://evil.example.com" }))?.status, 403);
   assert.equal(refuseCrossSite(post({})), null);
-  assert.equal(refuseCrossOrigin, refuseCrossSite);
 });
 
 test("isolationVerdict: a cross-site subresource or post is refused; a top-level GET navigation is not", () => {

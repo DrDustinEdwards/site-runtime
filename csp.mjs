@@ -76,9 +76,34 @@ function checkSource(source) {
   return source;
 }
 
-/** A host source whose host starts with a wildcard: `https://*.example.com`, `*.example.com:443`. */
-export const WILDCARD_HOST = /^([a-z][a-z0-9+.-]*:\/\/)?\*\./i;
+const ANY_HOST = /^([a-z][a-z0-9+.-]*:\/\/)?\*(:(\d+|\*))?(\/.*)?$/i;
+const ANY_SUBDOMAIN = /^([a-z][a-z0-9+.-]*:\/\/)?\*\./i;
+/** The schemes that name no host: a URL the page itself made or holds, never a network fetch. */
+const LOCAL_SCHEMES = new Set(["data:", "blob:", "mediastream:", "filesystem:"]);
+/** Where a source runs as script, so a data: or blob: URL there is script anyone who can write one can run. */
+const SCRIPT_DIRECTIVES = new Set(["script-src", "script-src-elem", "script-src-attr"]);
 
+/**
+ * Why a source lets in hosts nobody named, or "" when it names its hosts: `*` or any host-source whose host is `*`
+ * (whatever its scheme, port or path), a wildcard subdomain (`https://*.example.com`, any of which may serve JSONP or a
+ * library that runs script), or a bare network scheme (`https:`). data: and blob: name no host, so they are broad only
+ * where they run as script (script-src and its -elem and -attr), and data: in worker-src and child-src, since a worker
+ * from a blob: URL is one the page's own script made. The one rule the builder refuses and the check fails.
+ * @param {string} source a source expression as a policy writes it
+ * @param {string} [directive] the directive it is in (default script-src); give default-src as script-src when it
+ *   governs scripts, that is when the policy has no script-src
+ * @returns {string}
+ */
+export function broadSource(source, directive = "script-src") {
+  if (ANY_HOST.test(source)) return "any host";
+  if (ANY_SUBDOMAIN.test(source)) return "every subdomain of the host";
+  if (!/^[a-z][a-z0-9+.-]*:$/i.test(source)) return "";
+  const scheme = source.toLowerCase();
+  const name = directive.toLowerCase();
+  if (!LOCAL_SCHEMES.has(scheme)) return `any host over ${scheme}`;
+  if (SCRIPT_DIRECTIVES.has(name) || ((name === "worker-src" || name === "child-src") && scheme === "data:")) return `script any page can write as ${scheme}`;
+  return "";
+}
 
 /**
  * @typedef {{
@@ -128,7 +153,8 @@ export const WILDCARD_HOST = /^([a-z][a-z0-9+.-]*:\/\/)?\*\./i;
  *   way to write the keyword: as a raw script source it is refused.
  *   `styleAttributesInline`: `style-src-attr 'unsafe-inline'`, for pages that emit style attributes, which a nonce
  *   cannot cover; the one inline allowance offered, scoped to attributes, which run no code.
- *   `reportUri` / `reportTo`: where violations go. A policy with no sink hides the page it breaks, so one is required.
+ *   `reportUri` / `reportTo`: where violations go. Both are required: a policy with no sink hides the page it breaks,
+ *   report-to reaches browsers with the Reporting API and report-uri the rest (CSP Evaluator, ASVS 3.4.7).
  *   `framedBySameOrigin`: `frame-ancestors 'self'` in place of 'none', for a site that shows its own pages in frames
  *   (a design system's live specimens). No other origin can be allowed to frame a site.
  *   `denyUnlisted`: `default-src 'none'` in place of 'self', so a kind the policy does not name (media, frames,
@@ -149,17 +175,18 @@ export const WILDCARD_HOST = /^([a-z][a-z0-9+.-]*:\/\/)?\*\./i;
  * The Content-Security-Policy header a site sends, from what it loads. The fixed parts are the same everywhere
  * (`default-src 'self'`, `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`, `frame-ancestors 'none'`, or
  * 'self' when the site frames its own pages);
- * scripts are 'self', the site's hashes or nonce, its listed hosts and, when asked, the Cloudflare beacon. A script
- * source that is `*` (or any host-source whose host is `*`), a bare scheme, or 'unsafe-inline' or 'unsafe-eval' in any
- * case is refused here, so a site cannot list its way to a policy the check would fail; 'unsafe-inline' comes only
- * from the named opt-in `inlineScripts`, which the check accepts when the site declares the same.
+ * scripts are 'self', the site's hashes or nonce, its listed hosts and, when asked, the Cloudflare beacon. A source of
+ * any kind that broadSource calls broad (a wildcard host or subdomain, a bare network scheme, data: or blob: for
+ * scripts) is refused here, as is 'unsafe-inline' or 'unsafe-eval' as a script source in any case, so a site cannot
+ * list its way to a policy the check would fail; 'unsafe-inline' comes only from the named opt-in `inlineScripts`,
+ * which the check accepts when the site declares the same.
  *
  * @param {SitePolicy} site
  * @returns {{ name: "Content-Security-Policy" | "Content-Security-Policy-Report-Only", value: string }}
  */
 export function buildContentSecurityPolicy(site) {
   const { sources = {}, scriptHashes = [], styleHashes = [], nonce, nonceStyles = true, inlineScripts, strictDynamic = false, styleAttributesInline = false, cloudflareWebAnalytics = false, reportUri, reportTo, reportOnly = false, framedBySameOrigin = false, baseUriSelf = false, denyUnlisted = false, noForms = false, formTargets = [], trustedTypes, extraDirectives = [] } = site;
-  if (!reportUri && !reportTo) throw new Error("a policy needs a report sink (reportUri or reportTo)");
+  if (!reportUri || !reportTo) throw new Error("a policy needs both report sinks: reportUri for browsers without the Reporting API, reportTo for the rest");
   if (inlineScripts !== undefined && inlineScripts !== "unsafe-inline") throw new Error(`inlineScripts is "unsafe-inline" or left out, not ${JSON.stringify(inlineScripts)}`);
   if (inlineScripts && (nonce !== undefined || scriptHashes.length > 0)) {
     throw new Error("inlineScripts cannot go with a nonce or script hashes: a browser then ignores 'unsafe-inline'; use the nonce or hashes alone");
@@ -179,16 +206,19 @@ export function buildContentSecurityPolicy(site) {
     if (!/^sha(256|384|512)-[A-Za-z0-9+/_-]+={0,2}$/.test(h)) throw new Error(`${JSON.stringify(h)} is not a hash source`);
     return `'${h}'`;
   };
-  const list = (/** @type {readonly string[] | undefined} */ hosts) => (hosts ?? []).map(checkSource);
+  /** A kind's listed sources, each a source expression that names its hosts (broadSource). */
+  const list = (/** @type {readonly string[] | undefined} */ hosts, /** @type {string} */ directive) =>
+    (hosts ?? []).map((host) => {
+      const why = broadSource(checkSource(host), directive);
+      if (why) throw new Error(`${host} is not an acceptable ${directive} source: it allows ${why}; name the host`);
+      return host;
+    });
 
-  const scriptHosts = [...list(sources.script), ...(cloudflareWebAnalytics ? CLOUDFLARE_WEB_ANALYTICS.script : [])];
+  const scriptHosts = [...list(sources.script, "script-src"), ...(cloudflareWebAnalytics ? CLOUDFLARE_WEB_ANALYTICS.script : [])];
   for (const host of scriptHosts) {
-    // A host of `*` matches every host whatever the scheme, port or path; keywords match in any case in a browser.
-    if (/^([a-z][a-z0-9+.-]*:\/\/)?\*(:(\d+|\*))?(\/.*)?$/i.test(host) || /^(https?|data|blob):$/i.test(host) || /^'unsafe-(inline|eval)'$/i.test(host)) {
-      throw new Error(`${host} is not an acceptable script source: name the host`);
-    }
+    // Browsers match keywords in any case.
+    if (/^'unsafe-(inline|eval)'$/i.test(host)) throw new Error(`${host} is not an acceptable script-src source: 'unsafe-inline' comes only from inlineScripts`);
     if (/^'strict-dynamic'$/i.test(host)) throw new Error("'strict-dynamic' is not a script source here: pass strictDynamic: true, which checks it has a nonce or hashes to start from");
-    if (WILDCARD_HOST.test(host)) throw new Error(`${host} trusts every subdomain, any of which may serve JSONP or a library that runs script: name the host`);
   }
   const typeNames = trustedTypes === true || trustedTypes === undefined ? [] : trustedTypes;
   for (const name of typeNames) {
@@ -205,22 +235,22 @@ export function buildContentSecurityPolicy(site) {
   for (const extra of extraDirectives) {
     const [name = "", ...values] = extra.trim().split(/\s+/);
     if (written.has(name.toLowerCase())) throw new Error(`${name} is written by the builder; pass its sources instead of an extra directive`);
-    if (name.toLowerCase() === "worker-src" && values.some((v) => /^([a-z][a-z0-9+.-]*:\/\/)?\*/i.test(v) || /^(https?|data):$/i.test(v) || /^'unsafe-(inline|eval)'$/i.test(v))) {
-      throw new Error(`${extra} is not an acceptable worker source: name the host`);
+    if (values.some((v) => broadSource(v, name) || (name.toLowerCase() === "worker-src" && /^'unsafe-(inline|eval)'$/i.test(v)))) {
+      throw new Error(`${extra} is not an acceptable directive: name the hosts`);
     }
   }
   const nonceSource = nonce === undefined ? [] : [`'nonce-${nonce}'`];
   const directives = [
     `default-src ${denyUnlisted ? "'none'" : "'self'"}`,
     `script-src ${[...nonceSource, ...scriptHashes.map(hashSource), "'self'", ...(inlineScripts ? ["'unsafe-inline'"] : []), ...(strictDynamic ? ["'strict-dynamic'"] : []), ...scriptHosts].join(" ")}`,
-    `style-src ${["'self'", ...(nonceStyles ? nonceSource : []), ...styleHashes.map(hashSource), ...list(sources.style)].join(" ")}`,
+    `style-src ${["'self'", ...(nonceStyles ? nonceSource : []), ...styleHashes.map(hashSource), ...list(sources.style, "style-src")].join(" ")}`,
     ...(styleAttributesInline ? ["style-src-attr 'unsafe-inline'"] : []),
-    `font-src ${["'self'", ...list(sources.font)].join(" ")}`,
-    `img-src ${["'self'", ...list(sources.img)].join(" ")}`,
-    ...((sources.media ?? []).length > 0 ? [`media-src ${["'self'", ...list(sources.media)].join(" ")}`] : []),
+    `font-src ${["'self'", ...list(sources.font, "font-src")].join(" ")}`,
+    `img-src ${["'self'", ...list(sources.img, "img-src")].join(" ")}`,
+    ...((sources.media ?? []).length > 0 ? [`media-src ${["'self'", ...list(sources.media, "media-src")].join(" ")}`] : []),
     // 'self' is always present: the Cloudflare beacon reports to /cdn-cgi/rum on the site's own origin.
-    `connect-src ${["'self'", ...list(sources.connect)].join(" ")}`,
-    ...((sources.frame ?? []).length > 0 ? [`frame-src ${["'self'", ...list(sources.frame)].join(" ")}`] : []),
+    `connect-src ${["'self'", ...list(sources.connect, "connect-src")].join(" ")}`,
+    ...((sources.frame ?? []).length > 0 ? [`frame-src ${["'self'", ...list(sources.frame, "frame-src")].join(" ")}`] : []),
     "object-src 'none'",
     `base-uri ${baseUriSelf ? "'self'" : "'none'"}`,
     `form-action ${noForms ? "'none'" : ["'self'", ...formTargets].join(" ")}`,

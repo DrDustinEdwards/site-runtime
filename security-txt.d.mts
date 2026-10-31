@@ -8,5 +8,5 @@ export interface SecurityTxt {
 }
 /** The RFC 9116 text. */
 export function securityTxt(fields: SecurityTxt): string;
-/** The file as a text/plain response, cached for an hour; `headers` adds to or replaces those. */
+/** The file as a `text/plain; charset=utf-8` response, cached for an hour; `headers` adds to those (a Content-Type is refused). */
 export function securityTxtResponse(fields: SecurityTxt, headers?: HeadersInit): Response;

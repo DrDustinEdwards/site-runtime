@@ -11,12 +11,25 @@ import type { SiteEntry } from "./sites.mjs";
  * deviations.
  *
  * `site` is the site's registry entry, imported by name from ./sites, whose declared overrides are used; `overrides` is
- * the older form. Not both.
+ * the older form. Not both. `coep` (or the entry's `coep` opt-in) adds Cross-Origin-Embedder-Policy, or its Report-Only
+ * form with `reportOnly: true`.
  */
 export function buildSecurityHeaders(options?: {
     site?: SiteEntry;
     overrides?: Readonly<Record<string, HeaderOverride>>;
+    coep?: Coep;
 }): Record<string, string>;
+/** Cross-Origin-Embedder-Policy: `credentialless` or `require-corp`, Report-Only when asked. */
+export type Coep = { value: "credentialless" | "require-corp"; reportOnly?: boolean };
+/** A 303 to `location` (default `/`) with LOGOUT_HEADERS (Clear-Site-Data) and `Cache-Control: no-store`; `headers` adds to it. */
+export function logoutResponse(location?: string | URL, headers?: HeadersInit): Response;
+/**
+ * A Set-Cookie value: `__Host-<name>=<value>; Path=/; Secure; HttpOnly; SameSite=Lax`, with Max-Age when given. A name
+ * with a prefix already, or a name or value a cookie cannot carry, is refused.
+ */
+export function hostCookie(name: string, value: string, options?: { maxAge?: number; sameSite?: "Lax" | "Strict"; httpOnly?: boolean }): string;
+/** What an uploaded file is served with: nosniff and `sandbox; default-src 'none'; style-src 'unsafe-inline'`. */
+export const UPLOAD_HEADERS: Readonly<Record<string, string>>;
 /**
  * Stamps a header set onto `headers` in place.
  *
@@ -71,11 +84,10 @@ export type HeaderOverride = {
 /**
  * A Cloudflare `_headers` file for static assets: `set` on `/*` minus any Content-Security-Policy, then each of `paths`
  * (pattern to headers), detaching with `! Name` a header the `/*` block already sets. `comment` lines lead as `# ...`.
- * `charset: true` adds `/*.<ext>` Content-Type rules with `charset=utf-8` for TEXT_TYPES.
+ * `charset: true` adds a `/*.<ext>` rule per static type: `charset=utf-8` on text, and corpFor's CORP, so stylesheets,
+ * scripts, SVG and fonts are `cross-origin`. A `paths` entry for one of those patterns is merged into its rule.
  */
 export function headersFile(
   set: Readonly<Record<string, string>>,
   options?: { paths?: Readonly<Record<string, Readonly<Record<string, string>>>>; comment?: string | readonly string[]; charset?: boolean },
 ): string;
-/** The static text files whose Content-Type the asset server sends with no charset, by extension. */
-export const TEXT_TYPES: Readonly<Record<string, string>>;

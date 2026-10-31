@@ -54,3 +54,19 @@ export async function readCapped(source, max) {
   const bytes = await readCappedBytes(source, max);
   return bytes === null ? null : new TextDecoder().decode(bytes);
 }
+
+/**
+ * The refusal for a JSON route's body that is not JSON (ASVS 3.5.2), or null when its Content-Type is
+ * `application/json` or a `+json` type. A form or `text/plain` body is one a page on any site can send without a
+ * preflight, so a route that reads JSON and takes a cookie refuses both with 415 before it reads a byte.
+ * @param {{ headers: Headers }} request
+ * @returns {Response | null}
+ */
+export function requireJson(request) {
+  const type = (request.headers.get("Content-Type") ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
+  if (type === "application/json" || /^application\/[a-z0-9.+-]+\+json$/.test(type)) return null;
+  return new Response("This route takes application/json only.", {
+    status: 415,
+    headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+  });
+}

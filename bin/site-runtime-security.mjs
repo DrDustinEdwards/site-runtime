@@ -9,21 +9,26 @@
  * line, `::error title=<item>::<proof URL> <detail>` or `::warning ...`, the item being the checklist id (T1, H2, C6...).
  * Exit 0 with no errors, 1 with any, 2 when it could not run (bad arguments, or the home page could not be fetched).
  *
- * It is gentle: about 15 requests, one at a time, never following a redirect. The home page and a page from
- * /sitemap.xml are graded with their policy; a hashed asset and a static file the home page names, a 404, the HEAD and
- * OPTIONS answers and security.txt are graded without one. It also asks for http:// (a same-host 301 or 308 to https),
- * TRACE (405 or 501), /.git/HEAD, /.env and the asset's .map (404), and fetches / twice when it carries a nonce (two
- * nonces, never one). A redirect to Cloudflare Access is a warning that the page is behind Access, not an error.
+ * It is gentle: about 25 requests, one at a time, never following a redirect. The home page and a page from
+ * /sitemap.xml are graded with their policy; a hashed asset and a static file the home page names, an uploaded file
+ * under the entry's `uploads` prefix (A3), a 404, the HEAD and OPTIONS answers and security.txt are graded without one.
+ * It also asks for http:// (a same-host 301 or 308 to https), the https redirects of www. and of the sitemap page with
+ * its trailing slash turned (HSTS, T2), TRACE and an unknown method (refused), a foreign Origin (never reflected, R5),
+ * /account/<name>.css (never a cacheable page, X3), /.git/HEAD and the asset's .map (404), /.env, /.dev.vars and
+ * /wrangler.jsonc (never 200), and fetches / twice when it carries a nonce (two nonces, never one). An off-site script
+ * or stylesheet with no integrity is a warning (S1). A redirect to Cloudflare Access is a warning that the page is
+ * behind Access, not an error. A failure the entry declared a deviation for is a warning, and one no family site can
+ * meet (FAMILY_DEVIATIONS) a `::notice` line, which fails nothing.
  */
 
 import { request as httpsRequest } from "node:https";
 import { request as httpRequest } from "node:http";
 import { parseArgs } from "node:util";
-import { checkSecurityHeaders } from "../check.mjs";
+import { checkSecurityHeaders, checkSecurityTxt, declined } from "../check.mjs";
 import { siteForOrigin } from "../sites.mjs";
 
 const UA = "Mozilla/5.0 (site-runtime-security)";
-const DAY = 86_400_000;
+const FOREIGN = "https://site-runtime-security.example";
 
 let args;
 try {
@@ -40,14 +45,24 @@ const entry = siteForOrigin(origin) ?? siteForOrigin(served);
 let errors = 0;
 let warnings = 0;
 const printed = new Set();
-/** @param {"error" | "warning"} level @param {string} id @param {string} url @param {string} detail */
+/** @param {"error" | "warning" | "notice"} level @param {string} id @param {string} url @param {string} detail */
 function report(level, id, url, detail) {
   const line = `::${level} title=${id}::${url} ${detail}`.replace(/\s*\n\s*/g, " ");
   if (printed.has(line)) return;
   printed.add(line);
   console.log(line);
   if (level === "error") errors++;
-  else warnings++;
+  else if (level === "warning") warnings++;
+}
+/** An error, or the warning or notice a declared deviation makes it. @param {string} id @param {string} url @param {string} detail */
+function fail(id, url, detail) {
+  const deviation = declined(entry, id);
+  if (!deviation) return report("error", id, url, detail);
+  report(deviation.family ? "notice" : "warning", id, url, `${detail}; declared deviation: ${deviation.reason}`);
+}
+/** Prints the failed results. @param {string} url @param {number} status @param {import("../check.mjs").CheckResult[]} results */
+function print(url, status, results) {
+  for (const r of results) if (!r.pass) report(r.notice ? "notice" : r.warn ? "warning" : "error", r.id, url, `(${status}) ${r.name}: ${r.detail}`);
 }
 if (!entry) report("warning", "registry", origin, "is not in the site registry (sites.mjs): graded against the bare standard");
 
@@ -70,20 +85,22 @@ function accessGate(url, res) {
   return true;
 }
 
-/** Grades one response with the site's entry; the policy only when it is a page. @param {string} url @param {Response} res */
-function grade(url, res) {
+/**
+ * Grades one response with the site's entry; the policy only when it is a page.
+ * @param {string} url @param {Response} res @param {{ upload?: boolean, only?: string }} [how] `only`: report that item alone
+ */
+function grade(url, res, { upload = false, only } = {}) {
   if (accessGate(url, res)) return;
-  const csp = /^\s*text\/html/i.test(res.headers.get("Content-Type") ?? "");
-  for (const r of checkSecurityHeaders(res.headers, { ...(entry ? { site: entry.id } : {}), csp })) {
-    if (!r.pass) report(r.warn ? "warning" : "error", r.id, url, `(${res.status}) ${r.name}: ${r.detail}`);
-  }
+  const csp = !upload && !only && /^\s*text\/html/i.test(res.headers.get("Content-Type") ?? "");
+  const results = checkSecurityHeaders(res.headers, { ...(entry ? { site: entry.id } : {}), csp, upload });
+  print(url, res.status, only ? results.filter((r) => r.id === only) : results);
 }
 
-/** A path's response, graded, or null after reporting why it could not be fetched. @param {string} path @param {string} [method] */
-async function sample(path, method) {
+/** A path's response, graded, or null after reporting why it could not be fetched. @param {string} path @param {string} [method] @param {{ upload?: boolean, only?: string }} [how] */
+async function sample(path, method, how) {
   try {
     const got = await get(path, method);
-    grade(got.url, got.res);
+    grade(got.url, got.res, how);
     return got;
   } catch (error) {
     report("error", "A1", new URL(path, served).href, `could not be fetched: ${error instanceof Error ? error.message : error}`);
@@ -91,12 +108,15 @@ async function sample(path, method) {
   }
 }
 
-/** Expects one of `statuses`; a redirect to Access also passes. @param {string} id @param {string} path @param {number[]} statuses @param {string} why */
-async function expectStatus(id, path, statuses, why) {
+/**
+ * Expects one of `statuses`, or with `not: true` anything else; a redirect to Access also passes.
+ * @param {string} id @param {string} path @param {number[]} statuses @param {string} why @param {{ not?: boolean, method?: string }} [how]
+ */
+async function expectStatus(id, path, statuses, why, { not = false, method } = {}) {
   try {
-    const { url, res } = await get(path);
+    const { url, res } = await get(path, method);
     await res.body?.cancel();
-    if (!statuses.includes(res.status) && !accessGate(url, res)) report("error", id, url, `answers ${res.status}; ${why}`);
+    if (statuses.includes(res.status) === not && !accessGate(url, res)) report("error", id, url, `${method ? `${method} ` : ""}answers ${res.status}; ${why}`);
   } catch (error) {
     report("error", id, new URL(path, served).href, `could not be fetched: ${error instanceof Error ? error.message : error}`);
   }
@@ -116,7 +136,18 @@ grade(home.url, home.res);
 const homeHtml = /text\/html/i.test(home.res.headers.get("Content-Type") ?? "") ? await home.res.text() : "";
 if (homeHtml === "") await home.res.body?.cancel();
 if (new URL(served).hostname.endsWith(".workers.dev") && !/noindex/i.test(home.res.headers.get("X-Robots-Tag") ?? "")) {
-  report("warning", "A6", home.url, "a workers.dev host without X-Robots-Tag: noindex can be indexed beside the real domain");
+  fail("A6", home.url, "a workers.dev host without X-Robots-Tag: noindex can be indexed beside the real domain");
+}
+
+// S1: an off-site script or stylesheet with no integrity runs whatever that host serves tomorrow.
+for (const [tag] of homeHtml.matchAll(/<(?:script|link)\b[^>]*>/gi)) {
+  if (/^<link/i.test(tag) && !/\srel=["']?stylesheet/i.test(tag)) continue;
+  const src = /\s(?:src|href)=["']([^"']+)["']/i.exec(tag)?.[1];
+  if (!src || /\sintegrity=/i.test(tag)) continue;
+  const at = new URL(src.replaceAll("&amp;", "&"), home.url);
+  if (at.origin !== served && at.origin !== origin && /^https?:$/.test(at.protocol)) {
+    report("warning", "S1", home.url, `${at.href} loads from another origin with no integrity attribute: self-host it or pin its hash`);
+  }
 }
 
 // C6: a nonce is long enough, on every nonced element, and new on every response.
@@ -136,14 +167,31 @@ if (nonce) {
   }
 }
 
-// A page from the sitemap, when there is one.
+// A page from the sitemap, when there is one, and its address with the trailing slash turned, which a site redirects
+// (T2: the redirect carries HSTS too).
 const sitemap = await sample("/sitemap.xml");
 if (sitemap?.res.status === 200) {
-  const loc = /<loc>\s*([^<\s]+)\s*<\/loc>/.exec(await sitemap.res.text())?.[1];
-  const page = loc ? new URL(loc.replace(origin, served)) : undefined;
-  if (page && page.origin === served && page.pathname !== "/") await sample(`${page.pathname}${page.search}`);
+  const page = [...(await sitemap.res.text()).matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)]
+    .slice(0, 50)
+    .map((m) => URL.parse((m[1] ?? "").replace(origin, served)))
+    .find((u) => u?.origin === served && u.pathname !== "/");
+  if (page) {
+    (await sample(`${page.pathname}${page.search}`))?.res.body?.cancel();
+    const turned = page.pathname.endsWith("/") ? page.pathname.slice(0, -1) : `${page.pathname}/`;
+    const hop = await get(turned).catch(() => null);
+    await hop?.res.body?.cancel();
+    if (hop && hop.res.status >= 300 && hop.res.status < 400) grade(hop.url, hop.res, { only: "T2" });
+  }
 } else {
   await sitemap?.res.body?.cancel();
+}
+
+// T2: an apex's www. host redirects to it, with HSTS on the redirect. A www. host that does not answer is no finding.
+const apex = new URL(served);
+if (apex.hostname.split(".").length === 2) {
+  const www = await fetch(`https://www.${apex.host}/`, { redirect: "manual", headers: { "user-agent": UA }, signal: AbortSignal.timeout(20_000) }).catch(() => null);
+  await www?.body?.cancel();
+  if (www && www.status >= 300 && www.status < 400) grade(`https://www.${apex.host}/`, www, { only: "T2" });
 }
 
 // A hashed asset, its source map, and one other static file the home page names.
@@ -158,6 +206,23 @@ if (asset) await expectStatus("A5", `${asset.pathname}.map`, [404, 410], "a publ
 // A missing path.
 (await sample(`/site-runtime-security-${crypto.randomUUID()}`))?.res.body?.cancel();
 
+// A3: an uploaded file the home page shows, under the prefix the entry declares.
+const uploads = entry?.optIns?.uploads?.value;
+const uploaded = uploads ? [...homeHtml.matchAll(/\s(?:src|href|srcset)="([^"\s]+)/gi)].map((m) => new URL((m[1] ?? "").replaceAll("&amp;", "&"), home.url)).find((u) => u.origin === served && u.pathname.startsWith(uploads)) : undefined;
+if (uploaded) (await sample(`${uploaded.pathname}${uploaded.search}`, "GET", { upload: true }))?.res.body?.cancel();
+
+// X3: a stylesheet name under a signed-in path is a 404, or at least never a page a shared cache would store as one.
+try {
+  const { url, res } = await get(`/account/site-runtime-security-${crypto.randomUUID().slice(0, 8)}.css`);
+  await res.body?.cancel();
+  const cache = res.headers.get("Cache-Control") ?? "";
+  if (res.status === 200 && !/(^|,)\s*(no-store|private)\s*(,|$)/i.test(cache)) {
+    report("error", "X3", url, `answers 200 (${res.headers.get("Content-Type") ?? "no type"}) with Cache-Control ${JSON.stringify(cache)}: an edge that caches by extension would store a signed-in page for everyone (web cache deception)`);
+  }
+} catch (error) {
+  report("error", "X3", `${served}/account/`, `could not be fetched: ${error instanceof Error ? error.message : error}`);
+}
+
 // T1: plain http goes to https on the same host, first hop.
 try {
   const http = new URL(served);
@@ -167,41 +232,43 @@ try {
   const to = res.headers.get("Location") ? new URL(res.headers.get("Location") ?? "", http) : undefined;
   if (![301, 308].includes(res.status) || to?.protocol !== "https:" || to.hostname !== http.hostname) {
     report("error", "T1", http.href, `answers ${res.status}${to ? ` to ${to.href}` : ""}; want a 301 or 308 to https on the same host`);
+  } else if (!res.headers.has("Strict-Transport-Security")) {
+    fail("T2", http.href, `the redirect to https carries no Strict-Transport-Security`);
   }
 } catch (error) {
   report("error", "T1", `http://${new URL(served).host}/`, `could not be fetched: ${error instanceof Error ? error.message : error}`);
 }
 
-// D1-D3: security.txt.
+// D1-D4: security.txt.
 const txt = await sample("/.well-known/security.txt");
 if (txt) {
   const body = txt.res.status === 200 ? await txt.res.text() : (await txt.res.body?.cancel(), "");
-  if (accessGate(txt.url, txt.res)) {
-    report("error", "D1", txt.url, "is behind Cloudflare Access; it must be public (RFC 9116)");
-  } else if (txt.res.status !== 200) {
-    report("error", "D1", txt.url, `answers ${txt.res.status}`);
-  } else {
-    const type = txt.res.headers.get("Content-Type") ?? "";
-    if (!/^text\/plain\s*;\s*charset=utf-8$/i.test(type.trim())) report("error", "D1", txt.url, `Content-Type is ${JSON.stringify(type)}, not text/plain; charset=utf-8`);
-    const fields = (/** @type {string} */ name) => [...body.matchAll(new RegExp(`^${name}:\\s*(.+?)\\s*$`, "gim"))].map((m) => m[1] ?? "");
-    if (fields("Contact").length === 0) report("error", "D2", txt.url, "has no Contact");
-    const expires = fields("Expires");
-    const left = (Date.parse(expires[0] ?? "") - Date.now()) / DAY;
-    if (expires.length !== 1) report("error", "D2", txt.url, `has ${expires.length} Expires fields; it needs exactly one`);
-    else if (!(left > 0 && left < 365)) report("error", "D2", txt.url, `Expires ${expires[0]} is not in the next year`);
-    else if (left < 30) report("warning", "D4", txt.url, `Expires ${expires[0]}, in ${Math.floor(left)} days`);
-    const canonical = fields("Canonical");
-    const want = [txt.url, new URL("/.well-known/security.txt", origin).href];
-    if (canonical.length === 0) report("warning", "D3", txt.url, "has no Canonical");
-    else if (!canonical.some((c) => want.includes(c))) report("error", "D3", txt.url, `Canonical ${canonical.join(", ")} does not name the URL it is served from`);
-  }
+  if (accessGate(txt.url, txt.res)) report("error", "D1", txt.url, "is behind Cloudflare Access; it must be public (RFC 9116)");
+  else print(txt.url, txt.res.status, checkSecurityTxt({ url: txt.url, origin, status: txt.res.status, headers: txt.res.headers, body }, entry ? { site: entry } : {}));
 }
 
-// H10: HEAD and OPTIONS answer with the set; TRACE is refused.
+// H10: HEAD and OPTIONS answer with the set; TRACE and a method nobody defined are refused.
 (await sample("/", "HEAD"))?.res.body?.cancel();
 const options = await sample("/", "OPTIONS");
 await options?.res.body?.cancel();
 if (options && options.res.status >= 500) report("error", "H10", options.url, `OPTIONS answers ${options.res.status}`);
+await expectStatus("H10", "/", [400, 405, 501], "want 400, 405 or 501 for a method the site does not define", { method: "SITERUNTIME" });
+
+// R5: a foreign Origin is never echoed back as allowed, on a page or a preflight.
+for (const method of ["GET", "OPTIONS"]) {
+  try {
+    const url = new URL("/", served).href;
+    const res = await fetch(url, { method, redirect: "manual", headers: { "user-agent": UA, origin: FOREIGN, "access-control-request-method": "POST" }, signal: AbortSignal.timeout(20_000) });
+    await res.body?.cancel();
+    const allowed = res.headers.get("Access-Control-Allow-Origin")?.trim();
+    const credentials = /^\s*true\s*$/i.test(res.headers.get("Access-Control-Allow-Credentials") ?? "");
+    if (allowed === FOREIGN || allowed === "null" || (allowed === "*" && credentials)) {
+      report("error", "R5", url, `${method} with Origin ${FOREIGN} answers Access-Control-Allow-Origin: ${allowed}${credentials ? " with credentials" : ""}: any site may read the answer`);
+    }
+  } catch (error) {
+    report("error", "R5", `${served}/`, `could not be fetched: ${error instanceof Error ? error.message : error}`);
+  }
+}
 // fetch refuses to send TRACE, so it goes through node:http(s).
 const trace = await new Promise((resolve) => {
   const url = new URL("/", served);
@@ -215,9 +282,12 @@ const trace = await new Promise((resolve) => {
 });
 if (trace !== 405 && trace !== 501) report("error", "H10", `${served}/`, `TRACE answers ${trace}; want 405 or 501`);
 
-// H11: no repository or secrets file is served.
+// H11: no repository, secrets or Worker config file is served.
 await expectStatus("H11", "/.git/HEAD", [404, 410], "the repository's metadata must not be served");
-await expectStatus("H11", "/.env", [404, 410], "a secrets file must not be served");
+for (const path of ["/.env", "/.dev.vars", "/wrangler.jsonc"]) await expectStatus("H11", path, [200], "a secrets or config file must not be served", { not: true });
+
+// R4: graded by the site's own code, not from outside (FAMILY_DEVIATIONS).
+fail("R4", `${served}/`, "JSON routes refuse text/plain and form bodies: not measurable without a session");
 
 console.error(`site-runtime-security: ${origin}${served === origin ? "" : ` from ${served}`} (${entry?.id ?? "not in the registry"}): ${errors} errors, ${warnings} warnings`);
 process.exit(errors > 0 ? 1 : 0);
