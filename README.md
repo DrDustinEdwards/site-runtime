@@ -1201,7 +1201,7 @@ if (!admin) return redirect(accessSignInUrl(request));                        //
   before the app: `{ idle: true, response }` is a redirect to Access's logout (`ACCESS_LOGOUT_PATH`, which revokes the
   session everywhere), to return as is; `{ idle: false, cookie }` is the Set-Cookie (`__Host-admin-seen`) recording
   this request, to append to the app's response. The last request is that cookie's time when its HMAC, keyed by the
-  Access token, matches; otherwise the token's `iat`. A request with no Access token is `{ idle: false }`.
+  Access session (the token's `sub` and `iat`), matches; otherwise the token's `iat`. A request with no Access token is `{ idle: false }`.
 
   `withAdminIdle(request, handle, { prefixes })` does both around the site's handler for paths under `prefixes`
   (default `/admin`; `["/"]` for a site that is all admin, as Carrel's Desk):

@@ -200,43 +200,42 @@ export function safeAdminNext(next, { prefix = "/admin", path = "/admin/access" 
 /** An admin's Access session ends after this long without a request: an hour, in seconds. */
 export const ADMIN_IDLE_SECONDS = 60 * 60;
 
-/** The cookie holding the admin's last request time, signed with their Access token. */
+/** The cookie holding the admin's last request time, signed for their Access session. */
 export const ADMIN_SEEN_COOKIE = "__Host-admin-seen";
 
 /** Access's logout: it revokes the session in every application and clears the cookie, so the next visit signs in. */
 export const ACCESS_LOGOUT_PATH = "/cdn-cgi/access/logout";
 
 /**
- * HMAC-SHA-256 of the time, keyed by the Access token: the seen cookie belongs to that one Access session, so a stale
- * cookie or one copied from another session is ignored.
+ * The Access token's claims, read without verifying them: `accessAdmin` verifies; these only time and name a session.
  * @param {string} token
- * @param {string} time
+ * @returns {Record<string, unknown>}
  */
-async function seenMac(token, time) {
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey("raw", enc.encode(token), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  return base64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(time))));
+function tokenClaims(token) {
+  try {
+    return JSON.parse(new TextDecoder().decode(fromBase64url(token.split(".")[1] ?? "")));
+  } catch {
+    return {};
+  }
 }
 
 /**
- * When the Access token was issued, in epoch seconds, read without verifying it: `accessAdmin` verifies; this only
- * times a token that has no seen cookie yet.
- * @param {string} token
- * @returns {number | null}
+ * HMAC-SHA-256 of the time, keyed by the Access session (the token's `sub` and `iat`, which stay the same if Access
+ * signs the token again), so a stale cookie or one copied from another session is ignored.
+ * @param {Record<string, unknown>} claims
+ * @param {string} time
  */
-function issuedAt(token) {
-  try {
-    const claims = JSON.parse(new TextDecoder().decode(fromBase64url(token.split(".")[1] ?? "")));
-    return typeof claims.iat === "number" ? claims.iat : null;
-  } catch {
-    return null;
-  }
+async function seenMac(claims, time) {
+  const enc = new TextEncoder();
+  const secret = enc.encode(`${claims.sub}.${claims.iat}`);
+  const key = await crypto.subtle.importKey("raw", secret, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return base64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(time))));
 }
 
 /**
  * The idle check for a request on an admin path, run in the Worker's fetch before the app. With no Access token there
  * is nothing to time and it answers `{ idle: false }` (Access or `accessAdmin` refuses the request). The last request
- * is the seen cookie's time when its signature matches this token, else the token's `iat`. Past `idleSeconds`:
+ * is the seen cookie's time when its signature matches this Access session, else the token's `iat`. Past `idleSeconds`:
  * `{ idle: true, response }`, a redirect to Access's logout; otherwise `{ idle: false, cookie }`, the Set-Cookie that
  * records this request, for the site to append to its response.
  * @param {Request} request
@@ -246,9 +245,11 @@ function issuedAt(token) {
 export async function adminIdle(request, { idleSeconds = ADMIN_IDLE_SECONDS, now = Date.now() } = {}) {
   const token = accessToken(request, { cookie: true });
   if (!token) return { idle: false };
+  const claims = tokenClaims(token);
   const seconds = Math.floor(now / 1000);
   const [time, mac] = (cookieValue(request, ADMIN_SEEN_COOKIE) ?? "").split(".");
-  const seen = time && mac && (await safeEqual(mac, await seenMac(token, time))) ? Number(time) : issuedAt(token);
+  const iat = typeof claims.iat === "number" ? claims.iat : null;
+  const seen = time && mac && (await safeEqual(mac, await seenMac(claims, time))) ? Number(time) : iat;
   if (seen === null || seconds - seen > idleSeconds) {
     logEvent("admin_idle_logout", { idleSeconds });
     return {
@@ -263,7 +264,7 @@ export async function adminIdle(request, { idleSeconds = ADMIN_IDLE_SECONDS, now
       }),
     };
   }
-  const value = `${seconds}.${await seenMac(token, String(seconds))}`;
+  const value = `${seconds}.${await seenMac(claims, String(seconds))}`;
   return { idle: false, cookie: `${ADMIN_SEEN_COOKIE}=${value}; Path=/; Max-Age=${idleSeconds}; Secure; HttpOnly; SameSite=Lax` };
 }
 
@@ -282,7 +283,8 @@ export async function withAdminIdle(request, handle, { prefixes = ["/admin"], id
   const gate = await adminIdle(request, { idleSeconds });
   if (gate.idle) return gate.response;
   const response = await handle();
-  if (!gate.cookie) return response;
+  // A WebSocket upgrade (101) goes back untouched: copying it would drop its socket.
+  if (!gate.cookie || response.status === 101) return response;
   // A response from fetch has immutable headers.
   const out = new Response(response.body, response);
   out.headers.append("Set-Cookie", gate.cookie);
