@@ -190,6 +190,9 @@ ${local ? "<p><strong>This sends access to an app on your computer.</strong> Con
     consent.headers.set("content-type", "text/html; charset=utf-8");
     // no-transform keeps Cloudflare from injecting anything into this page.
     consent.headers.set("cache-control", "no-store, no-transform");
+    // A consent page another site can frame can be clickjacked into an approval.
+    consent.headers.set("content-security-policy", "frame-ancestors 'none'");
+    consent.headers.set("x-frame-options", "DENY");
     return new Response(consentPage(client, authRequest, consent.handle), { headers: consent.headers });
   }
 
