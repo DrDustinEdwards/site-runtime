@@ -274,7 +274,8 @@ export function buildContentSecurityPolicy(site) {
     ...(styleAttributesInline ? ["style-src-attr 'unsafe-inline'"] : []),
     `font-src ${["'self'", ...list(sources.font, "font-src")].join(" ")}`,
     `img-src ${["'self'", ...list(sources.img, "img-src")].join(" ")}`,
-    ...((sources.media ?? []).length > 0 ? [`media-src ${["'self'", ...list(sources.media, "media-src")].join(" ")}`] : []),
+    // `media: ["'self'"]` asks for the site's own files alone, which default-src 'none' would otherwise refuse.
+    ...((sources.media ?? []).length > 0 ? [`media-src ${["'self'", ...list(sources.media, "media-src").filter((s) => s !== "'self'")].join(" ")}`] : []),
     // 'self' is always present: the Cloudflare beacon reports to /cdn-cgi/rum on the site's own origin.
     `connect-src ${["'self'", ...list(sources.connect, "connect-src")].join(" ")}`,
     ...(frames.length > 0 ? [`frame-src ${["'self'", ...list(frames, "frame-src")].join(" ")}`] : []),

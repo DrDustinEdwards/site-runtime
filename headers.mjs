@@ -239,7 +239,16 @@ const STATIC_TYPES = /* @__PURE__ */ Object.freeze({
   xml: "application/xml",
   svg: "image/svg+xml",
   woff2: "font/woff2",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  avif: "image/avif",
+  gif: "image/gif",
+  ico: "image/x-icon",
 });
+/** The types the asset server sends without a charset that need one: text, and SVG, which is XML. */
+const NEEDS_CHARSET = /^(text\/|application\/xml$|image\/svg\+xml$)/;
 
 /**
  * A Cloudflare `_headers` file for the static assets, which the asset server answers without running the Worker, so
@@ -248,8 +257,9 @@ const STATIC_TYPES = /* @__PURE__ */ Object.freeze({
  * joins a header that two matching rules set, so a path that changes a header of the set first detaches the `/*` value
  * with `! Name`, as does a path that changes a header a `/*` rule of `paths` adds. `comment` lines lead the file, each as `# ...`. `charset: true` adds a rule per static extension:
  * `charset=utf-8` on each text type, which the asset server otherwise leaves off, and the Cross-Origin-Resource-Policy
- * corpFor gives its type, so stylesheets, scripts, SVG and fonts are `cross-origin` (another origin, or a sandboxed
- * frame's opaque one, may load them) and nothing else is. A `paths` entry for one of those patterns is merged into its
+ * corpFor gives its type, so stylesheets, scripts, images and fonts are `cross-origin` (another origin, or a sandboxed
+ * frame's opaque one, may load them: a link preview loads a share card, a reader shows a feed's pictures) and nothing
+ * else is. A `paths` entry for one of those patterns is merged into its
  * rule, its own values winning.
  * @param {Readonly<Record<string, string>>} set
  * @param {{ paths?: Readonly<Record<string, Readonly<Record<string, string>>>>, comment?: string | readonly string[], charset?: boolean }} [options]
@@ -270,7 +280,7 @@ export function headersFile(set, { paths = {}, comment = [], charset = false } =
     for (const [ext, type] of Object.entries(STATIC_TYPES)) {
       const corp = corpFor(type);
       rules.set(`/*.${ext}`, {
-        ...(type.startsWith("font/") ? {} : { "Content-Type": `${type}; charset=utf-8` }),
+        ...(NEEDS_CHARSET.test(type) ? { "Content-Type": `${type}; charset=utf-8` } : {}),
         ...(baseCorp && corp !== baseCorp ? { "Cross-Origin-Resource-Policy": corp } : {}),
       });
     }

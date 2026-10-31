@@ -1697,8 +1697,9 @@ files: `set` on `/*` minus any Content-Security-Policy (a page's policy names wh
 nonce), then each entry of `paths`, a path pattern and the headers it adds or changes. Cloudflare joins a header that
 two matching rules set, so a path that changes a header of the set first detaches the `/*` value with `! Name`.
 `comment` lines lead the file as `# ...`. `charset: true` adds a `/*.css`-style rule per static extension giving its
-Content-Type `charset=utf-8`, which the asset server leaves out, and `Cross-Origin-Resource-Policy: cross-origin` on
-stylesheets, scripts, SVG and fonts (`corpFor`), so another origin or a sandboxed frame may load them; a `paths` entry with
+Content-Type `charset=utf-8` on text, which the asset server leaves out, and `Cross-Origin-Resource-Policy: cross-origin` on
+stylesheets, scripts, fonts and images (PNG, JPEG, WebP, AVIF, GIF, ICO and SVG; `corpFor`), so another origin or a
+sandboxed frame may load them, and a link preview elsewhere may load a share card; a `paths` entry with
 the same pattern is merged into that rule.
 
 ```js
