@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { MAX_REPORT_BYTES, cspViolations, receiveCspReport, summarizeViolation, trimReportUrl } from "../csp-report.mjs";
+import { MAX_REPORT_BYTES, receiveCspReport, reportBodies, summarizeReport, trimReportUrl } from "../csp-report.mjs";
 
 const URL_ = "https://site.example.com/csp-report";
 const legacy = { "csp-report": { "document-uri": "https://site.example.com/page?token=secret", "violated-directive": "script-src", "blocked-uri": "https://evil.example.com/x.js?q=1", "line-number": 3, disposition: "enforce" } };
@@ -11,17 +11,22 @@ const collect = () => {
   return { lines, log: (l) => lines.push(l) };
 };
 
-test("both wire formats are read; other report types are not", () => {
-  assert.equal(cspViolations(legacy).length, 1);
-  assert.equal(cspViolations(modern).length, 1);
-  for (const junk of [null, 1, "x", {}, { "csp-report": 1 }, [{ type: "csp-violation" }]]) assert.deepEqual(cspViolations(junk), []);
+test("both wire formats are read, with Integrity-Policy's and COEP's reports; other report types are not", () => {
+  assert.equal(reportBodies(legacy).length, 1);
+  assert.equal(reportBodies(modern).length, 1);
+  for (const junk of [null, 1, "x", {}, { "csp-report": 1 }, [{ type: "csp-violation" }]]) assert.deepEqual(reportBodies(junk), []);
+  const integrity = { type: "integrity-violation", body: { documentURL: "https://site.example.com/", blockedURL: "https://site.example.com/a.js", destination: "script", reportOnly: true } };
+  const coep = { type: "coep", body: { type: "corp", blockedURL: "https://cdn.example.com/x.png?q=1", destination: "image", disposition: "reporting" } };
+  const [first, second] = reportBodies([integrity, coep]).map(({ type, body }) => summarizeReport(body, type));
+  assert.deepEqual(first, { event: "integrity-violation", directive: "blocked-destinations", blocked: "https://site.example.com/a.js", page: "https://site.example.com/", source: undefined, line: undefined, destination: "script", disposition: "report" });
+  assert.deepEqual(second, { event: "coep", directive: "corp", blocked: "https://cdn.example.com/x.png", page: undefined, source: undefined, line: undefined, destination: "image", disposition: "report" });
 });
 
 test("a logged line carries no query string, and keywords are kept", () => {
   assert.equal(trimReportUrl("https://a.example.com/p?q=1#h"), "https://a.example.com/p");
   assert.equal(trimReportUrl("inline"), "inline");
   assert.equal(trimReportUrl(""), undefined);
-  const line = summarizeViolation(legacy["csp-report"]);
+  const line = summarizeReport(legacy["csp-report"]);
   assert.deepEqual(line, { event: "csp-violation", directive: "script-src", blocked: "https://evil.example.com/x.js", page: "https://site.example.com/page", source: undefined, line: 3, disposition: "enforce" });
   assert.doesNotMatch(JSON.stringify(line), /secret|q=1/);
 });

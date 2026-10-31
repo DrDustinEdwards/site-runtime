@@ -39,8 +39,8 @@ put on every response (`OWASP_SKIPPED` carries each reason in code):
 | Skipped | Why |
 | --- | --- |
 | `Cache-Control: no-store, max-age=0` | Sent on every response it makes nothing cacheable, edge caches included. A site sets caching per route. |
-| `Clear-Site-Data` | Sent on every response it wipes the reader's cookies, storage and cache at each page load. It belongs on the logout response only: `logoutResponse(location)` is a 303 with `LOGOUT_HEADERS` and `no-store`. |
-| `Cross-Origin-Embedder-Policy: require-corp` | It refuses every cross-origin subresource that does not opt in with CORP or CORS, which breaks images, fonts and scripts a normal site loads elsewhere. A site that needs cross-origin isolation passes `coep: "credentialless"` or `"require-corp"` (or `{ value, reportOnly: true }`) to `buildSecurityHeaders`, or declares `coep` in its entry. |
+| `Clear-Site-Data` | Sent on every response it wipes the reader's cookies, storage and cache at each page load. It belongs on the logout response only: a site's sign-out sends `LOGOUT_HEADERS` (the sign-in's sign-out hook does). |
+| `Cross-Origin-Embedder-Policy: require-corp` | It refuses every cross-origin subresource that does not opt in with CORP or CORS, which breaks images, fonts and scripts a normal site loads elsewhere. Every registry site declares `coep` in its entry (`{ value: "credentialless", reportOnly: true }` to start), and `buildSecurityHeaders` writes it with `report-to="csp-endpoint"`, so what it refuses, or would refuse, reaches the sink. |
 | `Content-Security-Policy` | A policy names what a site loads, so it is not one string for every site. It is built per site (below). |
 
 A site that must differ on another header says so in `overrides`, each with a reason in the same place:
@@ -69,10 +69,17 @@ value a cookie cannot carry, and `SameSite=None`. The check fails a cookie witho
 `./sites` holds one entry per live site with only its declared deviations, each with the reason the site's code gives:
 header `overrides` in the shape above, and the policy opt-ins the check must accept (`cloudflareWebAnalytics`,
 `inlineScripts`, `inlineStyles`, `formTargets`, `framedBySameOrigin`, `baseUriSelf`, and `passkey`, which applies
-`PASSKEY_OVERRIDES`). Some opt-ins are promises the check then holds the site to: `strictDynamic` (C3), `trustedTypes`
-(C7), `denyUnlisted` (C9), `integrityPolicy` (S2), `coep` (I3) and `uploads` (a path prefix the live check samples for
-A3). `deviations` names a checklist item the site does not meet, with its reason (`{ reason, value? }`); the check and
-the live check then warn instead of failing. `FAMILY_DEVIATIONS` are the ones true of every site (no OpenPGP key to sign
+`PASSKEY_OVERRIDES`). Every registry site is graded on five items whether it opts in or not: Integrity-Policy (S2), a
+strict script policy (C3: `'strict-dynamic'` beside a nonce or hash, or no script at all), Trusted Types (C7),
+`default-src 'none'` (C9) and COEP (I3). A site meets each, stages it, or declines it in `deviations` with the reason its
+code gives, so the registry is the whole list of what each site skips. The opt-ins that meet or stage them are promises
+the check holds the site to: `strictDynamic`, `trustedTypes` (`true` or `"report-only"`), `denyUnlisted` (`true` or
+`"report-only"`), `integrityPolicy` (`"enforce"` or `"report-only"`, which `buildSecurityHeaders` writes) and `coep`
+(which it writes too); a `"report-only"` `trustedTypes` or `denyUnlisted` is met by the Report-Only policy
+(`buildStagedPolicy`). `uploads` is a path prefix the live check samples for A3. `deviations` names a checklist item the
+site does not meet, with its reason (`{ reason, value? }`); the check and the live check then warn instead of failing.
+`oldSite` is the real domain while it still serves the live old site the Worker replaces: a site served from workers.dev
+is noindexed there while, and only while, it has one (A6). `assets` says how the static files get their headers (below). `FAMILY_DEVIATIONS` are the ones true of every site (no OpenPGP key to sign
 security.txt, HSTS on the http hop, no session for R4), printed as notices, which count as nothing. The
 builder and the check read the same entry, so a site cannot build one set and be graded against another. Each entry is
 its own export, so a Worker imports its entry by name and bundles that entry, not the registry:
@@ -86,8 +93,7 @@ checkSecurityHeaders(response.headers, { site: "my-site" });            // grade
 A deviation an audit marked as a gap is left out of the registry on purpose, so the check fails it until the site is
 fixed: dustinedwards.info's nine-feature Permissions-Policy and one-year HSTS, germomics' Permissions-Policy allowances and
 wildcard script hosts, and `Cross-Origin-Resource-Policy: cross-origin` on every response. `overrides` still works for a
-site that has not moved to its entry; `site` and `overrides` together are refused. A site that needs COEP adds it to its
-entry; it stays out of the standard.
+site that has not moved to its entry; `site` and `overrides` together are refused. COEP is in each entry, not the standard.
 
 **CORP per response kind.** `headersFile(set, { charset: true })` writes it for static files, so a site needs no rule of
 its own. `corpFor(contentType)` (`./headers`) is `cross-origin` for public media other origins load (an
@@ -104,13 +110,15 @@ const { name, value } = buildContentSecurityPolicy({
   nonce,                                                 // a page that is never shared-cached: generateNonce()
   styleAttributesInline: true,                           // style="" attributes, which a nonce cannot cover
   cloudflareWebAnalytics: true,                          // the beacon, once, here
-  reportUri: "/api/csp-report",
-  reportTo: "csp-endpoint",
   reportOnly: false,                                     // true ships the policy as Content-Security-Policy-Report-Only
 });
 headers.set(name, value);
-headers.set("Reporting-Endpoints", reportingEndpoints("csp-endpoint", new URL("/api/csp-report", url.origin)));
+headers.set("Reporting-Endpoints", reportingEndpoints(CSP_REPORT_GROUP, new URL(CSP_REPORT_PATH, url.origin)));
 ```
+
+Every site reports to `CSP_REPORT_PATH` (`/csp-report`) under the group `CSP_REPORT_GROUP` (`csp-endpoint`): the
+builder's `reportUri` and `reportTo` unless given (a page that reports to another host names the full URL), the group
+COEP and Integrity-Policy report to, and what the check expects of a registry site (C14).
 
 `reportingEndpoints(group, url)` writes the header that defines the `reportTo` group. The URL must be absolute and
 [potentially trustworthy](https://w3c.github.io/webappsec-secure-contexts/#is-origin-trustworthy): https, or http on a loopback
@@ -130,7 +138,7 @@ made before hydration or with no JS. Each is one bare https origin (no wildcard,
 site's hashes or nonce, its listed hosts and, on request, the Cloudflare Web Analytics beacon. In every kind, a source of
 `*` (or `https://*` and the like), a wildcard subdomain (`https://*.example.com`) or a bare network scheme (`https:`) is
 refused, and so are `data:` and `blob:` where script runs; `broadSource(source, directive)` is that one rule, shared with
-the check. `'unsafe-inline'` or `'unsafe-eval'` as a script source, in any case, is refused, and a policy needs both
+the check. `'unsafe-inline'` or `'unsafe-eval'` as a script source, in any case, is refused, and a policy always has both
 report sinks: `reportUri` for browsers without the Reporting API and `reportTo` for the rest. `'unsafe-inline'` reaches script-src only through the named opt-in below. `extraDirectives` adds a
 kind the builder leaves out (`worker-src`, `manifest-src`, `upgrade-insecure-requests`). One the builder writes is refused,
 since a browser silently ignores a second directive of the same name: `default-src`, `script-src`, `style-src`, `font-src`,
@@ -162,9 +170,14 @@ site's own policy with the staged part added as `Content-Security-Policy-Report-
 the reports are quiet, when the staged part moves into the enforced policy.
 
 **Integrity-Policy.** `integrityPolicy({ endpoint, reportOnly })` (also on the root export) returns `Integrity-Policy` (or `-Report-Only`) with
-`blocked-destinations=(script)` and `endpoints=(<group>)`, so a script without an `integrity` attribute is refused. Every
-bundle, dynamically imported chunks included, needs build-time integrity first, so start Report-Only. A site that sends it
-declares `integrityPolicy` in its entry, and the check then requires `blocked-destinations=(script)`. The live check warns
+`blocked-destinations=(script)` and `endpoints=(<group>)` (`csp-endpoint` unless given), so a script without an `integrity`
+attribute, or fetched no-cors, is refused. Every bundle, dynamically imported chunks included, needs build-time integrity
+first, so start Report-Only. A site declares `integrityPolicy` in its entry and `buildSecurityHeaders` writes the header.
+React Router writes the integrity with `subResourceIntegrity: true` in `react-router.config.ts` (stable in 8.5): an
+import map with every chunk's hash and `integrity` on each modulepreload. The import map is an inline `<script>` that
+carries the page's nonce, so `renewNonce` renews it with the rest; a page trusted by hashes instead needs the import map's
+hash. A static build writing its own tags gives each `integrity` from `integrityHash(bytes)` (sha384) and `crossorigin`,
+which a classic script needs, since Integrity-Policy refuses a no-cors script whatever its integrity. The live check warns
 on any off-site script or stylesheet the home page loads without `integrity` (S1).
 
 **Inline scripts, the last resort.** `inlineScripts: "unsafe-inline"` puts `'unsafe-inline'` on script-src. Use it only when
@@ -181,7 +194,9 @@ consent page) is written with `buildPolicy`; the page builder does not take opti
 
 ## The report sink
 
-Every policy needs both sinks, and every site receives its reports with the same function (`./csp-report`), not its own:
+Every policy needs both sinks, and every site receives its reports with the same function (`./csp-report`), not its own,
+at `/csp-report`. It keeps the three kinds a site's headers ask for: CSP violations, Integrity-Policy's
+`integrity-violation` and COEP's `coep`; other Reporting API types (deprecation, intervention) are dropped.
 
 ```js
 import { receiveCspReport } from "@dustinedwards/site-runtime/csp-report";
@@ -189,8 +204,8 @@ if (url.pathname === "/csp-report") return receiveCspReport(request, { headers: 
 ```
 
 A POST always gets 204 (an error status makes browsers send the report again). The body is read to 16 KB and no further;
-at most 10 violations are logged, one JSON line each, with every URL cut to its origin and path, and no address, user
-agent or cookie. `allow` is the site's rate limiter, asked before the body is read; `allowOrigin` names the one origin
+at most 10 reports are logged, one JSON line each (`event` is the report's type; `directive` the CSP directive,
+`blocked-destinations` or the COEP check), with every URL cut to its origin and path, and no address, user agent or cookie. `allow` is the site's rate limiter, asked before the body is read; `allowOrigin` names the one origin
 that may report from another host (the CORS preflight). Nothing is stored.
 
 A violation whose blocked URL or source file is an extension's or the browser's own (`chrome-extension:`, `moz-extension:`,
@@ -1463,11 +1478,16 @@ T2, H1, C4 ...); a `warn` result fails nothing, and `failures` leaves it out.
 - A script source list with no `'unsafe-inline'` (unless the site declares `inlineScripts`) or `'unsafe-eval'` in any
   case and no known allowlist-bypass host; `script-src-elem`, `script-src-attr` and `worker-src`, when present, too.
 - No `broadSource` in any fetch directive (C5), and no effective `'unsafe-inline'` on style-src unless the site declares
-  `inlineStyles` (C11). What the entry declares (`strictDynamic`, `trustedTypes`, `denyUnlisted`, `integrityPolicy`) is graded.
+  `inlineStyles` (C11).
+- On a registry site, S2 (Integrity-Policy or its Report-Only form, blocking scripts), C3 (`'strict-dynamic'` beside a
+  nonce or hash, or `script-src 'none'`), C7 (`require-trusted-types-for 'script'`), C9 (`default-src 'none'`) and I3
+  (COEP or its Report-Only form): an error unless met or declined in `deviations` (a warning). A declared opt-in is held
+  to its form (a `"report-only"` one read from the Report-Only policy or header) and no deviation excuses it.
 - `object-src 'none'`; `base-uri` and `frame-ancestors` `'none'`, or also `'self'` when the site declares `baseUriSelf` or
   `framedBySameOrigin` (with no `site`, either); `form-action` `'self'` or `'none'` when set (an OAuth consent page leaves
-  it out on purpose; `'self'` may be followed by the declared `formTargets`); both report sinks, and a
-  `Reporting-Endpoints` that names the `report-to` group with an https URL (M1).
+  it out on purpose; `'self'` may be followed by the declared `formTargets`); both report sinks, on a registry site
+  `/csp-report` and the group `csp-endpoint` (C14); and a `Reporting-Endpoints` that names, with an https URL, every
+  group a header reports to: the policy's `report-to`, COEP's `report-to` and Integrity-Policy's `endpoints` (M1).
 
 `checkSecurityTxt({ url, origin, status, headers, body })` grades `/.well-known/security.txt` the same way (D1-D4).
 
@@ -1486,12 +1506,16 @@ it carries a nonce, which must differ and be on every nonced element; an off-sit
 `integrity` is a warning), a page from `/sitemap.xml` and its trailing-slash twin (the redirect hop must carry HSTS), the
 `www.` host for a bare domain, a hashed asset and one other static file the home page names, the asset's `.map` (404), a
 missing path, a file under the entry's `uploads` prefix (A3), a cacheable-looking path under `/account/` (X3: not a
-cached 200), `http://` (a same-host 301 or 308 to https, workers.dev included, an error unless the entry declines A6),
+cached 200), `http://` (a same-host 301 or 308 to https, workers.dev included),
 `/.well-known/security.txt` (`checkSecurityTxt`), HEAD and OPTIONS on `/`, TRACE (405 or 501), an unknown method (400,
 405 or 501), GET and OPTIONS with a foreign Origin (R5: no echoed or `null` Allow-Origin, no `*` with credentials), and
 `/.git/HEAD` (404), `/.env`, `/.dev.vars` and `/wrangler.jsonc` (never 200). A `::notice` line is a family deviation and
-counts as nothing. A redirect to Cloudflare Access is a warning that the page is behind Access; security.txt
-behind it is an error. An origin not in the registry is graded against the bare standard, with a warning.
+counts as nothing. A redirect to Cloudflare Access is a warning that the page is behind Access, and on that host
+Access's own 4xx answers (its no-cache pair, none of the site's set) and its sign-in redirect's echoed Origin are not
+graded as the site's; security.txt behind it is an error. A workers.dev host follows one rule (A6): it is noindexed
+while, and only while, the entry's `oldSite` still serves the live old site (bsw: biosciencewriters.com), and a
+workers.dev copy of a site whose origin is elsewhere is always noindexed. An origin not in the registry is graded
+against the bare standard, with a warning.
 
 ## Static assets: the `_headers` file
 
@@ -1516,8 +1540,21 @@ writeFileSync("public/_headers", headersFile(SECURITY_HEADERS, {
 }));
 ```
 
-A site generates the file from the set its Worker applies (a build step or a script) and fails CI when the committed
-file differs, as Foxhound's `scripts/gen-headers.mjs --check` does.
+Every site writes it with the one bin, from its registry entry:
+
+```sh
+site-runtime-headers --site prelum --out specimen/dist/_headers --header "tdm-reservation: 1"
+```
+
+The file is `staticHeaders(entry, { headers }).file` (`./static-site`): `buildSecurityHeaders({ site })`, each `--header`
+the site adds on top (Prelum's TDMRep header), `charset: true`, and the entry's `assets`: `paths`, the headers a pattern
+adds (the build's content-hashed `/assets/*` immutable, CORP on shared images), and for a static site `policy`, its one
+page policy built with its policy opt-ins, which goes on a `/*` rule of its own with its Reporting-Endpoints (to
+`reportOrigin` when it reports elsewhere) and, beside it, the Report-Only policy carrying what the entry stages. A path
+rule that sets its own policy (Prelum's diagrams) detaches the page's. `assets.skipWorker` records the patterns
+`run_worker_first` leaves to the asset server, which get the set from this file alone: Capsomer `/assets/*`, Prelum
+`/fonts/* /katex/* /images/* /diagrams/*`, Enarratio and Carrel's public page `/fonts/*`, and every file of the Capsid
+explorer.
 
 ## The Worker in front of a static site
 
@@ -1534,10 +1571,12 @@ proxy keeps a "not found" after the page exists; a page answered to a request wi
 Every other file passes through untouched.
 
 ```js
-// worker.mjs
+// worker.mjs: the set its _headers file was written from (staticHeaders), with what the site adds on top
 import { staticSite } from "@dustinedwards/site-runtime/static-site";
-import { PAGE_PRELOADS, SITE_HEADERS } from "./headers.mjs";
-export default staticSite({ headers: SITE_HEADERS, preload: PAGE_PRELOADS.header });
+import { prelum } from "@dustinedwards/site-runtime/sites";
+import { TDM_RESERVATION_HEADERS } from "@drdustinedwards/site-helpers/robots";
+import { PAGE_PRELOADS } from "./headers.mjs";
+export default staticSite({ site: prelum, headers: TDM_RESERVATION_HEADERS, preload: PAGE_PRELOADS.header });
 ```
 
 In wrangler, `run_worker_first` sends the Worker every page and leaves the hashed files to the asset server (for
@@ -1546,7 +1585,8 @@ example `["/*", "!/assets/*"]`); `not_found_handling` may be `"none"` or `"404-p
 ## Adopting it
 
 1. Add the site's entry to `sites.mjs`, build the set with `buildSecurityHeaders({ site: entry })` and apply it with
-   `applyHeaderSet` on every response, redirects included, and write `_headers` for static assets with `headersFile`.
+   `applyHeaderSet` on every response, redirects included (`applyHeaderSet(response, set)` rebuilds one whose headers are
+   immutable and passes a WebSocket upgrade through), and write `_headers` for static assets with `site-runtime-headers`.
 2. Build the policy with `buildContentSecurityPolicy` from the site's own list.
 3. In CI, run `checkSecurityHeaders(headers, { site })` on rendered responses (see `test/worker/public-csp.test.ts` in
    dustinedwards-info).

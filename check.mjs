@@ -9,7 +9,7 @@
  * ids the live check reports under), and a `warn` result is advice that fails nothing.
  */
 
-import { CLOUDFLARE_WEB_ANALYTICS, broadSource } from "./csp.mjs";
+import { CLOUDFLARE_WEB_ANALYTICS, CSP_REPORT_GROUP, CSP_REPORT_PATH, broadSource } from "./csp.mjs";
 import { allowlistBypass } from "./csp-bypasses.mjs";
 import { STANDARD_SECURITY_HEADERS, buildSecurityHeaders, corpFor } from "./headers.mjs";
 import { OWASP_REMOVE } from "./owasp-headers.mjs";
@@ -36,9 +36,13 @@ const ITEM = /** @type {Record<string, string>} */ ({
   "Cross-Origin-Resource-Policy": "I2",
   "Cross-Origin-Embedder-Policy": "I3",
   "Cross-Origin-Embedder-Policy-Report-Only": "I3",
+  "Integrity-Policy": "S2",
+  "Integrity-Policy-Report-Only": "S2",
 });
 /** Headers that govern a document, so only a document needs them (ASVS 3.4.8). */
-const DOCUMENT_ONLY = new Set(["Cross-Origin-Opener-Policy", "Cross-Origin-Embedder-Policy", "Cross-Origin-Embedder-Policy-Report-Only"]);
+const DOCUMENT_ONLY = new Set([
+  "Cross-Origin-Opener-Policy", "Cross-Origin-Embedder-Policy", "Cross-Origin-Embedder-Policy-Report-Only", "Integrity-Policy", "Integrity-Policy-Report-Only",
+]);
 /** Headers every browser has dropped; sending one says the set was copied from an old guide. */
 const DEPRECATED = ["X-XSS-Protection", "Expect-CT", "Feature-Policy"];
 /** A cookie that holds a sign-in or a secret, which script must never read. */
@@ -51,7 +55,8 @@ const FETCH_DIRECTIVES = [
 
 /**
  * A failed result an entry or the family declined, as the reason, or "". Only results a check marks as declinable are
- * looked up: K1's cookie prefix, A6, and the family's (FAMILY_DEVIATIONS).
+ * looked up: K1's cookie prefix, the items every site is graded on unless it declines them (S2, C3, C7, C9, I3), and
+ * the family's (FAMILY_DEVIATIONS).
  * @param {import("./sites.mjs").SiteEntry | undefined} entry
  * @param {string} id
  * @param {string} [name] the cookie or thing the result is about, which a deviation's `value` must list when it has one
@@ -103,7 +108,7 @@ function deniedFeatures(value) {
  *   inlineStyles?: boolean,
  *   strictDynamic?: boolean,
  *   trustedTypes?: true | "report-only",
- *   denyUnlisted?: boolean,
+ *   denyUnlisted?: boolean | "report-only",
  *   integrityPolicy?: "enforce" | "report-only",
  *   upload?: boolean,
  * }} CheckOptions
@@ -119,9 +124,14 @@ function deniedFeatures(value) {
  *   `framedBySameOrigin` / `baseUriSelf`: true accepts 'self' beside 'none' on frame-ancestors and base-uri; false
  *   accepts 'none' alone. Left out (and no `site`), either is accepted.
  *   `inlineStyles`: `'unsafe-inline'` is accepted on style-src (C11); style-src-attr's is always accepted, since
- *   attributes run no code. `strictDynamic` (C3), `trustedTypes` (C7), `denyUnlisted` (C9) and `integrityPolicy` (S2)
- *   are what the site promised, and each is graded only when declared. `upload`: the response is an uploaded file,
- *   held to A3 (nosniff, and a sandboxed policy or an attachment).
+ *   attributes run no code. Every registry site is graded on Integrity-Policy (S2), a strict script policy (C3:
+ *   'strict-dynamic' beside a nonce or hash, or no script at all), Trusted Types (C7), default-src 'none' (C9), COEP
+ *   (I3) and the family's report sink (C14: /csp-report, group csp-endpoint): a page that misses one fails, unless the
+ *   entry declares a deviation for it, which makes it a warning, so the registry is the whole list of what each site
+ *   skips. Without an entry only what the options declare is graded. `strictDynamic`, `trustedTypes`, `denyUnlisted` ("report-only" reads the
+ *   Report-Only policy, as `trustedTypes` does) and `integrityPolicy` are what a site promised: declared, the item is
+ *   held to that form and no deviation can excuse it. `upload`: the response is an uploaded file, held to A3 (nosniff,
+ *   and a sandboxed policy or an attachment).
  */
 
 /**
@@ -144,7 +154,7 @@ export function checkSecurityHeaders(headers, options = {}) {
     inlineStyles = Boolean(optIn("inlineStyles")),
     strictDynamic = Boolean(optIn("strictDynamic")),
     trustedTypes = /** @type {true | "report-only" | undefined} */ (optIn("trustedTypes")),
-    denyUnlisted = Boolean(optIn("denyUnlisted")),
+    denyUnlisted = /** @type {boolean | "report-only" | undefined} */ (optIn("denyUnlisted")),
     integrityPolicy = /** @type {"enforce" | "report-only" | undefined} */ (optIn("integrityPolicy")),
     upload = false,
   } = options;
@@ -219,10 +229,18 @@ export function checkSecurityHeaders(headers, options = {}) {
     result("A3", "an uploaded file is served nosniff", (headers.get("X-Content-Type-Options") ?? "").trim().toLowerCase() === "nosniff", "a browser may read it as another type (UPLOAD_HEADERS, ./headers)");
     result("A3", "an uploaded file runs no script: a sandboxed policy or an attachment", inert, "opened on its own, the file runs as the site (UPLOAD_HEADERS, ./headers)");
   }
-  if (html && integrityPolicy) {
-    const name = integrityPolicy === "report-only" ? "Integrity-Policy-Report-Only" : "Integrity-Policy";
-    const got = headers.get(name) ?? "";
-    result("S2", `${name} blocks scripts without integrity (declared: integrityPolicy)`, /blocked-destinations=\([^)]*\bscript\b[^)]*\)/i.test(got), got ? `got ${JSON.stringify(got)}` : "ABSENT");
+  if (html) {
+    // Declared in the entry, these are in the floor and graded above as exactly what buildSecurityHeaders writes.
+    const integrityName = integrityPolicy === "report-only" ? "Integrity-Policy-Report-Only" : integrityPolicy ? "Integrity-Policy" : undefined;
+    if (integrityName ? !(integrityName in standard) : entry) {
+      const got = (integrityName ? headers.get(integrityName) : (headers.get("Integrity-Policy") ?? headers.get("Integrity-Policy-Report-Only"))) ?? "";
+      const label = integrityName ?? "Integrity-Policy (or its Report-Only form)";
+      result("S2", `${label} blocks scripts without integrity${integrityName ? " (declared: integrityPolicy)" : ""}`, /blocked-destinations=\([^)]*\bscript\b[^)]*\)/i.test(got), got ? `got ${JSON.stringify(got)}` : "ABSENT: declare integrityPolicy in the entry (buildSecurityHeaders writes it)", false, !integrityName);
+    }
+    if (entry && !("Cross-Origin-Embedder-Policy" in standard) && !("Cross-Origin-Embedder-Policy-Report-Only" in standard)) {
+      const got = headers.get("Cross-Origin-Embedder-Policy") ?? headers.get("Cross-Origin-Embedder-Policy-Report-Only") ?? "";
+      result("I3", "Cross-Origin-Embedder-Policy (or its Report-Only form) is credentialless or require-corp", /^\s*(credentialless|require-corp)\s*(;|$)/i.test(got), got ? `got ${JSON.stringify(got)}` : "ABSENT: declare coep in the entry (buildSecurityHeaders writes it)", false, true);
+    }
   }
 
   if (!csp) return results;
@@ -283,19 +301,37 @@ export function checkSecurityHeaders(headers, options = {}) {
     if (!sources.includes("'unsafe-inline'") || sources.some((s) => /^'(nonce|sha(256|384|512))-/.test(s))) continue;
     result("C11", `${directive}: no 'unsafe-inline'${inlineStyles ? " (declared: inlineStyles)" : ""}`, inlineStyles, `style sources: ${sources.join(" ")}`);
   }
-  if (strictDynamic) {
-    const list = scripts ?? [];
-    result("C3", "script-src is strict: 'strict-dynamic' beside a nonce or hash (declared: strictDynamic)", list.includes("'strict-dynamic'") && list.some((s) => /^'(nonce|sha(256|384|512))-/.test(s)), `script sources: ${list.join(" ")}`);
-  }
-  if (denyUnlisted) {
-    const fallback = policy.get("default-src");
-    result("C9", "default-src is 'none' (declared: denyUnlisted)", fallback?.length === 1 && fallback[0] === "'none'", `got ${fallback ? fallback.join(" ") : "ABSENT"}`);
-  }
-  if (trustedTypes) {
-    const where = trustedTypes === "report-only" ? parsePolicy(reportOnly ?? "") : policy;
-    const label = trustedTypes === "report-only" ? "the Report-Only policy" : "the policy";
-    result("C7", `${label} requires Trusted Types for scripts (declared: trustedTypes)`, (where.get("require-trusted-types-for") ?? []).includes("'script'"), `require-trusted-types-for is ${where.get("require-trusted-types-for")?.join(" ") ?? "ABSENT"}`);
-  }
+  // C3: a strict script policy, 'strict-dynamic' beside a nonce or hash, or no script at all ('none').
+  const scriptList = scripts ?? [];
+  const noScript = scriptList.length === 1 && scriptList[0] === "'none'";
+  if (strictDynamic || entry) result(
+    "C3",
+    `script-src is strict: 'strict-dynamic' beside a nonce or hash, or 'none'${strictDynamic ? " (declared: strictDynamic)" : ""}`,
+    noScript || (scriptList.includes("'strict-dynamic'") && scriptList.some((s) => /^'(nonce|sha(256|384|512))-/.test(s))),
+    `script sources: ${scriptList.join(" ")}`,
+    false,
+    !strictDynamic,
+  );
+  const staged = parsePolicy(reportOnly ?? "");
+  const stagedLabel = (/** @type {unknown} */ declaredAs) => (declaredAs === "report-only" ? "the Report-Only policy" : "the policy");
+  const fallback = (denyUnlisted === "report-only" ? staged : policy).get("default-src");
+  if (denyUnlisted || entry) result(
+    "C9",
+    `${stagedLabel(denyUnlisted)}: default-src is 'none'${denyUnlisted ? " (declared: denyUnlisted)" : ""}`,
+    fallback?.length === 1 && fallback[0] === "'none'",
+    `got ${fallback ? fallback.join(" ") : "ABSENT"}`,
+    false,
+    !denyUnlisted,
+  );
+  const types = (trustedTypes === "report-only" ? staged : policy).get("require-trusted-types-for");
+  if (trustedTypes || entry) result(
+    "C7",
+    `${stagedLabel(trustedTypes)} requires Trusted Types for scripts${trustedTypes ? " (declared: trustedTypes)" : ""}`,
+    (types ?? []).includes("'script'"),
+    `require-trusted-types-for is ${types?.join(" ") ?? "ABSENT"}`,
+    false,
+    !trustedTypes,
+  );
   const objects = policy.get("object-src") ?? policy.get("default-src");
   result("C2", "object-src is 'none'", objects?.length === 1 && objects[0] === "'none'", `got ${objects ? objects.join(" ") : "ABSENT"}`);
   // A declared opt-in allows 'self' (a site may use it on some pages only); a site entry that does not declare it allows 'none' alone.
@@ -337,15 +373,28 @@ export function checkSecurityHeaders(headers, options = {}) {
   }
   const sinks = ["report-uri", "report-to"].filter((d) => !policy.has(d));
   result("C14", "violations are reported to both sinks (report-uri and report-to)", sinks.length === 0, `no ${sinks.join(" and ")}: ${sinks.length === 2 ? "a blocked script is never heard about" : "the browsers that read only the other one report nowhere"}`);
+  const reportUri = policy.get("report-uri")?.[0];
   const group = policy.get("report-to")?.[0];
-  if (group) {
-    const endpoints = headers.get("Reporting-Endpoints") ?? "";
-    const url = new RegExp(`(?:^|,)\\s*${group.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*=\\s*"([^"]*)"`).exec(endpoints)?.[1] ?? "";
+  if (entry && reportUri) {
+    const path = URL.parse(reportUri, "https://site.invalid")?.pathname;
+    result("C14", `report-uri is the family's ${CSP_REPORT_PATH}`, path === CSP_REPORT_PATH, `got ${reportUri} (CSP_REPORT_PATH, ./csp)`);
+  }
+  if (entry && group) result("C14", `report-to names the family's group ${CSP_REPORT_GROUP}`, group === CSP_REPORT_GROUP, `got ${group} (CSP_REPORT_GROUP, ./csp)`);
+  // Every group a header reports to (the policy's report-to, COEP's report-to, Integrity-Policy's endpoints) must be
+  // one Reporting-Endpoints defines, or its reports go nowhere.
+  const endpoints = headers.get("Reporting-Endpoints") ?? "";
+  const groups = new Set([
+    ...(group ? [group] : []),
+    ...["Cross-Origin-Embedder-Policy", "Cross-Origin-Embedder-Policy-Report-Only"].flatMap((n) => /report-to="([^"]+)"/.exec(headers.get(n) ?? "")?.[1] ?? []),
+    ...["Integrity-Policy", "Integrity-Policy-Report-Only"].flatMap((n) => /endpoints=\(([^)]*)\)/.exec(headers.get(n) ?? "")?.[1]?.trim().split(/\s+/).filter(Boolean) ?? []),
+  ]);
+  for (const name of groups) {
+    const url = new RegExp(`(?:^|,)\\s*${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*=\\s*"([^"]*)"`).exec(endpoints)?.[1] ?? "";
     result(
       "M1",
-      `Reporting-Endpoints names the report-to group ${group} with an https URL`,
+      `Reporting-Endpoints names the report group ${name} with an https URL`,
       /^https:\/\//i.test(url) || /^http:\/\/(127(\.\d{1,3}){3}|\[::1\]|(.+\.)?localhost)(:\d+)?\//i.test(url),
-      endpoints ? `got ${JSON.stringify(endpoints)}` : "Reporting-Endpoints is ABSENT, so report-to reports go nowhere",
+      endpoints ? `got ${JSON.stringify(endpoints)}` : "Reporting-Endpoints is ABSENT, so its reports go nowhere",
     );
   }
   return results;

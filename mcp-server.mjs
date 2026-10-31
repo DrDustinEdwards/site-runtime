@@ -7,7 +7,7 @@
 // their two functions.
 
 import { appendAudit, correlationId, loggedArgs, loggedResult, recordAudit } from "./audit-log.mjs";
-import { buildPolicy, reportingEndpoints, scriptHash } from "./csp.mjs";
+import { CSP_REPORT_GROUP, CSP_REPORT_PATH, buildPolicy, reportingEndpoints, scriptHash } from "./csp.mjs";
 import { receiveCspReport } from "./csp-report.mjs";
 import { applyHeaderSet, buildSecurityHeaders } from "./headers.mjs";
 import { limit } from "./rate-limit/limit.mjs";
@@ -58,7 +58,7 @@ export async function routeMcpEra(request, env, ctx, { factory, options, createM
 // load nothing. The wrapper also answers security.txt and the policy's report sink, so the door needs no route of its own.
 // ---------------------------------------------------------------------------------------------------------------------
 
-const REPORT_GROUP = "csp-endpoint";
+const REPORT_GROUP = CSP_REPORT_GROUP;
 /** The consent style's hash, once per isolate. @type {Promise<string> | undefined} */
 let consentHash;
 
@@ -79,10 +79,12 @@ let consentHash;
  * }} options `site`: the door's registry entry, whose declared deviations (a popup sign-in's COOP) the set keeps
  * @returns {(request: Request, env: Env, ctx: unknown) => Promise<Response>}
  */
-export function withMcpHeaders(handler, { site, securityTxt, reportPath = "/csp-report", allowReport }) {
+export function withMcpHeaders(handler, { site, securityTxt, reportPath = CSP_REPORT_PATH, allowReport }) {
   const set = { ...buildSecurityHeaders({ site }), "X-Robots-Tag": "noindex, nofollow" };
   const sinks = [`report-uri ${reportPath}`, `report-to ${REPORT_GROUP}`];
-  const nonHtml = buildPolicy(["default-src 'none'", "base-uri 'none'", "form-action 'none'", "frame-ancestors 'none'", ...sinks]);
+  // No page here runs a script, so Trusted Types costs nothing and shuts every sink.
+  const types = "require-trusted-types-for 'script'";
+  const nonHtml = buildPolicy(["default-src 'none'", "base-uri 'none'", "form-action 'none'", "frame-ancestors 'none'", types, ...sinks]);
   return async (request, env, ctx) => {
     const url = new URL(request.url);
     const response =
@@ -91,18 +93,18 @@ export function withMcpHeaders(handler, { site, securityTxt, reportPath = "/csp-
         : url.pathname === reportPath
           ? await receiveCspReport(request, allowReport ? { allow: (r) => allowReport(r, env) } : {})
           : await handler(request, env, ctx);
-    if (response.status === 101 || /** @type {Response & { webSocket?: unknown }} */ (response).webSocket) return response;
-    const headers = new Headers(response.headers);
-    applyHeaderSet(headers, set);
+    const out = applyHeaderSet(response, set);
+    if (out === response) return response;
+    const { headers } = out;
     if (!/(^|,)\s*no-store\s*(,|$)/i.test(headers.get("Cache-Control") ?? "")) headers.set("Cache-Control", "no-store");
     if (/^\s*text\/html/i.test(headers.get("Content-Type") ?? "")) {
       consentHash ??= scriptHash(CONSENT_STYLE);
-      headers.set("Content-Security-Policy", buildPolicy(["default-src 'none'", `style-src '${await consentHash}'`, "base-uri 'none'", "frame-ancestors 'none'", ...sinks]));
+      headers.set("Content-Security-Policy", buildPolicy(["default-src 'none'", `style-src '${await consentHash}'`, "base-uri 'none'", "frame-ancestors 'none'", types, ...sinks]));
     } else {
       headers.set("Content-Security-Policy", nonHtml);
     }
     headers.set("Reporting-Endpoints", reportingEndpoints(REPORT_GROUP, new URL(reportPath, url.origin)));
-    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+    return out;
   };
 }
 

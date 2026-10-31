@@ -18,9 +18,10 @@
  * `["/*", "!/assets/*"]`; `not_found_handling` may be "none" or "404-page".
  */
 
+import { CSP_REPORT_GROUP, CSP_REPORT_PATH, buildContentSecurityPolicy, buildStagedPolicy, reportingEndpoints } from "./csp.mjs";
 import { receiveCspReport } from "./csp-report.mjs";
 import { UNCACHED } from "./edge-cache.mjs";
-import { applyHeaderSet } from "./headers.mjs";
+import { applyHeaderSet, buildSecurityHeaders, headersFile } from "./headers.mjs";
 import { SPECULATION_RULES_HEADER, SPECULATION_RULES_PATH, speculationRulesResponse } from "./prefetch.mjs";
 import { withPreloadHeader } from "./preload.mjs";
 import { serverTiming } from "./server-timing.mjs";
@@ -33,17 +34,68 @@ import { canonicalRedirect } from "./url.mjs";
  * }} StaticSiteEnv
  */
 
-/** @param {Response} response @param {Readonly<Record<string, string>>} set */
-function withSet(response, set) {
-  const headers = new Headers(response.headers);
-  applyHeaderSet(headers, set);
-  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+/** The opt-ins that are the page policy's options too (buildContentSecurityPolicy). */
+const POLICY_OPT_INS = /** @type {const} */ (["cloudflareWebAnalytics", "inlineScripts", "strictDynamic", "framedBySameOrigin", "baseUriSelf", "formTargets"]);
+
+/**
+ * A site's headers from its registry entry (./sites), for its static files and the Worker in front of them: `set`, what
+ * every response carries (buildSecurityHeaders({ site }), then `headers`, what the site adds on top, such as Prelum's
+ * TDMRep header), and `file`, the `_headers` text (headersFile with charset: true, then the entry's `assets.paths`). A
+ * static site whose entry has `assets.policy` serves every page under that one policy, built with its policy opt-ins
+ * (denyUnlisted true, cloudflareWebAnalytics, framedBySameOrigin...) and reporting to /csp-report on its own origin or
+ * `assets.reportOrigin`: it is in `set` with its Reporting-Endpoints, and in `file` as a `/*` rule of its own, since
+ * headersFile keeps a policy off the set's block. What the entry stages ("report-only" trustedTypes or denyUnlisted)
+ * goes in a Report-Only policy beside it (buildStagedPolicy). The site-runtime-headers bin writes `file`.
+ * @param {import("./sites.mjs").SiteEntry} entry
+ * @param {{ headers?: Readonly<Record<string, string>> }} [options]
+ * @returns {{ set: Record<string, string>, file: string }}
+ */
+export function staticHeaders(entry, { headers = {} } = {}) {
+  const { policy, reportOrigin = entry.origin, paths = {} } = entry.assets ?? {};
+  /** @type {Record<string, string>} */
+  const set = { ...buildSecurityHeaders({ site: entry }), ...headers };
+  /** @type {Record<string, Record<string, string>>} */
+  const rules = {};
+  if (policy) {
+    const optIns = Object.fromEntries(POLICY_OPT_INS.flatMap((key) => (entry.optIns?.[key] ? [[key, entry.optIns[key].value]] : [])));
+    const remote = new URL(reportOrigin).origin !== entry.origin;
+    const types = entry.optIns?.trustedTypes?.value;
+    const unlisted = entry.optIns?.denyUnlisted?.value;
+    /** @type {import("./csp.mjs").SitePolicy} */
+    const options = {
+      ...optIns,
+      denyUnlisted: unlisted === true,
+      ...(types === true ? { trustedTypes: true } : {}),
+      ...policy,
+      reportUri: remote ? new URL(CSP_REPORT_PATH, reportOrigin).href : CSP_REPORT_PATH,
+    };
+    const csp = buildContentSecurityPolicy(options);
+    set[csp.name] = csp.value;
+    rules["/*"] = { [csp.name]: csp.value };
+    // What the entry stages (a "report-only" trustedTypes or denyUnlisted) rides in the Report-Only policy beside it.
+    const staged = { ...(types === "report-only" ? { trustedTypes: /** @type {const} */ (true) } : {}), ...(unlisted === "report-only" ? { denyUnlisted: true } : {}) };
+    if (Object.keys(staged).length > 0) {
+      const companion = buildStagedPolicy(options, staged);
+      set[companion.name] = companion.value;
+      rules["/*"][companion.name] = companion.value;
+    }
+    set["Reporting-Endpoints"] = reportingEndpoints(CSP_REPORT_GROUP, new URL(CSP_REPORT_PATH, reportOrigin));
+  }
+  for (const [pattern, added] of Object.entries(paths)) rules[pattern] = { ...rules[pattern], ...added };
+  const file = headersFile(set, {
+    charset: true,
+    comment: `Written by site-runtime-headers from the site registry (@dustinedwards/site-runtime/sites, ${entry.id}). Do not edit.`,
+    paths: rules,
+  });
+  return { set, file };
 }
 
 /**
- * The fetch handler for a static site. `headers` is the site's security set (the one its `_headers` file was written
- * from), `preload` the `Link` header value from `preloads(...).header`.
+ * The fetch handler for a static site. `site` is its registry entry, whose set (staticHeaders) its `_headers` file was
+ * written from, with `headers` added to it; without `site`, `headers` is the whole set. `preload` is the `Link` header
+ * value from `preloads(...).header`.
  * @param {{
+ *   site?: import("./sites.mjs").SiteEntry,
  *   headers?: Readonly<Record<string, string>>,
  *   preload?: string,
  *   reportPath?: string | null,
@@ -52,13 +104,14 @@ function withSet(response, set) {
  *   notFound?: string,
  * }} [options]
  */
-export function staticSite({ headers = {}, preload = "", reportPath = "/csp-report", prefetch = {}, canonical = {}, notFound = "/404" } = {}) {
+export function staticSite({ site, headers: extra = {}, preload = "", reportPath = CSP_REPORT_PATH, prefetch = {}, canonical = {}, notFound = "/404" } = {}) {
+  const headers = site ? staticHeaders(site, { headers: extra }).set : extra;
   return {
     /** @param {Request} request @param {StaticSiteEnv} env */
     async fetch(request, env) {
       const url = new URL(request.url);
       const redirect = canonical === false ? null : canonicalRedirect(request, canonical);
-      if (redirect) return withSet(redirect, headers);
+      if (redirect) return applyHeaderSet(redirect, headers);
       if (reportPath && url.pathname === reportPath) {
         const limiter = env.CSP_REPORT_RATE_LIMIT;
         // Keyed on the edge-set client address, which is counted and never logged; a refusal drops the report (still 204).
@@ -67,7 +120,7 @@ export function staticSite({ headers = {}, preload = "", reportPath = "/csp-repo
           : undefined;
         return receiveCspReport(request, { headers, allow });
       }
-      if (prefetch !== false && url.pathname === SPECULATION_RULES_PATH) return withSet(speculationRulesResponse(prefetch, request), headers);
+      if (prefetch !== false && url.pathname === SPECULATION_RULES_PATH) return applyHeaderSet(speculationRulesResponse(prefetch, request), headers);
 
       const start = performance.now();
       let response = await env.ASSETS.fetch(request);

@@ -1,6 +1,7 @@
 /**
- * The one receiver for Content-Security-Policy violation reports, for every site that names a report sink in its
- * policy (buildContentSecurityPolicy requires one):
+ * The one receiver for the reports a site's headers ask for, at /csp-report (CSP_REPORT_PATH, ./csp): Content-Security-Policy
+ * violations, Integrity-Policy's `integrity-violation` (a script with no integrity, S2) and COEP's `coep` (a
+ * subresource the embedder policy refused or would refuse, I3). Every site names it (buildContentSecurityPolicy requires one):
  *
  * - A POST always gets 204, even when it is too large, unreadable or rate-limited: an error status makes browsers
  *   send the report again.
@@ -18,7 +19,8 @@
  * - Nothing is stored: a store the internet can write to is a storage-exhaustion primitive.
  *
  * Both wire formats are read: report-uri's `{"csp-report": {...}}` (application/csp-report) and the Reporting API's
- * array of `{type: "csp-violation", body}` (application/reports+json).
+ * array of `{type, body}` (application/reports+json), of the three types above; any other type (deprecation,
+ * intervention) is dropped.
  */
 
 import { readCapped } from "./body.mjs";
@@ -57,36 +59,50 @@ export function trimReportUrl(value) {
   }
 }
 
+/** The Reporting API types the receiver keeps: what the policy, Integrity-Policy and COEP report. */
+const KEPT = new Set(["csp-violation", "integrity-violation", "coep"]);
+
 /**
- * The violations in a parsed report body, in either format; anything else is no violations.
+ * The reports in a parsed body, in either format, each with its type: the Reporting API's csp-violation,
+ * integrity-violation and coep reports, or report-uri's one csp-report. Anything else is no reports.
  * @param {unknown} parsed
- * @returns {Record<string, unknown>[]}
+ * @returns {{ type: string, body: Record<string, unknown> }[]}
  */
-export function cspViolations(parsed) {
+export function reportBodies(parsed) {
   if (Array.isArray(parsed)) {
-    return parsed.filter((r) => isObject(r) && r.type === "csp-violation" && isObject(r.body)).map((r) => /** @type {Record<string, unknown>} */ (r.body));
+    return parsed
+      .filter((r) => isObject(r) && typeof r.type === "string" && KEPT.has(r.type) && isObject(r.body))
+      .map((r) => ({ type: /** @type {string} */ (r.type), body: /** @type {Record<string, unknown>} */ (r.body) }));
   }
-  if (isObject(parsed) && isObject(parsed["csp-report"])) return [/** @type {Record<string, unknown>} */ (parsed["csp-report"])];
+  if (isObject(parsed) && isObject(parsed["csp-report"])) return [{ type: "csp-violation", body: /** @type {Record<string, unknown>} */ (parsed["csp-report"]) }];
   return [];
 }
 
 /**
- * One violation as the line the receiver logs: the directive, what was blocked, the page, the script and line, and
- * whether it was enforced or only reported. Each field is read under the Reporting API's name or report-uri's.
+ * One report as the line the receiver logs: what refused it (the CSP directive, Integrity-Policy's
+ * `blocked-destinations`, or the COEP check: corp, navigation, worker initialization), what was blocked, the page, the
+ * script and line, the request's destination, and whether it was enforced or only reported. Each field is read under
+ * the Reporting API's name or report-uri's.
  * @param {Record<string, unknown>} body
+ * @param {string} [type] the report's type (default csp-violation)
  */
-export function summarizeViolation(body) {
+export function summarizeReport(body, type = "csp-violation") {
   const field = (/** @type {string[]} */ ...names) => names.map((n) => body[n]).find((v) => v !== undefined);
   const line = field("lineNumber", "line-number");
   const disposition = field("disposition");
+  const refusedBy =
+    type === "integrity-violation" ? "blocked-destinations" : type === "coep" ? field("type") : field("effectiveDirective", "effective-directive", "violatedDirective", "violated-directive");
+  const destination = field("destination");
   return {
-    event: "csp-violation",
-    directive: String(field("effectiveDirective", "effective-directive", "violatedDirective", "violated-directive") ?? "").slice(0, 64) || undefined,
+    event: type,
+    directive: String(refusedBy ?? "").slice(0, 64) || undefined,
     blocked: trimReportUrl(field("blockedURL", "blocked-uri")),
     page: trimReportUrl(field("documentURL", "document-uri")),
     source: trimReportUrl(field("sourceFile", "source-file")),
     line: typeof line === "number" ? line : undefined,
-    disposition: disposition === "enforce" || disposition === "report" ? disposition : undefined,
+    ...(typeof destination === "string" ? { destination: destination.slice(0, 32) } : {}),
+    disposition:
+      disposition === "enforce" || body.reportOnly === false ? "enforce" : disposition === "report" || disposition === "reporting" || body.reportOnly === true ? "report" : undefined,
   };
 }
 
@@ -148,10 +164,10 @@ export async function receiveCspReport(request, { allow, allowOrigin, headers = 
   } catch {
     return answer(204);
   }
-  for (const body of cspViolations(parsed).slice(0, MAX_REPORTS)) {
+  for (const { type, body } of reportBodies(parsed).slice(0, MAX_REPORTS)) {
     const raw = ["blockedURL", "blocked-uri", "sourceFile", "source-file"].map((n) => body[n]);
     if (raw.some((v) => typeof v === "string" && NOISE.test(v))) continue;
-    const line = summarizeViolation(body);
+    const line = summarizeReport(body, type);
     log(line);
     const blocked = line.blocked && /^https?:/.test(line.blocked) ? new URL(line.blocked).origin : line.blocked;
     const key = `${line.directive} ${blocked}`;

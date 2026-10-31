@@ -11,15 +11,22 @@
  *   Cloudflare Web Analytics beacon are written.
  * - buildPolicy is the plain join, for a policy that is not a page's (a sandboxed media route).
  *
- * - reportingEndpoints is the Reporting-Endpoints header that names a policy's report-to group.
+ * - reportingEndpoints is the Reporting-Endpoints header that names a policy's report-to group. Every site reports
+ *   to CSP_REPORT_PATH (/csp-report) under the group CSP_REPORT_GROUP (csp-endpoint), the builder's defaults.
  * - buildStagedPolicy is the Report-Only companion for a rollout (Trusted Types first); integrityPolicy is the
- *   Integrity-Policy header.
+ *   Integrity-Policy header, and integrityHash the sha384 a static build writes into a tag's `integrity`.
  *
  * Which to use, nonce or hash: a response that is never shared-cached may carry a nonce. A response that is
  * edge-cached either trusts its inline scripts by hash, or keeps its nonce and has renewNonce give every response a
  * fresh one, in the header and on every element that carried the old one (Foxing's edge cache does this). Only when
  * neither can work does a site opt into `inlineScripts: "unsafe-inline"`.
  */
+
+/** Where every site receives its reports (./csp-report): the default report-uri, and the path the check expects. */
+export const CSP_REPORT_PATH = "/csp-report";
+
+/** The report-to group every site names: the policy's, Integrity-Policy's endpoints and COEP's report-to. */
+export const CSP_REPORT_GROUP = "csp-endpoint";
 
 /** @returns {string} a fresh nonce, 24 base64 characters */
 export function generateNonce() {
@@ -36,6 +43,19 @@ export function generateNonce() {
 export async function scriptHash(text) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
   return `sha256-${btoa(String.fromCharCode(...new Uint8Array(digest)))}`;
+}
+
+/**
+ * The `integrity` attribute value for a file a static build writes a tag for (`<script type="module" src
+ * integrity crossorigin>`, a modulepreload): `sha384-<base64>` of its exact bytes. A classic script needs
+ * `crossorigin` too, since Integrity-Policy refuses a no-cors script request whatever its integrity.
+ * @param {string | ArrayBuffer | ArrayBufferView} content
+ * @returns {Promise<string>}
+ */
+export async function integrityHash(content) {
+  const bytes = typeof content === "string" ? new TextEncoder().encode(content) : content;
+  const digest = await crypto.subtle.digest("SHA-384", bytes);
+  return `sha384-${btoa(String.fromCharCode(...new Uint8Array(digest)))}`;
 }
 
 /**
@@ -153,8 +173,9 @@ export function broadSource(source, directive = "script-src") {
  *   way to write the keyword: as a raw script source it is refused.
  *   `styleAttributesInline`: `style-src-attr 'unsafe-inline'`, for pages that emit style attributes, which a nonce
  *   cannot cover; the one inline allowance offered, scoped to attributes, which run no code.
- *   `reportUri` / `reportTo`: where violations go. Both are required: a policy with no sink hides the page it breaks,
- *   report-to reaches browsers with the Reporting API and report-uri the rest (CSP Evaluator, ASVS 3.4.7).
+ *   `reportUri` / `reportTo`: where violations go, CSP_REPORT_PATH and CSP_REPORT_GROUP unless given (a page that
+ *   reports to another host names the full URL). Both are always written: a policy with no sink hides the page it
+ *   breaks, report-to reaches browsers with the Reporting API and report-uri the rest (CSP Evaluator, ASVS 3.4.7).
  *   `framedBySameOrigin`: `frame-ancestors 'self'` in place of 'none', for a site that shows its own pages in frames
  *   (a design system's live specimens). No other origin can be allowed to frame a site.
  *   `denyUnlisted`: `default-src 'none'` in place of 'self', so a kind the policy does not name (media, frames,
@@ -185,7 +206,7 @@ export function broadSource(source, directive = "script-src") {
  * @returns {{ name: "Content-Security-Policy" | "Content-Security-Policy-Report-Only", value: string }}
  */
 export function buildContentSecurityPolicy(site) {
-  const { sources = {}, scriptHashes = [], styleHashes = [], nonce, nonceStyles = true, inlineScripts, strictDynamic = false, styleAttributesInline = false, cloudflareWebAnalytics = false, reportUri, reportTo, reportOnly = false, framedBySameOrigin = false, baseUriSelf = false, denyUnlisted = false, noForms = false, formTargets = [], trustedTypes, extraDirectives = [] } = site;
+  const { sources = {}, scriptHashes = [], styleHashes = [], nonce, nonceStyles = true, inlineScripts, strictDynamic = false, styleAttributesInline = false, cloudflareWebAnalytics = false, reportUri = CSP_REPORT_PATH, reportTo = CSP_REPORT_GROUP, reportOnly = false, framedBySameOrigin = false, baseUriSelf = false, denyUnlisted = false, noForms = false, formTargets = [], trustedTypes, extraDirectives = [] } = site;
   if (!reportUri || !reportTo) throw new Error("a policy needs both report sinks: reportUri for browsers without the Reporting API, reportTo for the rest");
   if (inlineScripts !== undefined && inlineScripts !== "unsafe-inline") throw new Error(`inlineScripts is "unsafe-inline" or left out, not ${JSON.stringify(inlineScripts)}`);
   if (inlineScripts && (nonce !== undefined || scriptHashes.length > 0)) {
@@ -258,8 +279,8 @@ export function buildContentSecurityPolicy(site) {
     ...(trustedTypes ? ["require-trusted-types-for 'script'"] : []),
     ...(typeNames.length > 0 ? [`trusted-types ${typeNames.join(" ")}`] : []),
     ...extraDirectives,
-    ...(reportUri ? [`report-uri ${checkSource(reportUri)}`] : []),
-    ...(reportTo ? [`report-to ${checkSource(reportTo)}`] : []),
+    `report-uri ${checkSource(reportUri)}`,
+    `report-to ${checkSource(reportTo)}`,
   ];
   return { name: reportOnly ? "Content-Security-Policy-Report-Only" : "Content-Security-Policy", value: buildPolicy(directives) };
 }
@@ -306,16 +327,18 @@ export function buildStagedPolicy(site, staged) {
 /**
  * The Integrity-Policy header: every script must carry integrity metadata (an `integrity` attribute), and a no-cors
  * script request is blocked (https://w3c.github.io/webappsec-subresource-integrity/#integrity-policy-section). It
- * needs build-time integrity on every bundle, dynamically imported chunks included, so ship it Report-Only first.
- * `endpoint` is a Reporting-Endpoints group name (reportingEndpoints) the reports go to.
+ * needs build-time integrity on every bundle, dynamically imported chunks included (React Router's
+ * `subResourceIntegrity: true` writes it into the import map and modulepreloads), so ship it Report-Only first.
+ * `endpoint` is the Reporting-Endpoints group the reports go to (default CSP_REPORT_GROUP). buildSecurityHeaders
+ * writes it from an entry's `integrityPolicy` opt-in.
  * @param {{ endpoint?: string, reportOnly?: boolean }} [options]
  * @returns {{ name: "Integrity-Policy" | "Integrity-Policy-Report-Only", value: string }}
  */
-export function integrityPolicy({ endpoint, reportOnly = false } = {}) {
-  if (endpoint !== undefined && !/^[a-z*][a-z0-9_.*-]*$/.test(endpoint)) throw new Error(`${JSON.stringify(endpoint)} is not a Reporting-Endpoints group name`);
+export function integrityPolicy({ endpoint = CSP_REPORT_GROUP, reportOnly = false } = {}) {
+  if (!/^[a-z*][a-z0-9_.*-]*$/.test(endpoint)) throw new Error(`${JSON.stringify(endpoint)} is not a Reporting-Endpoints group name`);
   return {
     name: reportOnly ? "Integrity-Policy-Report-Only" : "Integrity-Policy",
-    value: ["blocked-destinations=(script)", ...(endpoint ? [`endpoints=(${endpoint})`] : [])].join(", "),
+    value: `blocked-destinations=(script), endpoints=(${endpoint})`,
   };
 }
 

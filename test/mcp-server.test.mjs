@@ -172,22 +172,25 @@ test("the door: a foreign or null Origin is refused, a missing or listed one pas
 test("withMcpHeaders: every door response, a 404 or the consent page, wears the full set and passes the check; security.txt is answered", async () => {
   const { withMcpHeaders } = await import("../mcp-server.mjs");
   const { checkSecurityHeaders, checkSecurityTxt, failures } = await import("../check.mjs");
-  const { foxhoundMcp } = await import("../sites.mjs");
+  const { SITES } = await import("../sites.mjs");
   const { CONSENT_STYLE } = await import("../mcp-login.mjs");
+  for (const site of SITES.filter((s) => s.id.endsWith("-mcp"))) {
   const door = withMcpHeaders(
     (request) =>
       new URL(request.url).pathname === "/authorize"
         ? new Response(`<style>${CONSENT_STYLE}</style>`, { headers: { "Content-Type": "text/html; charset=utf-8" } })
         : new Response("Not found", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } }),
-    { site: foxhoundMcp, securityTxt: { contact: "security@example.com", expires: new Date(Date.now() + 200 * 86_400_000) } },
+    { site, securityTxt: { contact: "security@example.com", expires: new Date(Date.now() + 200 * 86_400_000) } },
   );
   for (const path of ["/nowhere", "/authorize"]) {
     const res = await door(new Request(`https://example.com${path}`), {}, {});
-    assert.deepEqual(failures(checkSecurityHeaders(res.headers, { site: foxhoundMcp })), [], path);
+    assert.deepEqual(failures(checkSecurityHeaders(res.headers, { site })), [], `${site.id} ${path}`);
     assert.equal(res.headers.get("Cache-Control"), "no-store");
   }
+  if (site.id !== "foxhound-mcp") continue;
   const url = "https://example.com/.well-known/security.txt";
   const txt = await door(new Request(url), {}, {});
   const graded = checkSecurityTxt({ url, origin: "https://example.com", status: txt.status, headers: txt.headers, body: await txt.text() });
   assert.deepEqual(graded.filter((r) => !r.pass && !r.notice).map((r) => r.id), []);
+  }
 });

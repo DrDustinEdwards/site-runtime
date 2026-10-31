@@ -18,8 +18,14 @@
  * by hash instead. Only when neither can work (an edge-cached page that streams inline scripts whose text changes
  * per page, as React Router's hydration data does) does a site opt into `inlineScripts: "unsafe-inline"`.
  */
+/** Where every site receives its reports (./csp-report): the default report-uri, and the path the check expects. */
+export const CSP_REPORT_PATH: "/csp-report";
+/** The report-to group every site names: the policy's, Integrity-Policy's endpoints and COEP's report-to. */
+export const CSP_REPORT_GROUP: "csp-endpoint";
 /** @returns {string} a fresh nonce, 24 base64 characters */
 export function generateNonce(): string;
+/** The `integrity` value for a file a static build writes a tag for: `sha384-<base64>` of its bytes. */
+export function integrityHash(content: string | ArrayBuffer | ArrayBufferView): Promise<string>;
 /**
  * @param {string} text an inline script's exact text, as the page renders it
  * @returns {Promise<string>} `sha256-<base64>`, without the quotes the policy puts round it
@@ -123,7 +129,7 @@ export type CspSources = {
  * way to write the keyword: as a raw script source it is refused.
  * `styleAttributesInline`: `style-src-attr 'unsafe-inline'`, for pages that emit style attributes, which a nonce
  * cannot cover; the one inline allowance offered, scoped to attributes, which run no code.
- * `reportUri` / `reportTo`: where violations go, both required (report-to for the Reporting API, report-uri for the rest).
+ * `reportUri` / `reportTo`: where violations go, CSP_REPORT_PATH and CSP_REPORT_GROUP unless given; both are always written.
  * `framedBySameOrigin`: `frame-ancestors 'self'` in place of 'none', for a site that shows its own pages in frames.
  * `denyUnlisted`: `default-src 'none'` in place of 'self', so a kind the policy does not name (media, frames,
  * workers, the manifest) is refused rather than allowed from the site; for a static site that wants nothing more.
@@ -179,7 +185,7 @@ export function buildStagedPolicy(site: SitePolicy, staged: Partial<SitePolicy>)
     name: "Content-Security-Policy-Report-Only";
     value: string;
 };
-/** Integrity-Policy (or -Report-Only): `blocked-destinations=(script)`, with `endpoints=(<group>)` when given. */
+/** Integrity-Policy (or -Report-Only): `blocked-destinations=(script), endpoints=(<group>)`, the group CSP_REPORT_GROUP unless given. */
 export function integrityPolicy(options?: { endpoint?: string; reportOnly?: boolean }): {
     name: "Integrity-Policy" | "Integrity-Policy-Report-Only";
     value: string;
