@@ -139,4 +139,9 @@ export const OWASP_EVENTS = Object.freeze({
   authorizationFailure: "authz_fail",
   inputValidationFailure: "input_validation_fail",
   rateLimitExceeded: "excess_rate_limit_exceeded",
+  signInLinkSent: "authn_token_created",
+  signOut: "session_logout",
+  sessionExpired: "session_expired",
+  userUpdated: "user_updated",
+  userDeleted: "user_deleted",
 });

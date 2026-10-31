@@ -47,6 +47,11 @@
  * - FRESH: adding a passkey, unlinking Google or Apple, deleting the account and listing sessions need a sign-in in
  *   the last FRESH_SECONDS (Better Auth's freshAge, which defaults to a day). Session lengths are the site's own.
  * - SIGN-OUT CLEARS THE BROWSER: Better Auth's /sign-out answers with LOGOUT_HEADERS (`./headers`, Clear-Site-Data).
+ * - EVERY AUTH EVENT IS LOGGED, AND EVERY CHANGE TO HOW A PERSON SIGNS IN IS TOLD TO THEM (`./sign-in-account.mjs`):
+ *   one `./log` line per event, with OWASP's names, from a plugin's hooks, so a site gets it with no code; and with the
+ *   site's `sendSecurityNotice`, a notice for a passkey added or removed, a sign-in method linked or unlinked, the email
+ *   changed (to both addresses), every session ended, and the account deleted. A notice that fails to send is logged
+ *   and the change stands.
  * - ACCOUNTS ARE JOINED ONLY BY A SIGNED-IN PERSON (linkSocial), never by a matching email at sign-in, the recurring
  *   takeover path.
  * - RATE LIMITED IN THE DATABASE, keyed on Cloudflare's client address: Better Auth counts each request in one atomic
@@ -57,15 +62,26 @@
  * Async, because Apple's secret is signed with WebCrypto. A site builds its auth once per isolate and keeps the promise.
  */
 import { passkey } from "@better-auth/passkey";
-import { APIError, createAuthMiddleware } from "better-auth/api";
+import { APIError, createAuthMiddleware, getOAuthState } from "better-auth/api";
 import { captcha, emailOTP, magicLink } from "better-auth/plugins";
 
 import { appleClientSecret } from "./apple-secret.mjs";
+import { fromBase64url } from "./encoding.mjs";
 import { LOGOUT_HEADERS } from "./headers.mjs";
+import { OWASP_EVENTS, logEvent } from "./log.mjs";
 import { emailKey, limit, mustStop } from "./rate-limit/index.mjs";
+import { authEvent, logAuthEvent, noticeDetail, passkeyProvider, sendNoticeSafely } from "./sign-in-account.mjs";
 import { CONFIRM_PATH, confirmLinkURL } from "./sign-in-link.mjs";
 
 export { CONFIRM_PATH, confirmSignInLink } from "./sign-in-link.mjs";
+export {
+  SECURITY_NOTICE_KINDS,
+  coarseLocation,
+  deviceName,
+  passkeyLabel,
+  passkeyProvider,
+  sessionRows,
+} from "./sign-in-account.mjs";
 
 /**
  * How long a sign-in link and its code work: 15 minutes. Better Auth's default is 5, which ran out while a person
@@ -123,6 +139,7 @@ const OTP_OFF_PATHS = [
 /**
  * @typedef {(data: { email: string, url: string, token: string, code: string }, ctx?: unknown) => Promise<void> | void} SendMagicLink
  * @typedef {(data: { email: string, code: string }, ctx?: unknown) => Promise<void> | void} SendSignInCode
+ * @typedef {import("./sign-in-account.mjs").SendSecurityNotice} SendSecurityNotice
  */
 
 /**
@@ -142,12 +159,21 @@ export function turnstileSiteKey(env) {
  * }} env
  * @param {{
  *   siteName: string, sendMagicLink: SendMagicLink, social?: boolean, appCode?: boolean, sendSignInCode?: SendSignInCode,
- *   confirmPath?: string, emailLimiter?: Parameters<typeof limit>[0],
+ *   confirmPath?: string, emailLimiter?: Parameters<typeof limit>[0], sendSecurityNotice?: SendSecurityNotice,
  * }} site
  */
 export async function signInOptions(
   env,
-  { siteName, sendMagicLink, social = false, appCode = false, sendSignInCode, confirmPath = CONFIRM_PATH, emailLimiter },
+  {
+    siteName,
+    sendMagicLink,
+    social = false,
+    appCode = false,
+    sendSignInCode,
+    confirmPath = CONFIRM_PATH,
+    emailLimiter,
+    sendSecurityNotice,
+  },
 ) {
   if (appCode && typeof sendSignInCode !== "function") throw new Error("appCode: true needs sendSignInCode to mail the code");
   if (!confirmPath.startsWith("/") || confirmPath.startsWith("//")) throw new Error("confirmPath is a path on the site");
@@ -187,8 +213,16 @@ export async function signInOptions(
       rpName: siteName,
       origin: url.origin,
       authenticatorSelection: { residentKey: "required", userVerification: "preferred" },
+      // A passkey the page did not name is stored with its provider's name, so a list never shows a blank.
+      registration: {
+        afterVerification: ({ ctx, verification }) => {
+          const name = passkeyProvider(verification.registrationInfo?.aaguid, ctx.headers?.get("user-agent"));
+          return name ? { name } : undefined;
+        },
+      },
     }),
     SIGN_OUT_CLEARS,
+    accountEvents(siteName, sendSecurityNotice),
   ];
   if (turnstileSiteKey(env) && env.TURNSTILE_SECRET_KEY) {
     plugins.push(
@@ -244,6 +278,158 @@ const SIGN_OUT_CLEARS = {
   },
 };
 
+/**
+ * The auth event log and the security notices (`./sign-in-account.mjs`) as one plugin: an after hook on every endpoint,
+ * and database hooks for what only the rows show (a linked or unlinked account's provider, both addresses of an email
+ * change, a deleted user's address). Every hook catches its own errors, logged as `auth_event_failed`: a throw from an
+ * after hook would turn a change already made into an error answer. A notice goes through Better Auth's
+ * `runInBackgroundOrAwait`, so a site with `advanced.backgroundTasks` (waitUntil) answers before the mail is sent.
+ * @param {string} siteName
+ * @param {SendSecurityNotice | undefined} sendSecurityNotice
+ */
+function accountEvents(siteName, sendSecurityNotice) {
+  /** @typedef {{ path?: string, query?: Record<string, unknown>, headers?: Headers, request?: Request, context?: any } | null | undefined} HookContext */
+  /** @typedef {{ id: string, email: string, name?: string | null }} User */
+  /** @type {WeakMap<object, string>} the address an update is about to replace, by the request it runs in */
+  const replacedEmail = new WeakMap();
+
+  /**
+   * @param {HookContext} ctx
+   * @param {import("./sign-in-account.mjs").SecurityNoticeKind} kind
+   * @param {User | null | undefined} user
+   * @param {Omit<Parameters<typeof noticeDetail>[1], "siteName">} [facts]
+   */
+  const notify = async (ctx, kind, user, facts = {}) => {
+    if (!sendSecurityNotice || !user?.email) return;
+    const request = ctx?.request;
+    const detail = noticeDetail(kind, { siteName, request, userAgent: ctx?.headers?.get("user-agent"), ...facts });
+    const notice = { user: { id: user.id, email: user.email, name: user.name ?? null }, ...(request ? { request } : {}), detail };
+    const sending = sendNoticeSafely(sendSecurityNotice, kind, notice);
+    await (ctx?.context?.runInBackgroundOrAwait ? ctx.context.runInBackgroundOrAwait(sending) : sending);
+  };
+  /** Runs a hook's work, and logs instead of throwing. @param {() => Promise<void>} run */
+  const safely = async (run) => {
+    try {
+      await run();
+    } catch (error) {
+      logEvent("auth_event_failed", { error }, { level: "error" });
+    }
+  };
+
+  return {
+    id: "sign-in-account-events",
+    init: () => ({
+      options: {
+        databaseHooks: {
+          account: {
+            create: {
+              // A link, not a sign-up: the account joins a user who was signed in (/link-social) or who began the
+              // OAuth flow as a link (/callback/:id, whose state names the user).
+              after: (/** @type {any} */ account, /** @type {HookContext} */ ctx) =>
+                safely(async () => {
+                  if (!account || !ctx) return;
+                  /** @type {User | null | undefined} */
+                  let user = null;
+                  if (ctx.path === "/link-social") user = ctx.context?.session?.user;
+                  else if (ctx.path === "/callback/:id" && (await getOAuthState())?.link?.userId === account.userId) {
+                    user = await ctx.context?.internalAdapter.findUserById(account.userId);
+                  }
+                  if (!user || user.id !== account.userId) return;
+                  await logAuthEvent({
+                    event: OWASP_EVENTS.userUpdated,
+                    fields: { change: "sign_in_linked", via: account.providerId, user_id: user.id },
+                  });
+                  await notify(ctx, "sign-in-linked", user, { provider: account.providerId });
+                }),
+            },
+            delete: {
+              // Only an unlink; deleting a user deletes its accounts too, and that is told as the deletion.
+              after: (/** @type {any} */ account, /** @type {HookContext} */ ctx) =>
+                safely(async () => {
+                  if (!account || ctx?.path !== "/unlink-account") return;
+                  await logAuthEvent({
+                    event: OWASP_EVENTS.userUpdated,
+                    fields: { change: "sign_in_unlinked", via: account.providerId, user_id: account.userId },
+                  });
+                  await notify(ctx, "sign-in-unlinked", ctx.context?.session?.user, { provider: account.providerId });
+                }),
+            },
+          },
+          user: {
+            update: {
+              // The address being replaced: the signed-in user's (/change-email, or /verify-email from a signed-in
+              // browser), else the one in /verify-email's token, which Better Auth has verified before it updates.
+              before: (/** @type {any} */ data, /** @type {HookContext} */ ctx) =>
+                safely(async () => {
+                  if (typeof data?.email !== "string" || !ctx) return;
+                  const old =
+                    ctx.context?.session?.user?.email ?? (ctx.path === "/verify-email" ? emailInToken(ctx.query?.token) : null);
+                  if (typeof old === "string") replacedEmail.set(ctx, old);
+                }),
+              after: (/** @type {any} */ user, /** @type {HookContext} */ ctx) =>
+                safely(async () => {
+                  const old = ctx ? replacedEmail.get(ctx) : undefined;
+                  if (!old || !user?.email || old.toLowerCase() === String(user.email).toLowerCase()) return;
+                  if (ctx) replacedEmail.delete(ctx);
+                  await logAuthEvent({ event: OWASP_EVENTS.userUpdated, fields: { change: "email_changed", user_id: user.id } });
+                  const facts = { oldEmail: old, newEmail: user.email };
+                  await notify(ctx, "email-changed", user, facts);
+                  await notify(ctx, "email-changed", { ...user, email: old }, { ...facts, toOldAddress: true });
+                }),
+            },
+            delete: {
+              after: (/** @type {any} */ user, /** @type {HookContext} */ ctx) =>
+                safely(async () => {
+                  if (!user) return;
+                  await logAuthEvent({ event: OWASP_EVENTS.userDeleted, fields: { user_id: user.id } });
+                  await notify(ctx, "account-deleted", user);
+                }),
+            },
+          },
+        },
+      },
+    }),
+    hooks: {
+      after: [
+        {
+          matcher: () => true,
+          handler: createAuthMiddleware((ctx) =>
+            safely(async () => {
+              const newSession = ctx.context.newSession;
+              /** @type {User | undefined} */
+              const user = ctx.context.session?.user ?? newSession?.user;
+              const event = authEvent({
+                path: ctx.path,
+                params: ctx.params,
+                body: ctx.body,
+                returned: ctx.context.returned,
+                signedIn: Boolean(newSession),
+                userId: user?.id,
+                linking: ctx.path === "/callback/:id" && Boolean((await getOAuthState())?.link),
+              });
+              if (!event) return;
+              await logAuthEvent(event);
+              if (event.notice) await notify(ctx, event.notice.kind, user, event.notice);
+            }),
+          ),
+        },
+      ],
+    },
+  };
+}
+
+/**
+ * The `email` claim of /verify-email's token, read without a check because Better Auth has checked it in this request.
+ * @param {unknown} token
+ */
+function emailInToken(token) {
+  try {
+    return JSON.parse(new TextDecoder().decode(fromBase64url(String(token).split(".")[1]))).email;
+  } catch {
+    return null;
+  }
+}
+
 /** The endpoints that spend an address's budget, and which one. */
 const EMAIL_LIMITED = { "/sign-in/magic-link": LINK_EMAIL_RULES, [APP_CODE_PATH]: LINK_EMAIL_RULES, [SIGN_IN_CODE_PATH]: CODE_EMAIL_RULES };
 
@@ -267,6 +453,12 @@ function emailLimit(namespace) {
             if (!key) return;
             const verdict = await limit(namespace, key, [...rules], { onUnavailable: "allow" });
             if (!mustStop(verdict, "allow")) return;
+            await logAuthEvent({
+              event: OWASP_EVENTS.rateLimitExceeded,
+              fields: { endpoint: path, bucket: rules === CODE_EMAIL_RULES ? "code-email" : "link-email" },
+              level: "warn",
+              email: ctx.body?.email,
+            });
             throw new APIError(
               "TOO_MANY_REQUESTS",
               { code: "EMAIL_RATE_LIMITED", message: "Too many tries for this address. Try again later." },
