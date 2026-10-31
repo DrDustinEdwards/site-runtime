@@ -592,8 +592,11 @@ const STINGER_WORDS = [2, 5];
 const DETAIL_MIN_WORDS = 40;
 /** A draft paragraph shorter than this is not weighed for detail. */
 const DETAIL_DRAFT_MIN_WORDS = 25;
-/** Words written in capitals that name a kind of thing, not a particular one: "DNA" is not a specific the way "Larkspur" is. */
-const GENERIC_CAPS = new Set(["DNA", "RNA", "mRNA", "cDNA", "tRNA", "rRNA", "dsDNA", "ssDNA", "PCR", "ATP", "I"]);
+/**
+ * A capitalized word that is not a specific: "I", and acronyms ("API", "PDF", "mRNA"), which in any field mostly name a kind of
+ * thing rather than a particular one the way "Larkspur" does. A rule, not a list, so no one field's vocabulary is built in.
+ */
+const isGenericCaps = (/** @type {string} */ w) => w === "I" || /^[a-z]{0,2}[A-Z]{2,}s?$/.test(w);
 
 /** Specific things per 100 words: numbers, and capitalized words that do not open a sentence (names, places, species). @param {string} text */
 function detailRate(text) {
@@ -603,7 +606,7 @@ function detailRate(text) {
     const ws = s.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu) ?? [];
     total += ws.length;
     ws.forEach((w, i) => {
-      if (/\d/.test(w) || (i > 0 && /^\p{Lu}/u.test(w) && !GENERIC_CAPS.has(w))) hits++;
+      if (/\d/.test(w) || (i > 0 && /^\p{Lu}/u.test(w) && !isGenericCaps(w))) hits++;
     });
   }
   return total ? (hits / total) * 100 : 0;
@@ -644,7 +647,7 @@ function keyOf(w) {
 
 /** The names and numbers in a text, sentence by sentence: what `detailRate` counts. @param {string} text */
 function specificsOf(text) {
-  return sentences(text).map((s) => (s.match(/[\p{L}\p{N}]+(?:['’.,-][\p{L}\p{N}]+)*/gu) ?? []).filter((w, i) => /\d/.test(w) || (i > 0 && /^\p{Lu}/u.test(w) && !GENERIC_CAPS.has(w))));
+  return sentences(text).map((s) => (s.match(/[\p{L}\p{N}]+(?:['’.,-][\p{L}\p{N}]+)*/gu) ?? []).filter((w, i) => /\d/.test(w) || (i > 0 && /^\p{Lu}/u.test(w) && !isGenericCaps(w))));
 }
 
 /**
