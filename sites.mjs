@@ -18,7 +18,9 @@
  *   Permissions-Policy, PASSKEY_OVERRIDES). Some are a promise the check then holds the site to: strictDynamic (C3),
  *   trustedTypes (C7, `true` enforced or "report-only"), denyUnlisted (C9, `true` or "report-only"), integrityPolicy
  *   (S2, "enforce" or "report-only", which buildSecurityHeaders writes), coep (I3, which buildSecurityHeaders writes)
- *   and uploads (A3, the path prefix its uploaded files are served under, which the live check samples). A
+ *   uploads (A3, the path prefix its uploaded files are served under, which the live check samples) and embeds (the
+ *   post players of ./embeds: their features in the Permissions-Policy, their origins in frame-src, which the check
+ *   holds the site's policy to, and coep kept Report-Only). A
  *   "report-only" one is met by the site's Report-Only policy (buildStagedPolicy, ./csp) or header, whose reports reach
  *   the sink (./csp-report), the step before enforcing.
  * - `deviations`: a checklist item the site does not meet, by item id, with the reason the site's code gives; the
@@ -76,6 +78,7 @@ const popupSignIn = {
  *   integrityPolicy?: { value: "enforce" | "report-only", reason: string },
  *   coep?: { value: "credentialless" | "require-corp", reportOnly?: boolean, reason: string },
  *   uploads?: { value: string, reason: string },
+ *   embeds?: { value: boolean, reason: string },
  * }} SiteOptIns
  * @typedef {{ reason: string, value?: readonly string[] }} Deviation
  * @typedef {{
@@ -110,6 +113,9 @@ const coepCredentialless = {
   reason: "The pages embed no frame and load nothing from another origin that needs a cookie (the beacon included).",
 };
 const coepStaged = (/** @type {string} */ why) => ({ value: /** @type {const} */ ("credentialless"), reportOnly: true, reason: `Report-Only first: ${why}; the coep reports (./csp-report) show what enforcing would refuse.` });
+/** A site whose posts embed players (./embeds): none sends COEP, so enforcing it would refuse every one. */
+const coepEmbeds = (/** @type {string} */ why) => coepStaged(`${why}; and a post's players (./embeds) send no Cross-Origin-Embedder-Policy, so enforcing it would refuse them`);
+const embeds = (/** @type {string} */ where) => ({ value: true, reason: `Posts embed the players Dustin uses through Prelum's ::embed (${where}), loaded only on the reader's click.` });
 const doorCoep = { value: /** @type {const} */ ("credentialless"), reason: "The door's pages load nothing from another origin (default-src 'none'). Its COOP stays off for the popup sign-in, so this isolates nothing; it refuses what nothing loads." };
 
 const integrityStaged = {
@@ -176,10 +182,8 @@ export const dustinedwardsInfo = {
   },
   optIns: {
     cloudflareWebAnalytics: /* @__PURE__ */ beacon("workers/csp.mjs"),
-    coep: {
-      value: "credentialless",
-      reason: "The pages embed no cross-origin frame (the admin's preview is a sandboxed srcdoc frame, app/components/admin/kb-form.tsx), and the podcast audio and the beacon load without cookies.",
-    },
+    embeds: /* @__PURE__ */ embeds("the blog"),
+    coep: /* @__PURE__ */ coepEmbeds("the podcast audio and the beacon load without cookies"),
     integrityPolicy: integrityStaged,
     trustedTypes: typesStaged,
     denyUnlisted: unlistedStaged,
@@ -216,7 +220,8 @@ export const foxhound = {
     cloudflareWebAnalytics: /* @__PURE__ */ beacon("content-security-policy.ts"),
     formTargets: { value: ["https://checkout.stripe.com", "https://connect.stripe.com"], reason: "Stripe Checkout, and Connect OAuth, which /connect's POST redirects to." },
     passkey,
-    coep: /* @__PURE__ */ coepStaged("the merchant app returns from Stripe and draws its charts and the admin's pages behind a sign-in"),
+    embeds: /* @__PURE__ */ embeds("the blog"),
+    coep: /* @__PURE__ */ coepEmbeds("the merchant app returns from Stripe and draws its charts and the admin's pages behind a sign-in"),
     integrityPolicy: integrityStaged,
     trustedTypes: typesStaged,
     denyUnlisted: unlistedStaged,
@@ -270,7 +275,8 @@ export const germomics = {
   optIns: {
     cloudflareWebAnalytics: /* @__PURE__ */ beacon("app/lib/security-headers.ts"),
     inlineStyles: { value: true, reason: "TipTap and the data pages' map set inline styles, so styles keep 'unsafe-inline' and the nonce stays off style-src (app/lib/security-headers.ts)." },
-    coep: /* @__PURE__ */ coepStaged("the data pages load Google Maps' script, tiles and fonts and the games Phaser's assets, none of which this site controls"),
+    embeds: /* @__PURE__ */ embeds("the episode notes and blog"),
+    coep: /* @__PURE__ */ coepEmbeds("the data pages load Google Maps' script, tiles and fonts and the games Phaser's assets, none of which this site controls"),
     integrityPolicy: integrityStaged,
     trustedTypes: typesStaged,
     denyUnlisted: unlistedStaged,
@@ -472,7 +478,8 @@ export const capsomer = {
   optIns: {
     cloudflareWebAnalytics: /* @__PURE__ */ beacon("scripts/security-headers.ts"),
     framedBySameOrigin: { value: true, reason: "The site frames its own states pages and specimens; no other origin may." },
-    coep: /* @__PURE__ */ coepStaged("the site frames its own states pages and specimens, each of which must carry it too"),
+    embeds: /* @__PURE__ */ embeds("the prose-blocks specimen"),
+    coep: /* @__PURE__ */ coepEmbeds("the site frames its own states pages and specimens, each of which must carry it too"),
     integrityPolicy: { value: "report-only", reason: "The build's tags carry integrity (subresourceIntegrity, ./sri, site/vite.config.ts), but the admin and some states pages load chunks with import(), which only an import map could give integrity; Report-Only while the reports name them." },
     trustedTypes: typesStagedStatic,
     denyUnlisted: unlistedStaged,
@@ -491,8 +498,9 @@ export const prelum = {
   origin: "https://prelum.dustinedwards.info",
   optIns: {
     cloudflareWebAnalytics: /* @__PURE__ */ beacon("specimen/headers.mjs"),
-    denyUnlisted: nothingUnlisted,
-    coep: coepCredentialless,
+    denyUnlisted: { value: true, reason: "A static site that loads nothing beyond what its policy names, the post players in frame-src among them: default-src 'none'." },
+    embeds: /* @__PURE__ */ embeds("the specimen's embed section"),
+    coep: /* @__PURE__ */ coepEmbeds("the specimen shows every element a post can hold"),
     integrityPolicy: integrityStagedStatic,
     trustedTypes: typesStagedStatic,
   },

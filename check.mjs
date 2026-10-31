@@ -11,6 +11,7 @@
 
 import { CLOUDFLARE_WEB_ANALYTICS, CSP_REPORT_GROUP, CSP_REPORT_PATH, broadSource } from "./csp.mjs";
 import { allowlistBypass } from "./csp-bypasses.mjs";
+import { EMBED_FRAME_SOURCES } from "./embeds.mjs";
 import { STANDARD_SECURITY_HEADERS, buildSecurityHeaders, corpFor } from "./headers.mjs";
 import { OWASP_REMOVE } from "./owasp-headers.mjs";
 import { FAMILY_DEVIATIONS, SITE_DEVIATIONS } from "./sites-deviations.mjs";
@@ -346,6 +347,12 @@ export function checkSecurityHeaders(headers, options = {}) {
     false,
     !trustedTypes,
   );
+  // A site that embeds post players (./embeds) lets every one of them into its frames, or a reader's click loads nothing.
+  if (optIn("embeds")) {
+    const frames = (policy.get("frame-src") ?? policy.get("child-src") ?? policy.get("default-src") ?? []).map((s) => s.toLowerCase());
+    const shut = EMBED_FRAME_SOURCES.filter((o) => !frames.includes(o));
+    result("C16", "frame-src lets in every post player (declared: embeds)", shut.length === 0, `refuses ${shut.join(" ")} (EMBED_FRAME_SOURCES, ./embeds)`);
+  }
   const objects = policy.get("object-src") ?? policy.get("default-src");
   result("C2", "object-src is 'none'", objects?.length === 1 && objects[0] === "'none'", `got ${objects ? objects.join(" ") : "ABSENT"}`);
   // A declared opt-in allows 'self' (a site may use it on some pages only); a site entry that does not declare it allows 'none' alone.

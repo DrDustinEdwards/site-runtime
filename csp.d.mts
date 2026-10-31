@@ -131,6 +131,7 @@ export type CspSources = {
  * cannot cover; the one inline allowance offered, scoped to attributes, which run no code.
  * `reportUri` / `reportTo`: where violations go, CSP_REPORT_PATH and CSP_REPORT_GROUP unless given; both are always written.
  * `framedBySameOrigin`: `frame-ancestors 'self'` in place of 'none', for a site that shows its own pages in frames.
+ * `embeds`: the post players (EMBED_FRAME_SOURCES, ./embeds) added to frame-src; the registry entry's `embeds` opt-in.
  * `denyUnlisted`: `default-src 'none'` in place of 'self', so a kind the policy does not name (media, frames,
  * workers, the manifest) is refused rather than allowed from the site; for a static site that wants nothing more.
  * `noForms`: `form-action 'none'` in place of 'self', for a site with no forms.
@@ -156,6 +157,7 @@ export type SitePolicy = {
     reportTo?: string;
     reportOnly?: boolean;
     framedBySameOrigin?: boolean;
+    embeds?: boolean;
     baseUriSelf?: boolean;
     denyUnlisted?: boolean;
     noForms?: boolean;

@@ -11,6 +11,7 @@
  */
 
 import { CSP_REPORT_GROUP, integrityPolicy } from "./csp.mjs";
+import { permissionsAllowingEmbeds } from "./embeds.mjs";
 import { OWASP_RECOMMENDED } from "./owasp-headers.mjs";
 
 /**
@@ -114,7 +115,8 @@ export function entryOverrides({ id, headers = {}, optIns = {} }) {
  * sends Cross-Origin-Embedder-Policy-Report-Only instead, the way to start. Either names the family's report group
  * (`report-to="csp-endpoint"`), so what it refuses, or would refuse, reaches the sink (./csp-report). A registry entry
  * declares it as its `coep` opt-in, which the check then grades; passed here it is for a site not built from the
- * registry. An entry's `integrityPolicy` opt-in adds Integrity-Policy, or its Report-Only form (integrityPolicy,
+ * registry. An entry's `embeds` opt-in (./embeds) allows the players' features in its Permissions-Policy and refuses an
+ * enforced coep beside it. An entry's `integrityPolicy` opt-in adds Integrity-Policy, or its Report-Only form (integrityPolicy,
  * ./csp), reporting to the same group.
  *
  * @param {{ site?: import("./sites.mjs").SiteEntry, overrides?: Readonly<Record<string, HeaderOverride>>, coep?: Coep }} [options]
@@ -138,6 +140,12 @@ export function buildSecurityHeaders({ site, overrides, coep } = {}) {
     } else {
       set[name] = value;
     }
+  }
+  // A post's players (./embeds): their features in the Permissions-Policy, and no enforced COEP, which refuses a
+  // player because none sends one.
+  if (site?.optIns?.embeds?.value) {
+    set["Permissions-Policy"] = permissionsAllowingEmbeds(set["Permissions-Policy"] ?? "");
+    if (site.optIns.coep && !site.optIns.coep.reportOnly) throw new Error(`${site.id} embeds players, which send no Cross-Origin-Embedder-Policy, so an enforced coep refuses them; keep it reportOnly`);
   }
   const embedder = coep ?? site?.optIns?.coep;
   if (embedder) {

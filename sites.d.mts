@@ -27,6 +27,8 @@ export type SiteOptIns = {
     coep?: { value: "credentialless" | "require-corp"; reportOnly?: boolean; reason: string };
     /** The path prefix the site serves uploaded files under, which the live check samples (A3). */
     uploads?: { value: string; reason: string };
+    /** The post players of ./embeds: their features in the Permissions-Policy, their origins in frame-src, coep Report-Only. */
+    embeds?: { value: boolean; reason: string };
 };
 /** A checklist item the site declines, with why; `value` names the cookies a K1 deviation covers. */
 export type Deviation = { reason: string; value?: readonly string[] };
