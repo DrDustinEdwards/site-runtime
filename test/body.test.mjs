@@ -46,3 +46,11 @@ test("the ceiling is a whole number of bytes", async () => {
   await assert.rejects(readCapped({ body: null }, -1), RangeError);
   await assert.rejects(readCapped({ body: null }, 1.5), RangeError);
 });
+
+test("an oversize clone returns null without waiting on the original, which still reads in full", async () => {
+  const request = new Request("https://example.com/", { method: "POST", body: "x".repeat(64) });
+  const clone = request.clone();
+  const verdict = await Promise.race([readCappedBytes(clone, 8), new Promise((resolve) => setTimeout(() => resolve("hung"), 1000))]);
+  assert.equal(verdict, null);
+  assert.equal((await request.text()).length, 64);
+});
