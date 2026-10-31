@@ -99,8 +99,8 @@ function countryName(code) {
  * Better Auth's `listSessions` rows as a page shows them, the current session first, then the most recently active:
  * `device` (deviceName, null when the user agent names nothing), `signedInAt`, `lastActiveAt` (Better Auth moves
  * `updatedAt` only when it extends a session, once per `updateAge`, a day by default, so it is coarse), `current`, and
- * `location` when the site stores one on the session. `token` is what Better Auth's /revoke-session takes; it is the
- * person's own and already in their browser, but never log it.
+ * `location` when the site stores one on the session. No token: a row goes into the page, and another device's token
+ * there would let a script on the page take over that session. `revokeSessionById` ends one by its `id`.
  * @param {SessionRow[]} sessions
  * @param {string | null | undefined} currentToken the token of the session that asks (`getSession`'s `session.token`)
  */
@@ -108,7 +108,6 @@ export function sessionRows(sessions, currentToken) {
   return sessions
     .map((session) => ({
       id: session.id,
-      token: session.token,
       device: deviceName(session.userAgent),
       signedInAt: new Date(session.createdAt),
       lastActiveAt: new Date(session.updatedAt ?? session.createdAt),
@@ -116,6 +115,46 @@ export function sessionRows(sessions, currentToken) {
       location: typeof session.location === "string" && session.location ? session.location : null,
     }))
     .sort((a, b) => Number(b.current) - Number(a.current) || b.lastActiveAt.getTime() - a.lastActiveAt.getTime());
+}
+
+/**
+ * @typedef {{ api: {
+ *   getSession(o: { headers: Headers }): Promise<{ session: { token: string } } | null>,
+ *   listSessions(o: { headers: Headers }): Promise<SessionRow[]>,
+ *   revokeSession(o: { headers: Headers, body: { token: string } }): Promise<unknown>,
+ * } }} SessionsAuth
+ */
+
+/**
+ * The sessions list for the person who asks (`sessionRows`), or null when Better Auth wants a fresh sign-in first
+ * (`/list-sessions` refuses with SESSION_NOT_FRESH), so a page offers "sign in again" rather than failing.
+ * @param {SessionsAuth} auth
+ * @param {Request} request
+ */
+export async function accountSessions(auth, request) {
+  const headers = request.headers;
+  try {
+    const [current, sessions] = await Promise.all([auth.api.getSession({ headers }), auth.api.listSessions({ headers })]);
+    return sessionRows(sessions, current?.session.token);
+  } catch (error) {
+    if (/** @type {{ body?: { code?: string } }} */ (error)?.body?.code === "SESSION_NOT_FRESH") return null;
+    throw error;
+  }
+}
+
+/**
+ * Ends one of the asker's own sessions by its `id`, through Better Auth's /revoke-session, so no token leaves the
+ * server. False when the id is not one of theirs. Throws SESSION_NOT_FRESH as `listSessions` does.
+ * @param {SessionsAuth} auth
+ * @param {Request} request
+ * @param {string} id
+ */
+export async function revokeSessionById(auth, request, id) {
+  const headers = request.headers;
+  const session = (await auth.api.listSessions({ headers })).find((row) => row.id === id);
+  if (!session) return false;
+  await auth.api.revokeSession({ headers, body: { token: session.token } });
+  return true;
 }
 
 // ---- passkey names ---------------------------------------------------------------------------------

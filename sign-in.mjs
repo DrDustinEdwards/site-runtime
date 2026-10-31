@@ -77,10 +77,12 @@ import { CONFIRM_PATH, confirmLinkURL } from "./sign-in-link.mjs";
 export { CONFIRM_PATH, confirmSignInLink } from "./sign-in-link.mjs";
 export {
   SECURITY_NOTICE_KINDS,
+  accountSessions,
   coarseLocation,
   deviceName,
   passkeyLabel,
   passkeyProvider,
+  revokeSessionById,
   sessionRows,
 } from "./sign-in-account.mjs";
 

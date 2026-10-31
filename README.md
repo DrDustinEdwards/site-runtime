@@ -873,14 +873,17 @@ its own and the notices by passing one function.
   for the mail. A linked or unlinked provider, the two addresses of an email change and a deleted user's address come
   from database hooks (the plugin's own, beside the site's `databaseHooks`); the email change is caught on both of
   Better Auth's paths, `/change-email` for an unconfirmed address and `/verify-email` for a confirmed one.
-- Sessions list (D5): `sessionRows(await auth.api.listSessions({ headers }), session.token)` gives `{ id, token, device,
-  signedInAt, lastActiveAt, current, location }`, the current session first. `device` is `deviceName(userAgent)`, a
-  small parser of the browser and system (Edge, Opera, Samsung Internet, Firefox, Chrome, Safari; iPhone, iPad,
-  Android, ChromeOS, Windows, Mac, Linux), null when the agent names neither. `lastActiveAt` is Better Auth's
-  `updatedAt`, which moves only when it extends the session (once per `updateAge`, a day by default). Better Auth
-  stores the address and the user agent, not a place, so `location` is null unless a site keeps one on the session.
-  Ending one is Better Auth's `/revoke-session` with the row's `token`; every other, `/revoke-other-sessions`; all,
-  `/revoke-sessions`. `/list-sessions` needs a fresh sign-in.
+- Sessions list (D5): `await accountSessions(auth, request)` gives `{ id, device, signedInAt, lastActiveAt, current,
+  location }` rows (`sessionRows` over Better Auth's `listSessions`), the current session first, or null when
+  `/list-sessions` wants a fresh sign-in (SESSION_NOT_FRESH), so the page offers "sign in again" instead of failing.
+  `device` is `deviceName(userAgent)`, a small parser of the browser and system (Edge, Opera, Samsung Internet,
+  Firefox, Chrome, Safari; iPhone, iPad, Android, ChromeOS, Windows, Mac, Linux), null when the agent names neither.
+  `lastActiveAt` is Better Auth's `updatedAt`, which moves only when it extends the session (once per `updateAge`, a
+  day by default). Better Auth stores the address and the user agent, not a place, so `location` is null unless a site
+  keeps one on the session. A row carries no token: the rows go into the page, and another device's token there would
+  let a script on the page take over that session. Ending one is the page's own action calling
+  `revokeSessionById(auth, request, id)` (Better Auth's `/revoke-session`, server-side; false when the id is not the
+  asker's); every other is `/revoke-other-sessions`; all, `/revoke-sessions`.
 - Passkey names (A5): a passkey registered with no name is stored with its provider's, from its AAGUID
   (`passkeyProvider`: the passkey-authenticator-aaguids list trimmed to the password managers people use, by that
   list's names: "Apple Passwords", "Google Password Manager", "Windows Hello", "1Password" and so on). Apple's own

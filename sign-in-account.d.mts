@@ -25,19 +25,28 @@ export type SessionRow = {
   updatedAt?: Date | string | null;
   location?: unknown;
 };
-/** Better Auth's listSessions rows for a page: current first, then most recently active. `token` goes to /revoke-session. */
-export function sessionRows(
-  sessions: SessionRow[],
-  currentToken: string | null | undefined,
-): {
+export type AccountSession = {
   id: string;
-  token: string;
   device: string | null;
   signedInAt: Date;
   lastActiveAt: Date;
   current: boolean;
   location: string | null;
-}[];
+};
+/** Better Auth's listSessions rows for a page: current first, then most recently active. No token: end one by id. */
+export function sessionRows(sessions: SessionRow[], currentToken: string | null | undefined): AccountSession[];
+
+export type SessionsAuth = {
+  api: {
+    getSession(o: { headers: Headers }): Promise<{ session: { token: string } } | null>;
+    listSessions(o: { headers: Headers }): Promise<SessionRow[]>;
+    revokeSession(o: { headers: Headers; body: { token: string } }): Promise<unknown>;
+  };
+};
+/** The asker's sessions list, or null when Better Auth wants a fresh sign-in first (SESSION_NOT_FRESH). */
+export function accountSessions(auth: SessionsAuth, request: Request): Promise<AccountSession[] | null>;
+/** Ends one of the asker's own sessions by id, server-side; false when the id is not theirs. */
+export function revokeSessionById(auth: SessionsAuth, request: Request, id: string): Promise<boolean>;
 
 /** The passkey's provider from its AAGUID ("Apple Passwords", "Google Password Manager", ...), else null. */
 export function passkeyProvider(aaguid: string | null | undefined, userAgent?: string | null): string | null;
