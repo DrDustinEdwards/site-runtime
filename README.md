@@ -3,7 +3,7 @@
 The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-homes-2026-10-06.md): the security headers
 (the root export and `./headers`, `./csp`, `./csp-report`, `./check`, `./owasp`), the rate limiter (`./rate-limit`,
 `./rate-limit/durable-object`), the members model (`./members`), the Access for SaaS sign-in (`./access-login`), the MCP
-servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-log`) and server scaffold (`./mcp-server`), the Access request-token check
+servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-log`), server scaffold (`./mcp-server`) and named agent keys (`./agent-keys`), the Access request-token check
 (`./access`), the check that an Access application lets in exactly the site's admins (`./access-drift`, `site-runtime-access-drift`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images and their edits (`./image`), link prefetch (`./prefetch`), preloads and Early Hints (`./preload`), the Worker in front of a static site (`./static-site`), the edge page cache (`./edge-cache`), the Server-Timing header (`./server-timing`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), the signed token behind emailed links (`./signed-token`), where a site's Anthropic calls go
 (`./ai-gateway`), starting a Claude Code routine (`./routine`), the check on AI-written prose with the measure of an author's voice (`./prose`), the one sign-in every site
 offers (`./sign-in`, `./sign-in-client`, `./apple-secret`), the Cloudflare Turnstile widget and its server check (`./turnstile`), the same-origin check for
@@ -13,7 +13,7 @@ resource routes (`./origin`), the trailing-slash redirect, the gone list and the
 No dependencies (`./sign-in` uses the site's own `better-auth` and
 `@better-auth/passkey`, 1.7.12 or later, which a site that imports it installs itself; they are not declared as peers,
 because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
-tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.60.0"`. `npm test` runs every test in `test/`.
+tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.62.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
 
@@ -261,7 +261,7 @@ the caller decides what a flag means.
 ```js
 import { checkProse, profileOf, nearestPassages, distanceFrom, thresholdFor, copiedRuns, WRITING_RULES } from "@dustinedwards/site-runtime/prose";
 
-const issues = checkProse(body, { phrases: authorList, allow, dashes: "flag", firstLine });
+const issues = checkProse(body, { phrases: authorList, allow, dashes: "flag", firstLine, model });
 const profile = profileOf(publishedPosts); // null under ~900 words
 const examples = profile ? nearestPassages(profile, publishedPosts, 5) : [];
 const unlike = profile && (distanceFrom(profile, draft)?.distance ?? 0) > thresholdFor(profile);
@@ -734,6 +734,12 @@ const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, baseURL, defaultHe
   `anthropicRoute(env, app, feature)` is given one, the feature) on every log entry, so one gateway serves every site.
 - `gatewayId` is the id in a standard gateway URL, else `AI_GATEWAY_ID`, else null (a custom domain names no id).
 
+`model` is the id of the model that wrote the text (default Claude). `TELLS` and `OUT_OF_PLACE` were seen in Claude's
+output only, so for any other model (a Llama on Workers AI, as the suggester's alt text) they are left out and only what
+is wrong in any text is flagged: `PATTERNS`, the caller's phrases, and the general signs (the "not X, it's Y"
+construction, dashes, a closing list of three). A list for another model goes in only once it is seen in that model's
+fresh output.
+
 ## The Anthropic caller
 
 `./anthropic` is the family's one Messages caller, raw fetch over `anthropicRoute`, so a site writes its prompt and
@@ -750,17 +756,28 @@ const prompt = `${UNTRUSTED_DATA_RULE}\n${untrusted("email", customerText)}`;
 
 - One deadline per call (`timeoutMs`, default 60 s), retries and their waits inside it. One retry layer, here: 429 with
   `retry-after`, 500, 504, 529 and network errors, with backoff, at most 3 attempts. A spend-cap 429, a 429 without
-  `retry-after`, the spend-limit 400 and every other 4xx are never retried. The gateway's own retries stay off.
+  `retry-after`, the spend-limit 400 and every other 4xx are never retried. The gateway's own retries stay off, and its
+  `cf-aig-max-attempts`, `cf-aig-backoff` and `cf-aig-request-timeout` headers are not sent: two retry layers multiply
+  attempts, and the gateway cannot read `retry-after` or tell a spend cap from a rate limit.
+- Through a gateway, a failure that carries neither Anthropic's `request-id` header nor its `{"type": "error"}` body is
+  the gateway's own: `source: "gateway"` with its `gatewayCode` (2003 its rate or spend limit, 2016 and 2017
+  Guardrails), on the result and the log line, and its 429 is never retried. Anthropic's are `source: "anthropic"`.
 - A stop that is not an answer is a typed failure, never text: `max_tokens` (`truncated`), `refusal`,
   `model_context_window_exceeded`, an unknown stop; `pause_turn` is resent up to `maxPauses`. `max_tokens` is required, and
   `temperature`, `top_p` and `top_k` throw: `anthropic-version` is `2026-10-21`, which refuses them.
-- Prompt caching is on by default once the system prompt reaches the model's minimum (`cache: false` turns it off),
-  unless a block already carries its own `cache_control`: the caller's breakpoints are then sent as written.
+- Prompt caching is on by default once the prompt it would cache (system, tools and messages together) reaches the
+  model's minimum, so a long chat on a short system prompt is cached too (`cache: false` turns it off), unless a block
+  already carries its own `cache_control`: the caller's breakpoints are then sent as written. The proof is the log
+  line's `cacheRead`, above 0 on a repeat call.
 - One `anthropic_call` log line per call through `./log`: model, stop reason, request id, gateway log id, tokens and
   duration, never the prompt or the answer. `onResult(record)` hands the same record to a site's meter, for a stream
   the reader left early (`aborted`) and a `structured` reply that did not parse (`invalid_output`) too.
-- `MODELS` holds each model the family uses with its retirement date from Anthropic's deprecations page, and
-  `modelStatus(id)` answers `ok`, `retiring` (within 60 days), `retired` or `unknown` for the live check.
+- `MODEL_IDS` is the one place a site takes its model from, by role: `fast`, `standard`, `deep`
+  (`messages(env, app, { model: MODEL_IDS.standard, ... })`), so a model change is one edit and a release. `MODELS` holds
+  each model the family uses with its retirement date from Anthropic's deprecations page, and `modelStatus(id)` answers
+  `ok`, `retiring` (within 60 days), `retired` or `unknown`. `parseDeprecations(markdown)` reads the page's table
+  (`DEPRECATIONS_URL`, its Markdown) and `deprecationProblems(ids, table)` names a model that is deprecated, retiring
+  within 60 days, missing, or described otherwise in `MODELS`; the daily check runs it over `MODEL_IDS` (`--models`).
 - `untrusted(label, text)` wraps outside text as `<data label>` with `&`, `<` and `>` escaped, so it cannot close its tag.
 
 ## Sign-in
@@ -1175,14 +1192,15 @@ const fired = await fireRoutine(config, "job: ...");
   mid-fire, is reported as `unknown`: check whether a session started, then `force`.
 
 ```js
-const store = {
-  get: async (k) => (await env.DB.prepare("SELECT v FROM routine_fires WHERE k = ?").bind(k).first("v")) ?? null,
-  put: (k, v) => env.DB.prepare("INSERT INTO routine_fires (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v").bind(k, v).run(),
-  delete: (k) => env.DB.prepare("DELETE FROM routine_fires WHERE k = ?").bind(k).run(),
-  add: async (k, v) => (await env.DB.prepare("INSERT INTO routine_fires (k, v) VALUES (?, ?) ON CONFLICT DO NOTHING RETURNING k").bind(k, v).first()) !== null,
-};
-const fired = await fireOnce(store, `newsletter:${issueId}`, config, "job: ...");
+import { d1FireStore, fireOnce, ROUTINE_FIRES_SQL } from "@dustinedwards/site-runtime/routine";
+// A migration: ROUTINE_FIRES_SQL, `routine_fires (key TEXT PRIMARY KEY, value TEXT NOT NULL)`.
+const fired = await fireOnce(d1FireStore(env.DB), `newsletter:${issueId}`, config, "job: ...");
 ```
+
+- No caller-side throttle, on purpose. The limits (30 fires an hour per routine, 100 per account) are counted across
+  every caller of one routine and one account, which no single caller can see, so a local count would refuse fires
+  Anthropic allows or allow ones it refuses. Its 429 is cheap, starts no session and carries `retryAfter`, and
+  `fireOnce` frees the job key on it, so the job waits for the next tick.
 
 ## The cross-site check
 
@@ -1847,6 +1865,15 @@ clientRegistrationCallback: ({ clientMetadata }) => {
   chain is HMAC-SHA-256 under it, which an editor of the table without the secret cannot recompute; without it the chain
   is plain SHA-256 and only catches an edit nobody recomputed. Neither catches rows cut off the end. Besides the call phases, `recordAudit` writes `sign-in`,
   `scope-challenge` and `rate-limited` rows; `loginHandler({ audit: { name, version } })` writes one per sign-in.
+- The log leaves the Worker and does not grow for ever: `exportAuditLog(env, env.AUDIT_BUCKET, { prefix, keepDays })`,
+  run from the cron (`./cron`'s `runJobs`), copies the rows not yet copied to R2 as `tool-calls/<first>-<last>.json`
+  (`{ previous, rows }`; `verifyAuditChain(rows, key, previous)` checks a copy on its own), and only then marks them
+  copied and deletes the copied rows older than `keepDays` (`AUDIT_KEEP_DAYS`, 90). A row never copied is never deleted,
+  and the newest row always stays, since the next one chains to it. Put a bucket lock rule on the prefix, as the backups
+  have, so a copy cannot be changed or removed inside its period.
+- `auditLogCheck(env)` goes in `/health`'s checks (`healthResponse({ checks: [auditLogCheck(env)] })`): level warn and
+  alert, it fails when a call's `finished` row is 15 minutes late (the log stopped hearing of a call), when calls in
+  the last hour pass `spikePerHour` (600), or when rows have waited two days for a copy. The daily check reads it (L8).
 
 **Tests.** `test/mcp-login.test.mjs` runs the handler against a fake provider and a fake Access. The scope from the box,
 the administrator check, the exact registration match and the registration limit were each removed once and seen to fail a
@@ -1857,9 +1884,27 @@ test.
 `site-runtime-ai-audit --origin <origin> [--from <host>] [--kind worker|site|static]` is area 11's check in devkit's daily
 run (one areas.json entry per kind, with `--kind` in its `args`). An origin that publishes OAuth protected-resource metadata
 is probed as an MCP server, without a token: its resource and authorization-server metadata (A1, A4), the 401 challenge
-(A2), `no-store` on `/authorize` (A8), a foreign `Origin` (P10), GET on the endpoint (P5) and `/health` (S8). A `worker`
+(A2), `no-store` on `/authorize` (A8), a foreign `Origin` (P10), GET on the endpoint (P5), `/health` (S8) and its
+`tool-call-log` check (L8), and the official conformance suite's authorization-server scenario. A `worker`
 that publishes none is an A1 error. With no `--kind`, a metadata path that answers anything but 404 or a JSON object is
-an A1 error, so a server whose metadata broke never passes as a site. A site has nothing more for this check.
+an A1 error, so a server whose metadata broke never passes as a site.
+
+With a test grant, a bearer read from the environment (`--grant-env NAME`, default `MCP_TEST_GRANT_<HOST>`, the host
+upper-cased with every other character `_`) and never printed, it also runs: `tools/list` judged by `toolListProblems`
+(T1-T4, T9), two lists identical and no tool without `readOnlyHint` (T7: make it a read-only grant, an agent key outside
+`AGENT_WRITE`), the list's `toolListHash` against `--tools-hash` (T12; without one, a warning gives the hash to pin),
+the conformance server scenarios `server-stateless`, `http-header-validation` and `caching` (P3, P4, P7) through a local
+proxy that adds the grant, so the suite never sees it, and last a burst of 35 concurrent requests that must meet a 429
+(S1: a minute of refusals for the test grant only). Each conformance scenario and the burst wait 61 s first, so none
+runs into the last one's window. A scenario must pass every check unless `--conformance-baseline scenario=passed/total`
+records its known count (fewer is an error, more a warning to tighten it). The suite is
+`@modelcontextprotocol/conformance@0.2.0-alpha.10`, through npx; `--no-conformance` skips it. Without a grant, all of
+this is skipped with a warning that names the variable.
+
+Any origin: `--prose /path` (repeatable) runs `checkProse` over a public page that carries AI text, as written by
+`--prose-model` (default Claude): a chatbot's leftovers, blanks and markup are W3 errors, another high finding a W1
+warning. `--models` fails on any `MODEL_IDS` model the deprecations page calls deprecated or retiring within 60 days
+(C8). A site with none of these has nothing more for this check.
 Findings print as `::error title=<item>::<url> <detail>`, with `%`, CR and LF escaped as GitHub requires; it exits 0
 clean, 1 on an error, 2 when the origin does not answer.
 
@@ -1899,9 +1944,25 @@ const refusal = authorizeCall(env, caller, SCOPES.write, { site: "sample.example
   `readOnlyHint` annotation, and a tool with none is refused. `toolsForGrant` drops what a grant cannot call.
   `toolScopeChallenge(env, server, tool)`, passed as `registerTool`'s `scopeChallenge`, makes the SDK answer a write call
   on a read grant with 403 `insufficient_scope` naming every scope it needs, so the client re-authorizes.
-- `invokeTool(env, server, { caller, tool, args, meta, run })` is the whole call: the scope check, a `refused` row, or a
-  `started` row (the call is refused if it cannot be written), the run, and a `finished` row, written as an error before a
-  throwing handler's exception goes on.
+- `invokeTool(env, server, { caller, tool, args, meta, signal, run })` is the whole call: the scope check, a `refused`
+  row, or a `started` row (the call is refused if it cannot be written), the run, and a `finished` row, written as an
+  error before a throwing handler's exception goes on. `signal` is the request's (`ctx.mcpReq.signal`): a call whose
+  client left before it starts does not run, `run(signal)` passes it on (`callApi(env, leg, path, { signal })` then
+  throws `ApiLegError` `canceled` and sends nothing more; a tool with two writes checks it between them), and a call the
+  client left is logged `canceled` (P11).
+- `registerTools(mcp, TOOLS, { env, server: SERVER, caller, icons: SERVER_INFO.icons })` replaces each server's
+  registration loop: it registers only what the caller's grant can call (`toolsForGrant`, so a read grant lists no write
+  tool and the order is the array's, T7), stamps the server's icon on a tool with none (T9), and wires the step-up and
+  `invokeTool` with `_meta` and the signal. `config(tool)` (default `tool.config`) and `run(tool, args, signal)` (default
+  `tool.handler(env, args, signal)`) fit a server whose tools are shaped otherwise. A read grant calling a write tool by
+  name gets "unknown tool" rather than the step-up; a tool whose action decides its scope stays listed and steps up.
+- `outsideResult(label, value)` is a result whose text came from outside (a page, a mention, a repo file, an email):
+  `OUTSIDE_DATA_NOTICE`, then the value inside `untrusted`'s `<data label>` delimiters, and an object as
+  `structuredContent` with a `notice` field (S2).
+- `toolListProblems(tools)` judges a `tools/list` result (T1 names, titles and descriptions, T2 the four hints, T3 an
+  object outputSchema, T4 a closed 2020-12 inputSchema with local `$ref`s and constrained strings, T9 icons), and
+  `toolListHash(tools)` is its pin (T12): put both in the server's test over its listed tools, so CI fails on an
+  unreviewed change, and give the daily check the read grant's hash.
 - `audienceRefusal(auth, resource, scope)` answers 401 `invalid_token` to a token minted for another server (the
   provider checks this too), `unauthorized` builds a 401 with `resource_metadata` and `scope` for a door the provider
   does not guard, `mcpOriginRefusal(request, allowed)` answers 403 to a foreign `Origin` (a missing one passes), and
@@ -1914,3 +1975,21 @@ const refusal = authorizeCall(env, caller, SCOPES.write, { site: "sample.example
   needs no copy of its own. A 101 upgrade passes as it is.
 
 **Tests.** `test/mcp-server.test.mjs`, once; the servers' own copies of these tests go when they adopt it.
+
+## Named agent keys
+
+`./agent-keys` is the one door for an AI agent that cannot finish OAuth (Carrel's and dustinedwards-info's copies go
+when they adopt it). One Worker secret per agent: `AGENT_KEY_GROK` is the key of the agent `grok`, so the name comes
+from which secret matched, never from the request.
+
+```js
+import { agentCaller } from "@dustinedwards/site-runtime/agent-keys";
+const caller = await agentCaller(env, request.headers.get("Authorization"), SCOPES); // { kind: "agent", principal, scopes } | null
+```
+
+- `agentPrincipal(env, authorization)` compares the bearer with every `AGENT_KEY_*` secret through `safeEqual`, with no
+  early exit; a blank secret or one whose name is not `[a-z0-9][a-z0-9_-]{0,31}` is skipped, so it cannot become a
+  master key. Null means "go on to OAuth".
+- `agentScopes(env, principal, scopes)` is read, and write when `AGENT_WRITE` (comma-separated) names the agent.
+  `bearerToken(header)` is the token alone. Capsid's minted agents (a D1 row per key) are a different model and stay
+  Capsid's.
