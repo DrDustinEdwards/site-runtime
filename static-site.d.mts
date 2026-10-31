@@ -7,6 +7,8 @@ import type { SiteEntry } from "./sites.mjs";
 export interface StaticSiteEnv {
   readonly ASSETS: { fetch(request: Request): Promise<Response> };
   readonly CSP_REPORT_RATE_LIMIT?: { limit(options: { key: string }): Promise<{ success: boolean }> };
+  /** The deployed commit, which devkit's worker-deploy sets with `sha-var: DEPLOY_SHA`; /health reports it. */
+  readonly DEPLOY_SHA?: string;
 }
 
 export interface StaticSiteOptions {
@@ -24,6 +26,8 @@ export interface StaticSiteOptions {
   canonical?: Parameters<typeof canonicalRedirect>[1] | false;
   /** The 404 page's path. Default /404. */
   notFound?: string;
+  /** Where the /health response (./health, with `sha` from DEPLOY_SHA) is served, or false for none. Default /health. */
+  health?: string | false;
 }
 
 /**
@@ -33,5 +37,5 @@ export interface StaticSiteOptions {
  */
 export function staticHeaders(entry: SiteEntry, options?: { headers?: Readonly<Record<string, string>> }): { set: Record<string, string>; file: string };
 
-/** The fetch handler: canonical redirect, reports, prefetch rules, then the asset with the page headers. */
+/** The fetch handler: canonical redirect, reports, /health, prefetch rules, then the asset with the page headers. */
 export function staticSite(options?: StaticSiteOptions): { fetch(request: Request, env: StaticSiteEnv): Promise<Response> };
