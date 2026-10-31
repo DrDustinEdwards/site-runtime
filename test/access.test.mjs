@@ -249,4 +249,7 @@ test("PLANT: a background request is timed but does not keep the admin awake; a 
   const other = await adminIdle(bare(seen), { session: { ...session, id: "opaque-2" }, now: now * 1000 });
   console.log = log;
   assert.equal(other.idle, true);
+  // A second Access app's check keeps its own cookie, so this one's is left alone.
+  const lab = await adminIdle(bare(), { session, now: (now - 1800) * 1000, cookieName: "__Host-lab-seen" });
+  assert.ok(/** @type {{ cookie: string }} */ (lab).cookie.startsWith("__Host-lab-seen="));
 });

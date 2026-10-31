@@ -66,11 +66,12 @@ export type IdleSession = { id: string; signedInAt: number };
  * The idle check for a request on an admin path: a redirect to Access's logout after `idleSeconds` (default an hour)
  * without a request, else the Set-Cookie that records this one (none when the request carries no Access token and no
  * `session` is given, or is a background request: `X-Background: 1` or `Sec-Purpose: prefetch`). `session.signedInAt`
- * and `now` are epoch milliseconds.
+ * and `now` are epoch milliseconds. `cookieName` (default ADMIN_SEEN_COOKIE, a `__Host-` name) gives each Access app
+ * on one site its own seen cookie.
  */
 export function adminIdle(
   request: Request,
-  options?: { idleSeconds?: number; now?: number; session?: IdleSession | null },
+  options?: { idleSeconds?: number; now?: number; session?: IdleSession | null; cookieName?: string },
 ): Promise<{ idle: true; response: Response } | { idle: false; cookie?: string }>;
 /**
  * `adminIdle` around a site's handler: on a path under `prefixes` (default `/admin`; `/` for a site that is all admin),
@@ -79,5 +80,5 @@ export function adminIdle(
 export function withAdminIdle(
   request: Request,
   handle: () => Promise<Response>,
-  options?: { prefixes?: readonly string[]; idleSeconds?: number; session?: IdleSession | null },
+  options?: { prefixes?: readonly string[]; idleSeconds?: number; session?: IdleSession | null; cookieName?: string },
 ): Promise<Response>;

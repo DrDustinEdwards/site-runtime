@@ -1293,6 +1293,16 @@ if (!admin) return redirect(accessSignInUrl(request));                        //
 return withAdminIdle(request, () => app.fetch(request, env, ctx), { prefixes: ["/admin"] });
 ```
 
+A site with two Access apps (two tokens, as dustinedwards.info's `/admin` and `/lab`) runs one check per app, each
+with its own `cookieName`, so moving between them never reads the other app's cookie as the last request. The default
+stays `__Host-admin-seen`:
+
+```js
+const site = () => app.fetch(request, env, ctx);
+const lab = () => withAdminIdle(request, site, { prefixes: ["/lab"], cookieName: "__Host-lab-seen" });
+return withAdminIdle(request, lab, { prefixes: ["/admin"] });
+```
+
 **Tests.** `test/html.test.mjs`, `test/compare.test.mjs` (both the XOR path and a stubbed `crypto.subtle.timingSafeEqual`)
 and `test/access.test.mjs` (a key pair made in the test and a fake certs endpoint; `accessAdmin`'s case folding, its
 localhost-only bypass, its refusal when the keys cannot be fetched, and `adminIdle`'s timing). Each PLANT test fails when the guard it
