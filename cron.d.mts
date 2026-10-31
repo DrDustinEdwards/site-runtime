@@ -7,6 +7,9 @@ export const CRON_TIMEOUT_MS: number;
 /** The migration: `cron_runs` (name, every_minutes, first_started_at, last_started_at, last_ok_at, last_failed_at, last_error; epoch ms). */
 export const CRON_SQL: string;
 
+/** What a job's run resolves to when its own gate skipped it: logged `cron_job_skipped`, no success recorded. */
+export const CRON_SKIPPED: unique symbol;
+
 /** The part of a D1 binding this uses. */
 export interface D1Like {
   prepare(sql: string): {
@@ -22,16 +25,35 @@ export interface CronJob {
   name: string;
   everyMinutes: number;
   timeoutMs?: number;
+  /**
+   * For a job holding a lock or moving money: past its timeout it is recorded failed and its signal aborted, but the
+   * runner waits for it to end before the next job starts, and its late end records no success.
+   */
+  holdOnTimeout?: boolean;
   run: (signal: AbortSignal) => Promise<unknown>;
 }
 
 /**
  * Runs `jobs` in turn, each isolated and raced against its timeout (the job's `timeoutMs`, else `options.timeoutMs`,
- * default CRON_TIMEOUT_MS; a timed-out job is recorded failed and the next runs), logging cron_job_ok or
+ * default CRON_TIMEOUT_MS; a timed-out job is recorded failed and the next runs, after it ends when it holds on
+ * timeout; a run resolving to CRON_SKIPPED records no success), logging cron_job_ok or
  * cron_job_failed and recording each in `cron_runs`; a failed record write is logged and the job still runs. Throws one
  * Error naming the failed jobs after the last one.
  */
 export function runJobs(db: D1Like | (() => D1Like), jobs: CronJob[], options?: { now?: () => number; timeoutMs?: number }): Promise<void>;
+
+/** Why a job in `cron_runs` is not well, with its last success (epoch ms) or null. */
+export interface CronFinding {
+  name: string;
+  reason: "failed" | "stale" | "never succeeded" | "never ran";
+  lastOkAt: number | null;
+}
+
+/** The jobs cronCheck would name, as data, for a site that mails its own alert. Same options as cronCheck. */
+export function cronFindings(
+  db: D1Like | (() => D1Like),
+  options?: { graceMinutes?: number; jobs?: Array<{ name: string; everyMinutes: number }>; deployedAt?: Date; now?: Date },
+): Promise<CronFinding[]>;
 
 /**
  * The /health check (name "cron", level warn): fails, naming the jobs, when a job's last run failed, its last success is
