@@ -9,7 +9,8 @@
 // The token needs Access: Apps and Policies Read (and Zero Trust Read when a policy uses an email list); it is sent to
 // api.cloudflare.com only and never printed. The admin list is ADMIN_EMAILS, or --admins-file (one address per line or
 // comma-separated, `#` comments). Each difference is a GitHub annotation; exit 0 when they match, 1 on drift, 2 when
-// the check cannot run.
+// the check cannot run. Addresses print masked (d***@example.com), because a public repo's Actions logs are public;
+// --show-addresses prints them whole for a run on your own machine.
 
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
@@ -17,7 +18,7 @@ import { parseArgs } from "node:util";
 import { accessAllowed, accessDrift, parseAdminList } from "../access-drift.mjs";
 
 const usage =
-  'usage: CLOUDFLARE_API_TOKEN=... [ADMIN_EMAILS=...] site-runtime-access-drift --account <id> --app "<name>" [--admins-file <path>]';
+  'usage: CLOUDFLARE_API_TOKEN=... [ADMIN_EMAILS=...] site-runtime-access-drift --account <id> --app "<name>" [--admins-file <path>] [--show-addresses]';
 /** @param {string} message */
 const fail = (message) => {
   console.error(`site-runtime-access-drift: ${message}\n${usage}`);
@@ -26,7 +27,7 @@ const fail = (message) => {
 
 let values;
 try {
-  ({ values } = parseArgs({ options: { account: { type: "string" }, app: { type: "string" }, "admins-file": { type: "string" } } }));
+  ({ values } = parseArgs({ options: { account: { type: "string" }, app: { type: "string" }, "admins-file": { type: "string" }, "show-addresses": { type: "boolean" } } }));
 } catch (error) {
   fail(/** @type {Error} */ (error).message);
 }
@@ -52,8 +53,10 @@ try {
   fail(/** @type {Error} */ (error).message);
 }
 const { onlyInAccess, onlyInApp, open } = /** @type {import("../access-drift.mjs").Drift} */ (drift);
-for (const email of onlyInAccess) console.log(`::error title=I2 access drift::${email} is let in by Access but is not an admin in the app`);
-for (const email of onlyInApp) console.log(`::error title=I2 access drift::${email} is an admin in the app but Access does not let them in`);
+/** @param {string} email */
+const shown = (email) => (values?.["show-addresses"] ? email : email.replace(/^(.)[^@]*/, "$1***"));
+for (const email of onlyInAccess) console.log(`::error title=I2 access drift::${shown(email)} is let in by Access but is not an admin in the app`);
+for (const email of onlyInApp) console.log(`::error title=I2 access drift::${shown(email)} is an admin in the app but Access does not let them in`);
 for (const rule of open) console.log(`::error title=I2 access drift::${rule} lets in people the app's list cannot name`);
 const count = onlyInAccess.length + onlyInApp.length + open.length;
 console.log(`site-runtime-access-drift: "${values?.app}": ${admins.length} admins in the app; ${count ? `${count} differences` : "Access matches"}.`);

@@ -13,7 +13,7 @@ resource routes (`./origin`), the trailing-slash redirect (`./url`), one structu
 No dependencies (`./sign-in` uses the site's own `better-auth` and
 `@better-auth/passkey`, 1.7.12 or later, which a site that imports it installs itself; they are not declared as peers,
 because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
-tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.55.0"`. `npm test` runs every test in `test/`.
+tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.56.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
 
@@ -1381,12 +1381,14 @@ CLOUDFLARE_API_TOKEN=... ADMIN_EMAILS="a@example.com,b@example.com" \
   it is reported and counts as drift. Require rules only narrow and are not read; Service Auth policies are not people.
 - The site's list is `ADMIN_EMAILS` (the same variable `./access`'s `adminEmails` reads), or `--admins-file` (one
   address per line or comma-separated, `#` comments). Addresses compare in lower case.
-- Each difference prints as `::error title=I2 access drift::<address or rule> ...`: let in by Access but not an admin,
+- Each difference prints as `::error title=I2 access drift::<address or rule> ...`, the address masked
+  (`d***@example.com`) because a public repo's Actions logs are public; `--show-addresses` prints it whole on your own
+  machine. The difference is one of: let in by Access but not an admin,
   an admin Access does not let in, or an open rule. Exit 0 when they match, 1 on drift, 2 when it cannot run (no
   token, no such application, an API refusal).
 
-A site runs it weekly in CI, with the token as a repository secret and the admin list as a repository variable kept
-equal to the Worker's `ADMIN_EMAILS`:
+A site runs it weekly in CI, with the token and the admin list as repository secrets (a variable would show in the
+step's log header), the list kept equal to the Worker's `ADMIN_EMAILS`:
 
 ```yaml
 name: access-drift
@@ -1402,11 +1404,11 @@ jobs:
       - uses: actions/setup-node@v5
         with: { node-version: 24 }
       - run: npm ci --ignore-scripts
-      - run: npx site-runtime-access-drift --account "$CLOUDFLARE_ACCOUNT_ID" --app "Foxing admin"
+      - run: npx site-runtime-access-drift --account "$CLOUDFLARE_ACCOUNT_ID" --app "example-admin"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.ACCESS_READ_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          ADMIN_EMAILS: ${{ vars.ADMIN_EMAILS }}
+          ADMIN_EMAILS: ${{ secrets.ADMIN_EMAILS }}
 ```
 
 A failed run is the alert. `test/access-drift.test.mjs` runs it against a fake API: direct addresses, a group with its
