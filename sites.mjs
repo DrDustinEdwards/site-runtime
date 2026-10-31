@@ -381,7 +381,7 @@ export const capsidPortal = {
   optIns: {
     denyUnlisted: { value: true, reason: "The dashboard loads only its own scripts, styles and data: images (src/dashboard-csp.ts)." },
     coep: /* @__PURE__ */ coepStaged("every Portal page sits behind Access"),
-    integrityPolicy: { value: "report-only", reason: "Vite writes the dashboard's <script> and modulepreload tags with no integrity; Report-Only until they carry it and the reports show none missing." },
+    integrityPolicy: { value: "report-only", reason: "The build's tags carry integrity (subresourceIntegrity, ./sri, dashboard/vite.config.ts), but each view is a chunk loaded with import(), which only an import map could give integrity; Report-Only while the reports name them." },
     trustedTypes: typesStaged,
   },
   deviations: {
@@ -462,7 +462,7 @@ export const capsomer = {
     cloudflareWebAnalytics: /* @__PURE__ */ beacon("scripts/security-headers.ts"),
     framedBySameOrigin: { value: true, reason: "The site frames its own states pages and specimens; no other origin may." },
     coep: /* @__PURE__ */ coepStaged("the site frames its own states pages and specimens, each of which must carry it too"),
-    integrityPolicy: { value: "report-only", reason: "Vite writes the pages' <script> and modulepreload tags with no integrity; Report-Only until they carry it and the reports show none missing." },
+    integrityPolicy: { value: "report-only", reason: "The build's tags carry integrity (subresourceIntegrity, ./sri, site/vite.config.ts), but the admin and some states pages load chunks with import(), which only an import map could give integrity; Report-Only while the reports name them." },
     trustedTypes: typesStagedStatic,
     denyUnlisted: unlistedStaged,
   },
