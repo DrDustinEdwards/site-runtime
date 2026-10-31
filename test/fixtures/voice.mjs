@@ -2,7 +2,7 @@
 // content written for these tests in one plain register (short sentences, first person, little
 // punctuation beyond commas). TWIN is more of the same register, not in the baseline, and must not be
 // flagged. PLANT is the opening of Henry James, The Portrait of a Lady (1881), in the public domain:
-// another author's voice among Dustin's, which the design's test table says must be flagged.
+// another author's voice among the baseline's, which the design's test table says must be flagged.
 
 export const BASELINE = [
   `The truck quit a mile past the low-water crossing. I let it roll to the shoulder and sat there with the engine ticking. The river was up. You could hear it from the road, a steady sound like wind in a field of maize. I got out and looked at the hood for a while, which did nothing, and then I started walking.

@@ -189,18 +189,18 @@ describe("slopScan", () => {
     for (const page of [...BASELINE, TWIN]) assert.deepEqual(scan(page).filter((f) => !f.say.startsWith("Passive")), []);
   });
 
-  // A scientist's plain report: numbers and names in every paragraph, no stinger, no "So" opener.
+  // A field team's plain report: numbers and names in every paragraph, no stinger, no "So" opener.
   const papers = [
-    "In 2016, 393 blood samples from Rio Grande wild turkeys in Erath County went to the lab at Tarleton for testing. Five of the 98 birds from Hood County carried REV, and one of 62 eastern birds imported from Missouri did too. Fossil Rim lost nearly half its adult prairie chickens that year.",
-    "We sequenced the Arlo genome at the Pittsburgh Bacteriophage Institute in 2018. It is 52,960 base pairs long, with 96 predicted genes, and Arlo sits in cluster A1 next to DD5 and Oogway, two phages found in Pennsylvania and Texas.",
-    "Students in BIOL 1407 at Tarleton found 14 new phages in 2019 from soil around Stephenville, Bluff Dale and Glen Rose. Seven of them went to Pittsburgh for sequencing, and three of those were published in Microbiology Resource Announcements that year.",
+    "In 2016, 393 water samples from the Cedar River in Linn County went to the lab at Northfield for testing. Five of the 98 samples from Mill Creek carried nitrate over the limit, and one of 62 samples from the Oak Lake inlet did too. Stone Park lost nearly half its young willows that year.",
+    "We surveyed the Larkspur trail at the Riverside Field Station in 2018. It is 52,960 feet long, with 96 marked posts, and Larkspur sits in zone A1 next to RT5 and Bramble, two trails first mapped in Oregon and Maine.",
+    "Students in GEOG 1407 at Northfield mapped 14 new springs in 2019 around Millbrook, Ash Hollow and Glen Rose. Seven of them went to the state survey for testing, and three of those were published in the Annual Water Report that year.",
   ];
 
   test("PLANT: a definition opening, a paragraph with nothing specific, the passive, and a wrap-up ending", () => {
     const draft =
-      "Bacteriophages are viruses that infect bacteria, and most of them infect only a narrow range of hosts. A phage that grows on one strain will often fail on a closely related one. " +
-      "This specificity is determined largely at the first step of infection, when proteins at the tip of the tail bind to receptors on the surface. If the receptor is absent, the phage cannot attach.\n\n" +
-      "This is one reason that phages from the same soil can differ widely in which bacteria they infect.";
+      "Springs are places where water from underground comes out at the surface, and most of them flow only part of the year. A spring that runs in one season will often fail in a dry one. " +
+      "This flow is determined largely at the first step of recharge, when rain at the top of the slope soaks into cracks in the rock. If the cracks fill with clay, the water cannot enter.\n\n" +
+      "This is one reason that springs on the same hill can differ widely in how much water they give.";
     const found = scan(draft, papers);
     assert.deepEqual(found.map((f) => f.say.split(/[.:]/)[0]), [
       "Nothing in this paragraph is specific",
@@ -219,22 +219,22 @@ describe("slopScan", () => {
 
   test("PLANT: a bold lead-in, \"X, not Y\", \"never just X. It was Y\", and a closing question to the reader", () => {
     const says = (/** @type {string} */ text, excerpts = papers) => scan(text, excerpts).map((f) => f.say.split(/[.:]/)[0]);
-    assert.deepEqual(says("**Rereading pays.** We read Arlo's genome twice in 2018."), ["A bold lead-in"]);
-    assert.deepEqual(says("Rereading the Arlo genome in 2018 was a gift, not a waste."), ["Say what it is"]);
-    assert.deepEqual(says("The best part was never just the genome. It was the 14 students at Tarleton."), ["Say what it is"]);
-    assert.deepEqual(says("Arlo has 96 genes in cluster A1. Want to look at them together?"), ["This ends by asking the reader something"]);
-    assert.deepEqual(says("Why did Arlo grow at 37 degrees? Nobody at Tarleton knew."), ["A question to the reader"]);
+    assert.deepEqual(says("**Rereading pays.** We walked the Larkspur trail twice in 2018."), ["A bold lead-in"]);
+    assert.deepEqual(says("Walking the Larkspur trail in 2018 was a gift, not a chore."), ["Say what it is"]);
+    assert.deepEqual(says("The best part was never just the trail. It was the 14 students at Northfield."), ["Say what it is"]);
+    assert.deepEqual(says("Larkspur has 96 posts in zone A1. Want to look at them together?"), ["This ends by asking the reader something"]);
+    assert.deepEqual(says("Why did Larkspur flood at 37 inches of rain? Nobody at Northfield knew."), ["A question to the reader"]);
     // An author who asks questions keeps theirs; the last line asking the reader is flagged whatever the excerpts do.
-    assert.deepEqual(says("Why did Arlo grow at 37 degrees? Nobody at Tarleton knew.", [...papers, "Why would REV spread? Why in Erath County?"]), []);
+    assert.deepEqual(says("Why did Larkspur flood at 37 inches of rain? Nobody at Northfield knew.", [...papers, "Why would nitrate spread? Why in Linn County?"]), []);
   });
 
   test("PLANT: \"DNA\" is not a specific; names and numbers not in the sources are flagged, and asked for when none are given", () => {
-    const general = "Bacteria also attack phage DNA once it gets inside. Restriction-modification systems cut foreign DNA at specific sequences, and a phage has to get past them before it can replicate.";
+    const general = "Water also carries DNA from animals once it gets underground. Sand and gravel filter out larger particles at different depths, and a sample has to get past them before anyone can count it.";
     assert.deepEqual(kinds(general, papers), ["detail"]);
-    const draft = "Students found Arlo in Bluff Dale in 2018 and grew it on Mycobacterium smegmatis mc2155. Its genome runs 52960 base pairs.";
-    const source = "Arlo was isolated in Bluff Dale, Texas, on Mycobacterium smegmatis in 2018. The genome is 52,960 bp.";
+    const draft = "Students found Larkspur in Ash Hollow in 2018 and mapped it from Station North kt2155. Its trail runs 52960 feet.";
+    const source = "Larkspur was found in Ash Hollow, Oregon, from Station North in 2018. The trail is 52,960 ft.";
     const found = slopScan(draft, papers, { sources: [source] }).findings.filter((f) => f.kind === "source");
-    assert.deepEqual(found.map((f) => f.say.split(" is not")[0]), ['"mc2155"']);
+    assert.deepEqual(found.map((f) => f.say.split(" is not")[0]), ['"kt2155"']);
     assert.equal(slopScan(draft, papers, { sources: [] }).findings.filter((f) => f.kind === "source").length, 1);
     assert.deepEqual(slopScan(draft, papers).findings.filter((f) => f.kind === "source"), []);
   });
