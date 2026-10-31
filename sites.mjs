@@ -69,7 +69,7 @@ const popupSignIn = {
  * an error or a warning, so the reason stays in sight without failing anyone.
  * @type {Readonly<Record<string, string>>}
  */
-export const FAMILY_DEVIATIONS = Object.freeze({
+export const FAMILY_DEVIATIONS = /* @__PURE__ */ Object.freeze({
   T2: "HSTS on the http:// to https:// hop: a browser ignores Strict-Transport-Security sent over plain http (RFC 6797 section 8.1), and on a custom domain that hop is Cloudflare's Always Use HTTPS, a zone setting no Worker answers. The https redirect hops are graded instead.",
   D3: "OpenPGP signing of security.txt: it needs a family signing key that Dustin holds and rotates, and none exists; RFC 9116 section 2.3 recommends a signature, it does not require one. A signed file is graded when one appears.",
   R4: "JSON routes refusing text/plain and form bodies (requireJson, ./body): the live check has no session, and every JSON route a stranger can reach answers 401 before it reads a body, so only the site's own code can show it.",

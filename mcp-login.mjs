@@ -306,7 +306,7 @@ export function isAdminUser(env, user) {
  * Grok's two custom-connector callbacks, ChatGPT's fixed (legacy) connector callback and Gemini Enterprise's redirect.
  * A callback that carries a per-connector or per-user id is listed exactly in DCR_REDIRECT_URIS.
  */
-export const DCR_CALLBACKS = Object.freeze([
+export const DCR_CALLBACKS = /* @__PURE__ */ Object.freeze([
   "https://grok.com/connectors/oauth/callback",
   "https://grok.com/connectors-oauth-exchange-code/",
   "https://chatgpt.com/connector_platform_oauth_redirect",

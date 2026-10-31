@@ -60,7 +60,7 @@ export function buildPolicy(directives) {
  * builder always includes it). The file is named, not hashed: its `integrity` changes whenever Cloudflare ships a
  * new beacon, and a pinned hash would block it within weeks.
  */
-export const CLOUDFLARE_WEB_ANALYTICS = Object.freeze({
+export const CLOUDFLARE_WEB_ANALYTICS = /* @__PURE__ */ Object.freeze({
   script: Object.freeze([
     "https://static.cloudflareinsights.com/beacon.min.js",
     "https://static.cloudflareinsights.com/beacon.min.js/",
