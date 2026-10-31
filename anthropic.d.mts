@@ -22,6 +22,18 @@ export const MODELS: Readonly<Record<
 >>;
 export const MODELS_CHECKED: string;
 
+/** The model for each kind of call (C8): name the role, never an id. Each is in MODELS. */
+export const MODEL_IDS: Readonly<{ fast: "claude-haiku-4-5-20251001"; standard: "claude-sonnet-5"; deep: "claude-opus-4-8" }>;
+/** The deprecations page as Markdown. */
+export const DEPRECATIONS_URL: string;
+/** The page's model table by id; empty when the page holds no such table. */
+export function parseDeprecations(markdown: string): Record<string, Omit<ModelEntry, "cacheMin">>;
+/**
+ * What is wrong with calling `ids` by the page's `table`: unlisted, deprecated or retired, retiring within 60 days, or
+ * MODELS disagreeing with the page. Empty when all is well.
+ */
+export function deprecationProblems(ids: readonly string[], table: Record<string, { state: string; retires: string | null }>, now?: Date | number): string[];
+
 /** "retired" past its retirement date, "retiring" within 60 days of it, "ok", or "unknown" for an id not in MODELS. */
 export function modelStatus(
   id: string,
@@ -80,7 +92,7 @@ export type CallOptions = {
   /** How many times a `pause_turn` is resent. Default 3. */
   maxPauses?: number;
   /**
-   * Unset: automatic caching when the system prompt reaches the model's minimum. true: always (5 min). "1h": always, one
+   * Unset: automatic caching when the system prompt, tools and messages together reach the model's minimum. true: always (5 min). "1h": always, one
    * hour. false: never. A request with its own block-level `cache_control` gets no top-level one in any case.
    */
   cache?: boolean | "1h";
@@ -111,6 +123,10 @@ export type CallRecord = Usage & {
   requestId: string | null;
   gatewayLogId: string | null;
   providerType: string | null;
+  /** Who answered a failed call through a gateway: the gateway itself or Anthropic (G5). Null on success. */
+  source: "gateway" | "anthropic" | null;
+  /** The gateway's own error code (2003 rate limited, 2016 and 2017 Guardrails), when it refused. */
+  gatewayCode: number | null;
   durationMs: number;
   attempts: number;
   pauses: number;
@@ -140,6 +156,10 @@ export type MessageFailure = Common & {
   retryAfter?: number;
   /** The provider's error type ("overloaded_error"), for logs. */
   providerType?: string;
+  /** For an HTTP failure: the gateway's own refusal (its rate or spend limit, Guardrails) or Anthropic's answer. */
+  source?: "gateway" | "anthropic";
+  /** The gateway's error code, from its `{ success: false, error: [{ code }] }` body. */
+  gatewayCode?: number;
   stopReason?: string | null;
   /** A refusal's policy category. */
   stopDetails?: unknown;

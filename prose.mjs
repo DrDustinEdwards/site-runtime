@@ -148,13 +148,19 @@ function phraseRegExp(phrase) {
  * - `dashes: "allow"` leaves em and en dashes alone, for an author whose own prose uses them; by default each line with
  *   one is flagged.
  * - `firstLine` is the file line `text` starts on, when it is a body cut from below a header.
+ * - `model` is the model that wrote `text` (W4). `TELLS` and `OUT_OF_PLACE` were seen in Claude's output only, so for
+ *   any model whose id does not start with `claude` (a Llama on Workers AI) they are left out, and what is left is what
+ *   is wrong whoever wrote it: `PATTERNS`, the caller's phrases, and Wikipedia's general signs (the "not X, it's Y"
+ *   construction, dashes, a closing list of three). A list for another model goes in only once it is seen in that
+ *   model's own fresh output. Unset means Claude.
  *
  * @param {string} text
- * @param {{ phrases?: string[], allow?: string[], dashes?: "flag" | "allow", firstLine?: number }} [options]
+ * @param {{ phrases?: string[], allow?: string[], dashes?: "flag" | "allow", firstLine?: number, model?: string }} [options]
  * @returns {ProseIssue[]}
  */
 export function checkProse(text, options = {}) {
-  const { phrases = [], allow = [], dashes = "flag", firstLine = 1 } = options;
+  const { phrases = [], allow = [], dashes = "flag", firstLine = 1, model = "claude" } = options;
+  const claude = /^claude/i.test(model);
   const allowed = new Set(allow.map((w) => w.toLowerCase()));
   const lines = text.split("\n");
   /** @type {ProseIssue[]} */
@@ -170,8 +176,8 @@ export function checkProse(text, options = {}) {
 
   /** @type {[string, string, string, string | null][]} */
   const listed = [
-    ...TELLS.map(([p, say, sign]) => /** @type {[string, string, string, string]} */ (["tell", p, say, sign])),
-    ...OUT_OF_PLACE.map((w) => /** @type {[string, string, string, string]} */ (["word", w, "Use the plain word, or cut it and keep the fact.", SIGNS.vocabulary])),
+    ...(claude ? TELLS : []).map(([p, say, sign]) => /** @type {[string, string, string, string]} */ (["tell", p, say, sign])),
+    ...(claude ? OUT_OF_PLACE : []).map((w) => /** @type {[string, string, string, string]} */ (["word", w, "Use the plain word, or cut it and keep the fact.", SIGNS.vocabulary])),
     ...phrases.map((p) => /** @type {[string, string, string, null]} */ (["phrase", p, "", null])),
   ];
   // Every occurrence counts, two on one line included.

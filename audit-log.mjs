@@ -2,9 +2,21 @@
  * The MCP servers' tool-call log: an append-only log of every tool call, with the caller, the arguments and the result
  * (ruling mcp-2026-10-10, rule 12.4), and of the door's own events: a sign-in, a scope challenge, a rate-limited request.
  *
- * A Durable Object with synchronous SQLite, one instance for the Worker. The class has exactly one write, an INSERT,
- * and no UPDATE, DELETE or read path over HTTP, so nothing that reaches the Worker can rewrite a row. Read it in the
- * Cloudflare dashboard's Durable Object data view.
+ * A Durable Object with synchronous SQLite, one instance for the Worker, reached only from the Worker's own code. It
+ * has no UPDATE: a row is written once and never changed. Its one DELETE is retention (L7), and it removes only rows
+ * already copied out (L6) and older than the retention period. Read it in the Cloudflare dashboard's Durable Object
+ * data view, or in the copies.
+ *
+ * - EXPORT (L6). `exportAuditLog(env, bucket)`, from the Worker's cron, copies the rows not yet copied to R2, one JSON
+ *   object per batch at `<prefix><first seq>-<last seq>.json` (`{ previous, rows }`, `previous` the hash of the row
+ *   before the first, so `verifyAuditChain(rows, key, previous)` checks each copy on its own). Put an object lock (a
+ *   bucket lock rule, as the backups have) on the prefix, so the copy cannot be changed or removed inside its period.
+ *   Only then does the log mark the rows copied.
+ * - RETENTION (L7). After each copy, rows that are copied and older than `keepDays` (AUDIT_KEEP_DAYS, 90) are deleted.
+ *   A row never copied is never deleted, however old.
+ * - ALERT (L8). `auditLogCheck(env)` is a /health check, level warn and alert: it fails when a `started` row has had no
+ *   `finished` row for 15 minutes (a call ran and the log stopped hearing of it), when calls in the last hour pass
+ *   `spikePerHour`, or when rows have waited more than two days for a copy.
  *
  * A refused call is one `refused` row and sent nothing on. An allowed call is two rows: `started` is written before the
  * API is called, and the call is refused if that write fails, so no tool runs unlogged. `finished` carries the result;
@@ -31,6 +43,12 @@
 import { sha256Hex, toHex } from "./encoding.mjs";
 
 const LONG_STRING = 200;
+/** Days a copied row stays in the log (L7). */
+export const AUDIT_KEEP_DAYS = 90;
+const EXPORT_BATCH = 1000;
+const EXPORT_BATCHES = 20;
+const ORPHAN_MINUTES = 15;
+const EXPORT_LATE_DAYS = 2;
 const RESULT_CHARS = 1000;
 const FIELD_CHARS = 200;
 
@@ -55,6 +73,8 @@ export class ToolCallLog {
     );
     const have = new Set(this.sql.exec("PRAGMA table_info(calls)").toArray().map((column) => column.name));
     for (const name of ADDED) if (!have.has(name)) this.sql.exec(`ALTER TABLE calls ADD COLUMN ${name} TEXT`);
+    // How far the copy has got: the last copied row's seq and hash, and when.
+    this.sql.exec("CREATE TABLE IF NOT EXISTS export_state (id INTEGER PRIMARY KEY CHECK (id = 1), seq INTEGER NOT NULL, hash TEXT, at TEXT NOT NULL)");
     // Appends run one at a time: each reads the hash the one before it wrote.
     /** @type {Promise<unknown>} */
     this.tail = Promise.resolve();
@@ -62,12 +82,74 @@ export class ToolCallLog {
 
   /** @param {Request} request */
   async fetch(request) {
+    const path = new URL(request.url).pathname;
+    if (request.method === "GET" && path === "/stats") return Response.json(this.stats());
     if (request.method !== "POST") return new Response("append only", { status: 405 });
+    if (path === "/export") return Response.json(this.unexported(Number((await request.json()).limit) || EXPORT_BATCH));
+    if (path === "/exported") {
+      const { seq, hash, keepDays } = /** @type {{ seq: number, hash: string | null, keepDays?: number }} */ (await request.json());
+      return Response.json(this.markExported(seq, hash, keepDays ?? AUDIT_KEEP_DAYS));
+    }
     const row = /** @type {import("./audit-log.d.mts").AuditRow} */ (await request.json());
     const append = this.tail.then(() => this.append(row));
     this.tail = append.catch(() => {});
     await append;
     return new Response(null, { status: 204 });
+  }
+
+  /**
+   * The rows after the last copied one, oldest first, and the hash before them.
+   * @param {number} limit
+   */
+  unexported(limit) {
+    const mark = this.sql.exec("SELECT seq, hash FROM export_state WHERE id = 1").toArray()[0];
+    const rows = this.sql.exec("SELECT * FROM calls WHERE seq > ? ORDER BY seq LIMIT ?", Number(mark?.seq ?? 0), Math.min(Math.max(1, limit), EXPORT_BATCH)).toArray();
+    return { previous: mark?.hash ?? null, rows };
+  }
+
+  /**
+   * Marks the rows through `seq` copied, then deletes the copied rows older than `keepDays`, except the newest row, which
+   * the next append chains to. Never moves the mark back.
+   * @param {number} seq
+   * @param {string | null} hash
+   * @param {number} keepDays
+   */
+  markExported(seq, hash, keepDays) {
+    const at = new Date();
+    const mark = Number(this.sql.exec("SELECT seq FROM export_state WHERE id = 1").toArray()[0]?.seq ?? 0);
+    if (Number.isInteger(seq) && seq > mark) {
+      this.sql.exec("INSERT INTO export_state (id, seq, hash, at) VALUES (1, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET seq = excluded.seq, hash = excluded.hash, at = excluded.at", seq, hash, at.toISOString());
+    }
+    const through = Math.max(mark, Number.isInteger(seq) ? seq : 0);
+    const cutoff = new Date(at.getTime() - Math.max(1, keepDays) * 86_400_000).toISOString();
+    // The newest row stays whatever its age: the next append chains to it.
+    const pruned = this.sql.exec("DELETE FROM calls WHERE seq <= ? AND at < ? AND seq < (SELECT max(seq) FROM calls) RETURNING seq", through, cutoff).toArray().length;
+    return { through, pruned };
+  }
+
+  /**
+   * What the alert reads: calls in the last hour, `started` rows with no `finished` after ORPHAN_MINUTES, and the rows
+   * waiting for a copy with the oldest one's time.
+   */
+  stats() {
+    const now = Date.now();
+    const iso = (/** @type {number} */ ms) => new Date(now - ms).toISOString();
+    const one = (/** @type {string} */ query, /** @type {unknown[]} */ ...params) => this.sql.exec(query, ...params).toArray()[0] ?? {};
+    const mark = Number(one("SELECT seq FROM export_state WHERE id = 1").seq ?? 0);
+    const waiting = one("SELECT count(*) AS n, min(at) AS oldest FROM calls WHERE seq > ?", mark);
+    return {
+      lastHour: Number(one("SELECT count(*) AS n FROM calls WHERE phase = 'started' AND at >= ?", iso(3_600_000)).n ?? 0),
+      orphans: Number(
+        one(
+          "SELECT count(*) AS n FROM calls s WHERE s.phase = 'started' AND s.at < ? AND s.at >= ? " +
+            "AND NOT EXISTS (SELECT 1 FROM calls f WHERE f.call_id = s.call_id AND f.phase = 'finished')",
+          iso(ORPHAN_MINUTES * 60_000),
+          iso(86_400_000),
+        ).n ?? 0,
+      ),
+      unexported: Number(waiting.n ?? 0),
+      oldestUnexported: waiting.oldest ?? null,
+    };
   }
 
   /** @param {import("./audit-log.d.mts").AuditRow} row */
@@ -114,13 +196,15 @@ async function rowHash(previous, row, key) {
  * Checks the hash chain over rows as the table holds them, in `seq` order (an export from the data view), with
  * `AUDIT_CHAIN_KEY` when the log has one. Rows from before the hash column are skipped; after the first hashed row,
  * every row must carry the hash its values and the row before it make.
+ * `previous` is the hash of the row before the first given one, for a copy that starts mid-chain (`exportAuditLog`'s).
  * @param {Array<Record<string, unknown>>} rows
  * @param {string} [key]
+ * @param {string | null} [anchor]
  * @returns {Promise<{ ok: true, hashed: number } | { ok: false, seq: unknown }>}
  */
-export async function verifyAuditChain(rows, key) {
+export async function verifyAuditChain(rows, key, anchor = null) {
   /** @type {string | null} */
-  let previous = null;
+  let previous = anchor;
   let hashed = 0;
   for (const row of rows) {
     if (row.hash == null && previous === null) continue;
@@ -165,15 +249,88 @@ export function loggedResult(output) {
 }
 
 /**
+ * The log's one instance.
+ * @param {Partial<import("./audit-log.d.mts").AuditEnv>} env
+ * @returns {{ fetch(input: string, init?: RequestInit): Promise<Response> }}
+ */
+function logStub(env) {
+  const ns = /** @type {any} */ (env.TOOL_CALL_LOG);
+  if (!ns) throw new Error("the TOOL_CALL_LOG binding is missing");
+  return ns.get(ns.idFromName("tool-calls"));
+}
+
+/**
+ * Copies the rows not yet copied to `bucket` (L6), then deletes copied rows older than `keepDays` (L7). Run it from the
+ * Worker's cron (./cron's `runJobs`); each run copies up to 20 batches of 1000 rows and the next run goes on. Throws
+ * when a write fails, so the job is recorded as failed and nothing is marked copied that is not.
+ * @param {Partial<import("./audit-log.d.mts").AuditEnv>} env
+ * @param {{ put(key: string, value: string, options?: unknown): Promise<unknown> }} bucket
+ * @param {{ prefix?: string, keepDays?: number }} [options]
+ * @returns {Promise<{ exported: number, objects: string[], pruned: number }>}
+ */
+export async function exportAuditLog(env, bucket, { prefix = "tool-calls/", keepDays = AUDIT_KEEP_DAYS } = {}) {
+  const stub = logStub(env);
+  const call = async (/** @type {string} */ path, /** @type {unknown} */ body) => {
+    const response = await stub.fetch(`https://tool-call-log.invalid${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    if (!response.ok) throw new Error(`the tool-call log answered ${response.status} to ${path}`);
+    return /** @type {any} */ (await response.json());
+  };
+  const pad = (/** @type {unknown} */ seq) => String(seq).padStart(12, "0");
+  /** @type {string[]} */
+  const objects = [];
+  let exported = 0;
+  let pruned = 0;
+  for (let batch = 0; batch < EXPORT_BATCHES; batch++) {
+    const { previous, rows } = await call("/export", { limit: EXPORT_BATCH });
+    const last = rows.at(-1);
+    if (!last) break;
+    const key = `${prefix}${pad(rows[0].seq)}-${pad(last.seq)}.json`;
+    await bucket.put(key, JSON.stringify({ previous, rows }), { httpMetadata: { contentType: "application/json" } });
+    objects.push(key);
+    exported += rows.length;
+    pruned += (await call("/exported", { seq: last.seq, hash: last.hash ?? null, keepDays })).pruned;
+    if (rows.length < EXPORT_BATCH) break;
+  }
+  if (objects.length === 0) pruned += (await call("/exported", { seq: 0, hash: null, keepDays })).pruned;
+  return { exported, objects, pruned };
+}
+
+/**
+ * The tool-call log's /health check (L8, ./health's `healthResponse({ checks })`), level warn and alert: fails when a
+ * call's `finished` row is 15 minutes late, when calls in the last hour pass `spikePerHour`, or when rows have waited
+ * more than two days for a copy. The detail gives counts only.
+ * @param {Partial<import("./audit-log.d.mts").AuditEnv>} env
+ * @param {{ spikePerHour?: number }} [options]
+ * @returns {import("./health.d.mts").HealthCheck}
+ */
+export function auditLogCheck(env, { spikePerHour = 600 } = {}) {
+  return {
+    name: "tool-call-log",
+    level: "warn",
+    alert: true,
+    run: async () => {
+      const response = await logStub(env).fetch("https://tool-call-log.invalid/stats");
+      if (!response.ok) return { ok: false, detail: `the log answered ${response.status}` };
+      const s = /** @type {{ lastHour: number, orphans: number, unexported: number, oldestUnexported: string | null }} */ (await response.json());
+      const late = s.oldestUnexported !== null && Date.now() - Date.parse(s.oldestUnexported) > EXPORT_LATE_DAYS * 86_400_000;
+      const wrong = [
+        s.orphans > 0 ? `${s.orphans} call(s) with no finished row after ${ORPHAN_MINUTES} minutes` : "",
+        s.lastHour > spikePerHour ? `${s.lastHour} calls in the last hour` : "",
+        late ? `${s.unexported} row(s) not copied for over ${EXPORT_LATE_DAYS} days` : "",
+      ].filter(Boolean);
+      return wrong.length ? { ok: false, detail: wrong.join("; ") } : true;
+    },
+  };
+}
+
+/**
  * Appends one row. Throws when the binding is missing or the write fails, so the caller decides: a failed `started`
  * refuses the call, a failed `finished` is reported to the Worker log.
  * @param {Partial<import("./audit-log.d.mts").AuditEnv>} env
  * @param {import("./audit-log.d.mts").AuditRow} row
  */
 export async function appendAudit(env, row) {
-  if (!env.TOOL_CALL_LOG) throw new Error("the TOOL_CALL_LOG binding is missing");
-  const stub = env.TOOL_CALL_LOG.get(env.TOOL_CALL_LOG.idFromName("tool-calls"));
-  const response = await stub.fetch("https://tool-call-log.invalid/append", {
+  const response = await logStub(env).fetch("https://tool-call-log.invalid/append", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(row),

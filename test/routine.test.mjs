@@ -2,7 +2,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { fireOnce, fireRoutine, routineConfig } from "../routine.mjs";
+import { DatabaseSync } from "node:sqlite";
+
+import { ROUTINE_FIRES_SQL, d1FireStore, fireOnce, fireRoutine, routineConfig } from "../routine.mjs";
 
 const URL_OK = "https://api.anthropic.com/v1/claude_code/routines/trig_01AbCdEfGh/fire";
 const config = { url: URL_OK, token: "tok", routineId: "trig_01AbCdEfGh" };
@@ -52,9 +54,15 @@ test("PLANT: a fire that may have reached Anthropic is unknown, never retried; o
   assert.equal(idOnly.sessionUrl, "https://claude.ai/code/session_01abcdefgh");
 });
 
-test("PLANT: fireOnce refuses a job key already fired or unknown, frees it after a sure failure, and yields to force", async () => {
-  const kv = new Map();
-  const store = { get: async (k) => kv.get(k) ?? null, put: async (k, v) => void kv.set(k, v), delete: async (k) => void kv.delete(k), add: async (k, v) => !kv.has(k) && (kv.set(k, v), true) };
+test("PLANT: fireOnce, on its D1 store, refuses a job key already fired or unknown, frees it after a sure failure, and yields to force", async () => {
+  const sqlite = new DatabaseSync(":memory:");
+  sqlite.exec(ROUTINE_FIRES_SQL);
+  const d1 = { prepare: (sql) => ({ bind: (...v) => ({ first: async () => sqlite.prepare(sql).get(...v) ?? null, run: async () => sqlite.prepare(sql).run(...v) }) }) };
+  const store = d1FireStore(d1);
+  const kv = {
+    get: (k) => sqlite.prepare("SELECT value FROM routine_fires WHERE key = ?").get(k)?.value,
+    get size() { return sqlite.prepare("SELECT count(*) AS n FROM routine_fires").get().n; },
+  };
   await assert.rejects(fireOnce({ ...store, add: undefined }, "job-0", config, "t"), /atomic add/);
   let posts = 0;
   const counting = (fetcher) => async (...args) => (posts++, fetcher(...args));
@@ -90,6 +98,6 @@ test("PLANT: fireOnce refuses a job key already fired or unknown, frees it after
   assert.equal((await fireOnce(flaky, "job-4", config, "t", { fetcher: answer(400, {}) })).unrecorded, undefined);
   assert.equal(JSON.parse(kv.get("routine-fire:job-4")).state, "failed");
   assert.equal((await fireOnce(store, "job-4", config, "t", { fetcher: answer(200, STARTED) })).ok, true);
-  kv.set("routine-fire:job-5", JSON.stringify({ state: "firing", at: new Date(Date.now() - 11 * 60_000).toISOString() }));
+  await store.put("routine-fire:job-5", JSON.stringify({ state: "firing", at: new Date(Date.now() - 11 * 60_000).toISOString() }));
   assert.equal((await fireOnce(store, "job-5", config, "t", { fetcher: answer(200, STARTED) })).record.state, "unknown");
 });
