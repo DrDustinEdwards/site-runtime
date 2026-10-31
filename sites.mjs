@@ -318,7 +318,15 @@ export const bsw = {
     trustedTypes: typesStaged,
   },
   deviations: { C3: beaconNotStrict },
-  assets: { paths: /* @__PURE__ */ hashed("/assets/*", "/islands/*", "/brand/*") },
+  assets: {
+    paths: {
+      // The site's photographs carry a hash of their bytes in their names (app/lib/media/images.ts).
+      ...(/* @__PURE__ */ hashed("/assets/*", "/islands/*", "/brand/*", "/team/*", "/services/*")),
+      // The site card and each page's own card (drawn at build time) are fetched by other sites' link previews.
+      "/og-image.png": sharedImage,
+      "/og/*": sharedImage,
+    },
+  },
 };
 
 // app/lib/security-headers.ts; SITE_ORIGIN is txasm.org (app/lib/site-meta.ts), served from workers.dev until cutover.
