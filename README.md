@@ -82,7 +82,7 @@ site does not meet, with its reason (`{ reason, value? }`); the check and the li
 is noindexed there while, and only while, it has one (A6). `assets` says how the static files get their headers (below). `FAMILY_DEVIATIONS` are the ones true of every site (no OpenPGP key to sign
 security.txt, HSTS on the http hop, no session for R4), printed as notices, which count as nothing. The
 builder and the check read the same entry, so a site cannot build one set and be graded against another. Each entry is
-its own export, so a Worker imports its entry by name and bundles that entry, not the registry:
+its own export, so a Worker imports its entry by name and bundles that entry, not the registry. `./sites` serves the values alone (`sites-values.mjs`), with no `reason` and no `deviations`; the deviations, the only reasons anything prints, are `sites-deviations.mjs`, which only the check imports and joins back by id, so a Worker that runs the check bundles each value once and one that does not bundles none of the prose. The other reasons are for whoever reads `sites.mjs`. Both files are written from it by `node update-sites-values.mjs` (the registry test fails while they differ):
 
 ```js
 import { mySite } from "@dustinedwards/site-runtime/sites";             // the site's own entry, by its export name
