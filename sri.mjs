@@ -5,8 +5,11 @@
  * which write neither (Capsomer's site, the Capsid Portal); `subresourceIntegrity()` is the plugin, `writeIntegrity`
  * the same pass over any built folder. Build tooling only: a Worker never imports this.
  *
- * A module a script imports with `import()` is fetched by Vite's preload helper with no integrity, which only an
- * import map can give it; those show in the Integrity-Policy reports (./csp-report) before enforcing.
+ * A module script's static imports need integrity too, and a page can give it only by a modulepreload carrying it (an
+ * import map is an inline script): so each local module a `<script type="module">` reaches through `import ... from`
+ * or `export ... from`, transitively, gets one after the script tag, unless the page preloads it already (Vite does).
+ * A module loaded with `import()` gets none, since only an import map could give it one; those show in the
+ * Integrity-Policy reports (./csp-report) before enforcing.
  */
 
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -53,9 +56,31 @@ export async function writeIntegrity(dir, { base = "/" } = {}) {
       const hash = file ? await hashOf(file) : null;
       if (!hash) continue;
       const cors = /\scrossorigin(\s*=|[\s>/])/i.test(tag) ? "" : ' crossorigin="anonymous"';
-      parts.push(html.slice(at, match.index), tag.replace(/\s*\/?>$/, (end) => ` integrity="${hash}"${cors}${end.trim() === "/>" ? " />" : ">"}`));
-      at = (match.index ?? 0) + tag.length;
+      const marked = tag.replace(/\s*\/?>$/, (end) => ` integrity="${hash}"${cors}${end.trim() === "/>" ? " />" : ">"}`);
       count += 1;
+      if (isScript && /^module$/i.test(attribute(tag, "type") ?? "") && file) {
+        const tagEnd = html.indexOf("</script>", (match.index ?? 0) + tag.length);
+        if (tagEnd !== -1) {
+          const preloaded = preloadsOf(html, pagePath, base, root);
+          /** @type {string[]} */
+          const links = [];
+          for (const dep of moduleImports(file, base, root)) {
+            if (preloaded.has(dep)) continue;
+            preloaded.add(dep);
+            const depHash = await hashOf(dep);
+            if (!depHash) continue;
+            const href = `${base.replace(/\/?$/, "/")}${relative(root, dep).split(sep).join("/")}`;
+            links.push(`<link rel="modulepreload" href="${href}" integrity="${depHash}" crossorigin="anonymous">`);
+            count += 1;
+          }
+          // The preloads go after the script's closing tag.
+          parts.push(html.slice(at, match.index), marked, html.slice((match.index ?? 0) + tag.length, tagEnd + 9), links.map((l) => `\n${l}`).join(""));
+          at = tagEnd + 9;
+          continue;
+        }
+      }
+      parts.push(html.slice(at, match.index), marked);
+      at = (match.index ?? 0) + tag.length;
     }
     if (at > 0) writeFileSync(page, parts.join("") + html.slice(at));
   }
@@ -95,6 +120,49 @@ function localFile(url, pagePath, base, root) {
   if (!resolved.pathname.startsWith(prefix)) return null;
   const file = resolve(root, decodeURIComponent(resolved.pathname.slice(prefix.length)));
   return file.startsWith(root + sep) ? file : null;
+}
+
+/** The local files a page already preloads as modules. @param {string} html @param {string} pagePath @param {string} base @param {string} root */
+function preloadsOf(html, pagePath, base, root) {
+  /** @type {Set<string>} */
+  const files = new Set();
+  for (const [tag] of html.matchAll(/<link\b[^>]*>/gi)) {
+    const href = attribute(tag, "href");
+    const file = href && /^modulepreload$/i.test(attribute(tag, "rel") ?? "") ? localFile(href, pagePath, base, root) : null;
+    if (file) files.add(file);
+  }
+  return files;
+}
+
+const STATIC_IMPORT = /(?:^|[;\s}])(?:import|export)\s*(?:[\w$*{}\s,]*?\s*from\s*)?["']((?:\.{1,2}\/|\/)[^"']+)["']/g;
+
+/**
+ * Every local module `entry` reaches through static imports, transitively, in order of discovery, `entry` excluded.
+ * @param {string} entry @param {string} base @param {string} root @returns {string[]}
+ */
+function moduleImports(entry, base, root) {
+  /** @type {string[]} */
+  const found = [];
+  const seen = new Set([entry]);
+  const queue = [entry];
+  while (queue.length > 0) {
+    const file = /** @type {string} */ (queue.shift());
+    let code;
+    try {
+      code = readFileSync(file, "utf8");
+    } catch {
+      continue;
+    }
+    for (const [, specifier] of code.matchAll(STATIC_IMPORT)) {
+      const served = `${base.replace(/\/?$/, "/")}${relative(root, file).split(sep).join("/")}`;
+      const target = localFile(specifier ?? "", served, base, root);
+      if (!target || seen.has(target)) continue;
+      seen.add(target);
+      found.push(target);
+      queue.push(target);
+    }
+  }
+  return found;
 }
 
 /** @param {string} dir @returns {string[]} */
