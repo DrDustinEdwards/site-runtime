@@ -13,7 +13,7 @@ resource routes (`./origin`), the trailing-slash redirect, the gone list and the
 No dependencies (`./sign-in` uses the site's own `better-auth` and
 `@better-auth/passkey`, 1.7.12 or later, which a site that imports it installs itself; they are not declared as peers,
 because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
-tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.60.0"`. `npm test` runs every test in `test/`.
+tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.61.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
 
@@ -608,32 +608,45 @@ what makes a render slow. A stored page keeps the marks of the render that store
 ## The images audit
 
 `site-runtime-images --origin <origin> [--from <host>]` checks a live site's images and media as served, with plain fetch and
-no browser: the home page and up to 24 sitemap pages, at most 8 originals (2 MB of each) and 6 size URLs a page. Each
-finding is a GitHub annotation, `::error title=<item>::<proof URL> <detail>` or `::warning ...`, the contract devkit-live
-runs every area's check by; it exits 0 with no errors, 1 with errors, and 2 when it could not run (a bad origin, or a
-home page that does not answer 200). `--from` fetches from where the site is served now and judges every URL as the
-origin, for a site not yet on its domain.
+no browser: the home page and up to 24 sitemap pages, every original each page shows or links (2 MB of each) and 6 size URLs
+a page. Each finding is a GitHub annotation, `::error title=<item>::<proof URL> <detail>` or `::warning ...`, the contract
+devkit-live runs every area's check by; it exits 0 with no errors, 1 with errors, and 2 when it could not run (a bad
+origin, or a home page that does not answer 200). `--from` fetches from where the site is served now and judges every URL
+as the origin, for a site not yet on its domain. A site whose home page sends a stranger to another host (a sign-in, as
+the Capsid Portal and Carrel Desk do) is one C1 error, since a shared link shows that host's card, and nothing behind it is
+read.
+
+Where each image sits on a 390 px phone (DPR 3) and a 1440 px desktop (DPR 1) is estimated from the HTML: a fixed bar for a
+site header or nav, prose as lines at a 720 px measure, each image at its `sizes` (else its width attribute, capped by its
+column) and its height-to-width ratio, and a run of alike siblings that hold narrow images laid out as a grid. Only an image
+clearly above the fold (its top under 0.8 of the screen at either width) or clearly below it (over 1.1 at both) is judged.
 
 | Item | Finds |
 |---|---|
 | A2 | a raster `<img>` wider than 300 px (its width attribute, else the file) with no `srcset` and `sizes` (a `<picture>` source's counts) |
-| A3 | a `/media` size URL that does not answer `image/avif` for `f=avif` (not a GIF's: it has none) |
+| A3 | a `/media` size URL whose AVIF (its `.avif` name, or `f=avif` on a site still on the older URLs) does not answer `image/avif` (not a GIF's: it has none) |
 | A4 | an `<img>` without `width` and `height` |
-| A5 | more than two `fetchpriority="high"` images on a page, or a lazy one |
-| A7 | an original with no srcset more than 1.5 times its width attribute (the size read from the PNG, JPEG, WebP, GIF or AVIF header) |
-| A12 | a srcset size URL without `immutable` in Cache-Control |
+| A5 | more than one `fetchpriority="high"` image on a page, or a lazy one; the largest image above the fold at either width, when its visible area beats every paragraph, heading and list item there, that is lazy or not high |
+| A6 | an image below the fold that is not `loading="lazy"` and `decoding="async"`, or is high; a lazy image above the fold; an image preload (in the page or the `Link` header) of an image below the fold |
+| A7 | a file more than 1.5 times its shown width times the DPR: the candidate a browser picks from the `<picture>` source or `srcset` for the `sizes` slot (the width from its `w` descriptor, `?w=` or the file), or the src |
+| A12 | a size URL without `immutable`, or not a `cf-cache-status: HIT` when asked a second time; an original with no ETag, or that does not answer 304 to `If-None-Match` with it |
 | B1, B2 | an `<img>` with no alt; an alt that is the file name, "image", "photo" or a URL |
 | C1 | og:image missing, not absolute https, not 200 or not an image |
 | C2 | og:image not 1200 by 630 (a warning when at least 1200 wide); og:image:width, height, type or alt missing or not the file's |
-| C3 | twitter:card not `summary_large_image`; no twitter:image:alt |
-| C8 | a warning: a sitemap page with content images (raster, not decorative, in `<main>`) and no `image:image` entry |
-| D2 | a JPEG, WebP or PNG original on the site (its host or a subdomain) whose EXIF holds a GPS IFD |
+| C3 | twitter:card not `summary_large_image`; no twitter:image:alt or one over 420 characters; og:image:type not the Content-Type served to a crawler (`Accept: */*`) and to a browser (AVIF and WebP accepted); a Content-Type that is not what the bytes are |
+| C8 | a sitemap page with content images (raster, not decorative, in `<main>`) and no `image:image` entry |
+| C9 | an indexed page with no `max-image-preview:large` in a robots meta tag or `X-Robots-Tag` |
+| C11 | a share card, size URL or original without `Cross-Origin-Resource-Policy: cross-origin`; an image the page's CSP `img-src` (header or meta) refuses |
+| D2 | an original on the site (its host or a subdomain) the page shows or links (`img` src and srcset, `<source>`, `a href`) whose EXIF (JPEG, PNG, WebP, AVIF) or XMP holds GPS, a serial number, an owner name or a MakerNote |
 | E1 | a youtube.com (not youtube-nocookie.com) or Vimeo player in the page with no facade; an iframe with no title |
 | E2 | a `<video>` without a poster, controls or a captions track, or with `preload="auto"` |
-| E3 | a warning: an `<audio>` with a preload other than none or metadata |
+| E3 | an `<audio>` without controls (its own, or a player's buttons around it), without `preload="none"`, or on a page with no transcript link |
 
-It reads the HTML the server sends, so an image a script adds later is not seen. `auditImages` and `readImage` are
-exported from the bin for its test.
+It reads the HTML the server sends, so an image a script adds later is not seen, and it reads no CSS: an image a class sizes
+(say, a logo set to 36 px tall) counts at its attributes, an image a stylesheet sets as a background is not a candidate for
+the largest paint, and where a grid or a hero really falls is the estimate above. It cannot test that replacing an
+original changes its size URLs (A12), which needs an upload. `auditImages` and `readImage` are exported from the bin for
+its test.
 
 ## Share cards
 
