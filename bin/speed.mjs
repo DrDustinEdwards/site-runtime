@@ -29,7 +29,10 @@ if (!values.origin) {
 const origin = values.origin.replace(/\/$/, "");
 const base = (values.from ?? values.origin).replace(/\/$/, "");
 const maxPages = Number(values["max-pages"]);
-const UA = "Mozilla/5.0 (compatible; site-runtime-speed)";
+// A current Chrome string for every request, the 103 probe too: Cloudflare sends Early Hints only to a browser, so what the
+// check sees is what a reader gets. The product name rides in a harmless extra header.
+const UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+const CHECK = "site-runtime-speed";
 const ENCODINGS = "zstd, br, gzip";
 const nonce = () => Math.random().toString(36).slice(2, 10);
 
@@ -37,7 +40,7 @@ const nonce = () => Math.random().toString(36).slice(2, 10);
 async function get(url, headers = {}) {
   const started = performance.now();
   try {
-    const response = await fetch(url, { redirect: "manual", headers: { "user-agent": UA, "accept-encoding": ENCODINGS, ...headers } });
+    const response = await fetch(url, { redirect: "manual", headers: { "user-agent": UA, "x-check": CHECK, "accept-encoding": ENCODINGS, ...headers } });
     const ttfb = performance.now() - started;
     const body = (response.headers.get("content-type") ?? "").includes("text/html") ? await response.text() : (await response.arrayBuffer(), "");
     return { url, status: response.status, headers: Object.fromEntries(response.headers), ttfb, body };
@@ -71,7 +74,7 @@ function informational(url) {
     session.on("error", () => done(null));
     session.setTimeout(15_000, () => done(null));
     const seen = [];
-    const stream = session.request({ ":path": u.pathname + u.search, "user-agent": UA, "accept-encoding": ENCODINGS });
+    const stream = session.request({ ":path": u.pathname + u.search, "user-agent": UA, "x-check": CHECK, "accept-encoding": ENCODINGS });
     stream.on("headers", (headers) => seen.push(Number(headers[":status"])));
     stream.on("response", () => {
       stream.resume();
@@ -95,7 +98,7 @@ async function earlyHints(url) {
 
 /** Every <loc> in the sitemap, following a sitemap index one level. */
 async function sitemapUrls() {
-  const locs = async (url) => [...(await (await fetch(url, { headers: { "user-agent": UA } })).text()).matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)].map((m) => m[1]);
+  const locs = async (url) => [...(await (await fetch(url, { headers: { "user-agent": UA, "x-check": CHECK } })).text()).matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)].map((m) => m[1]);
   try {
     const top = await locs(`${base}/sitemap.xml`);
     const nested = top.filter((loc) => /\.xml(\?|$)/.test(loc));

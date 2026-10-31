@@ -42,7 +42,24 @@ const AUDITS = {
 
 const median = (/** @type {number[]} */ values) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
 const isHtml = (/** @type {Got} */ got) => (got.headers["content-type"] ?? "").includes("text/html");
-const hashed = (/** @type {string} */ url) => /\/(assets|islands)\//.test(url) || /[.-][A-Za-z0-9_-]{8,}\.[a-z0-9]+$/.test(url);
+/**
+ * True for a file a build named by its content: under /assets/ or /islands/, or a name ending in a hash-like token, the
+ * bundler's `root-DYYv4ssa.css` or `inter-latin-opsz-normal-BwkfbSeq.woff2`. A token is 8 or more letters, digits or
+ * underscores after the last hyphen or dot, with a digit or both cases in it, so `apple-touch-icon.png` and
+ * `logo-mayo-clinic.svg` (plain words) and `icon-1024x1024.png` (a size) are not hashed and rightly revalidate.
+ */
+const hashed = (/** @type {string} */ url) => {
+  if (/\/(assets|islands)\//.test(url)) return true;
+  const token = /[.-]([A-Za-z0-9_]{8,})\.[a-z0-9]+$/.exec(url)?.[1];
+  return !!token && !/^\d+x\d+$/.test(token) && (/\d/.test(token) || (/[a-z]/.test(token) && /[A-Z]/.test(token)));
+};
+
+/** True when a cache-control lets a shared cache keep the response: `public`, or a positive max-age or s-maxage without `private` or `no-store`. */
+const allowsStoring = (/** @type {string} */ cacheControl) => {
+  const directives = cacheControl.toLowerCase().split(",").map((part) => part.trim());
+  if (directives.includes("private") || directives.includes("no-store")) return false;
+  return directives.some((part) => part === "public" || /^(s-)?max-age=[1-9]\d*$/.test(part));
+};
 const ms = (/** @type {number} */ n) => `${Math.round(n)} ms`;
 
 /** True when the page runs a React Router app, which prefetches through its own links, not speculation rules. */
@@ -83,8 +100,17 @@ export function speedFindings(o) {
       add("B4", "error", o.withCookie.url, `a request with a cookie got cache-control ${o.withCookie.headers["cache-control"] ?? "none"}, not private`);
     }
   }
+  // A 404 is judged by what it was told to do. Workers static assets report cf-cache-status HIT for their shared 404
+  // page whatever it says and send no Age, so a HIT alone proves nothing there: a 404 that forbids storing fails only
+  // with an Age (it was really stored), one with no cache-control at all (a Worker's own page) fails on the HIT.
   const missingAgain = o.missing.at(-1);
-  if (missingAgain && FROM_EDGE.has(missingAgain.headers["cf-cache-status"] ?? "")) add("B4", "error", missingAgain.url, `a ${missingAgain.status} was stored and served from the edge`);
+  if (missingAgain) {
+    const cc = missingAgain.headers["cache-control"] ?? "";
+    const fromEdge = FROM_EDGE.has(missingAgain.headers["cf-cache-status"] ?? "");
+    const aged = Number(missingAgain.headers.age) > 0;
+    if (allowsStoring(cc)) add("B4", "error", missingAgain.url, `a ${missingAgain.status} sent cache-control ${cc}, which lets the edge store it`);
+    else if (fromEdge && (aged || !cc)) add("B4", "error", missingAgain.url, `a ${missingAgain.status} was stored and served from the edge${aged ? ` (age ${missingAgain.headers.age})` : ""}`);
+  }
   if (home && FROM_EDGE.has(home.headers["cf-cache-status"] ?? "") && !FROM_EDGE.has(o.campaign.headers["cf-cache-status"] ?? "")) {
     add("B5", "error", o.campaign.url, `a campaign link missed the stored home page: cf-cache-status ${o.campaign.headers["cf-cache-status"] ?? "none"}`);
   }

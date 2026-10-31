@@ -57,3 +57,28 @@ test("PLANT: each gap fails its own item", () => {
   o.second[0].headers["speculation-rules"] = '"/cdn-cgi/speculation"';
   assert.deepEqual(items(speedFindings(o)), ["B1", "B4", "B5", "B7", "C1", "C5", "D1", "E1", "F3"]);
 });
+
+test("a 404 is judged by its cache-control: static assets' HIT without an Age passes, a storable 404 fails", () => {
+  const missing = (headers) => ({ url: "https://example.com/x", status: 404, ttfb: 10, body: "", headers });
+  const run = (headers) => {
+    const o = clean();
+    o.missing = [missing(headers), missing(headers)];
+    return items(speedFindings(o));
+  };
+  assert.deepEqual(run({ "cf-cache-status": "HIT", "cache-control": "private, no-store" }), []);
+  assert.deepEqual(run({ "cf-cache-status": "HIT", "cache-control": "private, no-store", age: "40" }), ["B4"]);
+  assert.deepEqual(run({ "cf-cache-status": "MISS", "cache-control": "public, max-age=300" }), ["B4"]);
+  assert.deepEqual(run({ "cf-cache-status": "HIT" }), ["B4"]);
+});
+
+test("only a hash-like token makes a file immutable: apple-touch-icon.png revalidates, a bundler hash does not", () => {
+  const file = (name, cc) => ({ url: `https://example.com${name}`, status: 200, ttfb: 10, body: "", headers: { "cache-control": cc, "content-encoding": "br", "last-modified": "Fri, 30 Oct 2026 00:00:00 GMT" } });
+  const run = (...files) => {
+    const o = clean();
+    o.files = files;
+    return items(speedFindings(o));
+  };
+  const revalidate = "public, max-age=0, must-revalidate";
+  assert.deepEqual(run(file("/apple-touch-icon.png", revalidate), file("/logo-mayo-clinic.svg", revalidate), file("/icon-1024x1024.png", revalidate)), []);
+  assert.deepEqual(run(file("/root-DYYv4ssa.css", revalidate), file("/inter-latin-opsz-normal-BwkfbSeq.woff2", revalidate)), ["C1", "C1"]);
+});
