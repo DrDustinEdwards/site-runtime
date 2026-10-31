@@ -177,7 +177,13 @@ React Router writes the integrity with `subResourceIntegrity: true` in `react-ro
 import map with every chunk's hash and `integrity` on each modulepreload. The import map is an inline `<script>` that
 carries the page's nonce, so `renewNonce` renews it with the rest; a page trusted by hashes instead needs the import map's
 hash. A static build writing its own tags gives each `integrity` from `integrityHash(bytes)` (sha384) and `crossorigin`,
-which a classic script needs, since Integrity-Policy refuses a no-cors script whatever its integrity. The live check warns
+which a classic script needs, since Integrity-Policy refuses a no-cors script whatever its integrity. A Vite build (Capsomer's site, the Capsid
+Portal) writes neither: `subresourceIntegrity()` (`./sri`) is the plugin that gives every `<script src>` and
+modulepreload the build wrote for its own files their sha384 and `crossorigin` once the build is written, and
+`writeIntegrity(dir, { base })` the same pass over any built folder (the Capsid explorer's). A module script's static
+imports, transitively, get a modulepreload with their integrity when the page has none for them, since an import map
+would be an inline script. A module loaded with `import()` gets no integrity from either (only an import map gives it
+one), so it shows in the reports before enforcing. The live check warns
 on any off-site script or stylesheet the home page loads without `integrity` (S1).
 
 **Inline scripts, the last resort.** `inlineScripts: "unsafe-inline"` puts `'unsafe-inline'` on script-src. Use it only when
