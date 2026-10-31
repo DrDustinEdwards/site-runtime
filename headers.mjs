@@ -138,7 +138,8 @@ export function buildSecurityHeaders({ site, overrides } = {}) {
  * `overwrite: true` (the default) makes the set authoritative, which is what dustinedwards.info does on
  * every exit. `overwrite: false` keeps any value a route already chose, which is foxhound's merge. A
  * Response whose headers are immutable (Response.redirect, the Cache API) throws on `set`; rebuild it
- * with `new Response(res.body, { ...res, headers: new Headers(res.headers) })` and apply to that.
+ * with `new Response(res.body, { ...res, headers: new Headers(res.headers) })` and apply to that. A text or XML
+ * Content-Type with no charset (React Router's `text/html`, say) gains `charset=utf-8`, as ASVS 4.1.1 asks.
  *
  * @param {Headers} headers
  * @param {Readonly<Record<string, string>>} [set]
@@ -148,6 +149,8 @@ export function applyHeaderSet(headers, set = STANDARD_SECURITY_HEADERS, { overw
   for (const [name, value] of Object.entries(set)) {
     if (overwrite || !headers.has(name)) headers.set(name, value);
   }
+  const type = headers.get("Content-Type");
+  if (type && /^\s*(text\/|[^;]*[/+]xml\s*$)/i.test(type) && !/;/.test(type)) headers.set("Content-Type", `${type.trim()}; charset=utf-8`);
 }
 
 /** The headers a static `_headers` file leaves out: a page's policy names what that page loads, and may carry a nonce. */
@@ -184,7 +187,11 @@ export function headersFile(set, { paths = {}, comment = [], charset = false } =
   const baseNames = new Set(base.map(([name]) => name.toLowerCase()));
   const notes = (typeof comment === "string" ? comment.split("\n") : comment).map((text) => (text ? `# ${text}` : "#"));
   const blocks = [["/*", ...base.map(([name, value]) => line(name, value))].join("\n")];
-  const typed = charset ? Object.entries(TEXT_TYPES).map(([ext, type]) => [`/*.${ext}`, { "Content-Type": `${type}; charset=utf-8` }]) : [];
+  // A folder's index page is answered at `/` or a path ending in `/`, with no extension for a `/*.html` rule to match.
+  const html = { "Content-Type": "text/html; charset=utf-8" };
+  const typed = charset
+    ? [...Object.entries(TEXT_TYPES).map(([ext, type]) => [`/*.${ext}`, { "Content-Type": `${type}; charset=utf-8` }]), ["/", html], ["/*/", html]]
+    : [];
   for (const [pattern, headers] of [...typed, ...Object.entries(paths)]) {
     if (!pattern.startsWith("/") || /\s/.test(pattern)) throw new Error(`${JSON.stringify(pattern)} is not a path pattern`);
     const entries = Object.entries(headers);
