@@ -7,13 +7,13 @@ servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-lo
 (`./access`), the check that an Access application lets in exactly the site's admins (`./access-drift`, `site-runtime-access-drift`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images and their edits (`./image`), link prefetch (`./prefetch`), preloads and Early Hints (`./preload`), the Worker in front of a static site (`./static-site`), the edge page cache (`./edge-cache`), the Server-Timing header (`./server-timing`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), the signed token behind emailed links (`./signed-token`), where a site's Anthropic calls go
 (`./ai-gateway`), starting a Claude Code routine (`./routine`), the check on AI-written prose with the measure of an author's voice (`./prose`), the one sign-in every site
 offers (`./sign-in`, `./sign-in-client`, `./apple-secret`), the Cloudflare Turnstile widget and its server check (`./turnstile`), the same-origin check for
-resource routes (`./origin`), the trailing-slash redirect, the gone list and the slug-rename redirect (`./url`), one structured log line and its scrubbers (`./log`), the 404 counter
+resource routes (`./origin`), the trailing-slash redirect, the gone list and the slug-rename redirect (`./url`), one structured log line and its scrubbers (`./log`), the 404 counter and the redirect table
 (`./not-found`) and scheduled jobs with their record (`./cron`).
 
 No dependencies (`./sign-in` uses the site's own `better-auth` and
 `@better-auth/passkey`, 1.7.12 or later, which a site that imports it installs itself; they are not declared as peers,
 because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
-tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.60.0"`. `npm test` runs every test in `test/`.
+tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.62.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
 
@@ -1317,8 +1317,11 @@ return response;
   report's list too: any `/wp-` (`/wp-admin`, `/wp-content`), server scripts (`.php`, `.asp`, `.jsp`, `.cgi`,
   `/cgi-bin/`, `/xmlrpc`), dumps and config (`.sql`, `.bak`, `.env`, `.ini`, `.yml`, `.db`, `/config.json`,
   `/config/`, `env.js`), dotfiles but `/.well-known/`, phpMyAdmin and phpinfo, credential files (`credentials.json`,
-  `aws-exports.js`, `appsettings.json`) and AI-key paths (`/openai/`, `/anthropic/`, `/bedrock/`, `/llm/`). A slug
-  that only contains a word like "secret" stays a page; only a file name with an extension is a probe.
+  `aws-exports.js`, `appsettings.json`), AI-key paths (`/openai/`, `/anthropic/`, `/bedrock/`, `/llm/`), archives and
+  leftovers (`.zip`, `.tar.gz`, `.tgz`, `.rar`, `.7z`, `.war`, `.log`, `.old`, `.swp`, `.pem`, `.key`), server pages
+  (`/web.config`, `/server-status`, `/server-info`, `/actuator`) and framework debug paths (`/vendor/phpunit`,
+  `/_profiler`, `/telescope`, `/solr/`, `/owa/`, `/ecp/`, `/boaform`, `/hnap1`). A slug that only contains a word like
+  "secret" or "zip" stays a page; only a file name with an extension is a probe.
 - GET only. React Router's data request (`/x.data`, `/_.data` for the home page) counts as its page, so a client
   navigation and a document load of the same missing page add to one row.
 - One upsert, so two 404s at once cannot both insert or lose a hit. Written in `ctx.waitUntil`, so it never holds or
@@ -1328,8 +1331,37 @@ return response;
   `[{ path, kind, hits, referrers: [{ host, hits }] }]`, most hits first, "" the host for no referrer, probes left out
   unless asked for. `pruneNotFound(db, { days = 90 })` deletes older rows; a site runs it from its cron.
 
+**The redirect table.** A 404 the report shows is fixed with one row, not a deploy. A site adds `REDIRECTS_SQL` as its
+next migration (`redirects`: `from_path` the key, `to_path` a path on the site or an https URL, `status` 301, 302, 307 or
+308, `created_at`), asks the table before it answers 404, and gives its admin's 404 list an "Add a 301" action that calls
+`addRedirect`:
+
+```js
+import { addRedirect, d1Redirects, tableRedirect } from "@dustinedwards/site-runtime/not-found";
+const moved = await tableRedirect(request, d1Redirects(env.DB)); // before the 404
+if (moved) return moved;
+// the admin's one step, on a 404 row:
+await addRedirect(env.DB, { from: "/old-post", to: "/blog/new-post" });
+```
+
+- `tableRedirect(request, table)` takes the table's lookup or a plain list of `{ from, to, status? }` (a site whose
+  redirects are a file). A chain is followed to its end, so the reader takes one hop, and a loop throws; the query is
+  kept unless the target names one; a 301 or 302 to a method other than GET and HEAD becomes 308 or 307. A path target
+  stays on the request's own origin. Sent `private, no-store`, so a removed row is not held in a browser.
+- `addRedirect(db, { from, to, status })` checks the entry (`redirectEntry`: `from` a path with no query, `to` a path or
+  an https URL, never `//host`), refuses one that would loop, replaces an earlier row for the path and points every row
+  that led to `from` straight at the new target, so chains never grow. `removeRedirect(db, from)` and
+  `listRedirects(db)` are the rest of the admin screen. A trailing slash is ignored on both sides.
+
+**The database down.** `databaseDown(error)` (`./health`) turns D1's documented transient errors (overloaded, reset,
+storage timeout, lost connection; `isDatabaseDown`) into a 503 `Response` with statusText `Database unavailable` and
+`Retry-After: 60`, and returns any other error unchanged, so a loader writes `catch (error) { throw databaseDown(error); }`.
+A thrown Response reaches the error boundary intact on the client too, where Capsomer's `ErrorPage` reads the statusText
+and says the site's data is briefly unavailable instead of "Something went wrong".
+
 **Tests.** `test/log.test.mjs`, `test/url.test.mjs` (a `//` path stays on the site, the gone list, a rename chain) and `test/not-found.test.mjs` (on
-an in-memory SQLite with `NOT_FOUND_SQL`, and with a first-shape table upgraded by `NOT_FOUND_UPGRADE_SQL`).
+an in-memory SQLite with `NOT_FOUND_SQL`, and with a first-shape table upgraded by `NOT_FOUND_UPGRADE_SQL`; the probe
+list; the redirect table's one step, chain and loop).
 
 ## Scheduled jobs
 

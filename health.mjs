@@ -215,3 +215,40 @@ export function aiCheck(name, ai) {
 function bindingCheck(name, present) {
   return { name, level: "warn", run: async () => (present ? true : { ok: false, detail: "binding missing" }) };
 }
+
+/**
+ * D1's messages for a database that is down or reset for a moment, as Cloudflare's D1 docs list them ("Error list",
+ * "Retry a query"), with the Workers runtime's lost connection. A wrong query (no such table, a constraint) is not one.
+ */
+const DATABASE_DOWN =
+  /D1 DB is overloaded|D1 DB's isolate exceeded its memory limit|D1 DB exceeded its CPU time limit|D1 DB storage operation exceeded timeout|Internal error (?:while starting up|in) D1 DB storage|Cannot resolve D1 DB due to transient issue|D1 DB reset because its code was updated|Network connection lost|D1_ERROR:.*(?:reset|overloaded|unavailable|timed? ?out)/i;
+
+/**
+ * Whether an error is the database being down or reset for a moment, read from the error and its causes.
+ * @param {unknown} error
+ * @returns {boolean}
+ */
+export function isDatabaseDown(error) {
+  for (let e = error, depth = 0; e && depth < 5; e = /** @type {any} */ (e).cause, depth++) {
+    const message = e instanceof Error ? e.message : typeof e === "string" ? e : "";
+    if (DATABASE_DOWN.test(message)) return true;
+  }
+  return false;
+}
+
+/** The statusText Capsomer's ErrorPage reads to say the database is down. */
+export const DATABASE_DOWN_STATUS_TEXT = "Database unavailable";
+
+/**
+ * Turns a database-down error into the 503 a React Router loader throws, so the error page says the site's data is
+ * briefly unavailable instead of "Something went wrong", and the reader is told to try again (Retry-After 60). A thrown
+ * Response reaches the client's error boundary intact, where a thrown Error is replaced by a generic one in production.
+ * Any other error is returned unchanged: `catch (error) { throw databaseDown(error); }`.
+ * @param {unknown} error
+ * @returns {unknown}
+ */
+export function databaseDown(error) {
+  if (!isDatabaseDown(error)) return error;
+  logEvent("database_down", { error }, { level: "error" });
+  return new Response(null, { status: 503, statusText: DATABASE_DOWN_STATUS_TEXT, headers: { "Retry-After": "60", "Cache-Control": "no-store" } });
+}
