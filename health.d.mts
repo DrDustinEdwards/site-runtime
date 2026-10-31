@@ -61,3 +61,10 @@ export function durableObjectCheck(name: string, namespace: { idFromName(name: s
 export function queueCheck(name: string, queue: { send(message: unknown): Promise<unknown> } | undefined): HealthCheck;
 /** The Workers AI binding is present; no model is run (every call is billed). Level warn. */
 export function aiCheck(name: string, ai: { run(...args: any[]): Promise<unknown> } | undefined): HealthCheck;
+
+/** Whether an error (or one of its causes) is D1 down or reset for a moment; a wrong query is not. */
+export function isDatabaseDown(error: unknown): boolean;
+/** "Database unavailable": the statusText Capsomer's ErrorPage reads. */
+export const DATABASE_DOWN_STATUS_TEXT: "Database unavailable";
+/** A database-down error as a 503 Response (statusText "Database unavailable", Retry-After 60) to throw; any other error unchanged. */
+export function databaseDown(error: unknown): unknown;
