@@ -1282,8 +1282,10 @@ never the query.
 
 `withRequestLog(handler, { sha, route })` wraps a fetch handler so every request writes one `request` line: those
 fields with the response's status, `route` when `route(request)` names one (the matched pattern, so `/posts/:slug`
-groups its hits), and `ms`. A 5xx is logged at error, a 4xx at warn; a throw is logged as 500 and rethrown. `sha` is a
-string or a function of the handler's other arguments:
+groups its hits), and `ms`. A 5xx is logged at error, a 4xx at warn; a throw is logged as 500 and rethrown. A 400 or
+422, input the site refused, also writes one `input_validation_fail` line (OWASP's name) with the same fields and route,
+so a site's refusals are counted in one place; `inputValidation: false` turns that off. `sha` is a string or a function
+of the handler's other arguments:
 
 ```js
 import { withRequestLog } from "@dustinedwards/site-runtime/log";

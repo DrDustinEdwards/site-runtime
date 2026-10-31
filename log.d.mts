@@ -30,11 +30,12 @@ export function requestFields(
 /**
  * A fetch handler that writes one `request` line per request: requestFields with status and sha, `route` when
  * `route(request)` names one, and ms. 5xx and throws (as 500, rethrown) at error, 4xx at warn. `sha` is a string or a
- * function of the arguments after the request (`(env) => env.DEPLOY_SHA`).
+ * function of the arguments after the request (`(env) => env.DEPLOY_SHA`). A 400 or 422 also writes an
+ * `input_validation_fail` line, unless `inputValidation` is false.
  */
 export function withRequestLog<A extends unknown[]>(
   handler: (request: Request, ...rest: A) => Response | Promise<Response>,
-  options?: { sha?: string | ((...rest: A) => string | undefined); route?: (request: Request) => string | undefined } & ScrubOptions,
+  options?: { sha?: string | ((...rest: A) => string | undefined); route?: (request: Request) => string | undefined; inputValidation?: boolean } & ScrubOptions,
 ): (request: Request, ...rest: A) => Promise<Response>;
 /**
  * A `route` namer for withRequestLog from a React Router build's `routes`: the full pattern of the most specific

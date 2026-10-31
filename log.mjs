@@ -135,12 +135,14 @@ export function requestFields(request, { sha, status, ...scrub } = {}) {
  * (`route(request)` when given, such as the matched pattern, so `/posts/:slug` groups its hits), the ms taken and the
  * sha. A 5xx or a throw is logged at error (a throw as status 500, then rethrown), a 4xx at warn, the rest at log.
  * `sha` is a string or a function of the handler's arguments after the request (`(env) => env.DEPLOY_SHA`).
+ * A 400 or 422 (input the site refused) also writes one `input_validation_fail` line (OWASP_EVENTS) with the same
+ * request fields and route, unless `inputValidation` is false.
  * @template {unknown[]} A
  * @param {(request: Request, ...rest: A) => Response | Promise<Response>} handler
- * @param {{ sha?: string | ((...rest: A) => string | undefined), route?: (request: Request) => string | undefined } & ScrubOptions} [options]
+ * @param {{ sha?: string | ((...rest: A) => string | undefined), route?: (request: Request) => string | undefined, inputValidation?: boolean } & ScrubOptions} [options]
  * @returns {(request: Request, ...rest: A) => Promise<Response>}
  */
-export function withRequestLog(handler, { sha, route, ...scrub } = {}) {
+export function withRequestLog(handler, { sha, route, inputValidation = true, ...scrub } = {}) {
   return async (request, ...rest) => {
     const started = Date.now();
     let status = 500;
@@ -150,15 +152,12 @@ export function withRequestLog(handler, { sha, route, ...scrub } = {}) {
       return response;
     } finally {
       const named = route?.(request);
-      logEvent(
-        "request",
-        {
-          ...requestFields(request, { sha: typeof sha === "function" ? sha(...rest) : sha, status, ...scrub }),
-          ...(named ? { route: named } : {}),
-          ms: Date.now() - started,
-        },
-        { level: status >= 500 ? "error" : status >= 400 ? "warn" : "log", ...scrub },
-      );
+      const fields = {
+        ...requestFields(request, { sha: typeof sha === "function" ? sha(...rest) : sha, status, ...scrub }),
+        ...(named ? { route: named } : {}),
+      };
+      logEvent("request", { ...fields, ms: Date.now() - started }, { level: status >= 500 ? "error" : status >= 400 ? "warn" : "log", ...scrub });
+      if (inputValidation && (status === 400 || status === 422)) logEvent("input_validation_fail", fields, { level: "warn", ...scrub });
     }
   };
 }
