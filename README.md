@@ -13,7 +13,7 @@ resource routes (`./origin`), the trailing-slash redirect (`./url`), one structu
 No dependencies (`./sign-in` uses the site's own `better-auth` and
 `@better-auth/passkey`, 1.7.12 or later, which a site that imports it installs itself; they are not declared as peers,
 because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
-tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.41.1"`. `npm test` runs every test in `test/`.
+tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.43.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
 
@@ -352,16 +352,42 @@ original. An SVG is only ever served as an attachment. Without the binding (a ch
 `wrangler.jsonc`) the route serves the original and says so in `x-image`; a failed transform serves the original for five
 minutes and logs `image-transform-failed`.
 
+A page that renders JSX takes the same picture as props: `pictureProps(attrs, { alt, priority, className })` returns
+`{ sources: [{ type, srcSet, sizes, media }], img: { src, srcSet, sizes, width, height, alt, className, loading,
+fetchPriority, decoding } }`, plain objects with no React import, and `pictureHtml` is those props written out, so the
+two never differ. An unset prop is `undefined`, which JSX leaves out; with no `sources` the page writes the `<img>`
+alone (germomics' `Picture` falling back to the original). A site adds its own props beside them, as julieedwards.info's
+`object-position` from the focal point:
+
+```jsx
+const { sources, img } = pictureProps(images.attributes(photo, "content"), { alt: photo.alt });
+<picture>
+  {sources.map((s) => <source key={s.type + (s.media ?? "")} {...s} />)}
+  <img {...img} style={{ objectPosition: objectPosition(photo.focus) }} />
+</picture>
+```
+
+A GIF stays animated. The binding keeps every frame unless `output()` is given `anim: false`, and writes them as
+animated WebP; Cloudflare's formats list (Images, Limits) gives animation for WebP and GIF output and not for AVIF, so a
+GIF is offered no animated AVIF. For WCAG 2.2.2 and Lighthouse's "use video formats for animated content", a GIF's
+`sources` lead with its first frame under `media="(prefers-reduced-motion: reduce)"` (AVIF then WebP, `still=1` in the
+URL, which the route writes with `anim: false`), then the animated WebP. `still=1` is in the closed set for a GIF only:
+it is a second billed transform of each size, so the route refuses it, and any other value, for every other file. An
+animation over 50 megapixels in all its frames is served by Cloudflare untransformed. A long animation is still better
+as a `<video>`.
+
 `editImage(images, input, { rotate, flip, maxEdge, format, quality })` is the one edit a site writes back: a turn (`rotate`
 90, 180 or 270, clockwise), a mirror (`flip` `"h"`, `"v"` or `"hv"`, which Cloudflare applies before the turn), or a
-shrink (`maxEdge`, the longest edge, never enlarged), encoded as `format` at quality 85 unless said. `input` is a stream
-or bytes; the answer is the binding's `Response`. It is for writes a person asked for (an editor's turn, an upload shrunk
-before it is stored, a small copy shown to a model), each a billed transform; serving sizes stays with `respond` and its
-closed sets. A bad option, or none, throws before the binding is called.
+shrink (`maxEdge`, the longest edge, never enlarged), encoded as `format` at quality 85 unless said; a `format` alone
+re-encodes the picture as it is (site-api's upload turning HEIC into JPEG). `input` is a stream or bytes; the answer is
+the binding's `Response`. It is for writes a person asked for (an editor's turn, an upload shrunk or converted before it
+is stored, a small copy shown to a model), each a billed transform; serving sizes stays with `respond` and its closed
+sets. A bad option throws before the binding is called.
 
 ```js
 const turned = await editImage(env.IMAGES, object.body, { rotate: 90, format: "image/jpeg", quality: 92 });
 const shrunk = await editImage(env.IMAGES, bytes, { maxEdge: 4096, format: "image/webp" });
+const jpeg = await editImage(env.IMAGES, heicBytes, { format: "image/jpeg" });
 ```
 
 ## Link prefetch
@@ -523,6 +549,36 @@ createSiteApi({ adapter, key, hooks: [indexNow, schedulePurgeHook()] });
 monitoring reads. `timedRender(async (marks) => render())` adds a `render` mark; `timed(marks, "d1", fn)` adds one for
 a wait inside it. In a Worker the clock moves only across I/O, so the marks measure the waits (D1, R2, fetch), which is
 what makes a render slow. A stored page keeps the marks of the render that stored it.
+
+## The images audit
+
+`site-runtime-images --origin <origin> [--from <host>]` checks a live site's images and media as served, with plain fetch and
+no browser: the home page and up to 24 sitemap pages, at most 8 originals (2 MB of each) and 6 size URLs a page. Each
+finding is a GitHub annotation, `::error title=<item>::<proof URL> <detail>` or `::warning ...`, the contract devkit-live
+runs every area's check by; it exits 0 with no errors, 1 with errors, and 2 when it could not run (a bad origin, or a
+home page that does not answer 200). `--from` fetches from where the site is served now and judges every URL as the
+origin, for a site not yet on its domain.
+
+| Item | Finds |
+|---|---|
+| A2 | a raster `<img>` wider than 300 px (its width attribute, else the file) with no `srcset` and `sizes` (a `<picture>` source's counts) |
+| A3 | a `/media` size URL that does not answer `image/avif` for `f=avif` (not a GIF's: it has none) |
+| A4 | an `<img>` without `width` and `height` |
+| A5 | more than two `fetchpriority="high"` images on a page, or a lazy one |
+| A7 | an original with no srcset more than 1.5 times its width attribute (the size read from the PNG, JPEG, WebP, GIF or AVIF header) |
+| A12 | a srcset size URL without `immutable` in Cache-Control |
+| B1, B2 | an `<img>` with no alt; an alt that is the file name, "image", "photo" or a URL |
+| C1 | og:image missing, not absolute https, not 200 or not an image |
+| C2 | og:image not 1200 by 630 (a warning when at least 1200 wide); og:image:width, height, type or alt missing or not the file's |
+| C3 | twitter:card not `summary_large_image`; no twitter:image:alt |
+| C8 | a warning: a sitemap page with content images (raster, not decorative, in `<main>`) and no `image:image` entry |
+| D2 | a JPEG, WebP or PNG original on the site (its host or a subdomain) whose EXIF holds a GPS IFD |
+| E1 | a youtube.com (not youtube-nocookie.com) or Vimeo player in the page with no facade; an iframe with no title |
+| E2 | a `<video>` without a poster, controls or a captions track, or with `preload="auto"` |
+| E3 | a warning: an `<audio>` with a preload other than none or metadata |
+
+It reads the HTML the server sends, so an image a script adds later is not seen. `auditImages` and `readImage` are
+exported from the bin for its test.
 
 ## Share cards
 
