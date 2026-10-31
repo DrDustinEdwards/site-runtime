@@ -1203,14 +1203,11 @@ if (!admin) return redirect(accessSignInUrl(request));                        //
   this request, to append to the app's response. The last request is that cookie's time when its HMAC, keyed by the
   Access token, matches; otherwise the token's `iat`. A request with no Access token is `{ idle: false }`.
 
+  `withAdminIdle(request, handle, { prefixes })` does both around the site's handler for paths under `prefixes`
+  (default `/admin`; `["/"]` for a site that is all admin, as Carrel's Desk):
+
 ```js
-if (url.pathname.startsWith("/admin")) {
-  const gate = await adminIdle(request);
-  if (gate.idle) return gate.response;
-  const response = await app(request);
-  if (gate.cookie) response.headers.append("Set-Cookie", gate.cookie);
-  return response;
-}
+return withAdminIdle(request, () => app.fetch(request, env, ctx), { prefixes: ["/admin"] });
 ```
 
 **Tests.** `test/html.test.mjs`, `test/compare.test.mjs` (both the XOR path and a stubbed `crypto.subtle.timingSafeEqual`)

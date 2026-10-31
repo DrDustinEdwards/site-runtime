@@ -266,3 +266,25 @@ export async function adminIdle(request, { idleSeconds = ADMIN_IDLE_SECONDS, now
   const value = `${seconds}.${await seenMac(token, String(seconds))}`;
   return { idle: false, cookie: `${ADMIN_SEEN_COOKIE}=${value}; Path=/; Max-Age=${idleSeconds}; Secure; HttpOnly; SameSite=Lax` };
 }
+
+/**
+ * `adminIdle` around a site's handler, for its Worker's fetch: on a path under one of `prefixes` (default `/admin`),
+ * an idle admin gets the logout redirect and an active one's response carries the seen cookie; every other path goes
+ * straight to `handle`.
+ * @param {Request} request
+ * @param {() => Promise<Response>} handle
+ * @param {{ prefixes?: readonly string[], idleSeconds?: number }} [options]
+ * @returns {Promise<Response>}
+ */
+export async function withAdminIdle(request, handle, { prefixes = ["/admin"], idleSeconds } = {}) {
+  const { pathname } = new URL(request.url);
+  if (!prefixes.some((prefix) => prefix === "/" || pathname === prefix || pathname.startsWith(`${prefix}/`))) return handle();
+  const gate = await adminIdle(request, { idleSeconds });
+  if (gate.idle) return gate.response;
+  const response = await handle();
+  if (!gate.cookie) return response;
+  // A response from fetch has immutable headers.
+  const out = new Response(response.body, response);
+  out.headers.append("Set-Cookie", gate.cookie);
+  return out;
+}

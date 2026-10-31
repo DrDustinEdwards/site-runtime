@@ -66,3 +66,12 @@ export function adminIdle(
   request: Request,
   options?: { idleSeconds?: number; now?: number },
 ): Promise<{ idle: true; response: Response } | { idle: false; cookie?: string }>;
+/**
+ * `adminIdle` around a site's handler: on a path under `prefixes` (default `/admin`; `/` for a site that is all admin),
+ * the logout redirect for an idle admin, else the handler's response with the seen cookie.
+ */
+export function withAdminIdle(
+  request: Request,
+  handle: () => Promise<Response>,
+  options?: { prefixes?: readonly string[]; idleSeconds?: number },
+): Promise<Response>;
