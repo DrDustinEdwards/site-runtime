@@ -6,11 +6,13 @@
 /** The share-card size every family site uses. */
 export const SHARE_CARD_WIDTH: 1200;
 export const SHARE_CARD_HEIGHT: 630;
+/** What a card is served as, for og:image:type. */
+export const SHARE_CARD_TYPE: "image/png";
 
 /** `value` as card text: `<` and `>` become ‹ and ›, `&` stays as is (workers-og shows entities literally). */
 export function cardText(value: unknown): string;
 
-/** The card's PNG (image/png, a week at the edge unless `headers` sets Cache-Control), or null when the render fails. */
+/** The card's PNG (image/png, CORP cross-origin, a week at the edge unless `headers` sets Cache-Control), or null when the render fails. */
 export function renderShareCard(
   ImageResponse: new (html: string, options: { width: number; height: number; fonts: any[] }) => Response,
   html: string,
