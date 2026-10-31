@@ -1300,12 +1300,24 @@ never the query.
 
 `withRequestLog(handler, { sha, route })` wraps a fetch handler so every request writes one `request` line: those
 fields with the response's status, `route` when `route(request)` names one (the matched pattern, so `/posts/:slug`
-groups its hits), and `ms`. A 5xx is logged at error, a 4xx at warn; a throw is logged as 500 and rethrown. `sha` is a
-string or a function of the handler's other arguments:
+groups its hits), and `ms`. A 5xx is logged at error, a 4xx at warn; a throw is logged as 500 and rethrown. A 400 or
+422, input the site refused, also writes one `input_validation_fail` line (OWASP's name) with the same fields and route,
+so a site's refusals are counted in one place; `inputValidation: false` turns that off. `sha` is a string or a function
+of the handler's other arguments:
 
 ```js
 import { withRequestLog } from "@dustinedwards/site-runtime/log";
 export default { fetch: withRequestLog(handler, { sha: (env) => env.DEPLOY_SHA }) };
+```
+
+`routeNamer(build.routes)` is that `route` for a React Router site: the full pattern of the most specific route in the
+build's route table that matches the path (static segments before params, params before a splat; a single-fetch
+`.data` request is named as its page). The build is a module the Worker imports, so the namer is made once:
+
+```js
+import * as build from "virtual:react-router/server-build";
+const route = routeNamer(build.routes);
+export default { fetch: withRequestLog(handler, { sha: (env) => env.DEPLOY_SHA, route }) };
 ```
 `OWASP_EVENTS` holds the [OWASP Logging Vocabulary](https://cheatsheetseries.owasp.org/cheatsheets/Logging_Vocabulary_Cheat_Sheet.html)
 names for a site's security events: `authn_login_success`, `authn_login_fail`, `authn_token_created`, `session_logout`,
@@ -1375,6 +1387,11 @@ async scheduled(controller, env, ctx) {
   stop its own work; the runner cannot cancel a promise. A success logs `cron_job_ok`. A failed write to `cron_runs` is logged
   (`cron_run_write_failed`) and the job still runs. After the last job, if any failed, `runJobs` throws one Error
   naming them, so Cloudflare marks the invocation failed. `db` may be a function, like `countNotFound`'s.
+- A job holding a lock or moving money sets `holdOnTimeout: true`: past its timeout it is still recorded failed and its
+  signal aborted, but the runner waits for it to end before the next job starts (logging `cron_job_overran` then), and
+  its late end records no success. Without it, the next job would start beside it and the invocation could end under it.
+- A job with a gate of its own (switched off, not due, a lock another run holds) resolves to `CRON_SKIPPED`: it is
+  logged `cron_job_skipped` and no success is recorded.
 - `cronCheck(db, { jobs, deployedAt, graceMinutes })` is the /health check (name `cron`, level warn): it fails, naming
   the jobs, when a job's last run failed, its last success is older than its own interval plus the grace, or it never
   succeeded and was first started longer ago than that. The grace is `graceMinutes` when given, else the larger of
@@ -1385,6 +1402,8 @@ async scheduled(controller, env, ctx) {
   fires it, a misspelt cron key). `deployedAt` (such as `new Date(env.CF_VERSION_METADATA.timestamp)`) holds that back
   until the job's window has passed since the deploy; without it a job that has not run yet warns at once. Without
   `jobs`, a removed job keeps its row, which goes stale: delete the row with the job.
+- `cronFindings(db, options)` is the same judgment as data, `[{ name, reason, lastOkAt }]` with reason `failed`,
+  `stale`, `never succeeded` or `never ran`, for a site that mails its own alert from it (Foxhound's stale-cron email).
 
 **Tests.** `test/cron.test.mjs` (on an in-memory SQLite with `CRON_SQL`) and `test/health.test.mjs`.
 
