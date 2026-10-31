@@ -285,7 +285,7 @@ function words(text) {
   return text.toLowerCase().match(/[\p{L}]+(?:['’][\p{L}]+)*/gu) ?? [];
 }
 
-/** Abbreviations whose full stop does not end a sentence ("Dr. Edwards", "Fig. 1", "U.S. policy"). */
+/** Abbreviations whose full stop does not end a sentence ("Dr. Rivera", "Fig. 1", "U.S. policy"). */
 const ABBREVIATIONS = /\bNo\.(?=\s*\d)|\b(?:Dr|Mr|Mrs|Ms|Prof|St|Jr|Sr|Fig|Figs|Vol|pp|vs|al|e\.g|i\.e|U\.S|U\.K|a\.m|p\.m)\./gu;
 
 /** @param {string} text */
@@ -323,7 +323,7 @@ function features(text) {
     questions: per1000(count(/\?/g), total),
     exclamations: per1000(count(/!/g), total),
     // People editing a model's draft toward their own voice added contractions above all (Baumler et al., ACL 2026).
-    // A possessive is not a contraction ("Edwards's", "the phage's"): 's counts only after a pronoun or "let".
+    // A possessive is not a contraction ("Rivera's", "the river's"): 's counts only after a pronoun or "let".
     contractions: per1000(all.filter((w) => CONTRACTION.test(w)).length, total),
   };
   for (const fw of FUNCTION_WORDS) out[`"${fw}"`] = per1000(counts.get(fw) ?? 0, total);
@@ -577,7 +577,7 @@ function dashRate(text) {
   return per1000(text.match(DASH)?.length ?? 0, words(text).length);
 }
 
-/** A definition as a first sentence ("Bacteriophages are viruses that infect bacteria"); "It is estimated that" is not one. */
+/** A definition as a first sentence ("Groundwater is water that fills the cracks in rock"); "It is estimated that" is not one. */
 const DEFINITION = /^(?!(?:it|this|that|there|these|those|here)\s)(?:an?\s+|the\s+)?[\p{L}-]+(?:\s+[\p{L}-]+){0,3}\s+(?:is|are)\s+(?:an?\s+|the\s+)?(?:[\p{L}-]+\s+){0,3}[\p{L}-]+\s+(?:that|which|who|used|where|in which)\b/iu;
 /** A last sentence that sums up instead of stopping ("This is one reason that...", "In the end,"). */
 const WRAP_UP = /^(?:this is (?:one reason|why|what|how|the reason)|that(?:['’]s| is) (?:why|what|how)|which is why|in short|in the end|ultimately|overall|in other words|all of this|the result is|the lesson|so the next time)\b/iu;
@@ -592,7 +592,7 @@ const STINGER_WORDS = [2, 5];
 const DETAIL_MIN_WORDS = 40;
 /** A draft paragraph shorter than this is not weighed for detail. */
 const DETAIL_DRAFT_MIN_WORDS = 25;
-/** Words written in capitals that name a kind of thing, not a particular one: "DNA" is not a specific the way "Arlo" is. */
+/** Words written in capitals that name a kind of thing, not a particular one: "DNA" is not a specific the way "Larkspur" is. */
 const GENERIC_CAPS = new Set(["DNA", "RNA", "mRNA", "cDNA", "tRNA", "rRNA", "dsDNA", "ssDNA", "PCR", "ATP", "I"]);
 
 /** Specific things per 100 words: numbers, and capitalized words that do not open a sentence (names, places, species). @param {string} text */

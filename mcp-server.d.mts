@@ -81,7 +81,7 @@ export type McpCaller =
 
 /** One server, as refusals, the step-up challenge and the log name it. */
 export interface McpServerInfo {
-  /** The site refusals name ("dustinedwards.info"). */
+  /** The site refusals name ("example.com"). */
   site: string;
   scopes: { read: string; write: string };
   /** serverInfo's name and version, for the log. */

@@ -67,7 +67,7 @@ export function deviceName(userAgent) {
 }
 
 /**
- * The city, region and country Cloudflare placed a request in (`request.cf`), as words ("Austin, Texas, United States"),
+ * The city, region and country Cloudflare placed a request in (`request.cf`), as words ("Portland, Oregon, United States"),
  * or null outside Workers and for a request built by the site.
  * @param {Request & { cf?: { city?: unknown, region?: unknown, country?: unknown } } | null | undefined} request
  * @returns {string | null}
