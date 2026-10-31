@@ -1195,10 +1195,24 @@ if (!admin) return redirect(accessSignInUrl(request));                        //
   comes back), `accessSignInUrl(request, { path })` is that path with the current page as `next`, and
   `safeAdminNext(next, { prefix, path })` is where to land after it: `next` when it is under `prefix` (`/admin`) and not
   the Access path, else `prefix`.
+- Admin idle limit: `adminIdle(request, { idleSeconds })` ends an admin's Access session after `ADMIN_IDLE_SECONDS`
+  (an hour) without a request, NIST SP 800-63B-4's inactivity timeout at AAL2; Access itself has session lengths but
+  no idle timeout, and its 24 hours stays the overall limit. A site calls it in its Worker's fetch for admin paths,
+  before the app: `{ idle: true, response }` is a redirect to Access's logout (`ACCESS_LOGOUT_PATH`, which revokes the
+  session everywhere), to return as is; `{ idle: false, cookie }` is the Set-Cookie (`__Host-admin-seen`) recording
+  this request, to append to the app's response. The last request is that cookie's time when its HMAC, keyed by the
+  Access token, matches; otherwise the token's `iat`. A request with no Access token is `{ idle: false }`.
+
+  `withAdminIdle(request, handle, { prefixes })` does both around the site's handler for paths under `prefixes`
+  (default `/admin`; `["/"]` for a site that is all admin, as Carrel's Desk):
+
+```js
+return withAdminIdle(request, () => app.fetch(request, env, ctx), { prefixes: ["/admin"] });
+```
 
 **Tests.** `test/html.test.mjs`, `test/compare.test.mjs` (both the XOR path and a stubbed `crypto.subtle.timingSafeEqual`)
 and `test/access.test.mjs` (a key pair made in the test and a fake certs endpoint; `accessAdmin`'s case folding, its
-localhost-only bypass and its refusal when the keys cannot be fetched). Each PLANT test fails when the guard it
+localhost-only bypass, its refusal when the keys cannot be fetched, and `adminIdle`'s timing). Each PLANT test fails when the guard it
 names is removed.
 
 ## The test suite

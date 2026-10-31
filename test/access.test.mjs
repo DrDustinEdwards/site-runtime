@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, test } from "node:test";
 
-import { ACCESS_COOKIE, ACCESS_JWT_HEADER, REFETCH_COOLDOWN_MS, accessAdmin, accessIssuer, accessKeys, accessToken, adminEmails, verifyAccessRequest } from "../access.mjs";
+import { ACCESS_COOKIE, ACCESS_JWT_HEADER, ACCESS_LOGOUT_PATH, ADMIN_SEEN_COOKIE, REFETCH_COOLDOWN_MS, accessAdmin, adminIdle, accessIssuer, accessKeys, accessToken, adminEmails, verifyAccessRequest } from "../access.mjs";
 import { encode, other, pair, publicJwk, keys, sign } from "./jwt.mjs";
 
 const TEAM = "sample.cloudflareaccess.com";
@@ -210,4 +210,24 @@ describe("accessAdmin", () => {
     console.error = logged;
     assert.equal(verdict, null);
   });
+});
+
+test("PLANT: an admin idle past the hour is sent to Access's logout; the seen cookie counts only for its own token", async () => {
+  const token = await sign(claims({ iat: now - 5400 }));
+  const at = (cookie) => new Request("https://example.com/admin", { headers: { cookie } });
+  const log = console.log;
+  console.log = () => {};
+  const stale = await adminIdle(at(`${ACCESS_COOKIE}=${token}`), { now: now * 1000 });
+  console.log = log;
+  assert.equal(stale.idle && stale.response.headers.get("location"), ACCESS_LOGOUT_PATH);
+  // A request 30 minutes ago, recorded for this token, keeps the session; its cookie does nothing for another token.
+  const earlier = await adminIdle(at(`${ACCESS_COOKIE}=${await sign(claims({ iat: now - 3600 }))}`), { now: (now - 1800) * 1000 });
+  const fresh = await adminIdle(at(`${ACCESS_COOKIE}=${token}`), { now: (now - 1800) * 1000 });
+  const seen = /** @type {{ cookie: string }} */ (fresh).cookie.split(";")[0];
+  assert.equal((await adminIdle(at(`${ACCESS_COOKIE}=${token}; ${seen}`), { now: now * 1000 })).idle, false);
+  console.log = () => {};
+  const copied = await adminIdle(at(`${ACCESS_COOKIE}=${token}; ${/** @type {{ cookie: string }} */ (earlier).cookie.split(";")[0]}`), { now: now * 1000 });
+  console.log = log;
+  assert.equal(copied.idle, true);
+  assert.ok(seen.startsWith(`${ADMIN_SEEN_COOKIE}=`));
 });
