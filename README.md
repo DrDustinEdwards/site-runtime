@@ -751,7 +751,7 @@ const auth = betterAuth({
   secret: env.BETTER_AUTH_SECRET,
   database: drizzleAdapter(db, { provider: "sqlite", schema }),
   ...(await signInOptions(env, {
-    siteName: "Foxing", sendMagicLink, social: true, emailLimiter: env.AUTH_RATE_LIMITER, eventsDb: env.DB,
+    siteName: "Example Co", sendMagicLink, social: true, emailLimiter: env.AUTH_RATE_LIMITER, eventsDb: env.DB,
   })),
 });
 // the confirm page's action (CONFIRM_PATH, /sign-in/confirm): return confirmSignInLink(auth, request)
@@ -808,7 +808,7 @@ const auth = betterAuth({
     return confirmSignInLink(await getAuth(context.cloudflare.env), request);
   }
   export default function Confirm() {
-    return <Form method="post"><button type="submit">Sign in to Foxhound</button></Form>;
+    return <Form method="post"><button type="submit">Sign in to Example Co</button></Form>;
   }
   ```
 - Per address, as well as per IP: with `emailLimiter` (the site's `RateLimiter` Durable Object namespace,
@@ -919,7 +919,7 @@ its own and the notices by passing one function.
   sessions and, with `eventsDb`, their history; a first sign-in is not one) and `recovery` (E4: a sign-in by link or
   code with no passkey left, by someone whose history shows a passkey added, so it needs `eventsDb`; the notice says
   every other device was signed out and to add a passkey, which the page then offers) (`SECURITY_NOTICE_KINDS`). `user.email` is where it goes. `detail` is the words: `title` (the subject), `what`,
-  `when` (UTC, in words) and `at`, `device` ("Safari on iPhone") and `location` ("Austin, Texas, United States", from
+  `when` (UTC, in words) and `at`, `device` ("Safari on iPhone") and `location` ("Portland, Oregon, United States", from
   `request.cf`; null for a request a site built itself, as `confirmSignInLink` and `auth.api` calls are), and `secure`,
   what to do if it was not them. Capsomer's `securityNotice` mail takes it as it is:
 
@@ -1168,7 +1168,7 @@ a browser. It resolves to null when nothing matches; it does not answer React Ro
 that serves a renamed slug calls it too.
 
 ```js
-const moved = await renameRedirect(request, { prefix: "/blog/", renames: { "recova-vs-churnkey": "foxhound-vs-churnkey" } });
+const moved = await renameRedirect(request, { prefix: "/blog/", renames: { "spring-update": "spring-update-2026" } });
 if (moved) return moved;
 ```
 
