@@ -53,6 +53,10 @@
       "types": "./server-timing.d.mts",
       "default": "./server-timing.mjs"
     },
+    "./static-site": {
+      "types": "./static-site.d.mts",
+      "default": "./static-site.mjs"
+    },
     "./share-card": {
       "types": "./share-card.d.mts",
       "default": "./share-card.mjs"
@@ -223,6 +227,8 @@
     "edge-cache.d.mts",
     "server-timing.mjs",
     "server-timing.d.mts",
+    "static-site.mjs",
+    "static-site.d.mts",
     "speed.mjs",
     "sign-in-live.mjs",
     "share-card.mjs",
