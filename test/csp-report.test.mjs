@@ -78,3 +78,24 @@ test("other methods are 405; the preflight gets CORS only for the named origin",
   const other = await pre("https://evil.example.com");
   assert.equal(other.headers.get("Access-Control-Allow-Origin"), null);
 });
+
+test("an extension's or the browser's own violation is dropped; a new (directive, blocked origin) warns once per isolate", async () => {
+  const { lines, log } = collect();
+  const warned = [];
+  const warn = console.warn;
+  console.warn = (line) => warned.push(JSON.parse(line));
+  try {
+    const report = (blocked, source) => [{ type: "csp-violation", body: { effectiveDirective: "script-src-elem", blockedURL: blocked, sourceFile: source } }];
+    for (const noise of ["chrome-extension://abc/x.js", "moz-extension://abc/x.js", "about:blank", "file:///x.js"]) {
+      await receiveCspReport(post(report(noise)), { log, allow: () => true });
+      await receiveCspReport(post(report("https://new.example.com/a.js", noise)), { log, allow: () => true });
+    }
+    assert.equal(lines.length, 0);
+    await receiveCspReport(post(report("https://new.example.com/a.js")), { log, allow: () => true });
+    await receiveCspReport(post(report("https://new.example.com/b.js")), { log, allow: () => true });
+    assert.equal(lines.length, 2);
+    assert.deepEqual(warned, [{ event: "csp_new_blocked", directive: "script-src-elem", blocked: "https://new.example.com" }]);
+  } finally {
+    console.warn = warn;
+  }
+});

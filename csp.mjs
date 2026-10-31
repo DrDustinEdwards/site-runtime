@@ -12,11 +12,13 @@
  * - buildPolicy is the plain join, for a policy that is not a page's (a sandboxed media route).
  *
  * - reportingEndpoints is the Reporting-Endpoints header that names a policy's report-to group.
+ * - buildStagedPolicy is the Report-Only companion for a rollout (Trusted Types first); integrityPolicy is the
+ *   Integrity-Policy header.
  *
  * Which to use, nonce or hash: a response that is never shared-cached may carry a nonce. A response that is
- * edge-cached must not, since every reader would share one nonce for the cache lifetime; trust its inline scripts
- * by hash instead. Only when neither can work (an edge-cached page that streams inline scripts whose text changes
- * per page, as React Router's hydration data does) does a site opt into `inlineScripts: "unsafe-inline"`.
+ * edge-cached either trusts its inline scripts by hash, or keeps its nonce and has renewNonce give every response a
+ * fresh one, in the header and on every element that carried the old one (Foxing's edge cache does this). Only when
+ * neither can work does a site opt into `inlineScripts: "unsafe-inline"`.
  */
 
 /** @returns {string} a fresh nonce, 24 base64 characters */
@@ -65,14 +67,18 @@ export const CLOUDFLARE_WEB_ANALYTICS = Object.freeze({
   ]),
 });
 
-/** A source expression as a policy writes it: no space, no semicolon, no comma. @param {string} source */
 /** One https origin: a host name (no wildcard), an optional port, no path. */
 const FORM_TARGET = /^https:\/\/[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:\d{1,5})?$/;
 
+/** A source expression as a policy writes it: no space, no semicolon, no comma. @param {string} source */
 function checkSource(source) {
   if (typeof source !== "string" || source === "" || /[\s;,]/.test(source)) throw new Error(`${JSON.stringify(source)} is not a CSP source`);
   return source;
 }
+
+/** A host source whose host starts with a wildcard: `https://*.example.com`, `*.example.com:443`. */
+export const WILDCARD_HOST = /^([a-z][a-z0-9+.-]*:\/\/)?\*\./i;
+
 
 /**
  * @typedef {{
@@ -105,6 +111,7 @@ function checkSource(source) {
  *   denyUnlisted?: boolean,
  *   noForms?: boolean,
  *   formTargets?: readonly string[],
+ *   trustedTypes?: true | readonly string[],
  *   extraDirectives?: readonly string[],
  * }} SitePolicy
  *   `scriptHashes` / `styleHashes`: `sha256-...` values (scriptHash), for responses that may not carry a nonce.
@@ -133,6 +140,9 @@ function checkSource(source) {
  *   and none goes with `noForms`. The check accepts them when the site declares the same.
  *   `baseUriSelf`: `base-uri 'self'` in place of 'none', for a page that writes a same-origin <base> (an EPUB reader
  *   resolving a book's files); the check accepts either.
+ *   `trustedTypes`: `require-trusted-types-for 'script'`, so a string never reaches an injection sink (innerHTML,
+ *   eval, a script's src) unless a Trusted Types policy made it; a list adds `trusted-types <names>`, the policies the
+ *   page may create. Ship it Report-Only first (buildStagedPolicy), then enforce.
  */
 
 /**
@@ -148,7 +158,7 @@ function checkSource(source) {
  * @returns {{ name: "Content-Security-Policy" | "Content-Security-Policy-Report-Only", value: string }}
  */
 export function buildContentSecurityPolicy(site) {
-  const { sources = {}, scriptHashes = [], styleHashes = [], nonce, nonceStyles = true, inlineScripts, strictDynamic = false, styleAttributesInline = false, cloudflareWebAnalytics = false, reportUri, reportTo, reportOnly = false, framedBySameOrigin = false, baseUriSelf = false, denyUnlisted = false, noForms = false, formTargets = [], extraDirectives = [] } = site;
+  const { sources = {}, scriptHashes = [], styleHashes = [], nonce, nonceStyles = true, inlineScripts, strictDynamic = false, styleAttributesInline = false, cloudflareWebAnalytics = false, reportUri, reportTo, reportOnly = false, framedBySameOrigin = false, baseUriSelf = false, denyUnlisted = false, noForms = false, formTargets = [], trustedTypes, extraDirectives = [] } = site;
   if (!reportUri && !reportTo) throw new Error("a policy needs a report sink (reportUri or reportTo)");
   if (inlineScripts !== undefined && inlineScripts !== "unsafe-inline") throw new Error(`inlineScripts is "unsafe-inline" or left out, not ${JSON.stringify(inlineScripts)}`);
   if (inlineScripts && (nonce !== undefined || scriptHashes.length > 0)) {
@@ -178,6 +188,11 @@ export function buildContentSecurityPolicy(site) {
       throw new Error(`${host} is not an acceptable script source: name the host`);
     }
     if (/^'strict-dynamic'$/i.test(host)) throw new Error("'strict-dynamic' is not a script source here: pass strictDynamic: true, which checks it has a nonce or hashes to start from");
+    if (WILDCARD_HOST.test(host)) throw new Error(`${host} trusts every subdomain, any of which may serve JSONP or a library that runs script: name the host`);
+  }
+  const typeNames = trustedTypes === true || trustedTypes === undefined ? [] : trustedTypes;
+  for (const name of typeNames) {
+    if (!/^([A-Za-z0-9#=_/@.%-]+|'allow-duplicates'|'none')$/.test(name)) throw new Error(`${JSON.stringify(name)} is not a Trusted Types policy name`);
   }
   // An extra directive may add a kind the builder leaves out (worker-src, manifest-src, upgrade-insecure-requests), never
   // one it writes: a second directive of a name is ignored by browsers without a word. Nor may it reopen scripts or
@@ -185,7 +200,7 @@ export function buildContentSecurityPolicy(site) {
   const written = new Set([
     "default-src", "script-src", "script-src-elem", "script-src-attr", "style-src", "style-src-elem", "style-src-attr",
     "font-src", "img-src", "media-src", "connect-src", "frame-src", "object-src", "base-uri", "form-action",
-    "frame-ancestors", "report-uri", "report-to",
+    "frame-ancestors", "report-uri", "report-to", "require-trusted-types-for", "trusted-types",
   ]);
   for (const extra of extraDirectives) {
     const [name = "", ...values] = extra.trim().split(/\s+/);
@@ -210,6 +225,8 @@ export function buildContentSecurityPolicy(site) {
     `base-uri ${baseUriSelf ? "'self'" : "'none'"}`,
     `form-action ${noForms ? "'none'" : ["'self'", ...formTargets].join(" ")}`,
     `frame-ancestors ${framedBySameOrigin ? "'self'" : "'none'"}`,
+    ...(trustedTypes ? ["require-trusted-types-for 'script'"] : []),
+    ...(typeNames.length > 0 ? [`trusted-types ${typeNames.join(" ")}`] : []),
     ...extraDirectives,
     ...(reportUri ? [`report-uri ${checkSource(reportUri)}`] : []),
     ...(reportTo ? [`report-to ${checkSource(reportTo)}`] : []),
@@ -240,4 +257,62 @@ export function reportingEndpoints(group, url) {
   const local = parsed.protocol === "http:" && /^(127(\.\d{1,3}){3}|\[::1\]|(.+\.)?localhost\.?)$/.test(parsed.hostname);
   if (parsed.protocol !== "https:" && !local) throw new Error(`${parsed.href} is not https or http on a loopback host: Reporting-Endpoints ignores an endpoint that is not potentially trustworthy`);
   return `${group}="${parsed.href}"`;
+}
+
+/**
+ * The Report-Only companion for a staged rollout: the site's own policy with `staged` added (Trusted Types first:
+ * `{ trustedTypes: ["default"] }`), sent beside the enforced one, so the reports show what the stricter policy would
+ * block before it blocks anything. When they show nothing, move `staged` into the enforced policy and drop this one.
+ * @param {SitePolicy} site the options the enforced policy is built from
+ * @param {Partial<SitePolicy>} staged what the next policy adds
+ * @returns {{ name: "Content-Security-Policy-Report-Only", value: string }}
+ */
+export function buildStagedPolicy(site, staged) {
+  if (Object.keys(staged).length === 0) throw new Error("a staged policy stages nothing: name what it adds");
+  const { value } = buildContentSecurityPolicy({ ...site, ...staged, reportOnly: true });
+  return { name: "Content-Security-Policy-Report-Only", value };
+}
+
+/**
+ * The Integrity-Policy header: every script must carry integrity metadata (an `integrity` attribute), and a no-cors
+ * script request is blocked (https://w3c.github.io/webappsec-subresource-integrity/#integrity-policy-section). It
+ * needs build-time integrity on every bundle, dynamically imported chunks included, so ship it Report-Only first.
+ * `endpoint` is a Reporting-Endpoints group name (reportingEndpoints) the reports go to.
+ * @param {{ endpoint?: string, reportOnly?: boolean }} [options]
+ * @returns {{ name: "Integrity-Policy" | "Integrity-Policy-Report-Only", value: string }}
+ */
+export function integrityPolicy({ endpoint, reportOnly = false } = {}) {
+  if (endpoint !== undefined && !/^[a-z*][a-z0-9_.*-]*$/.test(endpoint)) throw new Error(`${JSON.stringify(endpoint)} is not a Reporting-Endpoints group name`);
+  return {
+    name: reportOnly ? "Integrity-Policy-Report-Only" : "Integrity-Policy",
+    value: ["blocked-destinations=(script)", ...(endpoint ? [`endpoints=(${endpoint})`] : [])].join(", "),
+  };
+}
+
+const NONCE_SOURCE = /'nonce-([A-Za-z0-9+/_=-]+)'/;
+
+/**
+ * A stored page with a fresh nonce: the nonce its policy was rendered with becomes `nonce` in the Content-Security-Policy
+ * (and Report-Only) header and on every <script>, <style> and <link> whose nonce attribute held it, so no two readers of
+ * an edge-cached page share one, and an element injected without the old nonce gains none. Call it on every response
+ * the cache answers, hit or miss. A response that is not HTML, or whose policy has no nonce, comes back as it is.
+ * It needs HTMLRewriter (Workers), and throws without it rather than send the stored nonce again. This is the third
+ * way to trust inline scripts on a cached page, beside hashes, and the one to use before `inlineScripts`.
+ * @param {Response} response
+ * @param {string} [nonce] the new nonce (generateNonce), when the caller needs to know it
+ * @returns {Response}
+ */
+export function renewNonce(response, nonce = generateNonce()) {
+  const headers = new Headers(response.headers);
+  const names = ["Content-Security-Policy", "Content-Security-Policy-Report-Only"];
+  const rendered = names.map((n) => NONCE_SOURCE.exec(headers.get(n) ?? "")?.[1]).find(Boolean);
+  if (!rendered || !/text\/html/i.test(headers.get("Content-Type") ?? "")) return response;
+  if (typeof HTMLRewriter === "undefined") throw new Error("renewNonce needs HTMLRewriter (a Workers runtime)");
+  for (const name of names) {
+    const value = headers.get(name);
+    if (value) headers.set(name, value.replaceAll(`'nonce-${rendered}'`, `'nonce-${nonce}'`));
+  }
+  const rewrite = { element: (/** @type {any} */ el) => el.getAttribute("nonce") === rendered && el.setAttribute("nonce", nonce) };
+  const body = new HTMLRewriter().on("script[nonce]", rewrite).on("style[nonce]", rewrite).on("link[nonce]", rewrite).transform(response).body;
+  return new Response(body, { status: response.status, statusText: response.statusText, headers });
 }

@@ -32,3 +32,9 @@ export interface PreloadLink {
 
 /** `links` for root.tsx's `links` export; `header` for `Link` on HTML responses (append it, empty for no entries). */
 export function preloads(entries: (Preload | Preconnect)[]): { links: PreloadLink[]; header: string };
+
+/** The root route's stylesheets in a React Router server build, as `{ href, as: "style" }` preloads. */
+export function rootStylesheets(build: { assets: { routes: Record<string, { css?: string[] } | undefined> } }): Preload[];
+
+/** `response` with each non-empty `Link` value appended when it is HTML (rebuilt if its headers are immutable). */
+export function withPreloadHeader(response: Response, ...values: string[]): Response;

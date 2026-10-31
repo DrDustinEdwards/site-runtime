@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DatabaseSync } from "node:sqlite";
-import { hitRules, idleDeadline, purgeExpired, limit, limitedResponse, matchRule, mustStop, ipKey } from "../rate-limit/index.mjs";
+import { hitRules, idleDeadline, purgeExpired, limit, limitedResponse, matchRule, mustStop, ipKey, emailKey } from "../rate-limit/index.mjs";
 
 /** The Durable Object's `sql.exec(query, ...bindings).toArray()` shape, over an in-memory SQLite. */
 function memorySql() {
@@ -137,6 +137,14 @@ test("limited answers 429 with the time left, never a success code", async () =>
 test("ipKey shares one anon bucket only without the header, and says so", () => {
   assert.deepEqual(ipKey("ask", new Request("https://x.test/", { headers: { "CF-Connecting-IP": "9.9.9.9" } })), { key: "ask:9.9.9.9", anonymous: false });
   assert.deepEqual(ipKey("ask", new Request("https://x.test/")), { key: "ask:anon", anonymous: true });
+});
+
+test("emailKey: one bucket per address whatever its case or spaces, and never the address itself", async () => {
+  const key = await emailKey("link-email", " Someone@Example.com ");
+  assert.equal(key, await emailKey("link-email", "someone@example.com"));
+  assert.match(key, /^link-email:[0-9a-f]{64}$/);
+  assert.equal(await emailKey("link-email", "  "), null);
+  assert.equal(await emailKey("link-email", undefined), null);
 });
 
 test("matchRule: case, slashes and percent-escapes cannot slip past a rule", () => {

@@ -133,6 +133,8 @@ export type CspSources = {
  * site declares the same.
  * `baseUriSelf`: `base-uri 'self'` in place of 'none', for a page that writes a same-origin <base> (an EPUB reader
  * resolving a book's files); the check accepts either.
+ * `trustedTypes`: `require-trusted-types-for 'script'`; a list adds `trusted-types <names>`. Report-Only first
+ * (buildStagedPolicy).
  */
 export type SitePolicy = {
     sources?: CspSources;
@@ -152,6 +154,7 @@ export type SitePolicy = {
     denyUnlisted?: boolean;
     noForms?: boolean;
     formTargets?: readonly string[];
+    trustedTypes?: true | readonly string[];
     extraDirectives?: readonly string[];
 };
 /**
@@ -165,3 +168,20 @@ export type SitePolicy = {
  * @param url the receiver, absolute: `new URL("/csp-report", origin)`
  */
 export function reportingEndpoints(group: string, url: string | URL): string;
+/** A host source whose host starts with a wildcard: `https://*.example.com`. */
+export const WILDCARD_HOST: RegExp;
+/** The Report-Only companion for a staged rollout: the site's policy with `staged` added (Trusted Types first). */
+export function buildStagedPolicy(site: SitePolicy, staged: Partial<SitePolicy>): {
+    name: "Content-Security-Policy-Report-Only";
+    value: string;
+};
+/** Integrity-Policy (or -Report-Only): `blocked-destinations=(script)`, with `endpoints=(<group>)` when given. */
+export function integrityPolicy(options?: { endpoint?: string; reportOnly?: boolean }): {
+    name: "Integrity-Policy" | "Integrity-Policy-Report-Only";
+    value: string;
+};
+/**
+ * A stored HTML page with a fresh nonce in its policy header and on every <script>, <style> and <link> that carried the
+ * rendered one (HTMLRewriter; throws without it). Anything else comes back as it is.
+ */
+export function renewNonce(response: Response, nonce?: string): Response;

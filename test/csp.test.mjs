@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { checkSecurityHeaders, failures, parsePolicy } from "../check.mjs";
-import { CLOUDFLARE_WEB_ANALYTICS, buildContentSecurityPolicy, buildPolicy, generateNonce, reportingEndpoints, scriptHash } from "../csp.mjs";
+import { CLOUDFLARE_WEB_ANALYTICS, buildContentSecurityPolicy, buildPolicy, buildStagedPolicy, generateNonce, renewNonce, reportingEndpoints, scriptHash } from "../csp.mjs";
 import { applyHeaderSet } from "../headers.mjs";
 
 const SINK = { reportUri: "/csp-report" };
@@ -151,7 +151,13 @@ test("a script source that would allow any script is refused", () => {
   for (const host of ["*", "https:", "HTTP:", "data:", "blob:", "'unsafe-inline'", "'unsafe-eval'"]) {
     assert.throws(() => buildContentSecurityPolicy({ ...SINK, sources: { script: [host] } }), /is not an acceptable script source: name the host/, `accepted ${host}`);
   }
-  assert.doesNotThrow(() => buildContentSecurityPolicy({ ...SINK, sources: { script: ["https://js.example.com", "https://*.example.com"] } }));
+  assert.doesNotThrow(() => buildContentSecurityPolicy({ ...SINK, sources: { script: ["https://js.example.com"] } }));
+});
+
+test("a wildcard subdomain is refused as a script source", () => {
+  for (const host of ["https://*.example.com", "*.example.com:443/js/"]) {
+    assert.throws(() => buildContentSecurityPolicy({ ...SINK, sources: { script: [host] } }), /trusts every subdomain/, host);
+  }
 });
 
 test("an unsafe keyword is refused in any case, since browsers match keywords case-insensitively", () => {
@@ -164,9 +170,7 @@ test("a host-source whose host is * matches every host and is refused, with or w
   for (const host of ["https://*", "HTTP://*", "https://*:443", "https://*:*", "*:*", "*:8080", "https://*/", "https://*/js/app.js", "wss://*"]) {
     assert.throws(() => buildContentSecurityPolicy({ ...SINK, sources: { script: [host] } }), /is not an acceptable script source: name the host/, `accepted ${host}`);
   }
-  for (const host of ["https://*.example.com", "https://*.example.com:443/js/", "https://js.example.com/*"]) {
-    assert.doesNotThrow(() => buildContentSecurityPolicy({ ...SINK, sources: { script: [host] } }), host);
-  }
+  assert.doesNotThrow(() => buildContentSecurityPolicy({ ...SINK, sources: { script: ["https://js.example.com/*"] } }));
 });
 
 test("only script sources are held to the script rules: other kinds may list a scheme", () => {
@@ -270,4 +274,24 @@ test("reportingEndpoints takes https or loopback http and refuses what a browser
   for (const url of ["/csp-report", "http://example.com/csp-report", "http://localhost.example.com/r", "http://notlocalhost/r", "http://127.0.0.1.example.com/r"]) {
     assert.throws(() => reportingEndpoints("csp-endpoint", url));
   }
+});
+
+test("trustedTypes writes require-trusted-types-for, and its names; the staged companion is Report-Only and refuses staging nothing", () => {
+  const staged = buildStagedPolicy(SINK, { trustedTypes: ["default", "'allow-duplicates'"] });
+  assert.equal(staged.name, "Content-Security-Policy-Report-Only");
+  const policy = parsePolicy(staged.value);
+  assert.deepEqual(policy.get("require-trusted-types-for"), ["'script'"]);
+  assert.deepEqual(policy.get("trusted-types"), ["default", "'allow-duplicates'"]);
+  assert.throws(() => buildContentSecurityPolicy({ ...SINK, trustedTypes: ["bad name"] }), /Trusted Types policy name/);
+  assert.throws(() => buildStagedPolicy(SINK, {}), /stages nothing/);
+});
+
+test("renewNonce leaves a response with no nonce as it is, and refuses to resend a stored nonce without HTMLRewriter", () => {
+  const plain = new Response("x", { headers: { "Content-Type": "text/html", "Content-Security-Policy": "script-src 'self'" } });
+  assert.equal(renewNonce(plain), plain);
+  const json = new Response("{}", { headers: { "Content-Type": "application/json", "Content-Security-Policy": `script-src 'nonce-${generateNonce()}'` } });
+  assert.equal(renewNonce(json), json);
+  if (typeof globalThis.HTMLRewriter !== "undefined") return;
+  const stored = new Response("<script nonce=a></script>", { headers: { "Content-Type": "text/html", "Content-Security-Policy": `script-src 'nonce-${generateNonce()}'` } });
+  assert.throws(() => renewNonce(stored), /needs HTMLRewriter/);
 });

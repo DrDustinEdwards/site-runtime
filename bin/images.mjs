@@ -3,7 +3,7 @@
  * The live check of a site's images and media (area 6), from its pages as served: no browser, plain fetch and the
  * HTML as written, so an image a script adds later is not seen.
  *
- *   images-audit --origin https://example.com [--from https://example.workers.dev]
+ *   site-runtime-images --origin https://example.com [--from https://example.workers.dev]
  *
  * `--from` fetches from where the site is served now while judging every URL as `--origin`, for a site not yet on its
  * domain. Pages are the home page and the sitemap's (one level of sitemap index), at most 25. Each finding is an
@@ -38,7 +38,7 @@ const MAX_SIZE_URLS = 6;
 const READ_LIMIT = 2 * 1024 * 1024;
 const TIMEOUT_MS = 15_000;
 const PARALLEL = 4;
-const USER_AGENT = "Mozilla/5.0 (compatible; images-audit; +https://github.com/DrDustinEdwards/site-runtime)";
+const USER_AGENT = "Mozilla/5.0 (compatible; site-runtime-images; +https://github.com/DrDustinEdwards/site-runtime)";
 
 const RASTER_PATH = /\.(png|jpe?g|webp|avif|gif)(?:$|[?#])/i;
 const RASTER_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/avif", "image/gif"]);
@@ -560,19 +560,19 @@ if (import.meta.url === invokedAs) {
   const origin = bare(values.origin);
   const from = values.from === undefined ? undefined : bare(values.from);
   if (!origin || from === null) {
-    console.error("usage: images-audit --origin <origin> [--from <host>]");
+    console.error("usage: site-runtime-images --origin <origin> [--from <host>]");
     process.exit(2);
   }
   let report;
   try {
     report = await auditImages({ origin, from: from ?? undefined });
   } catch (error) {
-    console.error(`images-audit: could not run: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`site-runtime-images: could not run: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(2);
   }
   for (const finding of report.findings) console.log(annotation(finding));
-  for (const note of report.notes) console.error(`images-audit: ${note}`);
+  for (const note of report.notes) console.error(`site-runtime-images: ${note}`);
   const errors = report.findings.filter((f) => f.severity === "error").length;
-  console.log(`images-audit: ${report.pages.length} pages of ${origin}, ${errors} errors, ${report.findings.length - errors} warnings.`);
+  console.log(`site-runtime-images: ${report.pages.length} pages of ${origin}, ${errors} errors, ${report.findings.length - errors} warnings.`);
   process.exit(errors ? 1 : 0);
 }

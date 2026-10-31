@@ -1,3 +1,5 @@
+import type { SiteEntry } from "./sites.mjs";
+
 /**
  * @typedef {{ value: string | null, reason: string }} HeaderOverride
  *   A header a site sends differently from the standard: its own value, or null to send none, and why. A reason is
@@ -8,10 +10,11 @@
  * change something; one that says what the standard already says is refused, so the list stays the list of real
  * deviations.
  *
- * @param {{ overrides?: Readonly<Record<string, HeaderOverride>> }} [site]
- * @returns {Record<string, string>}
+ * `site` is the site's registry entry, imported by name from ./sites, whose declared overrides are used; `overrides` is
+ * the older form. Not both.
  */
-export function buildSecurityHeaders({ overrides }?: {
+export function buildSecurityHeaders(options?: {
+    site?: SiteEntry;
     overrides?: Readonly<Record<string, HeaderOverride>>;
 }): Record<string, string>;
 /**
@@ -48,8 +51,14 @@ export const STANDARD_SECURITY_HEADERS: Readonly<Record<string, string>>;
  * @type {Readonly<Record<string, string>>}
  */
 export const LOGOUT_HEADERS: Readonly<Record<string, string>>;
+/** OSHP's Permissions-Policy with each named feature allowed for the site's own pages. */
+export function permissionsAllowingSelf(...features: string[]): string;
 /** The Permissions-Policy override a site offering passkey sign-in needs: publickey-credentials-get=(self). */
-export const PASSKEY_OVERRIDES: Readonly<Record<string, { value: string | null; reason: string }>>;
+export const PASSKEY_OVERRIDES: Readonly<Record<string, HeaderOverride>>;
+/** PASSKEY_OVERRIDES when the entry opts into passkey, then its own overrides. */
+export function entryOverrides(entry: SiteEntry): Record<string, HeaderOverride>;
+/** `cross-origin` for public media and subresources other origins load (images, fonts, CSS, scripts, feeds), else `same-origin`. */
+export function corpFor(contentType: string | null | undefined): "cross-origin" | "same-origin";
 /**
  * A header a site sends differently from the standard: its own value, or null to send none, and why. A reason is
  * required, so a deviation is a decision someone wrote down and not an accident.
@@ -62,8 +71,11 @@ export type HeaderOverride = {
 /**
  * A Cloudflare `_headers` file for static assets: `set` on `/*` minus any Content-Security-Policy, then each of `paths`
  * (pattern to headers), detaching with `! Name` a header the `/*` block already sets. `comment` lines lead as `# ...`.
+ * `charset: true` adds `/*.<ext>` Content-Type rules with `charset=utf-8` for TEXT_TYPES.
  */
 export function headersFile(
   set: Readonly<Record<string, string>>,
-  options?: { paths?: Readonly<Record<string, Readonly<Record<string, string>>>>; comment?: string | readonly string[] },
+  options?: { paths?: Readonly<Record<string, Readonly<Record<string, string>>>>; comment?: string | readonly string[]; charset?: boolean },
 ): string;
+/** The static text files whose Content-Type the asset server sends with no charset, by extension. */
+export const TEXT_TYPES: Readonly<Record<string, string>>;

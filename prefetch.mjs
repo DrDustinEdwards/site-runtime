@@ -69,15 +69,22 @@ export function speculationRules({ exclude = [], excludeQueries = true, eagernes
 }
 
 /**
- * The response for `SPECULATION_RULES_PATH`: the rules, typed as browsers require, cached a day.
+ * The response for `SPECULATION_RULES_PATH`: the rules, typed as browsers require, cached a day. Cloudflare compresses
+ * only the types on its list, and application/speculationrules+json is not one, so with the `request` the response
+ * names the encoding the browser accepts (br, else gzip) and the runtime encodes the body.
  * @param {Parameters<typeof speculationRules>[0]} [options]
+ * @param {Request} [request]
  */
-export function speculationRulesResponse(options) {
+export function speculationRulesResponse(options, request) {
+  const accepted = request?.headers.get("accept-encoding") ?? "";
+  const encoding = /\bbr\b/.test(accepted) ? "br" : /\bgzip\b/.test(accepted) ? "gzip" : null;
   return new Response(JSON.stringify(speculationRules(options)), {
     headers: {
       "content-type": "application/speculationrules+json",
       "cache-control": "public, max-age=86400",
       "x-content-type-options": "nosniff",
+      vary: "Accept-Encoding",
+      ...(encoding ? { "content-encoding": encoding } : {}),
     },
   });
 }

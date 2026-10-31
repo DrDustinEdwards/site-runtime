@@ -45,24 +45,39 @@ export const STANDARD_SECURITY_HEADERS = Object.freeze(
 export const LOGOUT_HEADERS = Object.freeze({ "Clear-Site-Data": OWASP_RECOMMENDED["Clear-Site-Data"] ?? "" });
 
 /**
- * The override a site that offers passkey sign-in (`./sign-in`) passes to buildSecurityHeaders. OSHP's
- * Permissions-Policy sets `publickey-credentials-get=()`, which refuses every passkey sign-in on the page; this allows
- * it for the site's own pages and still for no frame. Every other directive stays OSHP's.
- *
- * @type {Readonly<Record<string, HeaderOverride>>}
+ * OSHP's Permissions-Policy with each named feature allowed for the site's own pages, from the parsed list rather
+ * than a string replace, so a change in OSHP's spelling cannot leave a feature denied without a word.
+ * @param {...string} features
+ * @returns {string}
  */
+export function permissionsAllowingSelf(...features) {
+  const directives = (OWASP_RECOMMENDED["Permissions-Policy"] ?? "").split(",").map((d) => d.trim()).filter(Boolean);
+  const kept = directives.filter((d) => !features.includes(d.split("=")[0] ?? ""));
+  return [...kept, ...features.map((f) => `${f}=(self)`)].join(", ");
+}
+
+/** The override a site that offers passkey sign-in (./sign-in) applies; OSHP's `publickey-credentials-get=()` refuses every passkey. */
 export const PASSKEY_OVERRIDES = Object.freeze({
   "Permissions-Policy": Object.freeze({
-    value: [
-      ...(STANDARD_SECURITY_HEADERS["Permissions-Policy"] ?? "")
-        .split(",")
-        .map((d) => d.trim())
-        .filter((d) => d && !d.startsWith("publickey-credentials-get=")),
-      "publickey-credentials-get=(self)",
-    ].join(", "),
+    value: permissionsAllowingSelf("publickey-credentials-get"),
     reason: "Passkey sign-in (./sign-in) calls navigator.credentials.get, which OSHP's publickey-credentials-get=() refuses; allowed for the site's own pages only.",
   }),
 });
+
+/**
+ * Cross-Origin-Resource-Policy per response kind. Pages, APIs and anything behind a sign-in keep the standard's
+ * `same-origin`; public media and subresources meant to be loaded by other origins (an og:image a link preview shows,
+ * a feed a reader fetches, the stylesheet, script or font a sandboxed preview frame loads, whose origin is opaque) are
+ * `cross-origin`, so a site marks those responses and not every response. The check accepts `cross-origin` only on
+ * these kinds.
+ * @param {string | null | undefined} contentType the response's Content-Type
+ * @returns {"cross-origin" | "same-origin"}
+ */
+export function corpFor(contentType) {
+  return /^\s*(image\/|font\/|text\/css|(text|application)\/javascript|application\/(rss|atom)\+xml|application\/feed\+json)/i.test(contentType ?? "")
+    ? "cross-origin"
+    : "same-origin";
+}
 
 /**
  * @typedef {{ value: string | null, reason: string }} HeaderOverride
@@ -71,14 +86,35 @@ export const PASSKEY_OVERRIDES = Object.freeze({
  */
 
 /**
+ * The header overrides a registry entry declares: PASSKEY_OVERRIDES when it opts into passkey, then its own. A
+ * Permissions-Policy of its own must still allow the passkey, or the opt-in would be a word with no effect.
+ * @param {import("./sites.mjs").SiteEntry} entry
+ * @returns {Record<string, HeaderOverride>}
+ */
+export function entryOverrides({ id, headers = {}, optIns = {} }) {
+  const merged = { ...(optIns.passkey?.value ? PASSKEY_OVERRIDES : {}), ...headers };
+  if (optIns.passkey?.value && !/publickey-credentials-get=\(self\)/.test(merged["Permissions-Policy"]?.value ?? "")) {
+    throw new Error(`${id} opts into passkey but its Permissions-Policy refuses publickey-credentials-get`);
+  }
+  return merged;
+}
+
+/**
  * The set a site sends: the standard with the site's overrides applied. An override must carry a reason and must
  * change something; one that says what the standard already says is refused, so the list stays the list of real
  * deviations.
  *
- * @param {{ overrides?: Readonly<Record<string, HeaderOverride>> }} [site]
+ * `site` is the site's registry entry, imported by name (`import { germomics } from "@dustinedwards/site-runtime/sites"`),
+ * whose declared overrides are used; a Worker that imports one entry bundles that entry and not the registry.
+ * `overrides` is the older form, for a site not yet built from the registry. Not both.
+ *
+ * @param {{ site?: import("./sites.mjs").SiteEntry, overrides?: Readonly<Record<string, HeaderOverride>> }} [options]
  * @returns {Record<string, string>}
  */
-export function buildSecurityHeaders({ overrides = {} } = {}) {
+export function buildSecurityHeaders({ site, overrides } = {}) {
+  if (site !== undefined && overrides !== undefined) throw new Error("pass site or overrides, not both: a site's deviations live in its registry entry");
+  if (typeof site === "string") throw new Error(`pass the registry entry, not its id: import { ... } from "@dustinedwards/site-runtime/sites" (${site})`);
+  overrides = site === undefined ? (overrides ?? {}) : entryOverrides(site);
   /** @type {Record<string, string>} */
   const set = { ...STANDARD_SECURITY_HEADERS };
   for (const [name, { value, reason }] of Object.entries(overrides)) {
@@ -117,17 +153,29 @@ export function applyHeaderSet(headers, set = STANDARD_SECURITY_HEADERS, { overw
 /** The headers a static `_headers` file leaves out: a page's policy names what that page loads, and may carry a nonce. */
 const POLICY_HEADERS = ["content-security-policy", "content-security-policy-report-only"];
 
+/** The static text files whose Content-Type the asset server sends with no charset, by extension. */
+export const TEXT_TYPES = Object.freeze({
+  html: "text/html",
+  css: "text/css",
+  js: "text/javascript",
+  mjs: "text/javascript",
+  txt: "text/plain",
+  xml: "application/xml",
+  svg: "image/svg+xml",
+});
+
 /**
  * A Cloudflare `_headers` file for the static assets, which the asset server answers without running the Worker, so
  * the Worker's header set never reaches them. `set` (the one the Worker applies) goes on `/*`, minus any
  * Content-Security-Policy; `paths` adds or changes headers on a path pattern (`/assets/*`, `/favicon.svg`). Cloudflare
  * joins a header that two matching rules set, so a path that changes a header of the set first detaches the `/*` value
- * with `! Name`. `comment` lines lead the file, each as `# ...`.
+ * with `! Name`. `comment` lines lead the file, each as `# ...`. `charset: true` adds a Content-Type with
+ * `charset=utf-8` for each text extension in TEXT_TYPES, which the asset server otherwise sends without one.
  * @param {Readonly<Record<string, string>>} set
- * @param {{ paths?: Readonly<Record<string, Readonly<Record<string, string>>>>, comment?: string | readonly string[] }} [options]
+ * @param {{ paths?: Readonly<Record<string, Readonly<Record<string, string>>>>, comment?: string | readonly string[], charset?: boolean }} [options]
  * @returns {string}
  */
-export function headersFile(set, { paths = {}, comment = [] } = {}) {
+export function headersFile(set, { paths = {}, comment = [], charset = false } = {}) {
   const line = (/** @type {string} */ name, /** @type {string} */ value) => {
     if (/[\r\n:]/.test(name) || /[\r\n]/.test(value)) throw new Error(`header ${JSON.stringify(name)} cannot be written on one line`);
     return `  ${name}: ${value}`;
@@ -136,7 +184,8 @@ export function headersFile(set, { paths = {}, comment = [] } = {}) {
   const baseNames = new Set(base.map(([name]) => name.toLowerCase()));
   const notes = (typeof comment === "string" ? comment.split("\n") : comment).map((text) => (text ? `# ${text}` : "#"));
   const blocks = [["/*", ...base.map(([name, value]) => line(name, value))].join("\n")];
-  for (const [pattern, headers] of Object.entries(paths)) {
+  const typed = charset ? Object.entries(TEXT_TYPES).map(([ext, type]) => [`/*.${ext}`, { "Content-Type": `${type}; charset=utf-8` }]) : [];
+  for (const [pattern, headers] of [...typed, ...Object.entries(paths)]) {
     if (!pattern.startsWith("/") || /\s/.test(pattern)) throw new Error(`${JSON.stringify(pattern)} is not a path pattern`);
     const entries = Object.entries(headers);
     const detach = entries.filter(([name]) => baseNames.has(name.toLowerCase())).map(([name]) => `  ! ${name}`);
