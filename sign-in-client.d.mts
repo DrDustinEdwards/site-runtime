@@ -38,3 +38,6 @@ export function signInWithPasskey<R extends { error?: object | null; webauthn?: 
   client: { signIn: { passkey(options?: Record<string, unknown>): Promise<R> } },
   options?: Record<string, unknown> & { rpId?: string },
 ): Promise<R>;
+
+/** Whether this device has a platform authenticator to make a passkey with; false where the browser cannot say. */
+export function canOfferPasskey(): Promise<boolean>;

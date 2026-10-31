@@ -51,8 +51,8 @@
  *   secret). Apple comes with Google, since an iPhone app that offers Google sign-in must offer Apple's too.
  * - FRESH: adding or deleting a passkey, changing the email, unlinking Google or Apple, deleting the account and
  *   listing sessions need a sign-in in the last FRESH_SECONDS (Better Auth's freshAge, which defaults to a day, and for
- *   passkey delete and email change, which Better Auth leaves out, a before hook here). A site's own risky routes
- *   call requireFreshSession (`./sign-in-account.mjs`).
+ *   passkey delete and email change, which Better Auth leaves out, a before hook here). Listing and renaming passkeys
+ *   do not. A site's own risky routes call requireFreshSession (`./sign-in-account.mjs`).
  * - SESSIONS END SESSION_SECONDS (30 days) after their sign-in, used or not: Better Auth's sliding refresh is off.
  * - SIGN-OUT CLEARS THE BROWSER: Better Auth's /sign-out answers with LOGOUT_HEADERS (`./headers`, Clear-Site-Data).
  * - EVERY AUTH EVENT IS LOGGED, AND EVERY CHANGE TO HOW A PERSON SIGNS IN IS TOLD TO THEM (`./sign-in-account.mjs`):
@@ -87,9 +87,9 @@ import {
   hadPasskey,
   isNewDevice,
   logAuthEvent,
+  knownProvider,
   noticeDetail,
   outcome,
-  passkeyProvider,
   sendNoticeSafely,
   sessionIsFresh,
   signedInDevices,
@@ -100,18 +100,25 @@ export { CONFIRM_PATH, confirmSignInLink } from "./sign-in-link.mjs";
 export {
   AUTH_EVENTS_SQL,
   FRESH_SECONDS,
+  PASSKEY_OFFER_DAYS,
   SECURITY_NOTICE_KINDS,
   SessionNotFresh,
+  accountPasskeys,
   accountSessions,
   coarseLocation,
   deviceName,
+  dismissPasskeyOffer,
+  needsSecondPasskey,
   passkeyLabel,
+  passkeyLastUsed,
   passkeyProvider,
+  passkeyRows,
   pruneAuthEvents,
   requireFreshSession,
   revokeSessionById,
   securityHistory,
   sessionRows,
+  shouldOfferPasskey,
 } from "./sign-in-account.mjs";
 
 /**
@@ -271,7 +278,7 @@ export async function signInOptions(
       // A passkey the page did not name is stored with its provider's name, so a list never shows a blank.
       registration: {
         afterVerification: ({ ctx, verification }) => {
-          const name = passkeyProvider(verification.registrationInfo?.aaguid, ctx.headers?.get("user-agent"));
+          const name = knownProvider(verification.registrationInfo?.aaguid, ctx.headers?.get("user-agent"));
           return name ? { name } : undefined;
         },
       },
@@ -567,6 +574,15 @@ function accountEvents(siteName, sendSecurityNotice, db) {
                 linking: ctx.path === "/callback/:id" && Boolean((await getOAuthState())?.link),
               });
               if (!event) return;
+              // The passkey that signed in, by its row id, so the account page can say when each was last used.
+              if (event.event === OWASP_EVENTS.signInSuccess && event.fields.via === "passkey" && db) {
+                const credentialID = ctx.body?.response?.id;
+                const row =
+                  typeof credentialID === "string"
+                    ? await ctx.context.adapter.findOne({ model: "passkey", where: [{ field: "credentialID", value: credentialID }] })
+                    : null;
+                if (row?.id) event.fields.passkey_id = row.id;
+              }
               const kind =
                 event.event === OWASP_EVENTS.signInSuccess && user && newSession
                   ? await signInKind(ctx, user, newSession, event.fields.via)

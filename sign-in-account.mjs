@@ -17,7 +17,10 @@
  * - FRESH SIGN-IN (A7, D6): `requireFreshSession` for a site's own risky routes (export, delete), the same 10-minute
  *   rule `./sign-in` holds Better Auth's endpoints to.
  * - THE SESSIONS LIST (D5): `sessionRows` turns Better Auth's `listSessions` rows into what a page shows.
- * - PASSKEY NAMES (A5): `passkeyProvider` names a passkey's provider from its AAGUID, so a list never shows a blank.
+ * - PASSKEYS (A3, A5, A9): `passkeyProvider` names a passkey's provider from its AAGUID, so a list never shows a blank;
+ *   `accountPasskeys` gives a page each passkey with its name, provider, when made and when last used (with
+ *   `eventsDb`); `shouldOfferPasskey` and `dismissPasskeyOffer` keep the offer of a passkey after another sign-in to
+ *   people with none who have not just said "Not now"; `needsSecondPasskey` is the nudge toward a second one.
  */
 import { logEvent, OWASP_EVENTS } from "./log.mjs";
 import { emailKey } from "./rate-limit/index.mjs";
@@ -219,8 +222,9 @@ export async function requireFreshSession(auth, request) {
 
 /**
  * The providers people use, by AAGUID, named as passkeydeveloper/passkey-authenticator-aaguids (aaguid.json, read
- * 2026-10-31) names them; the rest of that list is security keys and SDKs. Better Auth stores the AAGUID on each
- * passkey row.
+ * 2026-10-31) names them; the rest of that list is security keys and SDKs. The YubiKey 5 entries are the retail models
+ * in the FIDO Metadata Service that list's combined view draws on (mds3.fidoalliance.org, blob 293, read 2026-10-31),
+ * previews and enterprise profiles left out. Names only, no icons. Better Auth stores the AAGUID on each passkey row.
  */
 const PROVIDERS = {
   "fbfc3007-154e-4ecc-8c0b-6e020557d7bd": "Apple Passwords",
@@ -242,23 +246,49 @@ const PROVIDERS = {
   "0ea242b4-43c4-4a1b-8b17-dd6d0b6baec6": "Keeper",
   "f3809540-7f14-49c1-a8b3-8f813b225541": "Enpass",
   "fdb141b2-5d84-443e-8a35-4698c205a502": "KeePassXC",
+  "cb69481e-8ff7-4039-93ec-0a2729a154a8": "YubiKey 5 Series",
+  "ee882879-721c-4913-9775-3dfcce97072a": "YubiKey 5 Series",
+  "19083c3d-8383-4b18-bc03-8f1c9ab2fd1b": "YubiKey 5 Series",
+  "ff4dac45-ede8-4ec2-aced-cf66103f4335": "YubiKey 5 Series",
+  "0a357157-9b18-4c8a-920e-d156e972b2f8": "YubiKey 5 Series",
+  "fa2b99dc-9e39-4257-8f92-4a30d23c4118": "YubiKey 5 Series with NFC",
+  "2fc0579f-8113-47ea-b116-bb5a8db9202a": "YubiKey 5 Series with NFC",
+  "a25342c0-3cdc-4414-8e46-f4807fca511c": "YubiKey 5 Series with NFC",
+  "d7781e5d-e353-46aa-afe2-3ca49f13332a": "YubiKey 5 Series with NFC",
+  "f4ce5fc0-57d3-46f5-a736-efb7d5bc63b5": "YubiKey 5 Series with NFC",
+  "c5ef55ff-ad9a-4b9f-b580-adebafe026d0": "YubiKey 5 Series with Lightning",
+  "a02167b9-ae71-4ac7-9a07-06432ebb6f1c": "YubiKey 5 Series with Lightning",
+  "24673149-6c86-42e7-98d9-433fb5b73296": "YubiKey 5 Series with Lightning",
+  "73bb0cd4-e502-49b8-9c6f-b59445bf720b": "YubiKey 5 FIPS Series",
+  "57f7de54-c807-4eab-b1c6-1c9be7984e92": "YubiKey 5 FIPS Series",
+  "c1f9a0bc-1dd2-404a-b27f-8e29047a43fd": "YubiKey 5 FIPS Series with NFC",
+  "fcc0118f-cd45-435b-8da1-9782b2da0715": "YubiKey 5 FIPS Series with NFC",
 };
 const ZERO_AAGUID = "00000000-0000-0000-0000-000000000000";
 
 /**
- * The passkey's provider in words, from its AAGUID, else null. Apple's own passkeys report the all-zero AAGUID when
- * the site asks for no attestation (as `./sign-in` does), so with the user agent of an iPhone, iPad or Mac a zero
- * reads as Apple Passwords, the provider every browser there saves to unless the person picked another, which has its
- * own AAGUID.
+ * The passkey's provider in words, from its AAGUID, else null: what registration stores as the name, so an unknown
+ * one stays blank and a later list can still name it. Apple's own passkeys report the all-zero AAGUID when the site
+ * asks for no attestation (as `./sign-in` does), so with the user agent of an iPhone, iPad or Mac a zero reads as Apple
+ * Passwords, the provider every browser there saves to unless the person picked another, which has its own AAGUID.
  * @param {string | null | undefined} aaguid
  * @param {string | null | undefined} [userAgent] the browser that made it, at registration
  * @returns {string | null}
  */
-export function passkeyProvider(aaguid, userAgent) {
+export function knownProvider(aaguid, userAgent) {
   const id = aaguid?.trim().toLowerCase();
   if (id && Object.hasOwn(PROVIDERS, id)) return PROVIDERS[/** @type {keyof typeof PROVIDERS} */ (id)];
   if ((!id || id === ZERO_AAGUID) && /\b(?:iPhone|iPad|Macintosh)\b/.test(userAgent ?? "")) return "Apple Passwords";
   return null;
+}
+
+/**
+ * The passkey's provider in words, for a page: `knownProvider`, else "Passkey".
+ * @param {string | null | undefined} aaguid
+ * @param {string | null | undefined} [userAgent]
+ */
+export function passkeyProvider(aaguid, userAgent) {
+  return knownProvider(aaguid, userAgent) ?? "Passkey";
 }
 
 /**
@@ -267,7 +297,115 @@ export function passkeyProvider(aaguid, userAgent) {
  * @param {{ name?: string | null, aaguid?: string | null }} passkey
  */
 export function passkeyLabel(passkey) {
-  return passkey.name?.trim() || passkeyProvider(passkey.aaguid) || "Passkey";
+  return passkey.name?.trim() || passkeyProvider(passkey.aaguid);
+}
+
+/**
+ * @typedef {{ id: string, name?: string | null, aaguid?: string | null, createdAt?: Date | string | null }} PasskeyRow
+ *   A row of Better Auth's `listPasskeys`.
+ * @typedef {{ id: string, name: string, provider: string, createdAt: Date | null, lastUsedAt: Date | null }} AccountPasskey
+ */
+
+/**
+ * The passkeys as a page lists them, oldest first: `id` (for rename and delete), `name` (passkeyLabel), `provider`,
+ * `createdAt` and `lastUsedAt` (from `passkeyLastUsed`, null when unknown). No credential or public key.
+ * @param {PasskeyRow[]} passkeys
+ * @param {Map<string, Date>} [lastUsed]
+ * @returns {AccountPasskey[]}
+ */
+export function passkeyRows(passkeys, lastUsed = new Map()) {
+  return passkeys
+    .map((passkey) => ({
+      id: passkey.id,
+      name: passkeyLabel(passkey),
+      provider: passkeyProvider(passkey.aaguid),
+      createdAt: passkey.createdAt ? new Date(passkey.createdAt) : null,
+      lastUsedAt: lastUsed.get(passkey.id) ?? null,
+    }))
+    .sort((a, b) => (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0));
+}
+
+/**
+ * When each of a person's passkeys last signed them in, by passkey id: the newest passkey sign-in row in
+ * `auth_events`, which `./sign-in` writes with the passkey's id in `change`. Rows go after a year (`pruneAuthEvents`),
+ * so a passkey unused for a year has none. Better Auth 1.7.12 keeps no last-used time of its own.
+ * @param {D1Like} db @param {string} userId
+ * @returns {Promise<Map<string, Date>>}
+ */
+export async function passkeyLastUsed(db, userId) {
+  const { results } = await db
+    .prepare(
+      `SELECT change AS id, MAX(at) AS at FROM auth_events WHERE user_id = ?1 AND event = '${OWASP_EVENTS.signInSuccess}'
+       AND via = 'passkey' AND change IS NOT NULL GROUP BY change`,
+    )
+    .bind(userId)
+    .all();
+  return new Map(results.map((row) => [String(row.id), new Date(Number(row.at))]));
+}
+
+/**
+ * The asker's passkeys for the account page (`passkeyRows`), with when each was last used when `db` is the site's
+ * `eventsDb`; null when nobody is signed in. Listing needs no fresh sign-in, and neither does renaming one
+ * (`authClient.passkey.updatePasskey({ id, name })`); deleting one does (FRESH_SECONDS).
+ * @param {{ api: {
+ *   getSession(o: { headers: Headers }): Promise<{ user: { id: string } } | null>,
+ *   listPasskeys(o: { headers: Headers }): Promise<PasskeyRow[]>,
+ * } }} auth
+ * @param {Request} request
+ * @param {D1Like | null} [db]
+ */
+export async function accountPasskeys(auth, request, db) {
+  const headers = request.headers;
+  const found = await auth.api.getSession({ headers });
+  if (!found) return null;
+  const [passkeys, lastUsed] = await Promise.all([
+    auth.api.listPasskeys({ headers }),
+    db ? passkeyLastUsed(db, found.user.id) : Promise.resolve(new Map()),
+  ]);
+  return passkeyRows(passkeys, lastUsed);
+}
+
+/** Whether the account page suggests adding another passkey (A9): exactly one, so losing that device locks them out. */
+export function needsSecondPasskey(/** @type {unknown[]} */ passkeys) {
+  return passkeys.length === 1;
+}
+
+/** How long a "Not now" on the passkey offer holds: 30 days. */
+export const PASSKEY_OFFER_DAYS = 30;
+/** The `auth_events` event of a "Not now" on the passkey offer: no log line, not in the security history. */
+export const PASSKEY_OFFER_DISMISSED = "passkey_offer_dismissed";
+
+/**
+ * Records a "Not now" on the passkey offer, as an `auth_events` row for the person (so it holds on every device), and
+ * never throws.
+ * @param {D1Like} db @param {string} userId @param {{ request?: Request | null, at?: number }} [options]
+ */
+export function dismissPasskeyOffer(db, userId, { request, at } = {}) {
+  return recordAuthEvent(db, {
+    event: PASSKEY_OFFER_DISMISSED,
+    fields: { user_id: userId },
+    userAgent: request?.headers.get("user-agent"),
+    request,
+    at,
+  });
+}
+
+/**
+ * Whether to offer a passkey after a sign-in by link, code, Google or Apple (A3): the person has none and has not
+ * said "Not now" in the last PASSKEY_OFFER_DAYS. The page also asks the browser (`canOfferPasskey` in
+ * `./sign-in-client`) and skips the offer on a device with no platform authenticator.
+ * @param {D1Like} db the site's `eventsDb`
+ * @param {string} userId
+ * @param {unknown[] | number} passkeys the person's passkeys (`listPasskeys`), or how many
+ * @param {number} [now]
+ */
+export async function shouldOfferPasskey(db, userId, passkeys, now = Date.now()) {
+  if ((typeof passkeys === "number" ? passkeys : passkeys.length) > 0) return false;
+  const { results } = await db
+    .prepare("SELECT 1 FROM auth_events WHERE user_id = ?1 AND event = ?2 AND at >= ?3 LIMIT 1")
+    .bind(userId, PASSKEY_OFFER_DISMISSED, now - PASSKEY_OFFER_DAYS * 24 * 60 * 60 * 1000)
+    .all();
+  return results.length === 0;
 }
 
 // ---- which event a request was ------------------------------------------------------------------
@@ -396,7 +534,8 @@ export async function logAuthEvent({ event, fields, level, email }, { db, userAg
 
 /**
  * The migration: a site that passes `eventsDb` adds it as its next file under `migrations/`. One row per auth event:
- * `at` in epoch ms, the OWASP `event`, the `change` or `scope` its line carries, the way in (`via`), and the device
+ * `at` in epoch ms, the OWASP `event`, the `change` or `scope` its line carries (for a passkey sign-in, the passkey's
+ * id, `passkeyLastUsed`), the way in (`via`), and the device
  * and coarse place of the request. No address, token or code. `user_id` is null before there is a user (a failed
  * sign-in, a link mailed), and those rows are kept 30 days, a person's own a year (`pruneAuthEvents`).
  */
@@ -424,7 +563,7 @@ export async function recordAuthEvent(db, { event, fields, userAgent, request, a
   try {
     await db
       .prepare("INSERT INTO auth_events (at, event, change, via, user_id, device, location) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)")
-      .bind(at, event, text(fields.change) ?? text(fields.scope), text(fields.via), text(fields.user_id), deviceName(userAgent), coarseLocation(request))
+      .bind(at, event, text(fields.change) ?? text(fields.scope) ?? text(fields.passkey_id), text(fields.via), text(fields.user_id), deviceName(userAgent), coarseLocation(request))
       .run();
   } catch (error) {
     logEvent("auth_event_write_failed", { event, error }, { level: "error" });

@@ -1,7 +1,7 @@
 /**
  * The browser half of `./sign-in`: the Better Auth client plugins every site's sign-in page uses, so the client and the
  * server always offer the same ways in, and the WebAuthn Signal API calls that keep the person's passkey provider in
- * step with the site (A6).
+ * step with the site (A6), and whether this device can make a passkey at all (A3).
  */
 import { passkeyClient } from "@better-auth/passkey/client";
 import { emailOTPClient, magicLinkClient } from "better-auth/client/plugins";
@@ -86,4 +86,20 @@ export async function signInWithPasskey(client, { rpId, ...options } = {}) {
   const code = /** @type {{ code?: unknown } | null | undefined} */ (result?.error)?.code;
   if (code === "PASSKEY_NOT_FOUND" && credentialId && host) await signalUnknownCredential({ rpId: host, credentialId });
   return result;
+}
+
+/**
+ * Whether this device has a platform authenticator (Touch ID, Face ID, Windows Hello, an Android screen lock) to make
+ * a passkey with, so the offer of a passkey after another sign-in is skipped where it could only fail. False where the
+ * browser has no WebAuthn or will not say.
+ * @returns {Promise<boolean>}
+ */
+export async function canOfferPasskey() {
+  const api = /** @type {any} */ (globalThis).PublicKeyCredential;
+  if (typeof api?.isUserVerifyingPlatformAuthenticatorAvailable !== "function") return false;
+  try {
+    return (await api.isUserVerifyingPlatformAuthenticatorAvailable()) === true;
+  } catch {
+    return false;
+  }
 }

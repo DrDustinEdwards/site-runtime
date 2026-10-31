@@ -7,7 +7,9 @@ import { test } from "node:test";
 import { authSpikeCheck } from "../health.mjs";
 import {
   AUTH_EVENTS_SQL,
+  accountPasskeys,
   accountSessions,
+  dismissPasskeyOffer,
   authEvent,
   deviceName,
   hadPasskey,
@@ -19,6 +21,7 @@ import {
   revokeSessionById,
   securityHistory,
   sendNoticeSafely,
+  shouldOfferPasskey,
   signedInDevices,
 } from "../sign-in-account.mjs";
 
@@ -38,7 +41,7 @@ test("a user agent reads as the browser and system a person would name", () => {
   for (const [ua, name] of cases) assert.equal(deviceName(ua), name, ua);
   // Apple's own passkeys carry the all-zero AAGUID with attestation "none"; elsewhere a zero names nothing.
   assert.equal(passkeyProvider("00000000-0000-0000-0000-000000000000", cases[0][0]), "Apple Passwords");
-  assert.equal(passkeyProvider("00000000-0000-0000-0000-000000000000", cases[3][0]), null);
+  assert.equal(passkeyProvider("00000000-0000-0000-0000-000000000000", cases[3][0]), "Passkey");
   assert.equal(passkeyProvider(" EA9B8D66-4D01-1D21-3CE4-B6B48CB575D4 "), "Google Password Manager");
 });
 
@@ -189,3 +192,42 @@ test("requireFreshSession passes a sign-in under 10 minutes old and refuses an o
     await assert.rejects(requireFreshSession(auth(11 * 60_000), request), { statusCode: 403, body: { code: "SESSION_NOT_FRESH", message: "Session is not fresh" } });
   });
 });
+
+test("the passkey list says when each passkey last signed in, and a Not now holds the offer back for 30 days", async () => {
+  const db = d1();
+  const day = 24 * 60 * 60 * 1000;
+  await quietly(async () => {
+    await logAuthEvent({ event: "authn_login_success", fields: { via: "passkey", user_id: "u1", passkey_id: "pk-old" } }, { db });
+    await recordAt(db, "authn_login_success", "passkey", "u1", "pk-old", Date.UTC(2026, 9, 1));
+    await recordAt(db, "authn_login_success", "passkey", "u2", "pk-other", Date.UTC(2026, 9, 30));
+  });
+  const auth = {
+    api: {
+      getSession: async () => ({ user: { id: "u1" } }),
+      listPasskeys: async () => [
+        { id: "pk-new", name: null, aaguid: "ea9b8d66-4d01-1d21-3ce4-b6b48cb575d4", createdAt: "2026-10-20T00:00:00Z", credentialID: "c2", publicKey: "k" },
+        { id: "pk-old", name: "Work laptop", aaguid: "00000000-0000-0000-0000-000000000000", createdAt: "2026-09-01T00:00:00Z", credentialID: "c1", publicKey: "k" },
+      ],
+    },
+  };
+  const rows = await accountPasskeys(auth, new Request("https://example.com/account"), db);
+  assert.deepEqual(rows?.map(({ id, name, provider, lastUsedAt }) => [id, name, provider, lastUsedAt !== null]), [
+    ["pk-old", "Work laptop", "Passkey", true],
+    ["pk-new", "Google Password Manager", "Google Password Manager", false],
+  ]);
+  assert.ok((rows?.[0].lastUsedAt?.getTime() ?? 0) > Date.UTC(2026, 9, 1), "the newest use wins");
+  assert.doesNotMatch(JSON.stringify(rows), /publicKey|credentialID/);
+
+  const now = Date.now();
+  assert.equal(await shouldOfferPasskey(db, "u3", []), true);
+  assert.equal(await shouldOfferPasskey(db, "u3", 1), false, "someone with a passkey is not offered one");
+  await dismissPasskeyOffer(db, "u3", { at: now - 29 * day });
+  assert.equal(await shouldOfferPasskey(db, "u3", [], now), false);
+  assert.equal(await shouldOfferPasskey(db, "u3", [], now + 2 * day), true);
+  assert.equal(await shouldOfferPasskey(db, "u4", [], now), true, "one person's Not now is theirs alone");
+});
+
+/** One passkey sign-in row at a given time. */
+function recordAt(db, event, via, userId, passkeyId, at) {
+  return db.prepare("INSERT INTO auth_events (at, event, change, via, user_id) VALUES (?1, ?2, ?3, ?4, ?5)").bind(at, event, passkeyId, via, userId).run();
+}

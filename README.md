@@ -4,7 +4,7 @@ The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-
 (the root export and `./headers`, `./csp`, `./csp-report`, `./check`, `./owasp`), the rate limiter (`./rate-limit`,
 `./rate-limit/durable-object`), the members model (`./members`), the Access for SaaS sign-in (`./access-login`), the MCP
 servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-log`) and server scaffold (`./mcp-server`), the Access request-token check
-(`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images and their edits (`./image`), link prefetch (`./prefetch`), preloads and Early Hints (`./preload`), the Worker in front of a static site (`./static-site`), the edge page cache (`./edge-cache`), the Server-Timing header (`./server-timing`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), the signed token behind emailed links (`./signed-token`), where a site's Anthropic calls go
+(`./access`), the check that an Access application lets in exactly the site's admins (`./access-drift`, `site-runtime-access-drift`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images and their edits (`./image`), link prefetch (`./prefetch`), preloads and Early Hints (`./preload`), the Worker in front of a static site (`./static-site`), the edge page cache (`./edge-cache`), the Server-Timing header (`./server-timing`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), the signed token behind emailed links (`./signed-token`), where a site's Anthropic calls go
 (`./ai-gateway`), starting a Claude Code routine (`./routine`), the check on AI-written prose with the measure of an author's voice (`./prose`), the one sign-in every site
 offers (`./sign-in`, `./sign-in-client`, `./apple-secret`), the Cloudflare Turnstile widget and its server check (`./turnstile`), the same-origin check for
 resource routes (`./origin`), the trailing-slash redirect (`./url`), one structured log line and its scrubbers (`./log`), the 404 counter
@@ -13,7 +13,7 @@ resource routes (`./origin`), the trailing-slash redirect (`./url`), one structu
 No dependencies (`./sign-in` uses the site's own `better-auth` and
 `@better-auth/passkey`, 1.7.12 or later, which a site that imports it installs itself; they are not declared as peers,
 because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
-tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.53.0"`. `npm test` runs every test in `test/`.
+tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.54.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
 
@@ -753,6 +753,8 @@ const auth = betterAuth({
 // a phone app: signInOptions(env, { ..., appCode: true, sendSignInCode: ({ email, code }) => mailCode(email, code) })
 // a site's own export or delete route: await requireFreshSession(auth, request) (throws SESSION_NOT_FRESH when stale)
 // a person's security history: await securityHistory(env.DB, user.id)
+// the account page's passkeys: await accountPasskeys(auth, request, env.DB) -> [{ id, name, provider, createdAt, lastUsedAt }]
+// after a sign-in by link, code or Google: await shouldOfferPasskey(env.DB, user.id, passkeys), and canOfferPasskey() in the browser
 ```
 
 - Passkey: its relying party is the host of `BETTER_AUTH_URL`, so a passkey made on the live site works there only. The
@@ -947,12 +949,31 @@ its own and the notices by passing one function.
   `revokeSessionById(auth, request, id)` (Better Auth's `/revoke-session`, server-side; false when the id is not the
   asker's); every other is `/revoke-other-sessions`; all, `/revoke-sessions`.
 - Passkey names (A5): a passkey registered with no name is stored with its provider's, from its AAGUID
-  (`passkeyProvider`: the passkey-authenticator-aaguids list trimmed to the password managers people use, by that
-  list's names: "Apple Passwords", "Google Password Manager", "Windows Hello", "1Password" and so on). Apple's own
-  passkeys report the all-zero AAGUID when no attestation is asked for, so a zero from an iPhone, iPad or Mac reads as
-  Apple Passwords. It is the passkey plugin's `registration.afterVerification`, whose name a name the page sends
-  overrides. `passkeyLabel(passkey)` is what a list shows: the name, else the provider, else "Passkey". Better Auth
-  1.7.12 keeps no last-used time.
+  (`knownProvider`: the passkey-authenticator-aaguids list trimmed to the password managers people use, by that list's
+  names: "Apple Passwords", "Google Password Manager", "Windows Hello", "1Password" and so on, plus the retail YubiKey 5
+  models from the FIDO Metadata Service; names only). Apple's own passkeys report the all-zero AAGUID when no
+  attestation is asked for, so a zero from an iPhone, iPad or Mac reads as Apple Passwords. It is the passkey plugin's
+  `registration.afterVerification`, whose name a name the page sends overrides; an unknown provider leaves the name
+  blank. `passkeyProvider(aaguid)` is the same for a page, "Passkey" when unknown, and `passkeyLabel(passkey)` is what
+  a list shows: the name, else the provider.
+- The passkey list (A5): `await accountPasskeys(auth, request, env.DB)` gives the asker's passkeys, oldest first, as `{
+  id, name, provider, createdAt, lastUsedAt }` (`passkeyRows` over Better Auth's `listPasskeys`; no credential or
+  public key), or null when nobody is signed in. Better Auth 1.7.12 keeps no last-used time, so with `eventsDb` each
+  passkey sign-in's `auth_events` row carries the passkey's id in `change`, and `passkeyLastUsed(db, userId)` reads the
+  newest per passkey: no migration beyond `AUTH_EVENTS_SQL`. Rows go after a year, so a passkey unused that long shows
+  no date, and passkeys used before this version show none until their next sign-in. Rename is Better Auth's own
+  `authClient.passkey.updatePasskey({ id, name })`; adding another is `authClient.passkey.addPasskey()`; delete is
+  `authClient.passkey.deletePasskey({ id })`. Listing and renaming need no fresh sign-in; adding and deleting do
+  (FRESH_SECONDS), so the page offers "sign in again" on SESSION_NOT_FRESH.
+- The passkey offer (A3): after a sign-in by link, code, Google or Apple, the page the sign-in lands on asks
+  `await shouldOfferPasskey(env.DB, user.id, passkeys)`: true when the person has no passkey and has not said "Not
+  now" in the last `PASSKEY_OFFER_DAYS` (30). If so it shows one screen offering a passkey, and in the browser skips
+  it when `await canOfferPasskey()` (`./sign-in-client`, the platform authenticator check) is false. "Not now" posts
+  to the page's own action, which calls `dismissPasskeyOffer(env.DB, user.id, { request })`. The dismissal is an
+  `auth_events` row (`passkey_offer_dismissed`), so it belongs to the person rather than one browser, needs no other
+  table, and is not in the security history; it needs `eventsDb`.
+- Two ways in (A9): `needsSecondPasskey(rows)` is true with exactly one passkey; the account page then suggests adding
+  another on a second device.
 - The WebAuthn Signal API (A6), in `./sign-in-client`: `signalUnknownCredential({ rpId, credentialId })` after a passkey
   is deleted on the site, and after a sign-in fails with `PASSKEY_NOT_FOUND` (the passkey was deleted elsewhere), so
   the provider stops offering it. A page's passkey button and autofill call `signInWithPasskey(authClient, { autoFill
@@ -968,7 +989,8 @@ its own and the notices by passing one function.
 **Tests.** `test/apple-secret.test.mjs` (a key made in the test, the signature verified), `test/sign-in-link.test.mjs`
 (the mailed URL; only a POST reaches Better Auth's verify, with the client address passed on) and
 `test/sign-in-account.test.mjs` (user agents, which event a request was, a notice that fails to send, the security
-history and new-device decision, the spike check, `requireFreshSession`). The confirm step
+history and new-device decision, the spike check, `requireFreshSession`, the passkey list's last-used dates and the
+offer's 30 days). The confirm step
 and the account security live in `sign-in-link.mjs` and `sign-in-account.mjs`, re-exported by `./sign-in`, so they are
 tested without Better Auth installed. The rest is Better Auth's own plugins, set up; each site's tests sign in through
 it.
@@ -1307,6 +1329,58 @@ return withAdminIdle(request, lab, { prefixes: ["/admin"] });
 and `test/access.test.mjs` (a key pair made in the test and a fake certs endpoint; `accessAdmin`'s case folding, its
 localhost-only bypass, its refusal when the keys cannot be fetched, and `adminIdle`'s timing). Each PLANT test fails when the guard it
 names is removed.
+
+## Access drift
+
+`site-runtime-access-drift` (`bin/access-drift.mjs`, logic in `./access-drift`) is the check for I2: it reads a
+Cloudflare Access application's policies through the Cloudflare API and compares who they let in with the site's own
+admin list, so a person removed from one and not the other is found.
+
+```sh
+CLOUDFLARE_API_TOKEN=... ADMIN_EMAILS="a@example.com,b@example.com" \
+  npx site-runtime-access-drift --account <account id> --app "<application name>" [--admins-file admins.txt]
+```
+
+- The token needs Access: Apps and Policies Read on the account (and Zero Trust Read when a policy uses an email
+  list). It goes to api.cloudflare.com in the Authorization header only and is never printed. `--account` may be left
+  to `CLOUDFLARE_ACCOUNT_ID`. The application is found by its exact name.
+- Who an Allow policy lets in: its include rules less its exclude rules. An `email` rule is one address, an
+  `email_list` rule the addresses on that Zero Trust list, a `group` rule that Access group's include less its
+  exclude, read the same way. A reusable policy listed without its rules is read on its own. Any other include rule
+  (an email domain, everyone, an identity provider's group) and any Bypass policy lets in people no list can name, so
+  it is reported and counts as drift. Require rules only narrow and are not read; Service Auth policies are not people.
+- The site's list is `ADMIN_EMAILS` (the same variable `./access`'s `adminEmails` reads), or `--admins-file` (one
+  address per line or comma-separated, `#` comments). Addresses compare in lower case.
+- Each difference prints as `::error title=I2 access drift::<address or rule> ...`: let in by Access but not an admin,
+  an admin Access does not let in, or an open rule. Exit 0 when they match, 1 on drift, 2 when it cannot run (no
+  token, no such application, an API refusal).
+
+A site runs it weekly in CI, with the token as a repository secret and the admin list as a repository variable kept
+equal to the Worker's `ADMIN_EMAILS`:
+
+```yaml
+name: access-drift
+on:
+  schedule: [{ cron: "17 6 * * 1" }]
+  workflow_dispatch:
+permissions: { contents: read }
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: 24 }
+      - run: npm ci --ignore-scripts
+      - run: npx site-runtime-access-drift --account "$CLOUDFLARE_ACCOUNT_ID" --app "Foxing admin"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.ACCESS_READ_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          ADMIN_EMAILS: ${{ vars.ADMIN_EMAILS }}
+```
+
+A failed run is the alert. `test/access-drift.test.mjs` runs it against a fake API: direct addresses, a group with its
+own exclude, an email list, a reusable policy, a domain rule and a Bypass policy.
 
 ## What the check requires
 
