@@ -4,7 +4,7 @@ The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-
 (the root export and `./headers`, `./csp`, `./csp-report`, `./check`, `./owasp`), the rate limiter (`./rate-limit`,
 `./rate-limit/durable-object`), the members model (`./members`), the Access for SaaS sign-in (`./access-login`), the MCP
 servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-log`) and server scaffold (`./mcp-server`), the Access request-token check
-(`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images and their edits (`./image`), link prefetch (`./prefetch`), preloads and Early Hints (`./preload`), the edge page cache (`./edge-cache`), the Server-Timing header (`./server-timing`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), the signed token behind emailed links (`./signed-token`), where a site's Anthropic calls go
+(`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images and their edits (`./image`), link prefetch (`./prefetch`), preloads and Early Hints (`./preload`), the Worker in front of a static site (`./static-site`), the edge page cache (`./edge-cache`), the Server-Timing header (`./server-timing`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), the signed token behind emailed links (`./signed-token`), where a site's Anthropic calls go
 (`./ai-gateway`), starting a Claude Code routine (`./routine`), the check on AI-written prose with the measure of an author's voice (`./prose`), the one sign-in every site
 offers (`./sign-in`, `./sign-in-client`, `./apple-secret`), the Cloudflare Turnstile widget and its server check (`./turnstile`), the same-origin check for
 resource routes (`./origin`), the trailing-slash redirect (`./url`), one structured log line and its scrubbers (`./log`), the 404 counter
@@ -13,7 +13,7 @@ resource routes (`./origin`), the trailing-slash redirect (`./url`), one structu
 No dependencies (`./sign-in` uses the site's own `better-auth` and
 `@better-auth/passkey`, 1.7.12 or later, which a site that imports it installs itself; they are not declared as peers,
 because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
-tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.50.1"`. `npm test` runs every test in `test/`.
+tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.51.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
 
@@ -1315,6 +1315,30 @@ writeFileSync("public/_headers", headersFile(SECURITY_HEADERS, {
 
 A site generates the file from the set its Worker applies (a build step or a script) and fails CI when the committed
 file differs, as Foxhound's `scripts/gen-headers.mjs --check` does.
+
+## The Worker in front of a static site
+
+`staticSite(options)` (`./static-site`) is the whole Worker for a site served from Workers static assets (Capsomer,
+Prelum's specimen, Carrel's public page, Enarratio's gallery, the Capsid explorer), so each gets what the rendered sites
+get. In order: one hop to the canonical address (`canonicalRedirect`, with `canonical` as its options, or `false` for a
+site whose pages end in a slash); Content-Security-Policy reports at `reportPath` (default `/csp-report`, limited by a
+`CSP_REPORT_RATE_LIMIT` binding when there is one); the prefetch rules at `/speculation-rules.json` (`prefetch` is
+`speculationRules`' options, or `false`). Then the asset. A page gets the `Speculation-Rules` header, so Cloudflare's
+generic rules are not the ones used; `Server-Timing` for the asset read; charset=utf-8 and any header of `headers` its
+own `_headers` rules left out; and, on a 200, the `preload` Link header, which Early Hints answers with a 103. A path
+with no file gets the 404 page (`notFound`, default `/404`) with status 404 and `private, no-store`, so no browser or
+proxy keeps a "not found" after the page exists; a page answered to a request with a cookie is `private, no-store` too.
+Every other file passes through untouched.
+
+```js
+// worker.mjs
+import { staticSite } from "@dustinedwards/site-runtime/static-site";
+import { PAGE_PRELOADS, SITE_HEADERS } from "./headers.mjs";
+export default staticSite({ headers: SITE_HEADERS, preload: PAGE_PRELOADS.header });
+```
+
+In wrangler, `run_worker_first` sends the Worker every page and leaves the hashed files to the asset server (for
+example `["/*", "!/assets/*"]`); `not_found_handling` may be `"none"` or `"404-page"`.
 
 ## Adopting it
 
