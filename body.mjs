@@ -26,7 +26,7 @@ export async function readCappedBytes(source, max) {
       total += value.byteLength;
       if (total > max) {
         // Not awaited: canceling one branch of a tee (request.clone()) settles only once the other branch is read or
-        // cancelled too, and the caller reads that branch only after this returns.
+        // canceled too, and the caller reads that branch only after this returns.
         void reader.cancel().catch(() => {});
         return null;
       }
