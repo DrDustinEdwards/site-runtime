@@ -17,7 +17,8 @@
  * /account/<name>.css (never a cacheable page, X3), /.git/HEAD and the asset's .map (404), /.env, /.dev.vars and
  * /wrangler.jsonc (never 200), and fetches / twice when it carries a nonce (two nonces, never one). An off-site script
  * or stylesheet with no integrity is a warning (S1). A redirect to Cloudflare Access is a warning that the page is
- * behind Access, not an error. A failure the entry declared a deviation for is a warning, and one no family site can
+ * behind Access, not an error, and Access's own 4xx answers on that host are not graded as the site's. A workers.dev
+ * host is noindexed exactly while the entry's `oldSite` still serves the old site (A6). A failure the entry declared a deviation for is a warning, and one no family site can
  * meet (FAMILY_DEVIATIONS) a `::notice` line, which fails nothing.
  */
 
@@ -74,15 +75,25 @@ async function get(path, method = "GET") {
 }
 
 let behindAccess = false;
-/** True when the response sends the reader to Cloudflare Access; warned once. @param {string} url @param {Response} res */
+/**
+ * True when Cloudflare Access answered instead of the site: a redirect to its sign-in, or, on a host already found
+ * behind it, its own 4xx (a 400 or 403 to a request it will not send on, such as an OPTIONS with no preflight), which
+ * carries Access's no-cache pair (Expires in 1970 and pre-check=0) and none of the site's set. Warned once.
+ * @param {string} url @param {Response} res
+ */
 function accessGate(url, res) {
   const location = res.headers.get("Location");
-  if (res.status < 300 || res.status >= 400 || !location) return false;
-  const host = new URL(location, url).hostname;
-  if (!host.endsWith(".cloudflareaccess.com")) return false;
-  if (!behindAccess) report("warning", "A1", url, `is behind Cloudflare Access (${host}): the pages behind it were not graded`);
-  behindAccess = true;
-  return true;
+  const host = location && res.status >= 300 && res.status < 400 ? new URL(location, url).hostname : "";
+  if (host.endsWith(".cloudflareaccess.com")) {
+    if (!behindAccess) report("warning", "A1", url, `is behind Cloudflare Access (${host}): the pages behind it were not graded`);
+    behindAccess = true;
+    return true;
+  }
+  const own =
+    res.status >= 400 && res.status < 500 &&
+    (/^\s*Cloudflare-Access\b/i.test(res.headers.get("WWW-Authenticate") ?? "") ||
+      (behindAccess && /\bpre-check=0\b/.test(res.headers.get("Cache-Control") ?? "") && /\b1970\b/.test(res.headers.get("Expires") ?? "") && !res.headers.has("X-Content-Type-Options")));
+  return own;
 }
 
 /**
@@ -135,8 +146,16 @@ try {
 grade(home.url, home.res);
 const homeHtml = /text\/html/i.test(home.res.headers.get("Content-Type") ?? "") ? await home.res.text() : "";
 if (homeHtml === "") await home.res.body?.cancel();
-if (new URL(served).hostname.endsWith(".workers.dev") && !/noindex/i.test(home.res.headers.get("X-Robots-Tag") ?? "")) {
-  fail("A6", home.url, "a workers.dev host without X-Robots-Tag: noindex can be indexed beside the real domain");
+// A6, one rule for every site (the entry's oldSite): a workers.dev host is noindexed while, and only while, the site's
+// real domain still serves a live old site. The host is the site otherwise, and noindex would take it out of search;
+// a workers.dev host that is not the entry's origin is a copy beside the real one, so it is always noindexed.
+if (new URL(served).hostname.endsWith(".workers.dev")) {
+  const noindex = /noindex/i.test(home.res.headers.get("X-Robots-Tag") ?? "");
+  const live = entry?.origin === served;
+  const old = entry?.oldSite?.value;
+  if (!live && !noindex) report("error", "A6", home.url, `a workers.dev copy of ${entry?.origin ?? origin} without X-Robots-Tag: noindex can be indexed beside it`);
+  else if (live && old && !noindex) report("error", "A6", home.url, `${old} still serves the old site (oldSite), so this workers.dev host must send X-Robots-Tag: noindex until the domain moves here`);
+  else if (live && !old && noindex) report("error", "A6", home.url, "X-Robots-Tag: noindex on the live host: no old site holds the real domain (no oldSite), so this host is the site and noindex takes it out of search");
 }
 
 // S1: an off-site script or stylesheet with no integrity runs whatever that host serves tomorrow.
@@ -263,6 +282,8 @@ for (const method of ["GET", "OPTIONS"]) {
     const url = new URL("/", served).href;
     const res = await fetch(url, { method, redirect: "manual", headers: { "user-agent": UA, origin: FOREIGN, "access-control-request-method": "POST" }, signal: AbortSignal.timeout(20_000) });
     await res.body?.cancel();
+    // Access's own answer (its sign-in redirect echoes the Origin) holds nothing of the site's to read.
+    if (accessGate(url, res)) continue;
     const allowed = res.headers.get("Access-Control-Allow-Origin")?.trim();
     const credentials = /^\s*true\s*$/i.test(res.headers.get("Access-Control-Allow-Credentials") ?? "");
     if (allowed === FOREIGN || allowed === "null" || (allowed === "*" && credentials)) {

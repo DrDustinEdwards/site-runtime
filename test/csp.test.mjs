@@ -63,10 +63,9 @@ test("framedBySameOrigin lets the site frame its own pages and no one else", () 
   assert.deepEqual(failures(checkSecurityHeaders(headers, { standard: { "X-Frame-Options": "deny" } })), []);
 });
 
-test("a policy needs both report sinks, written last", () => {
-  for (const sinks of [{}, { reportUri: "/r" }, { reportTo: "csp-endpoint" }, { reportUri: "", reportTo: "" }]) {
-    assert.throws(() => buildContentSecurityPolicy(sinks), /needs both report sinks/, JSON.stringify(sinks));
-  }
+test("a policy always has both report sinks, the family's unless given, written last", () => {
+  for (const sinks of [{ reportUri: "" }, { reportTo: "" }]) assert.throws(() => buildContentSecurityPolicy(sinks), /needs both report sinks/, JSON.stringify(sinks));
+  assert.match(buildContentSecurityPolicy({}).value, /; report-uri \/csp-report; report-to csp-endpoint$/);
   assert.deepEqual([...directives(SINK).keys()].slice(-2), ["report-uri", "report-to"]);
 });
 

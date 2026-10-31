@@ -10,6 +10,7 @@
  * extra, never as a copy of this set.
  */
 
+import { CSP_REPORT_GROUP, integrityPolicy } from "./csp.mjs";
 import { OWASP_RECOMMENDED } from "./owasp-headers.mjs";
 
 /**
@@ -110,8 +111,11 @@ export function entryOverrides({ id, headers = {}, optIns = {} }) {
  *
  * `coep` turns on Cross-Origin-Embedder-Policy, which the standard leaves out (OWASP_SKIPPED): `credentialless` loads a
  * cross-origin subresource without its cookies, `require-corp` refuses one that does not opt in. `reportOnly: true`
- * sends Cross-Origin-Embedder-Policy-Report-Only instead, the way to start. A registry entry declares it as its `coep`
- * opt-in, which the check then grades; passed here it is for a site not built from the registry.
+ * sends Cross-Origin-Embedder-Policy-Report-Only instead, the way to start. Either names the family's report group
+ * (`report-to="csp-endpoint"`), so what it refuses, or would refuse, reaches the sink (./csp-report). A registry entry
+ * declares it as its `coep` opt-in, which the check then grades; passed here it is for a site not built from the
+ * registry. An entry's `integrityPolicy` opt-in adds Integrity-Policy, or its Report-Only form (integrityPolicy,
+ * ./csp), reporting to the same group.
  *
  * @param {{ site?: import("./sites.mjs").SiteEntry, overrides?: Readonly<Record<string, HeaderOverride>>, coep?: Coep }} [options]
  * @returns {Record<string, string>}
@@ -137,28 +141,18 @@ export function buildSecurityHeaders({ site, overrides, coep } = {}) {
   const embedder = coep ?? site?.optIns?.coep;
   if (embedder) {
     if (embedder.value !== "credentialless" && embedder.value !== "require-corp") throw new Error(`coep is "credentialless" or "require-corp", not ${JSON.stringify(embedder.value)}`);
-    set[embedder.reportOnly ? "Cross-Origin-Embedder-Policy-Report-Only" : "Cross-Origin-Embedder-Policy"] = embedder.value;
+    set[embedder.reportOnly ? "Cross-Origin-Embedder-Policy-Report-Only" : "Cross-Origin-Embedder-Policy"] = `${embedder.value}; report-to="${CSP_REPORT_GROUP}"`;
+  }
+  const integrity = site?.optIns?.integrityPolicy?.value;
+  if (integrity) {
+    if (integrity !== "enforce" && integrity !== "report-only") throw new Error(`integrityPolicy is "enforce" or "report-only", not ${JSON.stringify(integrity)}`);
+    const { name, value } = integrityPolicy({ reportOnly: integrity === "report-only" });
+    set[name] = value;
   }
   return set;
 }
 
 /** @typedef {{ value: "credentialless" | "require-corp", reportOnly?: boolean }} Coep */
-
-/**
- * The logout response (ASVS 14.3.1): a 303 to `location` that tells the browser to drop this site's cookies, storage and
- * cache (LOGOUT_HEADERS, OSHP's Clear-Site-Data), never stored. `headers` adds to it: the Set-Cookie lines that end the
- * session, for a browser without Clear-Site-Data.
- * @param {string | URL} [location] where the reader goes next (default `/`)
- * @param {HeadersInit} [headers]
- * @returns {Response}
- */
-export function logoutResponse(location = "/", headers) {
-  const merged = new Headers(headers);
-  for (const [name, value] of Object.entries(LOGOUT_HEADERS)) merged.set(name, value);
-  merged.set("Cache-Control", "no-store");
-  merged.set("Location", String(location));
-  return new Response(null, { status: 303, headers: merged });
-}
 
 /**
  * A Set-Cookie value for a cookie that holds a sign-in or anything else script must never read (ASVS 3.3.1 to 3.3.4):
@@ -191,24 +185,36 @@ export const UPLOAD_HEADERS = /* @__PURE__ */ Object.freeze({
 });
 
 /**
- * Stamps a header set onto `headers` in place.
+ * Stamps a header set onto `target`: a Headers in place, or a Response, which comes back rebuilt with the set (so a
+ * Response whose headers are immutable, such as Response.redirect's or the Cache API's, still takes it, its body
+ * streaming through untouched). A WebSocket upgrade (101, or a Response carrying its `webSocket`) is the socket
+ * itself and carries no document, so it comes back as it is: rebuilding it would drop the socket.
  *
  * `overwrite: true` (the default) makes the set authoritative, which is what dustinedwards.info does on
- * every exit. `overwrite: false` keeps any value a route already chose, which is foxhound's merge. A
- * Response whose headers are immutable (Response.redirect, the Cache API) throws on `set`; rebuild it
- * with `new Response(res.body, { ...res, headers: new Headers(res.headers) })` and apply to that. A text or XML
- * Content-Type with no charset (React Router's `text/html`, say) gains `charset=utf-8`, as ASVS 4.1.1 asks.
+ * every exit. `overwrite: false` keeps any value a route already chose, which is foxhound's merge. Headers that are
+ * immutable throw on `set`; pass the Response instead. A text or XML Content-Type with no charset (React Router's
+ * `text/html`, say) gains `charset=utf-8`, as ASVS 4.1.1 asks.
  *
- * @param {Headers} headers
+ * @template {Headers | Response} T
+ * @param {T} target
  * @param {Readonly<Record<string, string>>} [set]
  * @param {{ overwrite?: boolean }} [options]
+ * @returns {T}
  */
-export function applyHeaderSet(headers, set = STANDARD_SECURITY_HEADERS, { overwrite = true } = {}) {
+export function applyHeaderSet(target, set = STANDARD_SECURITY_HEADERS, { overwrite = true } = {}) {
+  if (target instanceof Response) {
+    if (target.status === 101 || /** @type {Response & { webSocket?: unknown }} */ (target).webSocket) return target;
+    const headers = new Headers(target.headers);
+    applyHeaderSet(headers, set, { overwrite });
+    return /** @type {T} */ (new Response(target.body, { status: target.status, statusText: target.statusText, headers }));
+  }
+  const headers = /** @type {Headers} */ (target);
   for (const [name, value] of Object.entries(set)) {
     if (overwrite || !headers.has(name)) headers.set(name, value);
   }
   const type = headers.get("Content-Type");
   if (type && /^\s*(text\/|[^;]*[/+]xml\s*$)/i.test(type) && !/;/.test(type)) headers.set("Content-Type", `${type.trim()}; charset=utf-8`);
+  return target;
 }
 
 /** The headers a static `_headers` file leaves out: a page's policy names what that page loads, and may carry a nonce. */
@@ -231,7 +237,7 @@ const STATIC_TYPES = /* @__PURE__ */ Object.freeze({
  * the Worker's header set never reaches them. `set` (the one the Worker applies) goes on `/*`, minus any
  * Content-Security-Policy; `paths` adds or changes headers on a path pattern (`/assets/*`, `/favicon.svg`). Cloudflare
  * joins a header that two matching rules set, so a path that changes a header of the set first detaches the `/*` value
- * with `! Name`. `comment` lines lead the file, each as `# ...`. `charset: true` adds a rule per static extension:
+ * with `! Name`, as does a path that changes a header a `/*` rule of `paths` adds. `comment` lines lead the file, each as `# ...`. `charset: true` adds a rule per static extension:
  * `charset=utf-8` on each text type, which the asset server otherwise leaves off, and the Cross-Origin-Resource-Policy
  * corpFor gives its type, so stylesheets, scripts, SVG and fonts are `cross-origin` (another origin, or a sandboxed
  * frame's opaque one, may load them) and nothing else is. A `paths` entry for one of those patterns is merged into its
@@ -263,12 +269,14 @@ export function headersFile(set, { paths = {}, comment = [], charset = false } =
     for (const pattern of ["/", "/*/"]) rules.set(pattern, { "Content-Type": "text/html; charset=utf-8" });
   }
   for (const [pattern, headers] of Object.entries(paths)) rules.set(pattern, { ...rules.get(pattern), ...headers });
+  // A header a `/*` rule of `paths` adds (a static site's one page policy) is detached the same way on a path that sets its own.
+  const starNames = new Set(Object.keys(paths["/*"] ?? {}).map((name) => name.toLowerCase()));
   const blocks = [["/*", ...base.map(([name, value]) => line(name, value))].join("\n")];
   for (const [pattern, headers] of rules) {
     if (!pattern.startsWith("/") || /\s/.test(pattern)) throw new Error(`${JSON.stringify(pattern)} is not a path pattern`);
     const entries = Object.entries(headers);
     if (entries.length === 0) continue;
-    const detach = entries.filter(([name]) => baseNames.has(name.toLowerCase())).map(([name]) => `  ! ${name}`);
+    const detach = entries.filter(([name]) => baseNames.has(name.toLowerCase()) || (pattern !== "/*" && starNames.has(name.toLowerCase()))).map(([name]) => `  ! ${name}`);
     blocks.push([pattern, ...detach, ...entries.map(([name, value]) => line(name, value))].join("\n"));
   }
   return `${notes.map((note) => `${note}\n`).join("")}${blocks.join("\n\n")}\n`;

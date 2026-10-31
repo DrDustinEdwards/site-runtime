@@ -11,8 +11,9 @@ export function parsePolicy(policy: string): Map<string, string[]>;
  * `cloudflareWebAnalytics`: the policy must let the injected beacon run and report. `inlineScripts`: `'unsafe-inline'` is
  * accepted on script-src alone. `formTargets`: off-site form targets accepted after 'self'. `framedBySameOrigin` /
  * `baseUriSelf`: true accepts 'self' beside 'none' on frame-ancestors and base-uri, false 'none' alone; left out, either.
- * `inlineStyles`: `'unsafe-inline'` accepted on style-src (C11). `strictDynamic` (C3), `trustedTypes` (C7), `denyUnlisted`
- * (C9) and `integrityPolicy` (S2) are graded only when declared. `upload`: the response is an uploaded file (A3).
+ * `inlineStyles`: `'unsafe-inline'` accepted on style-src (C11). S2, C3, C7, C9 and I3 are graded on every page: a miss
+ * fails unless the entry declines it (a warning). `strictDynamic`, `trustedTypes`, `denyUnlisted` and `integrityPolicy`
+ * hold a site to the form it declared. `upload`: the response is an uploaded file (A3).
  */
 export type CheckOptions = {
     site?: string | SiteEntry;
@@ -26,7 +27,7 @@ export type CheckOptions = {
     inlineStyles?: boolean;
     strictDynamic?: boolean;
     trustedTypes?: true | "report-only";
-    denyUnlisted?: boolean;
+    denyUnlisted?: boolean | "report-only";
     integrityPolicy?: "enforce" | "report-only";
     upload?: boolean;
 };

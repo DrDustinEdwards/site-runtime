@@ -1,5 +1,5 @@
 /**
- * The one receiver for Content-Security-Policy violation reports. A POST always gets 204; the body is read to 16 KB at most; at most 10 violations are logged,
+ * The one receiver for the reports a site's headers ask for (CSP, integrity-violation, coep). A POST always gets 204; the body is read to 16 KB at most; at most 10 violations are logged,
  * each URL cut to its origin and path; extension and browser-scheme violations are dropped; a first-seen (directive, blocked
  * origin) logs `csp_new_blocked` once per isolate; the site's limiter is asked first; nothing is stored.
  */
@@ -9,16 +9,17 @@ export const MAX_REPORT_BYTES: 16384;
 export const MAX_REPORTS: 10;
 /** A URL cut to its origin and path; a keyword such as "inline" is kept, to 64 characters. */
 export function trimReportUrl(value: unknown): string | undefined;
-/** The violations in a parsed report body, in either format; anything else is no violations. */
-export function cspViolations(parsed: unknown): Record<string, unknown>[];
-/** One violation as the line the receiver logs. */
-export function summarizeViolation(body: Record<string, unknown>): {
-    event: "csp-violation";
+/** The reports in a parsed body, in either format, each with its type: csp-violation, integrity-violation or coep. */
+export function reportBodies(parsed: unknown): { type: string; body: Record<string, unknown> }[];
+/** One report as the line the receiver logs; `directive` is the CSP directive, `blocked-destinations` or the COEP check. */
+export function summarizeReport(body: Record<string, unknown>, type?: string): {
+    event: string;
     directive: string | undefined;
     blocked: string | undefined;
     page: string | undefined;
     source: string | undefined;
     line: number | undefined;
+    destination?: string;
     disposition: "enforce" | "report" | undefined;
 };
 /**

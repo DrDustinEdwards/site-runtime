@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { LOGOUT_HEADERS, OWASP_SKIPPED, STANDARD_SECURITY_HEADERS, applyHeaderSet, buildSecurityHeaders, hostCookie, logoutResponse } from "../headers.mjs";
+import { LOGOUT_HEADERS, OWASP_SKIPPED, STANDARD_SECURITY_HEADERS, applyHeaderSet, buildSecurityHeaders, hostCookie } from "../headers.mjs";
 
 const REASON = "the site embeds a cross-origin player";
 
@@ -10,15 +10,6 @@ test("the exported sets cannot be changed by a site", () => {
     "use strict";
     /** @type {any} */ (STANDARD_SECURITY_HEADERS)["X-Frame-Options"] = "sameorigin";
   }, TypeError);
-});
-
-test("logoutResponse clears the site's data on a 303 that is never stored", () => {
-  assert.deepEqual({ ...LOGOUT_HEADERS }, { "Clear-Site-Data": '"cache","cookies","storage"' });
-  const res = logoutResponse("/signed-out");
-  assert.equal(res.status, 303);
-  assert.equal(res.headers.get("Location"), "/signed-out");
-  assert.equal(res.headers.get("Clear-Site-Data"), LOGOUT_HEADERS["Clear-Site-Data"]);
-  assert.equal(res.headers.get("Cache-Control"), "no-store");
 });
 
 test("hostCookie writes a __Host- cookie that is Secure, HttpOnly and SameSite, and refuses what would weaken it", () => {
@@ -105,13 +96,17 @@ test("applyHeaderSet applies the set it is given, such as a site's built set or 
   assert.equal(page.get("X-Frame-Options"), "sameorigin");
 });
 
-test("applyHeaderSet throws on immutable headers, as documented, rather than skipping them", () => {
+test("applyHeaderSet rebuilds a Response with immutable headers, and passes a WebSocket upgrade through untouched", () => {
   const redirect = Response.redirect("https://example.com/", 302);
   assert.throws(() => applyHeaderSet(redirect.headers), TypeError);
-  const rebuilt = new Response(redirect.body, { status: redirect.status, headers: new Headers(redirect.headers) });
-  applyHeaderSet(rebuilt.headers);
+  const rebuilt = applyHeaderSet(redirect);
+  assert.equal(rebuilt.status, 302);
   assert.equal(rebuilt.headers.get("X-Frame-Options"), "deny");
   assert.equal(rebuilt.headers.get("Location"), "https://example.com/");
+  // Workers answer an upgrade with status 101 and the socket on the Response; Node cannot build a 101, so the socket marks it.
+  const upgrade = Object.assign(new Response(null), { webSocket: {} });
+  assert.equal(applyHeaderSet(upgrade), upgrade);
+  assert.equal(upgrade.headers.get("X-Frame-Options"), null);
 });
 
 test("the static _headers file leaves out the policy and detaches a header a path changes", async () => {

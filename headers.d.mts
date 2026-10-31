@@ -12,7 +12,8 @@ import type { SiteEntry } from "./sites.mjs";
  *
  * `site` is the site's registry entry, imported by name from ./sites, whose declared overrides are used; `overrides` is
  * the older form. Not both. `coep` (or the entry's `coep` opt-in) adds Cross-Origin-Embedder-Policy, or its Report-Only
- * form with `reportOnly: true`.
+ * form with `reportOnly: true`, with `report-to="csp-endpoint"`. The entry's `integrityPolicy` opt-in adds
+ * Integrity-Policy, or its Report-Only form.
  */
 export function buildSecurityHeaders(options?: {
     site?: SiteEntry;
@@ -21,8 +22,6 @@ export function buildSecurityHeaders(options?: {
 }): Record<string, string>;
 /** Cross-Origin-Embedder-Policy: `credentialless` or `require-corp`, Report-Only when asked. */
 export type Coep = { value: "credentialless" | "require-corp"; reportOnly?: boolean };
-/** A 303 to `location` (default `/`) with LOGOUT_HEADERS (Clear-Site-Data) and `Cache-Control: no-store`; `headers` adds to it. */
-export function logoutResponse(location?: string | URL, headers?: HeadersInit): Response;
 /**
  * A Set-Cookie value: `__Host-<name>=<value>; Path=/; Secure; HttpOnly; SameSite=Lax`, with Max-Age when given. A name
  * with a prefix already, or a name or value a cookie cannot carry, is refused.
@@ -31,20 +30,13 @@ export function hostCookie(name: string, value: string, options?: { maxAge?: num
 /** What an uploaded file is served with: nosniff and `sandbox; default-src 'none'; style-src 'unsafe-inline'`. */
 export const UPLOAD_HEADERS: Readonly<Record<string, string>>;
 /**
- * Stamps a header set onto `headers` in place.
- *
- * `overwrite: true` (the default) makes the set authoritative, which is what dustinedwards.info does on
- * every exit. `overwrite: false` keeps any value a route already chose, which is foxhound's merge. A
- * Response whose headers are immutable (Response.redirect, the Cache API) throws on `set`; rebuild it
- * with `new Response(res.body, { ...res, headers: new Headers(res.headers) })` and apply to that.
- *
- * @param {Headers} headers
- * @param {Readonly<Record<string, string>>} [set]
- * @param {{ overwrite?: boolean }} [options]
+ * Stamps a header set onto a Headers in place, or onto a Response, which comes back rebuilt with it (immutable headers
+ * included). A WebSocket upgrade (101, or a Response with its `webSocket`) comes back as it is. `overwrite: false` keeps
+ * any value a route already chose. A text or XML Content-Type with no charset gains `charset=utf-8`.
  */
-export function applyHeaderSet(headers: Headers, set?: Readonly<Record<string, string>>, { overwrite }?: {
+export function applyHeaderSet<T extends Headers | Response>(target: T, set?: Readonly<Record<string, string>>, options?: {
     overwrite?: boolean;
-}): void;
+}): T;
 /**
  * The OSHP recommendations this package does not put in the standard set, and why. Each would break a normal site if
  * sent on every response, or is not one value for every site.
@@ -85,7 +77,8 @@ export type HeaderOverride = {
  * A Cloudflare `_headers` file for static assets: `set` on `/*` minus any Content-Security-Policy, then each of `paths`
  * (pattern to headers), detaching with `! Name` a header the `/*` block already sets. `comment` lines lead as `# ...`.
  * `charset: true` adds a `/*.<ext>` rule per static type: `charset=utf-8` on text, and corpFor's CORP, so stylesheets,
- * scripts, SVG and fonts are `cross-origin`. A `paths` entry for one of those patterns is merged into its rule.
+ * scripts, SVG and fonts are `cross-origin`. A `paths` entry for one of those patterns is merged into its rule; a header a `/*` rule of `paths` adds is detached
+ * the same way on a path that sets its own.
  */
 export function headersFile(
   set: Readonly<Record<string, string>>,
