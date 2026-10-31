@@ -5,8 +5,7 @@
  *
  * An entry is filled from the site's own code (the file is named beside it), with the reason that code gives. A
  * deviation an audit marked as a gap is left out on purpose, so the check keeps failing it until the site is fixed:
- * dustinedwards.info's nine-feature Permissions-Policy and one-year HSTS, germomics' Permissions-Policy allowances
- * and wildcard script hosts, and `Cross-Origin-Resource-Policy: cross-origin` on every response (a site marks shared
+ * dustinedwards.info's nine-feature Permissions-Policy and one-year HSTS, germomics' wildcard script hosts, and `Cross-Origin-Resource-Policy: cross-origin` on every response (a site marks shared
  * media with corpFor, ./headers, instead).
  *
  * - `headers`: overrides in buildSecurityHeaders' shape, `{ value, reason }`, `value: null` to send none.
@@ -105,11 +104,12 @@ export const germomics = {
       value: STRICT_ORIGIN,
       reason: "no-referrer strips the origin from the player's episode requests through OP3, which tells web players apart by Referer, and blanks Web Analytics' referrers.",
     },
+    "Permissions-Policy": {
+      value: /* @__PURE__ */ permissionsAllowingSelf("autoplay", "clipboard-write", "web-share"),
+      reason: "The player resumes with audio.play() (player-context.tsx); Copy link, the transcript quote and the feed URL use navigator.clipboard.writeText, and Copy link offers navigator.share (CopyLink.tsx).",
+    },
   },
-  optIns: {
-    cloudflareWebAnalytics: /* @__PURE__ */ beacon("app/lib/security-headers.ts"),
-    inlineScripts: { value: "unsafe-inline", reason: "React Router streams inline hydration scripts and the pre-paint theme script is inline on edge-cached pages." },
-  },
+  optIns: { cloudflareWebAnalytics: /* @__PURE__ */ beacon("app/lib/security-headers.ts") },
 };
 
 export const julieedwardsInfo = { id: "julieedwards-info", origin: "https://julieedwards.info", optIns: { cloudflareWebAnalytics: /* @__PURE__ */ beacon("workers/security-headers.ts") } };
