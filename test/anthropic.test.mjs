@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { messages, modelStatus, stream, structured, untrusted } from "../anthropic.mjs";
+import { MODEL_IDS, deprecationProblems, messages, modelStatus, parseDeprecations, stream, structured, untrusted } from "../anthropic.mjs";
 
 const ENV = { ANTHROPIC_API_KEY: "sk-ant-sample" };
 const REQUEST = { model: "claude-sonnet-5", max_tokens: 100, messages: [{ role: "user", content: "Hi" }] };
@@ -63,6 +63,24 @@ test("429 with retry-after waits exactly that long; 529 and 500 back off; a spen
   }
   f = fake([{ status: 400, body: { error: { type: "invalid_request_error", message: "You have reached your specified API usage limits." } } }]);
   assert.equal((await messages(ENV, "sample", REQUEST, f.options)).kind, "spend_limit");
+
+  // G5: through a gateway, its own 429 (no Anthropic request id, Cloudflare's envelope) is named and never retried.
+  const GATEWAY = { ...ENV, AI_GATEWAY_BASE_URL: "https://gateway.ai.cloudflare.com/v1/acct/gw/anthropic" };
+  f = fake([{ status: 429, headers: { "retry-after": "1" }, body: { success: false, error: [{ code: 2003, message: "Rate limited" }] } }]);
+  r = await messages(GATEWAY, "sample", REQUEST, f.options);
+  assert.deepEqual([f.calls.length, r.kind, r.source, r.gatewayCode], [1, "rate_limited", "gateway", 2003]);
+  f = fake([{ status: 429, headers: { "retry-after": "1", "request-id": "req_x" }, body: { type: "error", error: { type: "rate_limit_error" } } }, answer("ok")]);
+  r = await messages(GATEWAY, "sample", REQUEST, f.options);
+  assert.equal(r.ok, true, "Anthropic's own 429 through the gateway is still waited out");
+});
+
+test("automatic caching counts the whole prompt, so a long chat on a short system prompt is cached", async () => {
+  const history = Array.from({ length: 40 }, (_, i) => ({ role: i % 2 ? "assistant" : "user", content: "word ".repeat(30) }));
+  const f = fake([answer("ok"), answer("ok")]);
+  await messages(ENV, "sample", { ...REQUEST, system: "Be brief.", messages: history }, f.options);
+  await messages(ENV, "sample", { ...REQUEST, system: "Be brief." }, f.options);
+  assert.deepEqual(f.calls[0].body.cache_control, { type: "ephemeral" });
+  assert.equal(f.calls[1].body.cache_control, undefined);
 });
 
 test("stop reasons: only end_turn, stop_sequence and tool_use are answers; pause_turn is resent, capped", async () => {
@@ -130,4 +148,26 @@ test("model status from the deprecations table", () => {
   assert.equal(modelStatus("claude-sonnet-4-20250514").status, "retired");
   assert.equal(modelStatus("claude-sonnet-5", Date.parse("2026-10-30")).status, "ok");
   assert.equal(modelStatus("claude-unlisted").status, "unknown");
+});
+
+test("the deprecations page's table, and what the daily check flags from it", () => {
+  const page = [
+    "Intro | not a table row",
+    "| API model name | Current state | Deprecated | Tentative retirement date |",
+    "| :-- | :-- | :-- | :-- |",
+    "| claude-sonnet-5 | Active | N/A | Not sooner than June 30, 2027 |",
+    "| claude-opus-4-8 | Active | N/A | Not sooner than May 28, 2027 |",
+    "| claude-haiku-4-5-20251001 | Deprecated | November 1, 2026 | December 20, 2026 |",
+    "",
+    "| Retirement date | Deprecated model | Recommended replacement |",
+    "| June 15, 2026 | `claude-sonnet-4-20250514` | `claude-sonnet-5-5` |",
+  ].join("\n");
+  const table = parseDeprecations(page);
+  assert.deepEqual(Object.keys(table), ["claude-sonnet-5", "claude-opus-4-8", "claude-haiku-4-5-20251001"]);
+  assert.deepEqual(table["claude-haiku-4-5-20251001"], { state: "deprecated", deprecated: "2026-11-01", retires: "2026-12-20", notBefore: null });
+  const problems = deprecationProblems(Object.values(MODEL_IDS), table, Date.parse("2026-11-02"));
+  assert.equal(problems.length, 2, problems.join("; "));
+  assert.match(problems[0], /haiku.*deprecated, retiring 2026-12-20/);
+  assert.match(problems[1], /refresh MODELS/);
+  assert.deepEqual(deprecationProblems(["claude-sonnet-5"], {}), ["claude-sonnet-5 is not on Anthropic's deprecations page"]);
 });

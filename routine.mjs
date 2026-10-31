@@ -16,7 +16,13 @@
  * - DUPLICATE GUARD. `fireOnce` records each fire under the caller's job key in a store the caller supplies, which must
  *   have an atomic `add` (D1, a Durable Object), and refuses a second fire for a key already fired or unknown, unless
  *   forced. Never KV: it is eventually consistent, so two fires from two locations both read nothing and both start.
- * - NO CALLER-SIDE THROTTLE. The hourly limit is Anthropic's to count; a 429 says so and `retryAfter` says when.
+ *   `d1FireStore(db)` is that store on a D1 table (ROUTINE_FIRES_SQL), so adopting the guard is one migration and one
+ *   call: `fireOnce(d1FireStore(env.DB), jobKey, config, text)`.
+ * - NO CALLER-SIDE THROTTLE (R4, kept on purpose). The limits are 30 fires an hour per routine and 100 per account, and
+ *   one routine and one account serve several callers (Capsid's namespaces, Carrel, germomics), so no caller's own count
+ *   can know the real one: it would refuse fires Anthropic allows, or allow ones it refuses. Anthropic's count is the
+ *   only true one, and its 429 is cheap, starts no session and says when (`retryAfter`); `fireOnce` frees the job key on
+ *   it, so the job waits for the caller's next tick instead of being lost.
  */
 
 const FIRE_URL = /^https:\/\/api\.anthropic\.com\/v1\/claude_code\/routines\/(trig_[A-Za-z0-9_-]{8,64})\/fire$/;
@@ -131,6 +137,28 @@ function withRetryAfter(result, res) {
 }
 
 // ---------- The duplicate guard
+
+/** The table `d1FireStore` keeps its records in, as a migration creates it. */
+export const ROUTINE_FIRES_SQL = "CREATE TABLE IF NOT EXISTS routine_fires (key TEXT PRIMARY KEY, value TEXT NOT NULL)";
+
+/**
+ * `fireOnce`'s store on a D1 table (default `routine_fires`, ROUTINE_FIRES_SQL). `add` is one INSERT ... ON CONFLICT DO
+ * NOTHING RETURNING, which D1 runs atomically, so two fires at once cannot both reserve the key.
+ * @param {{ prepare(sql: string): { bind(...values: unknown[]): { first(): Promise<any>; run(): Promise<unknown> } } }} db
+ * @param {string} [table]
+ */
+export function d1FireStore(db, table = "routine_fires") {
+  if (!/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(table)) throw new TypeError(`${table} is not a table name`);
+  const run = (/** @type {string} */ sql, /** @type {unknown[]} */ ...values) => db.prepare(sql).bind(...values);
+  return {
+    get: async (/** @type {string} */ key) => (await run(`SELECT value FROM ${table} WHERE key = ?1`, key).first())?.value ?? null,
+    put: (/** @type {string} */ key, /** @type {string} */ value) =>
+      run(`INSERT INTO ${table} (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, value).run(),
+    delete: (/** @type {string} */ key) => run(`DELETE FROM ${table} WHERE key = ?1`, key).run(),
+    add: async (/** @type {string} */ key, /** @type {string} */ value) =>
+      (await run(`INSERT INTO ${table} (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO NOTHING RETURNING key`, key, value).first()) != null,
+  };
+}
 
 const readRecord = (raw) => {
   try {

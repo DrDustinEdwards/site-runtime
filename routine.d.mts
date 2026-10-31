@@ -67,3 +67,11 @@ export function fireOnce(
   text: string,
   options?: { fetcher?: typeof fetch; force?: boolean; refireAfterMs?: number; now?: Date },
 ): Promise<FireOnceResult>;
+
+/** The table `d1FireStore` keeps its records in: `routine_fires (key TEXT PRIMARY KEY, value TEXT NOT NULL)`. */
+export const ROUTINE_FIRES_SQL: string;
+/** `fireOnce`'s store on a D1 table (default `routine_fires`); `add` is an atomic INSERT ... ON CONFLICT DO NOTHING RETURNING. */
+export function d1FireStore(
+  db: { prepare(sql: string): { bind(...values: unknown[]): { first(): Promise<any>; run(): Promise<unknown> } } },
+  table?: string,
+): FireStore;

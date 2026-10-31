@@ -16,6 +16,9 @@ describe("checkProse", () => {
       found.map((i) => [i.check, i.excerpt, i.line]),
       [["tell", "Great question", 11], ["word", "haunting", 11]],
     );
+    // W4: Claude's lists are not another model's; what is wrong in any text still is.
+    const llama = checkProse("Great question. A haunting one. As of my last knowledge update, it rained.", { model: "@cf/meta/llama-3.1-8b-instruct" });
+    assert.deepEqual(llama.map((i) => i.check), ["leftover"]);
   });
 
   test("PLANT: \"not X, it's Y\" in one sentence and across two, reported once", () => {
