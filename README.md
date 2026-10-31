@@ -7,13 +7,13 @@ servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-lo
 (`./access`), the check that an Access application lets in exactly the site's admins (`./access-drift`, `site-runtime-access-drift`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images and their edits (`./image`), link prefetch (`./prefetch`), preloads and Early Hints (`./preload`), the Worker in front of a static site (`./static-site`), the edge page cache (`./edge-cache`), the Server-Timing header (`./server-timing`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), the signed token behind emailed links (`./signed-token`), where a site's Anthropic calls go
 (`./ai-gateway`), starting a Claude Code routine (`./routine`), the check on AI-written prose with the measure of an author's voice (`./prose`), the one sign-in every site
 offers (`./sign-in`, `./sign-in-client`, `./apple-secret`), the Cloudflare Turnstile widget and its server check (`./turnstile`), the same-origin check for
-resource routes (`./origin`), the trailing-slash redirect (`./url`), one structured log line and its scrubbers (`./log`), the 404 counter
+resource routes (`./origin`), the trailing-slash redirect, the gone list and the slug-rename redirect (`./url`), one structured log line and its scrubbers (`./log`), the 404 counter
 (`./not-found`) and scheduled jobs with their record (`./cron`).
 
 No dependencies (`./sign-in` uses the site's own `better-auth` and
 `@better-auth/passkey`, 1.7.12 or later, which a site that imports it installs itself; they are not declared as peers,
 because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
-tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.56.1"`. `npm test` runs every test in `test/`.
+tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.57.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
 
@@ -531,6 +531,9 @@ stops Cloudflare serving stale. The browser's `max-age` stays 0, because a purge
 re-render fails, the Workers cache serves the stored page (`Cf-Cache-Status: STALE`) with no `stale-if-error` needed,
 as long as nothing sends `must-revalidate`, `proxy-revalidate` or `s-maxage`
 ([Workers cache](https://developers.cloudflare.com/workers/cache/configuration/)).
+`test/edge-cache.test.mjs` holds this for a database outage: with the page stored and D1 down, the re-render's 500
+is not stored, and a model of that rule serves the stored page `STALE` until the stale window ends. The error page
+readers see after that is Capsomer's `ErrorPage`, not this package's.
 
 What else the scheme does, and the helpers that do it:
 
@@ -1143,6 +1146,32 @@ localhost), `www.<host>` to `host` when `host` is given, and the trailing slash,
 redirect to `https://example.com/x`, never a chain. Sent `private, no-store`: the edge key holds no scheme, so a stored
 redirect would loop. Use it first in the gateway in place of separate https, www and slash redirects.
 
+**Pages removed on purpose.** `goneResponse(request, gone)` answers 410 Gone for a path on the site's list, so a
+crawler drops it sooner than a 404 and a reader is told it was not a typo. An entry is an exact path, a prefix written
+with a trailing `*`, or a RegExp; a trailing slash is ignored. The body is Capsomer's error-page sentence in plain text
+unless `body` is given. A site that renders its own 410 page (Capsomer's `ErrorPage` does) tests `pathListed(path, gone)`
+in its loader and throws its own 410 instead. Null when the path is not on the list.
+
+```js
+import { goneResponse } from "@dustinedwards/site-runtime/url";
+const GONE = ["/blog/withdrawn-post", "/old-shop/*", /^\/wp-content\/uploads\/2017\//];
+const gone = goneResponse(request, GONE);
+if (gone) return gone;
+```
+
+**Renamed slugs.** `renameRedirect(request, { prefix, renames })` sends a renamed slug to its new one in one 301 (308
+for other methods), keeping what follows the slug and the query: `/blog/old/comments?page=2` to
+`/blog/new/comments?page=2`. `renames` is the site's table (old slug to new) or a lookup, sync or async, that returns
+null for a slug never renamed, such as a query on a `post_redirects` table. A chain (a to b, b to c) is followed to its
+end, so the reader takes one hop, and a loop throws. Sent `private, no-store`, so a rename that is undone is not held in
+a browser. It resolves to null when nothing matches; it does not answer React Router's `.data` requests, so a loader
+that serves a renamed slug calls it too.
+
+```js
+const moved = await renameRedirect(request, { prefix: "/blog/", renames: { "recova-vs-churnkey": "foxhound-vs-churnkey" } });
+if (moved) return moved;
+```
+
 ## One log line
 
 `./log` writes one JSON line per event, `event` first, so Workers Logs and a tail filter on its name:
@@ -1214,7 +1243,7 @@ return response;
   `[{ path, kind, hits, referrers: [{ host, hits }] }]`, most hits first, "" the host for no referrer, probes left out
   unless asked for. `pruneNotFound(db, { days = 90 })` deletes older rows; a site runs it from its cron.
 
-**Tests.** `test/log.test.mjs`, `test/url.test.mjs` (a `//` path stays on the site) and `test/not-found.test.mjs` (on
+**Tests.** `test/log.test.mjs`, `test/url.test.mjs` (a `//` path stays on the site, the gone list, a rename chain) and `test/not-found.test.mjs` (on
 an in-memory SQLite with `NOT_FOUND_SQL`, and with a first-shape table upgraded by `NOT_FOUND_UPGRADE_SQL`).
 
 ## Scheduled jobs
