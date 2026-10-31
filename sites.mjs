@@ -52,7 +52,10 @@ export const dustinedwardsInfo = {
   origin: "https://dustinedwards.info",
   headers: {
     "Referrer-Policy": { value: STRICT_ORIGIN, reason: "The ratified value for this site; OSHP's no-referrer has not been ruled on for it." },
-    "Permissions-Policy": { value: /* @__PURE__ */ permissionsAllowingSelf("clipboard-write"), reason: "clipboard-write must stay allowed: the copy controls swallow the refusal silently." },
+    "Permissions-Policy": {
+      value: /* @__PURE__ */ permissionsAllowingSelf("clipboard-write", "screen-wake-lock"),
+      reason: "clipboard-write must stay allowed: the copy controls swallow the refusal silently. The procedure run view keeps the screen awake (navigator.wakeLock, app/enhance/run.ts).",
+    },
     "Cross-Origin-Opener-Policy": {
       value: "same-origin-allow-popups",
       reason: "Plain same-origin would sever the opener of any cross-origin popup a sign-in or embed opens; allow-popups keeps that working and is the ratified value.",
