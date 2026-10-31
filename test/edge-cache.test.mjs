@@ -95,7 +95,7 @@ test("a page that lists scheduled posts stays fresh no later than the next one, 
 
 // I3. When D1 is down a re-render throws, and the reader must still get the stored page. The serving is the Workers
 // cache's (developers.cloudflare.com/workers/cache/configuration/: a stale entry within stale-while-revalidate is served
-// when the re-render fails, unless the entry says must-revalidate, proxy-revalidate or s-maxage). That rule is modelled
+// when the re-render fails, unless the entry says must-revalidate, proxy-revalidate or s-maxage). That rule is modeled
 // here in a few lines, so the test holds what this package controls: the stored page's headers allow serving it stale,
 // and the failed render is never stored over it.
 test("with the database down, a stale stored page is served and the failed render is not stored", async () => {
