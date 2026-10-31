@@ -74,8 +74,8 @@ export function providerName(providerId: string | undefined): string;
 export type NoticeDetail = {
   /** For the subject: "A passkey was added to your account". */
   title: string;
-  /** What happened, in a sentence. */
-  what: string;
+  /** A sentence only when the title leaves something out (the old and new address), else null. */
+  what: string | null;
   at: Date;
   /** `at` in words, UTC: "October 31, 2026 at 1:52 AM UTC". */
   when: string;
