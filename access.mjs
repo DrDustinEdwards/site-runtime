@@ -232,20 +232,41 @@ async function seenMac(claims, time) {
   return base64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(time))));
 }
 
+/** The request header a page sets on its polling fetches, so they are timed but do not count as activity. */
+export const BACKGROUND_HEADER = "x-background";
+
 /**
- * The idle check for a request on an admin path, run in the Worker's fetch before the app. With no Access token there
- * is nothing to time and it answers `{ idle: false }` (Access or `accessAdmin` refuses the request). The last request
- * is the seen cookie's time when its signature matches this Access session, else the token's `iat`. Past `idleSeconds`:
- * `{ idle: true, response }`, a redirect to Access's logout; otherwise `{ idle: false, cookie }`, the Set-Cookie that
- * records this request, for the site to append to its response.
+ * Whether a request is the page's own, not the admin's: `X-Background: 1`, which a page sets on its polling and
+ * refresh fetches, or a speculative load the browser made (`Sec-Purpose: prefetch`, as from `./prefetch`'s rules).
  * @param {Request} request
- * @param {{ idleSeconds?: number, now?: number }} [options] `now` in epoch milliseconds
+ */
+function isBackground(request) {
+  return request.headers.get(BACKGROUND_HEADER) === "1" || /\bprefetch\b/.test(request.headers.get("sec-purpose") ?? "");
+}
+
+/**
+ * The idle check for a request on an admin path, run in the Worker's fetch before the app. The session is the Access
+ * token's (`sub` and `iat`), or `session` for a host whose own sign-in is not an Access token on the request (`id` an
+ * opaque value only the server can make, `signedInAt` epoch milliseconds). With neither there is nothing to time and it
+ * answers `{ idle: false }` (Access or `accessAdmin` refuses the request). The last request is the seen cookie's time
+ * when its signature matches this session, else the sign-in time. Past `idleSeconds`: `{ idle: true, response }`, a
+ * redirect to Access's logout; otherwise `{ idle: false, cookie }`, the Set-Cookie that records this request, for the
+ * site to append to its response. A background request (isBackground) is checked but records nothing, so a page left
+ * polling does not keep its admin signed in.
+ * @param {Request} request
+ * @param {{ idleSeconds?: number, now?: number, session?: { id: string, signedInAt: number } | null }} [options] `now` in epoch milliseconds
  * @returns {Promise<{ idle: true, response: Response } | { idle: false, cookie?: string }>}
  */
-export async function adminIdle(request, { idleSeconds = ADMIN_IDLE_SECONDS, now = Date.now() } = {}) {
-  const token = accessToken(request, { cookie: true });
-  if (!token) return { idle: false };
-  const claims = tokenClaims(token);
+export async function adminIdle(request, { idleSeconds = ADMIN_IDLE_SECONDS, now = Date.now(), session } = {}) {
+  /** @type {Record<string, unknown>} */
+  let claims;
+  if (session) {
+    claims = { sub: session.id, iat: Math.floor(session.signedInAt / 1000) };
+  } else {
+    const token = accessToken(request, { cookie: true });
+    if (!token) return { idle: false };
+    claims = tokenClaims(token);
+  }
   const seconds = Math.floor(now / 1000);
   const [time, mac] = (cookieValue(request, ADMIN_SEEN_COOKIE) ?? "").split(".");
   const iat = typeof claims.iat === "number" ? claims.iat : null;
@@ -264,6 +285,7 @@ export async function adminIdle(request, { idleSeconds = ADMIN_IDLE_SECONDS, now
       }),
     };
   }
+  if (isBackground(request)) return { idle: false };
   const value = `${seconds}.${await seenMac(claims, String(seconds))}`;
   return { idle: false, cookie: `${ADMIN_SEEN_COOKIE}=${value}; Path=/; Max-Age=${idleSeconds}; Secure; HttpOnly; SameSite=Lax` };
 }
@@ -274,13 +296,13 @@ export async function adminIdle(request, { idleSeconds = ADMIN_IDLE_SECONDS, now
  * straight to `handle`.
  * @param {Request} request
  * @param {() => Promise<Response>} handle
- * @param {{ prefixes?: readonly string[], idleSeconds?: number }} [options]
+ * @param {{ prefixes?: readonly string[], idleSeconds?: number, session?: { id: string, signedInAt: number } | null }} [options]
  * @returns {Promise<Response>}
  */
-export async function withAdminIdle(request, handle, { prefixes = ["/admin"], idleSeconds } = {}) {
+export async function withAdminIdle(request, handle, { prefixes = ["/admin"], idleSeconds, session } = {}) {
   const { pathname } = new URL(request.url);
   if (!prefixes.some((prefix) => prefix === "/" || pathname === prefix || pathname.startsWith(`${prefix}/`))) return handle();
-  const gate = await adminIdle(request, { idleSeconds });
+  const gate = await adminIdle(request, { idleSeconds, session });
   if (gate.idle) return gate.response;
   const response = await handle();
   // A WebSocket upgrade (101) goes back untouched: copying it would drop its socket.

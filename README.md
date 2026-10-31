@@ -13,7 +13,7 @@ resource routes (`./origin`), the trailing-slash redirect (`./url`), one structu
 No dependencies (`./sign-in` uses the site's own `better-auth` and
 `@better-auth/passkey`, 1.7.12 or later, which a site that imports it installs itself; they are not declared as peers,
 because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
-tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.51.0"`. `npm test` runs every test in `test/`.
+tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.52.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
 
@@ -1274,6 +1274,18 @@ if (!admin) return redirect(accessSignInUrl(request));                        //
   this request, to append to the app's response. The last request is that cookie's time when its HMAC, keyed by the
   Access session (the token's `sub` and `iat`), matches; otherwise the token's `iat`. A request with no Access token is `{ idle: false }`.
 
+  A host whose own sign-in is not an Access token on each request (the Capsid Portal, on Access for SaaS with its own
+  signed cookie) passes `session: { id, signedInAt }` in its place: `signedInAt` the sign-in time in epoch
+  milliseconds, `id` an opaque value only the server can make (an HMAC of the session under a server secret), since the
+  seen cookie is keyed by it. A cookie recorded for another session is ignored.
+
+  Background requests do not keep an admin awake. A request with `X-Background: 1` (`BACKGROUND_HEADER`), which the page
+  sets on its polling and refresh fetches, or with `Sec-Purpose: prefetch` (a speculative load the browser made, as from
+  `./prefetch`'s rules) is checked like any other, so an idle session still ends on it, but it records nothing: an
+  hour of a page polling with nobody at it is an idle hour. Only the fetches the page makes on its own carry the
+  header; one a person's click starts does not. `Sec-Fetch-Mode` is no help here, since a poll and a click's fetch
+  both send `cors`.
+
   `withAdminIdle(request, handle, { prefixes })` does both around the site's handler for paths under `prefixes`
   (default `/admin`; `["/"]` for a site that is all admin, as Carrel's Desk):
 
@@ -1559,7 +1571,10 @@ clientRegistrationCallback: ({ clientMetadata }) => {
   ceiling before it is parsed.
 - The page's one inline style is `CONSENT_STYLE`, rendered exactly, so the server's Content-Security-Policy trusts it by
   `scriptHash(CONSENT_STYLE)`. Give the page no `form-action`: the approve POST redirects through Access to whatever
-  redirect URI the client named. A loopback callback (an app on the person's computer) gets a line saying so.
+  redirect URI the client named. A loopback callback or an app's own scheme (an app on the person's computer) gets a
+  line saying so. `describeRedirect(uri)` is that check for a server with its own consent page: `{ host, local,
+  warning }`, `host` the redirect's host (the scheme, as `cursor://`, for an app's scheme) and `warning` the line to
+  show when `local`, else null.
 - `registrationRefusal` allows a dynamic client registration only when it names one to five redirect URIs, each in the
   list exactly; the list is separated by commas or spaces and keeps only https callbacks, and an empty one refuses all. `DCR_CALLBACKS` holds the callbacks that are the same for every user (Grok,
   ChatGPT's fixed one, Gemini Enterprise), for a server that registers them: pass

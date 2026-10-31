@@ -33,7 +33,8 @@ export function signalUnknownCredential(options: { rpId: string; credentialId: s
  * `authClient.signIn.passkey` with `returnWebAuthnResponse` on, which on PASSKEY_NOT_FOUND calls signalUnknownCredential
  * so the browser stops offering a passkey the site no longer has. `rpId` defaults to `location.hostname`.
  */
-export function signInWithPasskey<R extends { error?: { code?: string } | null; webauthn?: { response?: { id?: string } } }>(
+/** `R` is the client's own answer; the error is any object, since Better Auth's client error has no `code` in its type. */
+export function signInWithPasskey<R extends { error?: object | null; webauthn?: { response?: { id?: string } } }>(
   client: { signIn: { passkey(options?: Record<string, unknown>): Promise<R> } },
   options?: Record<string, unknown> & { rpId?: string },
 ): Promise<R>;

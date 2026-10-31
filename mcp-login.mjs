@@ -45,6 +45,29 @@ function text(body, status = 200, headers) {
   return new Response(body, { status, headers: out });
 }
 
+const LOCAL_REDIRECT_WARNING = ["This sends access to an app on your computer.", "Continue only if you just started signing in from it."];
+
+/**
+ * What a consent page says about where a client's redirect URI sends the access: its host (for a private-use scheme
+ * such as `cursor://`, which has none, the scheme), and whether it goes to an app on this computer, a loopback host or
+ * a private-use scheme (RFC 8252 7.1 and 7.3), with the warning to show then. Never throws: an unparsable URI comes
+ * back as itself, not local.
+ * @param {string} uri
+ * @returns {{ host: string, local: boolean, warning: string | null }}
+ */
+export function describeRedirect(uri) {
+  let url;
+  try {
+    url = new URL(uri);
+  } catch {
+    return { host: uri, local: false, warning: null };
+  }
+  const web = url.protocol === "https:" || url.protocol === "http:";
+  const host = web ? url.hostname : `${url.protocol}//`;
+  const local = web ? /^(localhost|127(\.\d{1,3}){3}|\[::1\])$/.test(url.hostname) : true;
+  return { host, local, warning: local ? LOCAL_REDIRECT_WARNING.join(" ") : null };
+}
+
 /** @param {string} location @param {Headers} [headers] */
 function redirect(location, headers) {
   const out = new Headers(headers);
@@ -150,10 +173,8 @@ export function loginHandler({
    */
   function consentPage(client, request, handle) {
     const label = escape(clientLabel(client, request.clientId));
-    const host = new URL(request.redirectUri).hostname;
-    const redirectHost = escape(host);
-    // A loopback callback hands the access to an app on this computer, so the page says so.
-    const local = /^(localhost|127(\.\d{1,3}){3}|\[::1\])$/.test(host);
+    const target = describeRedirect(request.redirectUri);
+    const redirectHost = escape(target.host);
     // A CIMD client's id is the URL its metadata is published at, so its host is checked; a registered client named itself.
     const publisher = request.clientId.startsWith("https://")
       ? `Published by <strong>${escape(new URL(request.clientId).hostname)}</strong>.`
@@ -167,7 +188,7 @@ export function loginHandler({
 </head><body>
 <h1>Allow ${label} to use ${serverName}?</h1>
 <p>${publisher} Its access will be sent to <strong>${redirectHost}</strong>.</p>
-${local ? "<p><strong>This sends access to an app on your computer.</strong> Continue only if you just started signing in from it.</p>\n" : ""}${about.trim()}
+${target.local ? `<p><strong>${LOCAL_REDIRECT_WARNING[0]}</strong> ${LOCAL_REDIRECT_WARNING[1]}</p>\n` : ""}${about.trim()}
 <p>Next you sign in with Cloudflare Access. ${escape(admits.consent)}</p>
 <form method="post">
   <input type="hidden" name="handle" value="${escape(handle)}">

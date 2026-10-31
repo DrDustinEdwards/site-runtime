@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, test } from "node:test";
 
-import { isAdminUser, loginHandler, registrationLimited, registrationRefusal } from "../mcp-login.mjs";
+import { describeRedirect, isAdminUser, loginHandler, registrationLimited, registrationRefusal } from "../mcp-login.mjs";
 import { publicJwk as jwk, sign as idToken } from "./jwt.mjs";
 
 const ORIGIN = "https://wrapper.test";
@@ -206,4 +206,12 @@ describe("registrationLimited", () => {
     for (let i = 0; i < 5; i++) assert.equal(await register(), null);
     assert.equal((await register())?.status, 429);
   });
+});
+
+test("describeRedirect: a loopback host or an app's own scheme is an app on this computer; a web host is not", () => {
+  assert.deepEqual(describeRedirect("http://127.0.0.1:53682/callback"), { host: "127.0.0.1", local: true, warning: describeRedirect("cursor://cb").warning });
+  assert.equal(describeRedirect("cursor://anysphere.cursor-retrieval/oauth").host, "cursor://");
+  assert.ok(describeRedirect("http://[::1]/cb").local);
+  assert.deepEqual(describeRedirect("https://claude.ai/api/mcp/auth_callback"), { host: "claude.ai", local: false, warning: null });
+  assert.equal(describeRedirect("https://localhost.example.com/cb").local, false);
 });
