@@ -707,6 +707,28 @@ const auth = betterAuth({
 `sign-in-link.mjs`, re-exported by `./sign-in`, so it is tested without Better Auth installed. The rest is Better Auth's
 own plugins, set up; each site's tests sign in through it.
 
+## The live sign-in check
+
+`site-runtime-sign-in --origin https://example.com [--from https://example.workers.dev]` (`bin/sign-in.mjs`, logic in
+`sign-in-live.mjs`) is the daily live check for sign-in and access (devkit `live/areas.json`, area 3). It sees what an
+outside request can: it sends no mail, makes no account and holds no token, and each part runs only when the site has it.
+
+- Sign-in page (`/login`, `/signin`, `/sign-in`): `no-store` and `noindex` (D10), an email field whose autocomplete has
+  `webauthn` (A2; a warning when it does not start with `username`), Turnstile on the page and allowed by the CSP (B5).
+- Better Auth (`/api/auth/ok`): the passkey's `rpId` is the site's host, not a workers.dev one (A1); sign-out sends
+  `Clear-Site-Data` (D4); a sign-out from another origin with a cookie is 403 (D8); every cookie set is `__Secure-` or
+  `__Host-`, HttpOnly, Secure and SameSite (D1); each answer is `no-store` (D10). `/sign-in/confirm` with a made-up
+  token must never set a session cookie (B7); a missing confirm page is a warning until every site has the route.
+- Admin (`/admin`, and `ELSEWHERE` in `sign-in-live.mjs` for pages on another host): a request with no sign-in gets a
+  redirect to `*.cloudflareaccess.com` or a 401/403, never the page (G1; another redirect is a warning), with
+  `no-store` and, on anything but a redirect, `noindex` (D10).
+- MCP (`/mcp`, and the servers `ELSEWHERE` names): the 401 names its `resource_metadata` and that metadata names the
+  server and its authorization server (H1, RFC 9728); the authorization server offers PKCE `S256` only (H2) and Client
+  ID Metadata Documents (H4), per the MCP authorization spec of 2025-11-25.
+
+Findings print as `::error title=<item>::<url> <detail>` (cookie names, never values); exit 0 clean, 1 on an error, 2
+when the site does not answer. `test/sign-in-live.test.mjs` plants each gap in a fake site.
+
 ## The Turnstile widget
 
 `./turnstile` loads Cloudflare Turnstile, the bot check on a public form that sends email, so no site keeps its own copy.
