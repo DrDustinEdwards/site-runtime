@@ -3,7 +3,7 @@
 // Data: https://github.com/OWASP/www-project-secure-headers/tree/master/ci (headers_add.json, headers_remove.json), read 2026-10-30.
 
 /** Where these values were read, and when. */
-export const OWASP_SOURCE = Object.freeze({
+export const OWASP_SOURCE = /* @__PURE__ */ Object.freeze({
   page: "https://owasp.org/www-project-secure-headers/",
   data: "https://github.com/OWASP/www-project-secure-headers/tree/master/ci",
   readOn: "2026-10-30",
@@ -28,7 +28,7 @@ export const OWASP_RECOMMENDED = Object.freeze({
 });
 
 /** The headers OSHP recommends a response not carry (they name the software that served it). */
-export const OWASP_REMOVE = Object.freeze([
+export const OWASP_REMOVE = /* @__PURE__ */ Object.freeze([
   "$wsep",
   "Host-Header",
   "K-Proxy-Request",

@@ -18,7 +18,7 @@ import { OWASP_RECOMMENDED } from "./owasp-headers.mjs";
  *
  * @type {Readonly<Record<string, string>>}
  */
-export const OWASP_SKIPPED = Object.freeze({
+export const OWASP_SKIPPED = /* @__PURE__ */ Object.freeze({
   "Cache-Control": "OSHP's `no-store, max-age=0` on every response makes nothing cacheable, edge caches included; a site sets caching per route.",
   "Clear-Site-Data":
     "On every response it wipes the reader's cookies, storage and cache at each page load, which logs everyone out of everything; OSHP's own suite tests it on the logout page only, so it is exported as LOGOUT_HEADERS for a site's logout response.",
@@ -42,7 +42,7 @@ export const STANDARD_SECURITY_HEADERS = Object.freeze(
  *
  * @type {Readonly<Record<string, string>>}
  */
-export const LOGOUT_HEADERS = Object.freeze({ "Clear-Site-Data": OWASP_RECOMMENDED["Clear-Site-Data"] ?? "" });
+export const LOGOUT_HEADERS = /* @__PURE__ */ Object.freeze({ "Clear-Site-Data": OWASP_RECOMMENDED["Clear-Site-Data"] ?? "" });
 
 /**
  * OSHP's Permissions-Policy with each named feature allowed for the site's own pages, from the parsed list rather
@@ -57,7 +57,7 @@ export function permissionsAllowingSelf(...features) {
 }
 
 /** The override a site that offers passkey sign-in (./sign-in) applies; OSHP's `publickey-credentials-get=()` refuses every passkey. */
-export const PASSKEY_OVERRIDES = Object.freeze({
+export const PASSKEY_OVERRIDES = /* @__PURE__ */ Object.freeze({
   "Permissions-Policy": Object.freeze({
     value: permissionsAllowingSelf("publickey-credentials-get"),
     reason: "Passkey sign-in (./sign-in) calls navigator.credentials.get, which OSHP's publickey-credentials-get=() refuses; allowed for the site's own pages only.",
@@ -185,7 +185,7 @@ export function hostCookie(name, value, { maxAge, sameSite = "Lax", httpOnly = t
  * file it serves; a site's own upload route applies it with applyHeaderSet.
  * @type {Readonly<Record<string, string>>}
  */
-export const UPLOAD_HEADERS = Object.freeze({
+export const UPLOAD_HEADERS = /* @__PURE__ */ Object.freeze({
   "X-Content-Type-Options": "nosniff",
   "Content-Security-Policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'",
 });
@@ -215,7 +215,7 @@ export function applyHeaderSet(headers, set = STANDARD_SECURITY_HEADERS, { overw
 const POLICY_HEADERS = ["content-security-policy", "content-security-policy-report-only"];
 
 /** The static files whose headers the asset server gets wrong, by extension: text with no charset, and fonts with the standard's same-origin CORP. */
-const STATIC_TYPES = Object.freeze({
+const STATIC_TYPES = /* @__PURE__ */ Object.freeze({
   html: "text/html",
   css: "text/css",
   js: "text/javascript",

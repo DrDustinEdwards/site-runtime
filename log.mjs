@@ -133,7 +133,7 @@ export function requestFields(request, { sha, ...scrub } = {}) {
  * (https://cheatsheetseries.owasp.org/cheatsheets/Logging_Vocabulary_Cheat_Sheet.html), so a site's security events
  * carry the names a reader or a SIEM rule already knows.
  */
-export const OWASP_EVENTS = Object.freeze({
+export const OWASP_EVENTS = /* @__PURE__ */ Object.freeze({
   signInSuccess: "authn_login_success",
   signInFailure: "authn_login_fail",
   authorizationFailure: "authz_fail",
