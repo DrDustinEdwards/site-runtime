@@ -297,10 +297,10 @@ export const providerName = (providerId) => (providerId && PROVIDER_NAMES[provid
 
 /**
  * @typedef {{
- *   title: string, what: string, at: Date, when: string, device: string | null, location: string | null, secure: string,
+ *   title: string, what: string | null, at: Date, when: string, device: string | null, location: string | null, secure: string,
  *   scope?: string, passkeyName?: string, provider?: string, oldEmail?: string, newEmail?: string,
  * }} NoticeDetail
- *   `title` for the subject, `what` in a sentence, `at` and `when` (in words, UTC), the device and place of the request
+ *   `title` for the subject and heading, `what` a sentence only when the title leaves something out (else null), `at` and `when` (in words, UTC), the device and place of the request
  *   that made the change (null when unknown), and `secure`: what to do if it was not the person.
  */
 
@@ -316,39 +316,28 @@ const CONTACT = (/** @type {string} */ site) => `If this was not you, contact ${
  * @returns {NoticeDetail}
  */
 export function noticeDetail(kind, { siteName, at = new Date(), userAgent, request, toOldAddress, ...facts }) {
-  const account = `your ${siteName} account`;
   const provider = providerName(facts.provider);
-  /** @type {Record<string, [string, string, string]>} */
+  /** @type {Record<string, [string, string | null, string]>} */
   const words = {
     "passkey-added": [
-      "A passkey was added to your account",
-      `A passkey${facts.passkeyName ? ` (${facts.passkeyName})` : ""} was added to ${account}.`,
+      `A passkey${facts.passkeyName ? ` from ${facts.passkeyName}` : ""} was added to your account`,
+      null,
       IF_NOT_YOU,
     ],
-    "passkey-removed": ["A passkey was removed from your account", `A passkey was removed from ${account}.`, IF_NOT_YOU],
-    "sign-in-linked": [
-      `${provider} sign-in was added to your account`,
-      `You can now sign in to ${account} with ${provider}.`,
-      IF_NOT_YOU,
-    ],
-    "sign-in-unlinked": [
-      `${provider} sign-in was removed from your account`,
-      `You can no longer sign in to ${account} with ${provider}.`,
-      IF_NOT_YOU,
-    ],
+    "passkey-removed": ["A passkey was removed from your account", null, IF_NOT_YOU],
+    "sign-in-linked": [`You can now sign in with ${provider}`, null, IF_NOT_YOU],
+    "sign-in-unlinked": [`You can no longer sign in with ${provider}`, null, IF_NOT_YOU],
     "email-changed": [
       "Your account's email address changed",
-      `The email address of ${account} changed from ${facts.oldEmail} to ${facts.newEmail}.`,
+      `It changed from ${facts.oldEmail} to ${facts.newEmail}.`,
       toOldAddress ? `${CONTACT(siteName)} Sign-in links now go to the new address.` : IF_NOT_YOU,
     ],
     "sessions-revoked": [
       facts.scope === "others" ? "You were signed out on your other devices" : "You were signed out everywhere",
-      facts.scope === "others"
-        ? `Every other device signed in to ${account} was signed out.`
-        : `Every device signed in to ${account} was signed out.`,
+      null,
       "If this was not you, sign in again and check your passkeys and sign-in methods.",
     ],
-    "account-deleted": ["Your account was deleted", `Your ${siteName} account and its data were deleted.`, CONTACT(siteName)],
+    "account-deleted": ["Your account and its data were deleted", null, CONTACT(siteName)],
   };
   const [title, what, secure] = words[kind];
   return {
