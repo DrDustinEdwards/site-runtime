@@ -23,6 +23,9 @@
  *   neither meets nor declines is an error, and the deviations are the whole list of what each site skips. K1's cookie
  *   prefix takes one too, its `value` naming the cookies it covers. FAMILY_DEVIATIONS holds the items no site can meet.
  * - `aliases`: other origins the same Worker answers for, such as the domain it will move to.
+ * - `signIn`: what the live sign-in check (`./sign-in-live.mjs`, area 3) probes beyond the site's own /admin and /mcp:
+ *   `admin`, more pages that must be gated (a path on the site or a URL on another host), and `mcp`, MCP servers that
+ *   must answer 401 with their sign-in metadata. A declared page or server that does not answer is an error.
  * - `oldSite`: the site's real domain while it still serves the live old site the Worker replaces. A site served from
  *   workers.dev is noindexed there while, and only while, it has one (A6, the live check): a workers.dev host with no
  *   old site behind its domain is the site, and noindex would take it out of search.
@@ -81,8 +84,9 @@ const popupSignIn = {
  * @typedef {{
  *   id: string, origin: string, aliases?: readonly string[], oldSite?: { value: string, reason: string },
  *   headers?: Readonly<Record<string, HeaderOverride>>, optIns?: SiteOptIns, deviations?: Readonly<Record<string, Deviation>>,
- *   assets?: SiteAssets,
+ *   assets?: SiteAssets, signIn?: SignInProbes,
  * }} SiteEntry
+ * @typedef {{ admin?: readonly string[], mcp?: readonly string[] }} SignInProbes
  */
 
 /**
@@ -187,6 +191,8 @@ export const dustinedwardsInfo = {
       ),
     },
   },
+  // The lab notebook is admin-only, behind its own Access application (dustinedwards-lab-login).
+  signIn: { admin: ["/lab"], mcp: ["https://admin-mcp.dustinedwards.info/mcp"] },
 };
 
 // app/lib/http/header-set.ts, app/lib/http/content-security-policy.ts
@@ -221,6 +227,8 @@ export const foxhound = {
       ...hashed("/assets/*", "/islands/*"),
     },
   },
+  // The merchants' MCP server on the site, and the admin's on its own host.
+  signIn: { mcp: ["https://admin-mcp.foxhoundapp.com/mcp", "https://foxhoundapp.com/mcp"] },
 };
 
 // apps/web/workers/security-headers.ts
@@ -239,6 +247,7 @@ export const foxing = {
   },
   deviations: { C3: beaconNotStrict },
   assets: { paths: hashed("/assets/*", "/islands/*") },
+  signIn: { mcp: ["https://admin-mcp.foxing.app/mcp"] },
 };
 
 // app/lib/security-headers.ts
@@ -326,6 +335,8 @@ export const txasm = {
   },
   deviations: { C3: beaconNotStrict },
   assets: { paths: hashed("/assets/*") },
+  // Its Access application covers /admin/access only (app/lib/access.server.ts).
+  signIn: { admin: ["/admin/access"] },
 };
 
 // www/headers.mjs, www/build.mjs, www/wrangler.jsonc
@@ -359,6 +370,8 @@ export const carrelDesk = {
     denyUnlisted: unlistedStaged,
   },
   assets: { paths: hashed("/assets/*") },
+  // All of Desk is behind Access.
+  signIn: { admin: ["/"] },
 };
 
 // src/security-headers.ts, src/dashboard-csp.ts
@@ -374,6 +387,8 @@ export const capsidPortal = {
   deviations: {
     C3: { reason: "The dashboard is a Vite build served as files under script-src 'self' (src/dashboard-csp.ts): no nonce or hash for 'strict-dynamic' to start from." },
   },
+  // All of the Portal is behind Access for SaaS.
+  signIn: { admin: ["/"] },
 };
 
 // src/security-headers.ts: its only page is the /authorize consent dialog MCP clients open. Its policy (DEFAULT_CSP and

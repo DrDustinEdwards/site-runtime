@@ -9,6 +9,11 @@
  * and leaves it 200, because the site is up. `ok` is `status !== "fail"`: true while the site is up, so a keyword
  * monitor reading `ok` pages only for an outage, and a warning shows in `status` and the checks.
  *
+ * A check may also be an alert (`alert: true`): its failure says someone should look now, though the site is up, so
+ * its level stays warn (the response stays 200 and `ok` true, so devkit's worker-deploy never rolls a deploy back for
+ * it) and its result carries `alert: true`, which a watcher keys on to raise a finding and mail a person. `alerts`
+ * names the failing ones. The sign-in spike check is one.
+ *
  * Each check is raced against `checkTimeoutMs`, so a binding that hangs fails its check instead of holding /health.
  *
  * The backup read is held per isolate for `backupTtlMs` (five minutes by default). Reading it lists an R2 bucket, which
@@ -29,8 +34,8 @@ const PROBE_KEY = "health-check";
 let held = null;
 
 /**
- * @typedef {{ name: string, level?: "fail" | "warn", run: () => Promise<unknown> }} HealthCheck
- * @typedef {{ name: string, status: "pass" | "warn" | "fail", detail?: string }} CheckResult
+ * @typedef {{ name: string, level?: "fail" | "warn", alert?: boolean, run: () => Promise<unknown> }} HealthCheck
+ * @typedef {{ name: string, status: "pass" | "warn" | "fail", detail?: string, alert?: true }} CheckResult
  */
 
 /**
@@ -60,9 +65,11 @@ export async function healthResponse({ ping, backup, sha, checks = [], backupTtl
   const results = await Promise.all(all.map((check) => runCheck(check, checkTimeoutMs)));
   const status = results.some((r) => r.status === "fail") ? "fail" : results.some((r) => r.status === "warn") ? "warn" : "pass";
   const db = ping ? { db: results[0]?.status === "pass" ? "up" : "down" } : {};
+  const alerts = results.filter((r) => r.alert).map((r) => r.name);
   const body = {
     status,
     ok: status !== "fail",
+    ...(alerts.length ? { alerts } : {}),
     ...db,
     ...(backupStatus === undefined ? {} : { backup: backupStatus }),
     ...(sha ? { sha } : {}),
@@ -82,7 +89,7 @@ export async function healthResponse({ ping, backup, sha, checks = [], backupTtl
  * @param {number} timeoutMs
  * @returns {Promise<CheckResult>}
  */
-async function runCheck({ name, level = "fail", run }, timeoutMs) {
+async function runCheck({ name, level = "fail", alert = false, run }, timeoutMs) {
   /** @type {ReturnType<typeof setTimeout> | undefined} */
   let timer;
   /** @type {string | undefined} */
@@ -106,8 +113,8 @@ async function runCheck({ name, level = "fail", run }, timeoutMs) {
   }
   if (!failed) return { name, status: "pass" };
   const cut = detail === undefined ? undefined : scrubText(detail).slice(0, CHECK_DETAIL_MAX);
-  if (level === "fail") logEvent("health_check_failed", { check: name, detail: cut }, { level: "error" });
-  return { name, status: level, ...(cut ? { detail: cut } : {}) };
+  if (level === "fail" || alert) logEvent(alert ? "health_alert" : "health_check_failed", { check: name, detail: cut }, { level: "error" });
+  return { name, status: level, ...(cut ? { detail: cut } : {}), ...(alert ? { alert: /** @type {const} */ (true) } : {}) };
 }
 
 /**
@@ -131,9 +138,10 @@ export function kvCheck(name, kv) {
 }
 
 /**
- * The spike alert for sign-in (F3): a warn check that fails when, in the last `windowMinutes`, failed sign-ins or
- * sign-in mails passed their ceiling, read from `./sign-in`'s `auth_events` table (`eventsDb`). Level warn, so
- * /health and the daily live check show it and the site stays up. The detail gives the counts, never an address.
+ * The spike alert for sign-in (F3): a check that fails when, in the last `windowMinutes`, failed sign-ins or sign-in
+ * mails passed their ceiling, read from `./sign-in`'s `auth_events` table (`eventsDb`). Level warn, so the site stays
+ * up and a deploy is never rolled back for it, and an alert (`alert: true` on its result, and in `alerts`), so the
+ * watcher mails a person. The detail gives the counts, never an address.
  * @param {import("./sign-in-account.mjs").D1Like} db
  * @param {{ windowMinutes?: number, failures?: number, mails?: number, now?: () => number }} [limits]
  * @returns {HealthCheck}
@@ -142,6 +150,7 @@ export function authSpikeCheck(db, { windowMinutes = 60, failures = 50, mails = 
   return {
     name: "auth-spike",
     level: "warn",
+    alert: true,
     run: async () => {
       const counts = await authEventCounts(db, now() - windowMinutes * 60_000);
       const over = [

@@ -9,9 +9,22 @@
  * country) admits people no list can name, so it is reported as an open rule and counts as drift. A Bypass policy lets
  * anyone in and is reported the same way. Require rules only narrow who gets in and are not read. The token is sent in
  * the Authorization header and never printed or put in an error.
+ *
+ * THE SITE'S LIST WITHOUT A COPY IN GITHUB: the site serves its own list, hashed, at a path behind its Access
+ * application (`adminListResponse`, ADMIN_LIST_PATH by default), to an Access service token only. Each answer has a
+ * fresh random salt and the SHA-256 of salt and address for each admin (`adminHash`), so the job never holds the
+ * addresses and the answer cannot be matched against a precomputed table. The job hashes each address Access lets in
+ * with the same salt and compares (`accessDriftHashed`): an address Access lets in that the site does not hold is named
+ * (masked in a log); an admin the site holds that Access does not let in can only be counted.
  */
+import { verifyAccessRequest } from "./access.mjs";
+import { base64url, sha256Hex } from "./encoding.mjs";
+import { logEvent } from "./log.mjs";
 
 const API = "https://api.cloudflare.com/client/v4";
+
+/** Where a site serves its hashed admin list unless it names another path; under /admin, which its Access app covers. */
+export const ADMIN_LIST_PATH = "/admin/access-drift";
 
 /**
  * @typedef {Record<string, any>} Rule an Access rule, `{ email: { email } }`, `{ group: { id } }` and so on
@@ -162,4 +175,88 @@ export function accessDrift(allowed, admins) {
     onlyInApp: [...app].filter((email) => !allowed.emails.has(email)).sort(),
     open: [...allowed.open],
   };
+}
+
+/**
+ * The hash of one admin address under a salt: SHA-256 of `salt:address`, the address trimmed and lower-cased, as hex.
+ * @param {string} salt @param {string} email
+ */
+export async function adminHash(salt, email) {
+  return sha256Hex(`${salt}:${normal(email)}`);
+}
+
+/**
+ * The site's side: its admin list, hashed (`{ salt, hashes }`, the hashes sorted), for the drift job. Only a GET that
+ * Access let through with a service token (a verified Access token for this application, `ACCESS_TEAM_DOMAIN` and
+ * `ACCESS_AUD`, that names a `common_name` and no person), and with `clientId` that token alone, is answered; anything
+ * else is 404, so the route shows nothing to a person or a stranger. `admins` is the site's list
+ * (`adminEmails(env)` from `./access` for most). No-store.
+ * @param {Request} request
+ * @param {{ ACCESS_TEAM_DOMAIN?: string, ACCESS_AUD?: string }} env
+ * @param {{ admins: readonly string[], clientId?: string, keys?: import("./access-login.d.mts").KeySource, now?: number }} options
+ * @returns {Promise<Response>}
+ */
+export async function adminListResponse(request, env, { admins, clientId, keys, now }) {
+  const headers = { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" };
+  const refuse = (/** @type {string} */ reason) => {
+    logEvent("admin_list_refused", { reason }, { level: "warn" });
+    return new Response("Not Found", { status: 404, headers });
+  };
+  if (request.method !== "GET") return refuse("method");
+  let verdict;
+  try {
+    verdict = await verifyAccessRequest(request, { teamDomain: env.ACCESS_TEAM_DOMAIN, audience: env.ACCESS_AUD, keys, now });
+  } catch (error) {
+    logEvent("access_keys_unreachable", { error }, { level: "error" });
+    return new Response("Unavailable", { status: 503, headers });
+  }
+  if (!verdict.ok) return refuse(verdict.reason);
+  const name = verdict.claims.common_name;
+  if (typeof name !== "string" || !name || verdict.claims.email) return refuse("not-a-service-token");
+  if (clientId && name !== clientId) return refuse("other-service-token");
+  const salt = base64url(crypto.getRandomValues(new Uint8Array(16)));
+  const hashes = (await Promise.all([...new Set(admins.map(normal).filter(Boolean))].map((email) => adminHash(salt, email)))).sort();
+  return new Response(JSON.stringify({ salt, hashes }), { headers: { ...headers, "Content-Type": "application/json" } });
+}
+
+/**
+ * The job's side: the site's hashed list from `url`, through Access with the service token's id and secret (the
+ * CF-Access-Client-Id and CF-Access-Client-Secret headers). Throws, naming the status, when Access or the site refuses
+ * or the answer is not a list; never with the secret in it.
+ * @param {string} url
+ * @param {{ clientId: string, clientSecret: string, fetch?: typeof fetch }} options
+ * @returns {Promise<{ salt: string, hashes: string[] }>}
+ */
+export async function fetchAdminList(url, { clientId, clientSecret, fetch: get = globalThis.fetch }) {
+  const response = await get(url, {
+    headers: { "CF-Access-Client-Id": clientId, "CF-Access-Client-Secret": clientSecret, Accept: "application/json" },
+    redirect: "manual",
+  });
+  if (response.status >= 300 && response.status < 400) throw new Error(`${url} redirected (${response.status}): Access did not take the service token`);
+  if (!response.ok) throw new Error(`${url} answered ${response.status}`);
+  const body = /** @type {any} */ (await response.json().catch(() => null));
+  if (!body || typeof body.salt !== "string" || !Array.isArray(body.hashes) || !body.hashes.every((/** @type {unknown} */ h) => typeof h === "string")) {
+    throw new Error(`${url} did not answer with a hashed admin list`);
+  }
+  return { salt: body.salt, hashes: body.hashes };
+}
+
+/**
+ * The differences between who Access lets in and the site's hashed list: the addresses Access lets in whose hash the
+ * site does not hold, how many of the site's hashes no address in Access matches, and Access's open rules.
+ * @param {Allowed} allowed
+ * @param {{ salt: string, hashes: string[] }} list
+ * @returns {Promise<{ onlyInAccess: string[], onlyInAppCount: number, admins: number, open: string[] }>}
+ */
+export async function accessDriftHashed(allowed, { salt, hashes }) {
+  const app = new Set(hashes);
+  const matched = new Set();
+  /** @type {string[]} */
+  const onlyInAccess = [];
+  for (const email of allowed.emails) {
+    const hash = await adminHash(salt, email);
+    if (app.has(hash)) matched.add(hash);
+    else onlyInAccess.push(email);
+  }
+  return { onlyInAccess: onlyInAccess.sort(), onlyInAppCount: app.size - matched.size, admins: app.size, open: [...allowed.open] };
 }

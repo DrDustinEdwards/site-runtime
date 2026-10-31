@@ -6,7 +6,9 @@ import { test } from "node:test";
 
 import { authSpikeCheck } from "../health.mjs";
 import {
+  AUTH_EVENTS_DEVICE_SQL,
   AUTH_EVENTS_SQL,
+  SESSION_TOUCH_SECONDS,
   accountPasskeys,
   accountSessions,
   dismissPasskeyOffer,
@@ -14,6 +16,7 @@ import {
   deviceName,
   hadPasskey,
   isNewDevice,
+  isNewSignInDevice,
   logAuthEvent,
   passkeyProvider,
   pruneAuthEvents,
@@ -21,7 +24,9 @@ import {
   revokeSessionById,
   securityHistory,
   sendNoticeSafely,
+  sessionTouch,
   shouldOfferPasskey,
+  signedInDeviceIds,
   signedInDevices,
 } from "../sign-in-account.mjs";
 
@@ -178,7 +183,28 @@ test("the spike check warns when failed sign-ins or sign-in mails in its window 
   const check = (/** @type {number} */ failures) => authSpikeCheck(db, { failures, mails: 0, now: () => now }).run();
   assert.equal(await check(10), true);
   assert.deepEqual(await check(3), { ok: false, detail: "4 failed sign-ins in 60 minutes" });
+  // Warn, so /health stays 200 and a deploy is never rolled back; an alert, so the watcher mails a person.
   assert.equal(authSpikeCheck(db).level, "warn");
+  assert.equal(authSpikeCheck(db).alert, true);
+});
+
+test("a session's last use is written at most every five minutes, at once for a missing place; a second browser of the same make is a new device", async () => {
+  const now = Date.UTC(2026, 9, 31, 12);
+  const minute = 60_000;
+  assert.equal(sessionTouch({ updatedAt: new Date(now - minute), location: "Austin, Texas, United States" }, "Austin, Texas, United States", now), null);
+  assert.deepEqual(sessionTouch({ updatedAt: new Date(now - minute), location: null }, "Austin, Texas, United States", now), {
+    updatedAt: new Date(now),
+    location: "Austin, Texas, United States",
+  });
+  assert.deepEqual(sessionTouch({ updatedAt: new Date(now - SESSION_TOUCH_SECONDS * 1000) }, null, now), { updatedAt: new Date(now) });
+
+  const db = d1();
+  db.db.exec(AUTH_EVENTS_DEVICE_SQL);
+  await logAuthEvent({ event: "authn_login_success", fields: { via: "passkey", user_id: "u1" } }, { db, userAgent: WINDOWS, deviceId: "first-browser-0001" });
+  const seen = { ids: await signedInDeviceIds(db, "u1"), names: await signedInDevices(db, "u1") };
+  assert.equal(isNewSignInDevice({ id: "first-browser-0001", name: deviceName(WINDOWS) }, seen), false);
+  assert.equal(isNewSignInDevice({ id: "second-browser-02", name: deviceName(WINDOWS) }, seen), true, "same make, another browser");
+  assert.equal(isNewSignInDevice({ id: "any-browser-00003", name: deviceName(WINDOWS) }, { ids: [], names: seen.names }), false, "no ids yet: by name");
 });
 
 test("requireFreshSession passes a sign-in under 10 minutes old and refuses an older one as Better Auth does", async () => {

@@ -8,18 +8,24 @@ export function signInClientPlugins(): [
   ReturnType<typeof passkeyClient>,
 ];
 
-/** The Signal API's signalAllAcceptedCredentials: the passkeys the site still accepts for this user handle. */
-export function signalAllAcceptedCredentials(options: { rpId: string; userId: string; credentialIds: string[] }): Promise<boolean>;
-
-/** The Signal API's signalCurrentUserDetails: the name and display name the provider shows on the passkey. */
-export function signalCurrentUserDetails(options: { rpId: string; userId: string; name: string; displayName?: string }): Promise<boolean>;
+/** The user handle of the passkey that last signed in on this browser (kept by signInWithPasskey), or null. */
+export function passkeyUserHandle(rpId?: string): string | null;
 
 /**
- * Both of the above when the browser has them. `userId` is the passkey's user handle (base64url) from the sign-in's
- * WebAuthn response; without it, nothing is signaled.
+ * The Signal API's signalAllAcceptedCredentials: the passkeys the site still accepts for this user handle. `rpId`
+ * defaults to the page's host and `userId` to passkeyUserHandle(); false when there is no handle.
+ */
+export function signalAllAcceptedCredentials(options: { rpId?: string; userId?: string | null; credentialIds: string[] }): Promise<boolean>;
+
+/** The Signal API's signalCurrentUserDetails: after an email change or a rename. Defaults as above. */
+export function signalCurrentUserDetails(options: { rpId?: string; userId?: string | null; name: string; displayName?: string }): Promise<boolean>;
+
+/**
+ * Both of the above, after a passkey sign-in lands and when the passkey list loads. `userId` is the passkey's user
+ * handle (base64url), by default the one signInWithPasskey kept; without one, nothing is signaled.
  */
 export function signalPasskeys(options: {
-  rpId: string;
+  rpId?: string;
   userId?: string | null;
   credentialIds: string[];
   name?: string;
@@ -31,7 +37,8 @@ export function signalUnknownCredential(options: { rpId: string; credentialId: s
 
 /**
  * `authClient.signIn.passkey` with `returnWebAuthnResponse` on, which on PASSKEY_NOT_FOUND calls signalUnknownCredential
- * so the browser stops offering a passkey the site no longer has. `rpId` defaults to `location.hostname`.
+ * so the browser stops offering a passkey the site no longer has, and on success keeps the passkey's user handle
+ * (passkeyUserHandle). `rpId` defaults to `location.hostname`.
  */
 /** `R` is the client's own answer; the error is any object, since Better Auth's client error has no `code` in its type. */
 export function signInWithPasskey<R extends { error?: object | null; webauthn?: { response?: { id?: string } } }>(

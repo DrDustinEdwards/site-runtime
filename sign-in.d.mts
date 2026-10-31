@@ -5,9 +5,25 @@ import type { emailOTP, magicLink } from "better-auth/plugins";
 import type { limit } from "./rate-limit/index.mjs";
 import type { D1Like, FRESH_SECONDS, SendSecurityNotice } from "./sign-in-account.mjs";
 
-export { CONFIRM_PATH, confirmSignInLink } from "./sign-in-link.mjs";
 export {
+  CONFIRM_PATH,
+  EMAIL_CONFIRM_PATH,
+  SIGN_IN_EXPIRES_IN_SECONDS,
+  SIGN_IN_EXPIRES_IN_WORDS,
+  SIGN_IN_LINK_WORDS,
+  confirmEmailLink,
+  confirmSignInLink,
+  emailConfirmURL,
+  emailLinkResult,
+  signInLinkProblem,
+} from "./sign-in-link.mjs";
+export type { EmailLinkProblem, SignInLinkProblem } from "./sign-in-link.mjs";
+export {
+  AUTH_EVENTS_DEVICE_SQL,
   AUTH_EVENTS_SQL,
+  DEVICE_COOKIE,
+  SESSION_DETAILS_SQL,
+  SESSION_TOUCH_SECONDS,
   FRESH_SECONDS,
   PASSKEY_OFFER_DAYS,
   SECURITY_NOTICE_KINDS,
@@ -27,6 +43,7 @@ export {
   revokeSessionById,
   securityHistory,
   sessionRows,
+  sessionTouch,
   shouldOfferPasskey,
 } from "./sign-in-account.mjs";
 export type {
@@ -51,10 +68,6 @@ type SignInEnv = {
   APPLE_PRIVATE_KEY?: string;
 };
 
-/** How long a sign-in link and its code work: 10 minutes. */
-export const SIGN_IN_EXPIRES_IN_SECONDS: number;
-/** The same, in words: "10 minutes". */
-export const SIGN_IN_EXPIRES_IN_WORDS: string;
 /** Where a page posts { email, otp } to sign in with the code: "/sign-in/email-otp". */
 export const SIGN_IN_CODE_PATH: "/sign-in/email-otp";
 
@@ -125,6 +138,13 @@ export function signInOptions(
      * new device, a recovery. A throw is logged and never blocks the change.
      */
     sendSecurityNotice?: SendSecurityNotice;
+    /**
+     * Keeps each session's coarse place and device id (a signed, long-lived DEVICE_COOKIE) from its sign-in, and moves
+     * its `updatedAt` and place when it is read through /get-session, at most every SESSION_TOUCH_SECONDS. Needs the
+     * session columns in SESSION_DETAILS_SQL (Drizzle: `location`, `deviceId`), and with `eventsDb`
+     * AUTH_EVENTS_DEVICE_SQL. The new-device notice then tells two browsers of the same make apart.
+     */
+    sessionDetails?: boolean;
   },
 ): Promise<{
   emailAndPassword: { enabled: false };
@@ -134,10 +154,22 @@ export function signInOptions(
    */
   plugins: [ReturnType<typeof magicLink>, ReturnType<typeof emailOTP>, ReturnType<typeof passkey>, ...BetterAuthPlugin[]];
   disabledPaths: string[];
-  socialProviders: { google?: { clientId: string; clientSecret: string }; apple?: { clientId: string; clientSecret: string } };
+  socialProviders: {
+    google?: { clientId: string; clientSecret: string; mapProfileToUser: (profile: { email?: unknown }) => Promise<Record<string, never>> };
+    apple?: { clientId: string; clientSecret: string; mapProfileToUser: (profile: { email?: unknown }) => Promise<Record<string, never>> };
+  };
   account: { accountLinking: { enabled: true; disableImplicitLinking: true } };
   /** A site that sets its own session options keeps this: `session: { ...signIn.session, ... }`. */
-  session: { expiresIn: typeof SESSION_SECONDS; disableSessionRefresh: true; freshAge: typeof FRESH_SECONDS };
+  session: {
+    expiresIn: typeof SESSION_SECONDS;
+    disableSessionRefresh: true;
+    freshAge: typeof FRESH_SECONDS;
+    /** With `sessionDetails`. */
+    additionalFields?: {
+      location: { type: "string"; required: false; input: false };
+      deviceId: { type: "string"; required: false; input: false; returned: false };
+    };
+  };
   /** Present with `social: true`: no OAuth token is stored. Merge a site's own hooks beside it. */
   databaseHooks?: { account: { create: NoOAuthTokensHook; update: NoOAuthTokensHook } };
   /** `customRules` holds APP_CODE_PATH's three a minute with `appCode: true`. */

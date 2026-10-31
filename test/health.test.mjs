@@ -27,19 +27,24 @@ test("a stale backup warns at 200 with ok true; a database that throws fails at 
   assert.equal(reads, 2);
 });
 
-test("a check that hangs fails at the timeout; a warn check never makes it 503; error text is scrubbed", async () => {
+test("a check that hangs fails at the timeout; a warn check never makes it 503, an alert included; error text is scrubbed", async () => {
   const response = await healthResponse({
     checks: [
       { name: "kv", level: "warn", run: () => new Promise(() => {}) },
       { name: "drift", level: "warn", run: async () => ({ ok: false, detail: "2 posts differ" }) },
+      { name: "auth-spike", level: "warn", alert: true, run: async () => false },
     ],
     checkTimeoutMs: 20,
   });
   assert.equal(response.status, 200);
-  assert.deepEqual((await response.json()).checks, [
+  const body = await response.json();
+  assert.deepEqual(body.checks, [
     { name: "kv", status: "warn", detail: "timed out after 20 ms" },
     { name: "drift", status: "warn", detail: "2 posts differ" },
+    { name: "auth-spike", status: "warn", alert: true },
   ]);
+  // An alert stays a warning (ok, 200: no rollback) and is named for the watcher to mail on.
+  assert.deepEqual([body.ok, body.alerts], [true, ["auth-spike"]]);
   const failed = await healthResponse({ checks: [{ name: "r2", run: async () => { throw new Error("no access for a@example.com"); } }] });
   assert.equal(failed.status, 503);
   assert.deepEqual((await failed.json()).checks, [{ name: "r2", status: "fail", detail: "no access for [email]" }]);
