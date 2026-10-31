@@ -13,7 +13,7 @@ resource routes (`./origin`), the trailing-slash redirect, the gone list and the
 No dependencies (`./sign-in` uses the site's own `better-auth` and
 `@better-auth/passkey`, 1.7.12 or later, which a site that imports it installs itself; they are not declared as peers,
 because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
-tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.59.0"`. `npm test` runs every test in `test/`.
+tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.60.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
 
@@ -1626,7 +1626,9 @@ explorer.
 Prelum's specimen, Carrel's public page, Enarratio's gallery, the Capsid explorer), so each gets what the rendered sites
 get. In order: one hop to the canonical address (`canonicalRedirect`, with `canonical` as its options, or `false` for a
 site whose pages end in a slash); Content-Security-Policy reports at `reportPath` (default `/csp-report`, limited by a
-`CSP_REPORT_RATE_LIMIT` binding when there is one); the prefetch rules at `/speculation-rules.json` (`prefetch` is
+`CSP_REPORT_RATE_LIMIT` binding when there is one); `/health` (`health`, or `false` for none), `healthResponse` with
+`sha` from the `DEPLOY_SHA` var that devkit's shared deploy sets (`sha-var: DEPLOY_SHA`), so its live gate sees the new
+deploy serving before it checks the site; the prefetch rules at `/speculation-rules.json` (`prefetch` is
 `speculationRules`' options, or `false`). Then the asset. A page gets the `Speculation-Rules` header, so Cloudflare's
 generic rules are not the ones used; `Server-Timing` for the asset read; charset=utf-8 and any header of `headers` its
 own `_headers` rules left out; and, on a 200, the `preload` Link header, which Early Hints answers with a 103. A path

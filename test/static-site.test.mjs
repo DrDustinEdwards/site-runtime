@@ -42,6 +42,12 @@ test("a page gets the speed headers, a missing path the 404 page uncached, and a
   assert.equal((await get("/app.js")).headers.get("Speculation-Rules"), null);
   assert.equal((await get("/speculation-rules.json")).headers.get("Content-Type"), "application/speculationrules+json");
 
+  // devkit's worker-deploy waits for /health to report the commit it deployed.
+  const health = await site.fetch(new Request("https://example.com/health"), { ASSETS, DEPLOY_SHA: "abc1234" });
+  assert.equal(health.status, 200);
+  assert.equal((await health.json()).sha, "abc1234");
+  assert.equal(health.headers.get("X-Content-Type-Options"), "nosniff");
+
   const http = await site.fetch(new Request("http://example.com/about/"), { ASSETS });
   assert.equal(http.status, 301);
   assert.equal(http.headers.get("Location"), "https://example.com/about");
