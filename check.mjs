@@ -13,7 +13,21 @@ import { CLOUDFLARE_WEB_ANALYTICS, CSP_REPORT_GROUP, CSP_REPORT_PATH, broadSourc
 import { allowlistBypass } from "./csp-bypasses.mjs";
 import { STANDARD_SECURITY_HEADERS, buildSecurityHeaders, corpFor } from "./headers.mjs";
 import { OWASP_REMOVE } from "./owasp-headers.mjs";
-import { FAMILY_DEVIATIONS, siteEntry } from "./sites.mjs";
+import { FAMILY_DEVIATIONS, SITE_DEVIATIONS } from "./sites-deviations.mjs";
+import { SITES, siteEntry } from "./sites-values.mjs";
+
+/**
+ * The entry a check grades against: by id, or for the registry's own entry (the values a Worker imports, ./sites),
+ * those values with the deviations they leave out; any other object as it is.
+ * @param {string | import("./sites.mjs").SiteEntry | undefined} site
+ * @returns {import("./sites.mjs").SiteEntry | undefined}
+ */
+function registryEntry(site) {
+  const values = typeof site === "string" ? siteEntry(site) : SITES.find((s) => s === site);
+  if (!values) return site;
+  const deviations = /** @type {Record<string, import("./sites.mjs").SiteEntry["deviations"]>} */ (SITE_DEVIATIONS)[values.id];
+  return deviations ? { ...values, deviations } : values;
+}
 
 /**
  * @typedef {{ id: string, name: string, pass: boolean, detail: string, warn?: boolean, notice?: boolean }} CheckResult
@@ -65,7 +79,7 @@ const FETCH_DIRECTIVES = [
 export function declined(entry, id, name) {
   const family = /** @type {Record<string, string>} */ (FAMILY_DEVIATIONS)[id];
   if (family) return { reason: family, family: true };
-  const own = entry?.deviations?.[id];
+  const own = registryEntry(entry)?.deviations?.[id];
   if (own && (!own.value || (name !== undefined && own.value.includes(name)))) return { reason: own.reason, family: false };
   return undefined;
 }
@@ -140,7 +154,7 @@ function deniedFeatures(value) {
  * @returns {CheckResult[]}
  */
 export function checkSecurityHeaders(headers, options = {}) {
-  const entry = typeof options.site === "string" ? siteEntry(options.site) : options.site;
+  const entry = registryEntry(options.site);
   const optIn = (/** @type {keyof import("./sites.mjs").SiteOptIns} */ key) => entry?.optIns?.[key]?.value;
   const declared = (/** @type {"framedBySameOrigin" | "baseUriSelf"} */ key) => (entry ? Boolean(optIn(key)) : undefined);
   const {
@@ -418,7 +432,7 @@ export const failures = (results) => results.filter((r) => !r.pass && !r.warn &&
  * @returns {CheckResult[]}
  */
 export function checkSecurityTxt({ url, origin, status, headers, body, now = Date.now() }, { site } = {}) {
-  const entry = typeof site === "string" ? siteEntry(site) : site;
+  const entry = registryEntry(site);
   /** @type {CheckResult[]} */
   const results = [];
   const result = (/** @type {string} */ id, /** @type {string} */ name, /** @type {boolean} */ pass, /** @type {string} */ detail, warn = false, declinable = false) => {

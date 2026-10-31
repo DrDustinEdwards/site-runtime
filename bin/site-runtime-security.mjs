@@ -26,7 +26,7 @@ import { request as httpsRequest } from "node:https";
 import { request as httpRequest } from "node:http";
 import { parseArgs } from "node:util";
 import { checkSecurityHeaders, checkSecurityTxt, declined } from "../check.mjs";
-import { siteForOrigin } from "../sites.mjs";
+import { siteForOrigin } from "../sites-values.mjs";
 
 const UA = "Mozilla/5.0 (site-runtime-security)";
 const FOREIGN = "https://site-runtime-security.example";
