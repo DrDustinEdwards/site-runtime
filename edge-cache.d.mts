@@ -18,7 +18,9 @@ export const TRACKING_PARAMS: string[];
 export function cacheKey(url: URL | string, options?: { dimensions?: Record<string, string | undefined> }): string;
 
 /** The Renderer's last step: anything not a shared 200, setting a cookie, or rendered for a request with one, leaves `private, no-store`, with no edge header or tag. */
-export function settleCacheHeaders(response: Response, request?: Request): Response;
+export function settleCacheHeaders(response: Response, request?: Request, options?: { publicCookies?: readonly string[] }): Response;
+/** The request for the Renderer: a HEAD becomes a GET, so the cache only ever renders and stores whole pages. */
+export function forRenderer(request: Request): Request;
 
 /** The gateway's last step: a shared page answered to a request with a cookie not in `publicCookies` is `no-store` for the browser. */
 export function forReader(response: Response, request: Request, options?: { publicCookies?: readonly string[] }): Response;
