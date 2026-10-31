@@ -70,9 +70,6 @@ export function refuseCrossSite(request, headers, { sameSite = false } = {}) {
   return ok ? null : originRefusal(headers);
 }
 
-/** The older name, kept for the sites that call it (dustinedwards.info, txasm, germomics); new code calls refuseCrossSite. */
-export const refuseCrossOrigin = refuseCrossSite;
-
 /**
  * The resource isolation policy (https://web.dev/articles/fetch-metadata), for a signed-in route that only its own
  * pages should reach: a cross-site page cannot load it as an image or script, frame it as an object, or post to it.

@@ -64,7 +64,7 @@ export function buildPolicy(directives: readonly string[]): string;
  *   `nonce`: this request's nonce, for a response that is never shared-cached; it goes on script-src and style-src.
  *   `styleAttributesInline`: `style-src-attr 'unsafe-inline'`, for pages that emit style attributes, which a nonce
  *   cannot cover; the one inline allowance offered, scoped to attributes, which run no code.
- *   `reportUri` / `reportTo`: where violations go. A policy with no sink hides the page it breaks, so one is required.
+ *   `reportUri` / `reportTo`: where violations go, both required (report-to for the Reporting API, report-uri for the rest).
  *   `framedBySameOrigin`: `frame-ancestors 'self'` in place of 'none', for a site that shows its own pages in frames
  *   (a design system's live specimens). No other origin can be allowed to frame a site.
  */
@@ -123,7 +123,7 @@ export type CspSources = {
  * way to write the keyword: as a raw script source it is refused.
  * `styleAttributesInline`: `style-src-attr 'unsafe-inline'`, for pages that emit style attributes, which a nonce
  * cannot cover; the one inline allowance offered, scoped to attributes, which run no code.
- * `reportUri` / `reportTo`: where violations go. A policy with no sink hides the page it breaks, so one is required.
+ * `reportUri` / `reportTo`: where violations go, both required (report-to for the Reporting API, report-uri for the rest).
  * `framedBySameOrigin`: `frame-ancestors 'self'` in place of 'none', for a site that shows its own pages in frames.
  * `denyUnlisted`: `default-src 'none'` in place of 'self', so a kind the policy does not name (media, frames,
  * workers, the manifest) is refused rather than allowed from the site; for a static site that wants nothing more.
@@ -168,8 +168,12 @@ export type SitePolicy = {
  * @param url the receiver, absolute: `new URL("/csp-report", origin)`
  */
 export function reportingEndpoints(group: string, url: string | URL): string;
-/** A host source whose host starts with a wildcard: `https://*.example.com`. */
-export const WILDCARD_HOST: RegExp;
+/**
+ * Why a source lets in hosts nobody named ("any host", "every subdomain of the host", "any host over https:", or
+ * "script any page can write as data:"), or "" when it names its hosts. data: and blob: are broad only in script-src and
+ * its -elem and -attr, and data: in worker-src and child-src. Give default-src as script-src when it governs scripts.
+ */
+export function broadSource(source: string, directive?: string): string;
 /** The Report-Only companion for a staged rollout: the site's policy with `staged` added (Trusted Types first). */
 export function buildStagedPolicy(site: SitePolicy, staged: Partial<SitePolicy>): {
     name: "Content-Security-Policy-Report-Only";

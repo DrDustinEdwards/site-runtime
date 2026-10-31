@@ -108,10 +108,15 @@ export function entryOverrides({ id, headers = {}, optIns = {} }) {
  * whose declared overrides are used; a Worker that imports one entry bundles that entry and not the registry.
  * `overrides` is the older form, for a site not yet built from the registry. Not both.
  *
- * @param {{ site?: import("./sites.mjs").SiteEntry, overrides?: Readonly<Record<string, HeaderOverride>> }} [options]
+ * `coep` turns on Cross-Origin-Embedder-Policy, which the standard leaves out (OWASP_SKIPPED): `credentialless` loads a
+ * cross-origin subresource without its cookies, `require-corp` refuses one that does not opt in. `reportOnly: true`
+ * sends Cross-Origin-Embedder-Policy-Report-Only instead, the way to start. A registry entry declares it as its `coep`
+ * opt-in, which the check then grades; passed here it is for a site not built from the registry.
+ *
+ * @param {{ site?: import("./sites.mjs").SiteEntry, overrides?: Readonly<Record<string, HeaderOverride>>, coep?: Coep }} [options]
  * @returns {Record<string, string>}
  */
-export function buildSecurityHeaders({ site, overrides } = {}) {
+export function buildSecurityHeaders({ site, overrides, coep } = {}) {
   if (site !== undefined && overrides !== undefined) throw new Error("pass site or overrides, not both: a site's deviations live in its registry entry");
   if (typeof site === "string") throw new Error(`pass the registry entry, not its id: import { ... } from "@dustinedwards/site-runtime/sites" (${site})`);
   overrides = site === undefined ? (overrides ?? {}) : entryOverrides(site);
@@ -129,8 +134,61 @@ export function buildSecurityHeaders({ site, overrides } = {}) {
       set[name] = value;
     }
   }
+  const embedder = coep ?? site?.optIns?.coep;
+  if (embedder) {
+    if (embedder.value !== "credentialless" && embedder.value !== "require-corp") throw new Error(`coep is "credentialless" or "require-corp", not ${JSON.stringify(embedder.value)}`);
+    set[embedder.reportOnly ? "Cross-Origin-Embedder-Policy-Report-Only" : "Cross-Origin-Embedder-Policy"] = embedder.value;
+  }
   return set;
 }
+
+/** @typedef {{ value: "credentialless" | "require-corp", reportOnly?: boolean }} Coep */
+
+/**
+ * The logout response (ASVS 14.3.1): a 303 to `location` that tells the browser to drop this site's cookies, storage and
+ * cache (LOGOUT_HEADERS, OSHP's Clear-Site-Data), never stored. `headers` adds to it: the Set-Cookie lines that end the
+ * session, for a browser without Clear-Site-Data.
+ * @param {string | URL} [location] where the reader goes next (default `/`)
+ * @param {HeadersInit} [headers]
+ * @returns {Response}
+ */
+export function logoutResponse(location = "/", headers) {
+  const merged = new Headers(headers);
+  for (const [name, value] of Object.entries(LOGOUT_HEADERS)) merged.set(name, value);
+  merged.set("Cache-Control", "no-store");
+  merged.set("Location", String(location));
+  return new Response(null, { status: 303, headers: merged });
+}
+
+/**
+ * A Set-Cookie value for a cookie that holds a sign-in or anything else script must never read (ASVS 3.3.1 to 3.3.4):
+ * named `__Host-<name>`, so the browser refuses it unless it is Secure, host-only and on `/`; HttpOnly; and SameSite Lax
+ * (or Strict). `maxAge: 0` with an empty value ends it. A name or value a cookie cannot carry is refused, never encoded.
+ * @param {string} name the name without its prefix
+ * @param {string} value
+ * @param {{ maxAge?: number, sameSite?: "Lax" | "Strict", httpOnly?: boolean }} [options] `httpOnly: false` only for a
+ *   cookie script must read, which is never a session
+ * @returns {string}
+ */
+export function hostCookie(name, value, { maxAge, sameSite = "Lax", httpOnly = true } = {}) {
+  if (!/^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/.test(name) || /^__(host|secure)-/i.test(name)) throw new Error(`${JSON.stringify(name)} is not a cookie name (give it without its prefix)`);
+  if (!/^[\x21\x23-\x2B\x2D-\x3A\x3C-\x5B\x5D-\x7E]*$/.test(value)) throw new Error(`the value of cookie ${name} holds a character a cookie cannot carry`);
+  if (sameSite !== "Lax" && sameSite !== "Strict") throw new Error(`SameSite is Lax or Strict, not ${JSON.stringify(sameSite)}`);
+  if (maxAge !== undefined && !(Number.isInteger(maxAge) && maxAge >= 0)) throw new Error(`maxAge is whole seconds, got ${maxAge}`);
+  return [`__Host-${name}=${value}`, "Path=/", "Secure", ...(httpOnly ? ["HttpOnly"] : []), `SameSite=${sameSite}`, ...(maxAge === undefined ? [] : [`Max-Age=${maxAge}`])].join("; ");
+}
+
+/**
+ * What an uploaded file is served with (ASVS 5.4.1): nosniff, so a browser never reads it as another type, and a
+ * sandboxed policy that runs no script and loads nothing, so a file opened on its own (an SVG, an HTML file renamed to
+ * .png) is inert. Inline styles stay, since an SVG draws with them and they run no code. `./image` sends it on every
+ * file it serves; a site's own upload route applies it with applyHeaderSet.
+ * @type {Readonly<Record<string, string>>}
+ */
+export const UPLOAD_HEADERS = Object.freeze({
+  "X-Content-Type-Options": "nosniff",
+  "Content-Security-Policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'",
+});
 
 /**
  * Stamps a header set onto `headers` in place.
@@ -156,8 +214,8 @@ export function applyHeaderSet(headers, set = STANDARD_SECURITY_HEADERS, { overw
 /** The headers a static `_headers` file leaves out: a page's policy names what that page loads, and may carry a nonce. */
 const POLICY_HEADERS = ["content-security-policy", "content-security-policy-report-only"];
 
-/** The static text files whose Content-Type the asset server sends with no charset, by extension. */
-export const TEXT_TYPES = Object.freeze({
+/** The static files whose headers the asset server gets wrong, by extension: text with no charset, and fonts with the standard's same-origin CORP. */
+const STATIC_TYPES = Object.freeze({
   html: "text/html",
   css: "text/css",
   js: "text/javascript",
@@ -165,6 +223,7 @@ export const TEXT_TYPES = Object.freeze({
   txt: "text/plain",
   xml: "application/xml",
   svg: "image/svg+xml",
+  woff2: "font/woff2",
 });
 
 /**
@@ -172,8 +231,11 @@ export const TEXT_TYPES = Object.freeze({
  * the Worker's header set never reaches them. `set` (the one the Worker applies) goes on `/*`, minus any
  * Content-Security-Policy; `paths` adds or changes headers on a path pattern (`/assets/*`, `/favicon.svg`). Cloudflare
  * joins a header that two matching rules set, so a path that changes a header of the set first detaches the `/*` value
- * with `! Name`. `comment` lines lead the file, each as `# ...`. `charset: true` adds a Content-Type with
- * `charset=utf-8` for each text extension in TEXT_TYPES, which the asset server otherwise sends without one.
+ * with `! Name`. `comment` lines lead the file, each as `# ...`. `charset: true` adds a rule per static extension:
+ * `charset=utf-8` on each text type, which the asset server otherwise leaves off, and the Cross-Origin-Resource-Policy
+ * corpFor gives its type, so stylesheets, scripts, SVG and fonts are `cross-origin` (another origin, or a sandboxed
+ * frame's opaque one, may load them) and nothing else is. A `paths` entry for one of those patterns is merged into its
+ * rule, its own values winning.
  * @param {Readonly<Record<string, string>>} set
  * @param {{ paths?: Readonly<Record<string, Readonly<Record<string, string>>>>, comment?: string | readonly string[], charset?: boolean }} [options]
  * @returns {string}
@@ -185,16 +247,27 @@ export function headersFile(set, { paths = {}, comment = [], charset = false } =
   };
   const base = Object.entries(set).filter(([name]) => !POLICY_HEADERS.includes(name.toLowerCase()));
   const baseNames = new Set(base.map(([name]) => name.toLowerCase()));
+  const baseCorp = base.find(([name]) => name.toLowerCase() === "cross-origin-resource-policy")?.[1];
   const notes = (typeof comment === "string" ? comment.split("\n") : comment).map((text) => (text ? `# ${text}` : "#"));
+  /** @type {Map<string, Record<string, string>>} */
+  const rules = new Map();
+  if (charset) {
+    for (const [ext, type] of Object.entries(STATIC_TYPES)) {
+      const corp = corpFor(type);
+      rules.set(`/*.${ext}`, {
+        ...(type.startsWith("font/") ? {} : { "Content-Type": `${type}; charset=utf-8` }),
+        ...(baseCorp && corp !== baseCorp ? { "Cross-Origin-Resource-Policy": corp } : {}),
+      });
+    }
+    // A folder's index page is answered at `/` or a path ending in `/`, with no extension for a `/*.html` rule to match.
+    for (const pattern of ["/", "/*/"]) rules.set(pattern, { "Content-Type": "text/html; charset=utf-8" });
+  }
+  for (const [pattern, headers] of Object.entries(paths)) rules.set(pattern, { ...rules.get(pattern), ...headers });
   const blocks = [["/*", ...base.map(([name, value]) => line(name, value))].join("\n")];
-  // A folder's index page is answered at `/` or a path ending in `/`, with no extension for a `/*.html` rule to match.
-  const html = { "Content-Type": "text/html; charset=utf-8" };
-  const typed = charset
-    ? [...Object.entries(TEXT_TYPES).map(([ext, type]) => [`/*.${ext}`, { "Content-Type": `${type}; charset=utf-8` }]), ["/", html], ["/*/", html]]
-    : [];
-  for (const [pattern, headers] of [...typed, ...Object.entries(paths)]) {
+  for (const [pattern, headers] of rules) {
     if (!pattern.startsWith("/") || /\s/.test(pattern)) throw new Error(`${JSON.stringify(pattern)} is not a path pattern`);
     const entries = Object.entries(headers);
+    if (entries.length === 0) continue;
     const detach = entries.filter(([name]) => baseNames.has(name.toLowerCase())).map(([name]) => `  ! ${name}`);
     blocks.push([pattern, ...detach, ...entries.map(([name, value]) => line(name, value))].join("\n"));
   }

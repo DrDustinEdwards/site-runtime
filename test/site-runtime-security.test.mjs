@@ -13,7 +13,7 @@ const run = (/** @type {string[]} */ args) =>
 test("the live check prints each finding as an annotation under its item id, exits 1 on errors and 2 when it cannot run", async () => {
   // One nonce for every response: the replay the check exists to catch.
   const nonce = "AAAAAAAAAAAAAAAAAAAAAA==";
-  const page = { ...STANDARD_SECURITY_HEADERS, "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": buildContentSecurityPolicy({ reportUri: "/r", nonce }).value };
+  const page = { ...STANDARD_SECURITY_HEADERS, "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": buildContentSecurityPolicy({ reportUri: "/r", reportTo: "csp", nonce }).value };
   const server = createServer((req, res) => {
     if (req.url === "/") res.writeHead(200, page).end(`<script nonce="${nonce}"></script>`);
     else res.writeHead(404, { ...page, "X-Powered-By": "Express" }).end();
@@ -28,7 +28,7 @@ test("the live check prints each finding as an annotation under its item id, exi
     assert.match(stdout, new RegExp(`^::error title=C6::${from}/ two fetches carried the same nonce`, "m"));
     assert.match(stdout, /^::error title=H6::\S+\/sitemap\.xml \(404\) no header names the software/m);
     assert.match(stdout, /^::error title=T1::http:\/\/127\.0\.0\.1:\d+\/ answers 200/m);
-    assert.match(stdout, /^::error title=D1::\S+security\.txt answers 404/m);
+    assert.match(stdout, /^::error title=D1::\S+security\.txt \(404\) security\.txt is served: answers 404/m);
   } finally {
     server.close();
   }

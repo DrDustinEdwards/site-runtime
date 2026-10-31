@@ -9,9 +9,8 @@
  * https://owasp.org/www-project-secure-headers/):
  *   - ci/headers_add.json     the headers OSHP recommends a response carry, with its `last_update_utc`
  *   - ci/headers_remove.json  the headers OSHP recommends a response not carry
- *   - subprojects/validator/tests_suite.yml  OSHP's own header test suite (a venom suite), kept verbatim
  *
- * and writes owasp-headers.mjs and oshp-tests-suite.yml beside this file, and the "Source" block of README.md with
+ * and writes owasp-headers.mjs beside this file, and the "Source" block of README.md with
  * the page, the files and the date they were read. Exits non-zero when a file cannot be read or has an unexpected
  * shape, so a failed refresh never leaves a half-written set.
  */
@@ -31,18 +30,13 @@ async function read(path) {
   return res.text();
 }
 
-const [addText, removeText, suite] = await Promise.all([
-  read("ci/headers_add.json"),
-  read("ci/headers_remove.json"),
-  read("subprojects/validator/tests_suite.yml"),
-]);
+const [addText, removeText] = await Promise.all([read("ci/headers_add.json"), read("ci/headers_remove.json")]);
 const add = JSON.parse(addText);
 const remove = JSON.parse(removeText);
 if (!Array.isArray(add.headers) || add.headers.length === 0 || add.headers.some((/** @type {any} */ h) => typeof h?.name !== "string" || typeof h?.value !== "string")) {
   throw new Error("headers_add.json is not a list of { name, value }");
 }
 if (!Array.isArray(remove.headers) || remove.headers.some((/** @type {any} */ h) => typeof h !== "string")) throw new Error("headers_remove.json is not a list of names");
-if (!suite.includes("testcases:")) throw new Error("tests_suite.yml has no testcases");
 
 const fetchedAt = new Date().toISOString().slice(0, 10);
 const headers = Object.fromEntries(add.headers.map((/** @type {{ name: string, value: string }} */ h) => [h.name, h.value]));
@@ -66,17 +60,16 @@ export const OWASP_RECOMMENDED = Object.freeze(${JSON.stringify(headers, null, 2
 export const OWASP_REMOVE = Object.freeze(${JSON.stringify(remove.headers, null, 2)});
 `;
 await writeFile(here("owasp-headers.mjs"), module, "utf8");
-await writeFile(here("oshp-tests-suite.yml"), suite, "utf8");
 
 const block = [
   "<!-- owasp:begin -->",
   `The defaults are read from the OWASP Secure Headers Project, not typed here: page ${PAGE}, data ${REPO}/tree/master/ci`,
-  `(\`headers_add.json\`, \`headers_remove.json\`, last updated by OWASP ${add.last_update_utc ?? "(not stated)"} UTC), and its header test suite`,
-  `\`subprojects/validator/tests_suite.yml\`, all read on **${fetchedAt}**. Refresh with \`node update-owasp.mjs\`.`,
+  `(\`headers_add.json\`, \`headers_remove.json\`, last updated by OWASP ${add.last_update_utc ?? "(not stated)"} UTC), read on`,
+  `**${fetchedAt}**. Refresh with \`node update-owasp.mjs\`.`,
   "<!-- owasp:end -->",
 ].join("\n");
 const readmePath = here("README.md");
 const readme = await readFile(readmePath, "utf8");
 if (!readme.includes("<!-- owasp:begin -->")) throw new Error("README.md has no owasp:begin marker");
 await writeFile(readmePath, readme.replace(/<!-- owasp:begin -->[\s\S]*?<!-- owasp:end -->/, block), "utf8");
-console.log(`read ${Object.keys(headers).length} recommended headers, ${remove.headers.length} to remove, and the suite, on ${fetchedAt}`);
+console.log(`read ${Object.keys(headers).length} recommended headers, ${remove.headers.length} to remove, on ${fetchedAt}`);

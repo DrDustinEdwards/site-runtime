@@ -13,7 +13,8 @@
  *   body stored under `immutable` would reach every browser. The page offers both through `<picture>`.
  * - With no `quality` the binding writes lossless WebP, larger than a lossy original, so 85 (Cloudflare's default) is
  *   always passed.
- * - A stored SVG is script running as the site, so it is only ever served as an attachment.
+ * - A stored SVG is script running as the site, so it is only ever served as an attachment, and every file it serves
+ *   carries UPLOAD_HEADERS (./headers: nosniff and a sandboxed policy), so no file runs script (ASVS 5.4.1).
  * - A GIF's sizes stay animated: the binding keeps every frame unless told `anim: false`, and writes them as animated
  *   WebP. Cloudflare documents animation for WebP and GIF output, not AVIF, so a GIF is offered no AVIF. Its first frame,
  *   `still=1`, is offered under prefers-reduced-motion (WCAG 2.2.2), from the same closed widths.
@@ -37,6 +38,8 @@
  *   TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  *   SOFTWARE.
  */
+
+import { UPLOAD_HEADERS } from "./headers.mjs";
 
 /**
  * Astro's "limited" screen widths, the set it uses for images it generates ahead of time. A site's closed set starts
@@ -254,6 +257,7 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
       return new Response(again.body, { headers });
     }
     const headers = new Headers(response.headers);
+    for (const [name, value] of Object.entries(UPLOAD_HEADERS)) headers.set(name, value);
     headers.set("cache-control", cacheControl);
     headers.set("x-image", `w=${width}${ratio ? ` r=${ratio}` : ""}${still ? " still" : ""} ${format}`);
     const out = new Response(response.body, { headers });
@@ -383,12 +387,10 @@ function objectHeaders(object, cacheControl) {
   object.writeHttpMetadata(headers);
   headers.set("etag", object.httpEtag);
   headers.set("cache-control", cacheControl);
-  // An SVG served inline from the site's own origin is script running as the site, and one sniffed back to SVG would
-  // defeat the disposition. Keyed on the stored type, so a file renamed to .png is caught.
-  if ((headers.get("content-type") ?? "").toLowerCase().startsWith("image/svg+xml")) {
-    headers.set("content-disposition", "attachment");
-    headers.set("x-content-type-options", "nosniff");
-  }
+  for (const [name, value] of Object.entries(UPLOAD_HEADERS)) headers.set(name, value);
+  // An SVG served inline from the site's own origin is script running as the site. Keyed on the stored type, so a file
+  // renamed to .png is caught.
+  if ((headers.get("content-type") ?? "").toLowerCase().startsWith("image/svg+xml")) headers.set("content-disposition", "attachment");
   return headers;
 }
 

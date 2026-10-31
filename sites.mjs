@@ -10,8 +10,15 @@
  *
  * - `headers`: overrides in buildSecurityHeaders' shape, `{ value, reason }`, `value: null` to send none.
  * - `optIns`: the builder options a check must accept, each `{ value, reason }`: cloudflareWebAnalytics (the edge
- *   injects the beacon, so the policy must let it run), inlineScripts, formTargets, framedBySameOrigin, baseUriSelf,
- *   and passkey (publickey-credentials-get=(self) in the Permissions-Policy, PASSKEY_OVERRIDES).
+ *   injects the beacon, so the policy must let it run), inlineScripts, inlineStyles ('unsafe-inline' on style-src),
+ *   formTargets, framedBySameOrigin, baseUriSelf, and passkey (publickey-credentials-get=(self) in the
+ *   Permissions-Policy, PASSKEY_OVERRIDES). Some are a promise the check then holds the site to: strictDynamic (C3),
+ *   trustedTypes (C7, `true` enforced or "report-only"), denyUnlisted (C9), integrityPolicy (S2, "enforce" or
+ *   "report-only"), coep (I3, which buildSecurityHeaders writes) and uploads (A3, the path prefix its uploaded files
+ *   are served under, which the live check samples).
+ * - `deviations`: a checklist item the site does not meet, by item id, with the reason; the check then reports it as a
+ *   warning, not an error. Only an item a check marks as one a site may decline takes one (K1's cookie prefix, A6),
+ *   and `value` names the cookies a K1 deviation covers. FAMILY_DEVIATIONS holds the items no site can meet.
  * - `aliases`: other origins the same Worker answers for, such as the domain it will move to.
  */
 
@@ -45,9 +52,28 @@ const popupSignIn = {
  *   framedBySameOrigin?: { value: boolean, reason: string },
  *   baseUriSelf?: { value: boolean, reason: string },
  *   passkey?: { value: boolean, reason: string },
+ *   inlineStyles?: { value: boolean, reason: string },
+ *   strictDynamic?: { value: boolean, reason: string },
+ *   trustedTypes?: { value: true | "report-only", reason: string },
+ *   denyUnlisted?: { value: boolean, reason: string },
+ *   integrityPolicy?: { value: "enforce" | "report-only", reason: string },
+ *   coep?: { value: "credentialless" | "require-corp", reportOnly?: boolean, reason: string },
+ *   uploads?: { value: string, reason: string },
  * }} SiteOptIns
- * @typedef {{ id: string, origin: string, aliases?: readonly string[], headers?: Readonly<Record<string, HeaderOverride>>, optIns?: SiteOptIns }} SiteEntry
+ * @typedef {{ reason: string, value?: readonly string[] }} Deviation
+ * @typedef {{ id: string, origin: string, aliases?: readonly string[], headers?: Readonly<Record<string, HeaderOverride>>, optIns?: SiteOptIns, deviations?: Readonly<Record<string, Deviation>> }} SiteEntry
  */
+
+/**
+ * The checklist items no site in the family can meet, each with why. The live check reports each as a notice, never
+ * an error or a warning, so the reason stays in sight without failing anyone.
+ * @type {Readonly<Record<string, string>>}
+ */
+export const FAMILY_DEVIATIONS = Object.freeze({
+  T2: "HSTS on the http:// to https:// hop: a browser ignores Strict-Transport-Security sent over plain http (RFC 6797 section 8.1), and on a custom domain that hop is Cloudflare's Always Use HTTPS, a zone setting no Worker answers. The https redirect hops are graded instead.",
+  D3: "OpenPGP signing of security.txt: it needs a family signing key that Dustin holds and rotates, and none exists; RFC 9116 section 2.3 recommends a signature, it does not require one. A signed file is graded when one appears.",
+  R4: "JSON routes refusing text/plain and form bodies (requireJson, ./body): the live check has no session, and every JSON route a stranger can reach answers 401 before it reads a body, so only the site's own code can show it.",
+});
 
 /* Each entry is its own export, so a Worker that imports one (`import { germomics } from "./sites"`) bundles that
  * entry alone; the calls are marked pure so a bundler can drop the rest. */
@@ -117,7 +143,10 @@ export const germomics = {
       reason: "The player resumes with audio.play() (player-context.tsx); Copy link, the transcript quote and the feed URL use navigator.clipboard.writeText, and Copy link offers navigator.share (CopyLink.tsx).",
     },
   },
-  optIns: { cloudflareWebAnalytics: /* @__PURE__ */ beacon("app/lib/security-headers.ts") },
+  optIns: {
+    cloudflareWebAnalytics: /* @__PURE__ */ beacon("app/lib/security-headers.ts"),
+    inlineStyles: { value: true, reason: "TipTap and the data pages' map set inline styles, so styles keep 'unsafe-inline' and the nonce stays off style-src (app/lib/security-headers.ts)." },
+  },
 };
 
 export const julieedwardsInfo = { id: "julieedwards-info", origin: "https://julieedwards.info", optIns: { cloudflareWebAnalytics: /* @__PURE__ */ beacon("workers/security-headers.ts") } };
@@ -131,15 +160,32 @@ export const txasm = {
   aliases: ["https://txasm.org"],
   headers: { "Referrer-Policy": signInReferrer },
   optIns: { cloudflareWebAnalytics: /* @__PURE__ */ beacon("app/lib/security-headers.ts"), passkey },
+  deviations: {
+    A6: { reason: "txasm.dustin-edwards.workers.dev is the live site until the txasm.org cutover; noindex there would take the meeting site out of search." },
+  },
 };
 
-export const carrel = { id: "carrel", origin: "https://carrel.dustinedwards.info", optIns: { cloudflareWebAnalytics: /* @__PURE__ */ beacon("www/headers.mjs") } };
+const nothingUnlisted = { value: true, reason: "A static site that loads nothing beyond what its policy names: default-src 'none'." };
+
+export const carrel = {
+  id: "carrel",
+  origin: "https://carrel.dustinedwards.info",
+  optIns: { cloudflareWebAnalytics: /* @__PURE__ */ beacon("www/headers.mjs"), denyUnlisted: nothingUnlisted },
+};
 
 // workers/security-headers.ts: the standard exactly, behind Access; the beacon is never injected.
-export const carrelDesk = { id: "carrel-desk", origin: "https://desk.dustinedwards.info" };
+export const carrelDesk = {
+  id: "carrel-desk",
+  origin: "https://desk.dustinedwards.info",
+  optIns: { strictDynamic: { value: true, reason: "The nonced entry scripts load the route chunks (workers/security-headers.ts appPolicy)." } },
+};
 
 // src/security-headers.ts, src/dashboard-csp.ts
-export const capsidPortal = { id: "capsid-portal", origin: "https://portal.dustinedwards.info" };
+export const capsidPortal = {
+  id: "capsid-portal",
+  origin: "https://portal.dustinedwards.info",
+  optIns: { denyUnlisted: { value: true, reason: "The dashboard loads only its own scripts, styles and data: images (src/dashboard-csp.ts)." } },
+};
 
 // src/security-headers.ts: its only page is the /authorize consent dialog MCP clients open.
 export const capsidMcp = { id: "capsid-mcp", origin: "https://mcp.dustinedwards.info", headers: popupSignIn };
@@ -154,6 +200,12 @@ export const enarratio = { id: "enarratio", origin: "https://enarratio.dustinedw
 
 // mcp/src/door.ts: Foxhound's admin AI door.
 export const foxhoundMcp = { id: "foxhound-mcp", origin: "https://admin-mcp.foxhoundapp.com", headers: popupSignIn };
+
+// dustinedwards-info mcp/src/security-headers.ts: the site's admin MCP.
+export const dustinedwardsMcp = { id: "dustinedwards-mcp", origin: "https://admin-mcp.dustinedwards.info", headers: popupSignIn };
+
+// foxing mcp/src/index.ts: Foxing's admin MCP, the standard exactly.
+export const foxingMcp = { id: "foxing-mcp", origin: "https://admin-mcp.foxing.app" };
 
 // scripts/security-headers.ts
 export const capsomer = {
@@ -172,11 +224,16 @@ export const capsomer = {
   },
 };
 
-export const prelum = { id: "prelum", origin: "https://prelum.dustinedwards.info", optIns: { cloudflareWebAnalytics: /* @__PURE__ */ beacon("specimen/headers.mjs") } };
+export const prelum = {
+  id: "prelum",
+  origin: "https://prelum.dustinedwards.info",
+  optIns: { cloudflareWebAnalytics: /* @__PURE__ */ beacon("specimen/headers.mjs"), denyUnlisted: nothingUnlisted },
+};
 
 /** @type {readonly SiteEntry[]} */
 export const SITES = /* @__PURE__ */ Object.freeze([
-  dustinedwardsInfo, foxhound, foxing, germomics, julieedwardsInfo, bsw, txasm, carrel, carrelDesk, capsidPortal, capsidMcp, carrelMcp, capsid, enarratio, foxhoundMcp, capsomer, prelum,
+  dustinedwardsInfo, foxhound, foxing, germomics, julieedwardsInfo, bsw, txasm, carrel, carrelDesk, capsidPortal, capsidMcp, carrelMcp, capsid, enarratio,
+  foxhoundMcp, dustinedwardsMcp, foxingMcp, capsomer, prelum,
 ]);
 
 /**

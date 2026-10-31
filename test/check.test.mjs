@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { checkSecurityHeaders, failures, parsePolicy } from "../check.mjs";
+import { checkSecurityHeaders, checkSecurityTxt, failures, parsePolicy } from "../check.mjs";
 import { CLOUDFLARE_WEB_ANALYTICS } from "../csp.mjs";
 import { STANDARD_SECURITY_HEADERS, applyHeaderSet } from "../headers.mjs";
 
-const GOOD_POLICY = "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; report-uri /csp";
+const GOOD_POLICY = "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; report-uri /csp; report-to csp";
 const BEACON = CLOUDFLARE_WEB_ANALYTICS.script.join(" ");
 
 /** The standard set plus a passing policy, with `changes` applied (null deletes). @param {Record<string, string | null>} [changes] */
 function response(changes = {}) {
-  const headers = new Headers({ "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": GOOD_POLICY });
+  const headers = new Headers({ "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": GOOD_POLICY, "Reporting-Endpoints": 'csp="https://example.com/csp"' });
   applyHeaderSet(headers);
   for (const [name, value] of Object.entries(changes)) {
     if (value === null) headers.delete(name);
@@ -80,11 +80,9 @@ test("HSTS against a floor with no max-age wants one year", () => {
   assert.equal(short?.name, "Strict-Transport-Security lasts at least 31536000 seconds");
 });
 
-test("Referrer-Policy passes only a strict policy", () => {
-  for (const value of ["no-referrer", "same-origin", "strict-origin", "strict-origin-when-cross-origin", " No-Referrer "]) {
-    assert.deepEqual(failed(response({ "Referrer-Policy": value })), [], value);
-  }
-  for (const value of ["unsafe-url", "origin", "no-referrer-when-downgrade", "origin-when-cross-origin"]) {
+test("Referrer-Policy must equal the declared one: a stricter or looser policy is a drift", () => {
+  assert.deepEqual(failed(response({ "Referrer-Policy": " No-Referrer " })), []);
+  for (const value of ["same-origin", "strict-origin-when-cross-origin", "unsafe-url", "origin"]) {
     assert.match(failure(response({ "Referrer-Policy": value }), /Referrer-Policy/).detail, new RegExp(value), value);
   }
 });
@@ -138,34 +136,22 @@ test("a policy that governs no scripts fails", () => {
   assert.match(result.detail, /any script runs/);
 });
 
-test("scripts: 'unsafe-inline', 'unsafe-eval', a wildcard or a bare scheme fail", () => {
+test("scripts: 'unsafe-inline' or 'unsafe-eval' fail in any case, since browsers match keywords case-insensitively", () => {
   const withScripts = (/** @type {string} */ sources) => response({ "Content-Security-Policy": GOOD_POLICY.replace("script-src 'self'", `script-src ${sources}`) });
-  assert.deepEqual(failed(withScripts("'self' 'unsafe-inline'")), ["scripts: no 'unsafe-inline'"]);
-  assert.deepEqual(failed(withScripts("'self' 'unsafe-eval'")), ["scripts: no 'unsafe-eval'"]);
-  assert.equal(failure(withScripts("'self' 'unsafe-inline'"), /unsafe-inline/).detail, "script sources: 'self' 'unsafe-inline'");
-  assert.equal(failure(withScripts("'self' 'unsafe-eval'"), /unsafe-eval/).detail, "script sources: 'self' 'unsafe-eval'");
-  assert.equal(failure(withScripts("'self' * https:"), /wildcard/).detail, "allows * https:");
-  for (const broad of ["*", "https:", "HTTP:", "data:", "blob:"]) {
-    const result = failure(withScripts(`'self' ${broad}`), /wildcard or bare scheme/);
-    assert.equal(result.detail, `allows ${broad}`);
-  }
-  assert.deepEqual(failed(withScripts("'self' https://js.example.com")), []);
-  assert.equal(failure(withScripts("'self' https://*.example.com"), /wildcard/).detail, "allows https://*.example.com");
+  assert.equal(failure(withScripts("'self' 'UNSAFE-INLINE'"), /unsafe-inline/).detail, "script sources: 'self' 'UNSAFE-INLINE'");
+  assert.deepEqual(failed(withScripts("'self' 'Unsafe-Eval'")), ["scripts: no 'unsafe-eval'"]);
   assert.match(failure(withScripts("'self' https://cdnjs.cloudflare.com"), /JSONP/).detail, /^allows https:\/\/cdnjs\.cloudflare\.com \(\/\/cdnjs/);
 });
 
-test("scripts: an unsafe keyword fails in any case, since browsers match keywords case-insensitively", () => {
-  const withScripts = (/** @type {string} */ sources) => response({ "Content-Security-Policy": GOOD_POLICY.replace("script-src 'self'", `script-src ${sources}`) });
-  assert.deepEqual(failed(withScripts("'self' 'UNSAFE-INLINE'")), ["scripts: no 'unsafe-inline'"]);
-  assert.deepEqual(failed(withScripts("'self' 'Unsafe-Eval'")), ["scripts: no 'unsafe-eval'"]);
-});
-
-test("scripts: a host-source whose host is * fails as a wildcard, with or without scheme, port or path", () => {
-  const withScripts = (/** @type {string} */ sources) => response({ "Content-Security-Policy": GOOD_POLICY.replace("script-src 'self'", `script-src ${sources}`) });
-  for (const broad of ["https://*", "https://*:443", "*:*", "https://*/js/"]) {
-    assert.equal(failure(withScripts(`'self' ${broad}`), /wildcard or bare scheme/).detail, `allows ${broad}`);
-  }
-  assert.deepEqual(failed(withScripts("'self' https://js.example.com/*")), []);
+test("C5: a wildcard host or a network scheme fails in every fetch directive; data: and blob: only where script runs", () => {
+  const withSources = (/** @type {string} */ directive, /** @type {string} */ sources) => response({ "Content-Security-Policy": `${GOOD_POLICY}; ${directive} ${sources}` });
+  const c5 = (/** @type {Headers} */ headers) => failures(checkSecurityHeaders(headers)).filter((r) => r.id === "C5").map((r) => `${r.name} ${r.detail}`);
+  assert.deepEqual(c5(response({ "Content-Security-Policy": GOOD_POLICY.replace("script-src 'self'", "script-src 'self' * https:") })), [
+    "script-src: no wildcard or bare scheme source allows * (any host), https: (any host over https:)",
+  ]);
+  assert.deepEqual(c5(withSources("img-src", "'self' https://*.example.com")), ["img-src: no wildcard or bare scheme source allows https://*.example.com (every subdomain of the host)"]);
+  assert.deepEqual(c5(withSources("worker-src", "'self' data:")), ["worker-src: no wildcard or bare scheme source allows data: (script any page can write as data:)"]);
+  assert.deepEqual(c5(withSources("img-src", "'self' data: blob: https://img.example.com/*")), []);
 });
 
 test("a weak policy fails each rule it breaks, in order", () => {
@@ -177,24 +163,24 @@ test("a weak policy fails each rule it breaks, in order", () => {
     "X-Frame-Options refuses framing",
     "scripts: no 'unsafe-inline'",
     "scripts: no 'unsafe-eval'",
-    "scripts: no wildcard or bare scheme source",
+    "script-src: no wildcard or bare scheme source",
     "object-src is 'none'",
     "base-uri is 'none' or 'self'",
     "frame-ancestors is 'none' or 'self'",
-    "violations are reported somewhere (report-uri or report-to)",
+    "violations are reported to both sinks (report-uri and report-to)",
   ]);
 });
 
 test("the policy is read only from the enforced header: a sound Report-Only beside a weak enforced one does not help", () => {
   const headers = response({ "Content-Security-Policy": "default-src *; report-uri /r", "Content-Security-Policy-Report-Only": GOOD_POLICY });
-  assert.ok(failed(headers).includes("scripts: no wildcard or bare scheme source"));
+  assert.ok(failed(headers).includes("default-src: no wildcard or bare scheme source"));
   assert.ok(failed(headers).includes("base-uri is 'none' or 'self'"));
 });
 
 test("without script-src, the scripts and objects checks read default-src", () => {
-  assert.deepEqual(failed(response({ "Content-Security-Policy": "default-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; report-to csp" })), []);
-  const loose = response({ "Content-Security-Policy": "default-src 'self' 'unsafe-inline'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; report-to csp" });
-  assert.deepEqual(failed(loose), ["scripts: no 'unsafe-inline'", "object-src is 'none'"]);
+  assert.deepEqual(failed(response({ "Content-Security-Policy": "default-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; report-uri /r; report-to csp" })), []);
+  const loose = response({ "Content-Security-Policy": "default-src 'self' 'unsafe-inline'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; report-uri /r; report-to csp" });
+  assert.deepEqual(failed(loose), ["scripts: no 'unsafe-inline'", "style-src: no 'unsafe-inline'", "object-src is 'none'"]);
 });
 
 test("object-src must be exactly 'none'", () => {
@@ -253,10 +239,12 @@ test("script-src-elem, script-src-attr and worker-src are held to the script rul
   assert.deepEqual(failed(response({ "Content-Security-Policy": `${GOOD_POLICY}; worker-src 'self' blob:` })), []);
 });
 
-test("a policy with no report sink fails; report-uri or report-to passes", () => {
-  const result = failure(response({ "Content-Security-Policy": GOOD_POLICY.replace("; report-uri /csp", "") }), /reported somewhere/);
-  assert.match(result.detail, /never heard about/);
-  assert.deepEqual(failed(response({ "Content-Security-Policy": GOOD_POLICY.replace("report-uri /csp", "report-to csp") })), []);
+test("a policy needs both report sinks, and Reporting-Endpoints must name the report-to group", () => {
+  assert.match(failure(response({ "Content-Security-Policy": GOOD_POLICY.replace("; report-uri /csp", "") }), /both sinks/).detail, /no report-uri/);
+  assert.match(failure(response({ "Content-Security-Policy": GOOD_POLICY.replace("; report-to csp", "") }), /both sinks/).detail, /no report-to/);
+  assert.match(failure(response({ "Reporting-Endpoints": null }), /Reporting-Endpoints/).detail, /ABSENT/);
+  assert.equal(failure(response({ "Reporting-Endpoints": 'other="https://example.com/csp"' }), /Reporting-Endpoints/).id, "M1");
+  assert.equal(failure(response({ "Reporting-Endpoints": 'csp="http://example.com/csp"' }), /Reporting-Endpoints/).id, "M1");
 });
 
 test("with Cloudflare Web Analytics on, the policy must let the beacon run from its path prefix and report", () => {
@@ -280,7 +268,7 @@ test("with Cloudflare Web Analytics on, the policy must let the beacon run from 
 });
 
 test("the beacon check reads default-src for scripts when script-src is absent", () => {
-  const policy = `default-src 'self' ${BEACON}; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; report-uri /r`;
+  const policy = `default-src 'self' ${BEACON}; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; report-uri /r; report-to csp`;
   assert.deepEqual(failed(response({ "Content-Security-Policy": policy }), { cloudflareWebAnalytics: true }), []);
   const noScripts = "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; connect-src 'self'; report-uri /r";
   const result = failure(response({ "Content-Security-Policy": noScripts }), /beacon run/, { cloudflareWebAnalytics: true });
@@ -293,4 +281,52 @@ test("a script host known to serve JSONP, AngularJS or Flash fails C5, by csp-ev
   for (const host of ["https://cdnjs.cloudflare.com", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com/ajax/libs/"]) assert.ok(grade(host), host);
   assert.ok(!grade("https://cdnjs.cloudflare.com/ajax/libs/mathjax/"));
   assert.ok(!grade("https://www.googletagmanager.com"), "a bypass that needs 'unsafe-eval' cannot fire here");
+});
+
+test("what a site declares is graded: strictDynamic, denyUnlisted, trustedTypes, inlineStyles and integrityPolicy", () => {
+  const strict = GOOD_POLICY.replace("default-src 'self'", "default-src 'none'").replace("script-src 'self'", "script-src 'nonce-abc' 'strict-dynamic'");
+  const all = { strictDynamic: true, denyUnlisted: true, trustedTypes: /** @type {const} */ (true), integrityPolicy: /** @type {const} */ ("enforce") };
+  const sound = response({ "Content-Security-Policy": `${strict}; require-trusted-types-for 'script'`, "Integrity-Policy": "blocked-destinations=(script)" });
+  assert.deepEqual(failed(sound, all), []);
+  assert.deepEqual(failures(checkSecurityHeaders(response(), all)).map((r) => r.id), ["S2", "C3", "C9", "C7"]);
+  assert.deepEqual(failed(response(), {}), [], "nothing undeclared is graded");
+  const styled = response({ "Content-Security-Policy": `${GOOD_POLICY}; style-src 'self' 'unsafe-inline'` });
+  assert.equal(failure(styled, /style-src/).id, "C11");
+  assert.deepEqual(failed(styled, { inlineStyles: true }), []);
+});
+
+test("cookies: a prefix is required unless the entry declines it by name, and a cookie response is never shared-cached", () => {
+  const site = { id: "sample", origin: "https://example.com", deviations: { K1: { reason: "a third-party library names it", value: ["lib_id"] } } };
+  const cookie = (/** @type {string} */ value, cache = "private, no-store") => {
+    const headers = response({ "Cache-Control": cache });
+    headers.append("Set-Cookie", value);
+    return headers;
+  };
+  assert.deepEqual(failed(cookie("__Host-sid=1; Path=/; Secure; HttpOnly; SameSite=Lax")), []);
+  assert.equal(failure(cookie("sid=1; Path=/; Secure; HttpOnly; SameSite=Lax"), /prefix/).warn, undefined, "an undeclared bare name is an error");
+  const declinedOne = checkSecurityHeaders(cookie("lib_id=1; Path=/; Secure; SameSite=Lax"), { site: /** @type {any} */ (site) }).find((r) => /prefix/.test(r.name));
+  assert.equal(declinedOne?.warn, true);
+  assert.match(declinedOne?.detail ?? "", /^declared deviation: a third-party library names it/);
+  assert.equal(failure(cookie("__Host-sid=1; Path=/; Secure; HttpOnly; SameSite=Lax", "public, max-age=60"), /shared cache/).id, "X1");
+});
+
+test("an uploaded file is nosniff and inert: a sandboxed policy or an attachment", () => {
+  const file = (/** @type {Record<string, string>} */ headers) => new Headers({ "Content-Type": "image/svg+xml", ...headers });
+  const a3 = (/** @type {Headers} */ headers) => failures(checkSecurityHeaders(headers, { standard: {}, csp: false, upload: true })).filter((r) => r.id === "A3").map((r) => r.name);
+  assert.deepEqual(a3(file({ "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox; default-src 'none'" })), []);
+  assert.deepEqual(a3(file({ "X-Content-Type-Options": "nosniff", "Content-Disposition": "attachment" })), []);
+  assert.deepEqual(a3(file({ "Content-Security-Policy": "sandbox allow-scripts" })), ["an uploaded file is served nosniff", "an uploaded file runs no script: a sandboxed policy or an attachment"]);
+});
+
+test("checkSecurityTxt: served as text/plain with a charset, one Expires within the year, its own Canonical; unsigned is the family's notice", () => {
+  const url = "https://example.com/.well-known/security.txt";
+  const now = Date.parse("2026-10-31T00:00:00Z");
+  const grade = (/** @type {string} */ type, /** @type {string} */ body, status = 200) =>
+    checkSecurityTxt({ url, origin: "https://example.com", status, headers: new Headers({ "Content-Type": type }), body, now }).filter((r) => !r.pass);
+  const good = `Contact: mailto:security@example.com\nExpires: 2027-06-01T00:00:00Z\nCanonical: ${url}\n`;
+  assert.deepEqual(grade("text/plain; charset=utf-8", good).map((r) => [r.id, r.notice]), [["D3", true]]);
+  assert.deepEqual(grade("text/plain", good).map((r) => r.id), ["D1", "D3"]);
+  assert.deepEqual(grade("text/plain; charset=utf-8", good.replace("2027-06-01", "2026-11-15")).map((r) => [r.id, r.warn ?? r.notice]), [["D3", true], ["D4", true]]);
+  assert.deepEqual(grade("text/plain; charset=utf-8", good.replace(`Canonical: ${url}`, "Canonical: https://other.example.com/.well-known/security.txt")).map((r) => r.id), ["D3", "D3"]);
+  assert.deepEqual(grade("text/html", "", 404).map((r) => `${r.id} ${r.detail}`), ["D1 answers 404"]);
 });

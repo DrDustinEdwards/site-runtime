@@ -1,24 +1,32 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { checkSecurityHeaders, failures } from "../check.mjs";
-import { buildContentSecurityPolicy } from "../csp.mjs";
+import { buildContentSecurityPolicy, generateNonce } from "../csp.mjs";
 import { buildSecurityHeaders } from "../headers.mjs";
 import { SITES, bsw, capsomer as capsomerEntry, dustinedwardsInfo, siteForOrigin } from "../sites.mjs";
 
 const page = (/** @type {Record<string, string>} */ set, /** @type {import("../csp.mjs").SitePolicy} */ policy) =>
-  new Headers({ ...set, "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": buildContentSecurityPolicy({ reportUri: "/csp-report", ...policy }).value });
+  new Headers({
+    ...set,
+    "Content-Type": "text/html; charset=utf-8",
+    "Content-Security-Policy": buildContentSecurityPolicy({ reportUri: "/csp-report", reportTo: "csp-endpoint", ...policy }).value,
+    "Reporting-Endpoints": 'csp-endpoint="https://example.com/csp-report"',
+  });
+/** The opt-ins the policy builder takes; the rest (passkey, inlineStyles, uploads, coep) are not the policy's. */
+const POLICY_KEYS = new Set(["inlineScripts", "strictDynamic", "cloudflareWebAnalytics", "framedBySameOrigin", "baseUriSelf", "denyUnlisted", "formTargets", "trustedTypes"]);
 
 test("every entry builds, and a page built from its entry passes the check graded by the same entry", () => {
   for (const entry of SITES) {
     const { id, optIns = {} } = entry;
-    const policy = Object.fromEntries(Object.entries(optIns).filter(([k]) => k !== "passkey").map(([k, v]) => [k, v.value]));
+    const policy = Object.fromEntries(Object.entries(optIns).filter(([k]) => POLICY_KEYS.has(k)).map(([k, v]) => [k, v.value]));
+    if (policy.strictDynamic) policy.nonce = generateNonce();
     assert.deepEqual(failures(checkSecurityHeaders(page(buildSecurityHeaders({ site: entry }), policy), { site: id })), [], id);
   }
 });
 
 test("an undeclared deviation fails: an opt-in another site declared, or a gap left out of the entry", () => {
   const capsomer = page(buildSecurityHeaders({ site: capsomerEntry }), { framedBySameOrigin: true, cloudflareWebAnalytics: true });
-  assert.deepEqual(failures(checkSecurityHeaders(capsomer, { site: "prelum" })).map((r) => r.id).sort(), ["H3", "H5"]);
+  assert.deepEqual(failures(checkSecurityHeaders(capsomer, { site: "prelum" })).map((r) => r.id).sort(), ["C9", "H3", "H5"]);
   const oneYear = page({ ...buildSecurityHeaders({ site: dustinedwardsInfo }), "Strict-Transport-Security": "max-age=31536000; includeSubDomains" }, { cloudflareWebAnalytics: true });
   assert.deepEqual(failures(checkSecurityHeaders(oneYear, { site: "dustinedwards-info" })).map((r) => r.id), ["T2"]);
   assert.throws(() => checkSecurityHeaders(new Headers(), { site: "nowhere" }), /not in the site registry/);

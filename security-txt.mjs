@@ -31,13 +31,19 @@ export function securityTxt({ origin, contact, expires, policy, languages = "en"
 }
 
 /**
- * The file as a response: text/plain, cached for an hour. `headers` adds to or replaces those.
+ * The file as a response: `text/plain; charset=utf-8`, as RFC 9116 section 3 requires, cached for an hour. `headers`
+ * adds to those or replaces the caching; a Content-Type in it is refused, since the check (checkSecurityTxt, ./check)
+ * fails any other.
  * @param {SecurityTxt} fields
  * @param {HeadersInit} [headers]
  * @returns {Response}
  */
 export function securityTxtResponse(fields, headers) {
-  const merged = new Headers({ "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "public, max-age=3600" });
-  for (const [name, value] of new Headers(headers)) merged.set(name, value);
+  const merged = new Headers({ "Cache-Control": "public, max-age=3600" });
+  for (const [name, value] of new Headers(headers)) {
+    if (name === "content-type") throw new Error("security.txt is always text/plain; charset=utf-8 (RFC 9116 section 3): pass no Content-Type");
+    merged.set(name, value);
+  }
+  merged.set("Content-Type", "text/plain; charset=utf-8");
   return new Response(securityTxt(fields), { headers: merged });
 }
