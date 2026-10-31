@@ -51,3 +51,18 @@ export function accessSignInUrl(request: Request, options?: { path?: string }): 
 
 /** `next` when it is under `prefix` (default "/admin") and not the Access `path` (default "/admin/access"), else `prefix`. */
 export function safeAdminNext(next: string | null | undefined, options?: { prefix?: string; path?: string }): string;
+
+/** An admin's Access session ends after this long without a request: 3600 seconds. */
+export const ADMIN_IDLE_SECONDS: number;
+/** The cookie holding the admin's last request time, signed with their Access token. */
+export const ADMIN_SEEN_COOKIE: "__Host-admin-seen";
+/** Access's logout path, which revokes the session everywhere and clears the cookie. */
+export const ACCESS_LOGOUT_PATH: "/cdn-cgi/access/logout";
+/**
+ * The idle check for a request on an admin path: a redirect to Access's logout after `idleSeconds` (default an hour)
+ * without a request, else the Set-Cookie that records this one (none when the request carries no Access token).
+ */
+export function adminIdle(
+  request: Request,
+  options?: { idleSeconds?: number; now?: number },
+): Promise<{ idle: true; response: Response } | { idle: false; cookie?: string }>;

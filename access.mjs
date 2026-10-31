@@ -14,9 +14,16 @@
  * email, folded to lower case, is on the site's list, with the local development bypass (ACCESS_DEV_BYPASS="1", and
  * only on a localhost URL, so a stray copy in production does nothing). It never throws: a refused token, an email off
  * the list and keys that cannot be fetched are all null, the last one logged. What a refusal shows stays the site's.
+ *
+ * `adminIdle` ends an admin's Access session after ADMIN_IDLE_SECONDS (an hour) without a request: NIST SP 800-63B-4's
+ * inactivity timeout at AAL2 ("SHOULD be no more than 1 hour"). Access has session lengths but no idle timeout
+ * (developers.cloudflare.com/cloudflare-one/identity/users/session-management, read 2026-10-31); its own 24 hours is
+ * the overall limit.
  */
 
 import { verifyJwt } from "./access-login.mjs";
+import { safeEqual } from "./compare.mjs";
+import { base64url, fromBase64url } from "./encoding.mjs";
 import { logEvent } from "./log.mjs";
 
 export const ACCESS_JWT_HEADER = "cf-access-jwt-assertion";
@@ -188,4 +195,74 @@ export function safeAdminNext(next, { prefix = "/admin", path = "/admin/access" 
   if (!next || next.includes("\\") || next.startsWith(path)) return prefix;
   if (next === prefix || next.startsWith(`${prefix}/`) || next.startsWith(`${prefix}?`)) return next;
   return prefix;
+}
+
+/** An admin's Access session ends after this long without a request: an hour, in seconds. */
+export const ADMIN_IDLE_SECONDS = 60 * 60;
+
+/** The cookie holding the admin's last request time, signed with their Access token. */
+export const ADMIN_SEEN_COOKIE = "__Host-admin-seen";
+
+/** Access's logout: it revokes the session in every application and clears the cookie, so the next visit signs in. */
+export const ACCESS_LOGOUT_PATH = "/cdn-cgi/access/logout";
+
+/**
+ * HMAC-SHA-256 of the time, keyed by the Access token: the seen cookie belongs to that one Access session, so a stale
+ * cookie or one copied from another session is ignored.
+ * @param {string} token
+ * @param {string} time
+ */
+async function seenMac(token, time) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", enc.encode(token), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return base64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(time))));
+}
+
+/**
+ * When the Access token was issued, in epoch seconds, read without verifying it: `accessAdmin` verifies; this only
+ * times a token that has no seen cookie yet.
+ * @param {string} token
+ * @returns {number | null}
+ */
+function issuedAt(token) {
+  try {
+    const claims = JSON.parse(new TextDecoder().decode(fromBase64url(token.split(".")[1] ?? "")));
+    return typeof claims.iat === "number" ? claims.iat : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The idle check for a request on an admin path, run in the Worker's fetch before the app. With no Access token there
+ * is nothing to time and it answers `{ idle: false }` (Access or `accessAdmin` refuses the request). The last request
+ * is the seen cookie's time when its signature matches this token, else the token's `iat`. Past `idleSeconds`:
+ * `{ idle: true, response }`, a redirect to Access's logout; otherwise `{ idle: false, cookie }`, the Set-Cookie that
+ * records this request, for the site to append to its response.
+ * @param {Request} request
+ * @param {{ idleSeconds?: number, now?: number }} [options] `now` in epoch milliseconds
+ * @returns {Promise<{ idle: true, response: Response } | { idle: false, cookie?: string }>}
+ */
+export async function adminIdle(request, { idleSeconds = ADMIN_IDLE_SECONDS, now = Date.now() } = {}) {
+  const token = accessToken(request, { cookie: true });
+  if (!token) return { idle: false };
+  const seconds = Math.floor(now / 1000);
+  const [time, mac] = (cookieValue(request, ADMIN_SEEN_COOKIE) ?? "").split(".");
+  const seen = time && mac && (await safeEqual(mac, await seenMac(token, time))) ? Number(time) : issuedAt(token);
+  if (seen === null || seconds - seen > idleSeconds) {
+    logEvent("admin_idle_logout", { idleSeconds });
+    return {
+      idle: true,
+      response: new Response(null, {
+        status: 302,
+        headers: {
+          Location: ACCESS_LOGOUT_PATH,
+          "Cache-Control": "no-store",
+          "Set-Cookie": `${ADMIN_SEEN_COOKIE}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax`,
+        },
+      }),
+    };
+  }
+  const value = `${seconds}.${await seenMac(token, String(seconds))}`;
+  return { idle: false, cookie: `${ADMIN_SEEN_COOKIE}=${value}; Path=/; Max-Age=${idleSeconds}; Secure; HttpOnly; SameSite=Lax` };
 }
