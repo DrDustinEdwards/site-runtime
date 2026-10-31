@@ -1648,6 +1648,27 @@ while, and only while, the entry's `oldSite` still serves the live old site (bsw
 workers.dev copy of a site whose origin is elsewhere is always noindexed. An origin not in the registry is graded
 against the bare standard, with a warning.
 
+## The signed-in crawl
+
+The live check sees only the sign-in redirect of an app behind a sign-in. `./signed-in-crawl` lets the app grade the pages
+behind it itself, where its credential already lives, and publish the result as a report devkit's scoreboard reads (the
+reported check `signed-in-security`, devkit `live/areas.json`); GitHub never holds the credential. Capsid's Portal and
+Carrel's Desk run it on a schedule.
+
+```js
+import { crawlApp, guardedCrawl, signedInReport, signedInReportResponse, SIGNED_IN_MISSING_PATH, SIGNED_IN_REPORT_PATH } from "@dustinedwards/site-runtime/signed-in-crawl";
+
+const result = await guardedCrawl(() => crawlApp({ origin, fetch: ownHandler, headers: { Cookie: session }, pages: ["/", SIGNED_IN_MISSING_PATH], json: ["/api/x"], actions: ["/api/act"] }));
+const report = signedInReport({ [origin]: result }, { at: new Date(), ref: "app abc123" }); // store it; serve it with signedInReportResponse(body)
+```
+
+`crawlApp` sends GETs with navigation Fetch Metadata to each page and grades the response with `checkSecurityHeaders`
+against the app's registry entry (the policy on HTML), then grades the first same-origin script a page names and each
+`json` read. Each `actions` path gets a `text/plain` and a form POST, which must be 415 (R4, `requireJson`). Each
+cross-origin subresource a page names is a warning (I3: what COEP or `default-src 'none'` must allow). A redirect, 401 or
+403 on the first page makes the result `error`, never a pass, as does a throw inside `guardedCrawl`. Findings name a URL,
+a status and an item, never a body, a cookie or a token.
+
 ## Static assets: the `_headers` file
 
 Cloudflare's asset server answers a static file without running the Worker, so the Worker's header set never reaches
