@@ -75,6 +75,24 @@ export const FAMILY_DEVIATIONS = /* @__PURE__ */ Object.freeze({
   R4: "JSON routes refusing text/plain and form bodies (requireJson, ./body): the live check has no session, and every JSON route a stranger can reach answers 401 before it reads a body, so only the site's own code can show it.",
 });
 
+// What no site that ships bundles or the beacon can meet yet, and why COEP waits where it does (area 2, 2026-10-31).
+const noIntegrity = {
+  reason: "Integrity-Policy refuses every script without an integrity attribute: Vite and React Router emit none for entry chunks, modulepreloads or dynamic imports, and the edge injects the Web Analytics beacon without one. Report-Only would teach nothing: receiveCspReport keeps csp-violation reports only.",
+};
+const noIntegrityBundles = {
+  reason: "Integrity-Policy refuses every script without an integrity attribute, and Vite emits none for entry chunks, modulepreloads or dynamic imports. Report-Only would teach nothing: receiveCspReport keeps csp-violation reports only.",
+};
+const signedInUnlisted = (/** @type {string} */ pages) => ({
+  reason: `default-src 'none' refuses whatever a page loads that the policy does not name, and ${pages} sit behind a sign-in no session-less crawl reaches, so the change waits for a crawl with a session.`,
+});
+const signedInCoep = (/** @type {string} */ pages) => ({
+  reason: `COEP changes how every cross-origin load and frame is fetched, and it cannot be staged: buildSecurityHeaders writes no report-to and the family sink keeps CSP reports only. ${pages} sit behind a sign-in no session-less crawl reaches, so the change waits for a crawl with a session.`,
+});
+const coepCredentialless = {
+  value: /** @type {const} */ ("credentialless"),
+  reason: "The pages embed no frame and load nothing from another origin that needs a cookie (the beacon included).",
+};
+
 /* Each entry is its own export, so a Worker that imports one (`import { germomics } from "./sites"`) bundles that
  * entry alone; the calls are marked pure so a bundler can drop the rest. */
 
@@ -94,6 +112,11 @@ export const dustinedwardsInfo = {
     },
   },
   optIns: { cloudflareWebAnalytics: /* @__PURE__ */ beacon("workers/csp.mjs") },
+  deviations: {
+    C9: /* @__PURE__ */ signedInUnlisted("the admin, lab and procedure pages"),
+    S2: noIntegrity,
+    I3: { reason: "Cross-origin isolation needs COOP same-origin, and this site's ratified COOP is same-origin-allow-popups, so COEP would isolate nothing." },
+  },
 };
 
 // app/lib/http/header-set.ts, app/lib/http/content-security-policy.ts
@@ -115,6 +138,11 @@ export const foxhound = {
     formTargets: { value: ["https://checkout.stripe.com", "https://connect.stripe.com"], reason: "Stripe Checkout, and Connect OAuth, which /connect's POST redirects to." },
     passkey,
   },
+  deviations: {
+    C9: /* @__PURE__ */ signedInUnlisted("the merchant app and admin"),
+    S2: noIntegrity,
+    I3: /* @__PURE__ */ signedInCoep("The merchant app, Stripe's returns and the admin"),
+  },
 };
 
 // apps/web/workers/security-headers.ts
@@ -126,6 +154,11 @@ export const foxing = {
     cloudflareWebAnalytics: /* @__PURE__ */ beacon("workers/security-headers.ts"),
     baseUriSelf: { value: true, reason: "The reader (/read/:slug): Readium writes a same-origin <base> so a book's images and CSS resolve." },
     passkey,
+  },
+  deviations: {
+    C9: /* @__PURE__ */ signedInUnlisted("the reader, journal and settings"),
+    S2: noIntegrity,
+    I3: /* @__PURE__ */ signedInCoep("The reader's book frames, the journal and settings"),
   },
 };
 
@@ -147,11 +180,36 @@ export const germomics = {
     cloudflareWebAnalytics: /* @__PURE__ */ beacon("app/lib/security-headers.ts"),
     inlineStyles: { value: true, reason: "TipTap and the data pages' map set inline styles, so styles keep 'unsafe-inline' and the nonce stays off style-src (app/lib/security-headers.ts)." },
   },
+  deviations: {
+    C9: /* @__PURE__ */ signedInUnlisted("the admin and its editor"),
+    S2: noIntegrity,
+    I3: { reason: "The data pages load Google Maps' script, tiles and fonts and the games load Phaser's assets, none of which this site controls; COEP cannot be staged (buildSecurityHeaders writes no report-to and the family sink keeps CSP reports only), so it waits for the Capsomer move's own design job." },
+  },
 };
 
-export const julieedwardsInfo = { id: "julieedwards-info", origin: "https://julieedwards.info", optIns: { cloudflareWebAnalytics: /* @__PURE__ */ beacon("workers/security-headers.ts") } };
+// workers/security-headers.ts, workers/header-set.ts
+export const julieedwardsInfo = {
+  id: "julieedwards-info",
+  origin: "https://julieedwards.info",
+  optIns: {
+    cloudflareWebAnalytics: /* @__PURE__ */ beacon("workers/security-headers.ts"),
+    denyUnlisted: { value: true, reason: "One page that loads its own files, its photos' two hosts and the beacon; the manifest is named." },
+    coep: coepCredentialless,
+  },
+  deviations: { S2: noIntegrity },
+};
 
-export const bsw = { id: "bsw", origin: "https://bsw.dustin-edwards.workers.dev", optIns: { cloudflareWebAnalytics: /* @__PURE__ */ beacon("workers/security-headers.ts") } };
+// workers/security-headers.ts
+export const bsw = {
+  id: "bsw",
+  origin: "https://bsw.dustin-edwards.workers.dev",
+  optIns: {
+    cloudflareWebAnalytics: /* @__PURE__ */ beacon("workers/security-headers.ts"),
+    denyUnlisted: { value: true, reason: "Marketing pages that load their own files, data: images and the beacon; the manifest is named." },
+    coep: coepCredentialless,
+  },
+  deviations: { S2: noIntegrity },
+};
 
 // app/lib/security-headers.ts; SITE_ORIGIN is txasm.org (app/lib/site-meta.ts), served from workers.dev until cutover.
 export const txasm = {
@@ -162,6 +220,9 @@ export const txasm = {
   optIns: { cloudflareWebAnalytics: /* @__PURE__ */ beacon("app/lib/security-headers.ts"), passkey },
   deviations: {
     A6: { reason: "txasm.dustin-edwards.workers.dev is the live site until the txasm.org cutover; noindex there would take the meeting site out of search." },
+    C9: /* @__PURE__ */ signedInUnlisted("submission, review, the abstract book's PDF.js viewer and the admin"),
+    S2: noIntegrity,
+    I3: /* @__PURE__ */ signedInCoep("Submission, review, the PDF.js viewer and the admin"),
   },
 };
 
@@ -170,7 +231,8 @@ const nothingUnlisted = { value: true, reason: "A static site that loads nothing
 export const carrel = {
   id: "carrel",
   origin: "https://carrel.dustinedwards.info",
-  optIns: { cloudflareWebAnalytics: /* @__PURE__ */ beacon("www/headers.mjs"), denyUnlisted: nothingUnlisted },
+  optIns: { cloudflareWebAnalytics: /* @__PURE__ */ beacon("www/headers.mjs"), denyUnlisted: nothingUnlisted, coep: coepCredentialless },
+  deviations: { S2: noIntegrity },
 };
 
 // workers/security-headers.ts: the standard exactly, behind Access; the beacon is never injected.
@@ -178,6 +240,11 @@ export const carrelDesk = {
   id: "carrel-desk",
   origin: "https://desk.dustinedwards.info",
   optIns: { strictDynamic: { value: true, reason: "The nonced entry scripts load the route chunks (workers/security-headers.ts appPolicy)." } },
+  deviations: {
+    C9: /* @__PURE__ */ signedInUnlisted("all of Desk's pages"),
+    S2: noIntegrityBundles,
+    I3: { reason: "The editor frames each draft's preview, the site's own markup served under a sandbox policy; COEP on Desk would refuse every preview that does not carry it too, and it cannot be staged (buildSecurityHeaders writes no report-to)." },
+  },
 };
 
 // src/security-headers.ts, src/dashboard-csp.ts
@@ -185,6 +252,7 @@ export const capsidPortal = {
   id: "capsid-portal",
   origin: "https://portal.dustinedwards.info",
   optIns: { denyUnlisted: { value: true, reason: "The dashboard loads only its own scripts, styles and data: images (src/dashboard-csp.ts)." } },
+  deviations: { S2: noIntegrityBundles, I3: /* @__PURE__ */ signedInCoep("Every Portal page") },
 };
 
 // src/security-headers.ts: its only page is the /authorize consent dialog MCP clients open.
@@ -193,10 +261,19 @@ export const capsidMcp = { id: "capsid-mcp", origin: "https://mcp.dustinedwards.
 // workers/security-headers.ts: Carrel's AI door.
 export const carrelMcp = { id: "carrel-mcp", origin: "https://carrel-mcp.dustinedwards.info", headers: popupSignIn };
 
-// The Capsid explorer and Enarratio's site declare nothing: the standard exactly.
+// The Capsid explorer declares nothing: the standard exactly.
 export const capsid = { id: "capsid", origin: "https://capsid.dustinedwards.info" };
 
-export const enarratio = { id: "enarratio", origin: "https://enarratio.dustinedwards.info" };
+// scripts/security-headers.ts
+export const enarratio = {
+  id: "enarratio",
+  origin: "https://enarratio.dustinedwards.info",
+  optIns: {
+    denyUnlisted: { value: true, reason: "The gallery loads its own files, data: images and the beacon, and reports to cloudflareinsights.com." },
+    coep: coepCredentialless,
+  },
+  deviations: { S2: noIntegrity },
+};
 
 // mcp/src/door.ts: Foxhound's admin AI door.
 export const foxhoundMcp = { id: "foxhound-mcp", origin: "https://admin-mcp.foxhoundapp.com", headers: popupSignIn };
