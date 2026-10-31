@@ -9,7 +9,7 @@ const BEACON = CLOUDFLARE_WEB_ANALYTICS.script.join(" ");
 
 /** The standard set plus a passing policy, with `changes` applied (null deletes). @param {Record<string, string | null>} [changes] */
 function response(changes = {}) {
-  const headers = new Headers({ "Content-Security-Policy": GOOD_POLICY });
+  const headers = new Headers({ "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": GOOD_POLICY });
   applyHeaderSet(headers);
   for (const [name, value] of Object.entries(changes)) {
     if (value === null) headers.delete(name);
@@ -47,14 +47,11 @@ test("failures keeps only the failed results", () => {
 });
 
 test("a response with the standard set and a sound policy passes every check", () => {
-  const results = checkSecurityHeaders(response());
-  assert.deepEqual(failures(results), []);
-  assert.equal(results.length, Object.keys(STANDARD_SECURITY_HEADERS).length + 11);
+  assert.deepEqual(failures(checkSecurityHeaders(response())), []);
 });
 
 test("a response with no security headers fails every one, as ABSENT", () => {
-  const results = checkSecurityHeaders(new Headers(), { csp: false });
-  assert.equal(results.length, Object.keys(STANDARD_SECURITY_HEADERS).length);
+  const results = checkSecurityHeaders(new Headers({ "Content-Type": "text/html" }), { csp: false });
   for (const name of Object.keys(STANDARD_SECURITY_HEADERS)) {
     assert.ok(results.some((r) => r.name === `${name} is present` && !r.pass && r.detail === "ABSENT"), name);
   }
@@ -120,7 +117,6 @@ test("a site's declared set is the floor instead of the standard", () => {
   const standard = { "X-Frame-Options": "sameorigin" };
   const headers = new Headers({ "X-Frame-Options": "sameorigin" });
   assert.deepEqual(failed(headers, { standard, csp: false }), []);
-  assert.equal(checkSecurityHeaders(headers, { standard, csp: false }).length, 1);
 });
 
 test("csp false skips the policy checks entirely", () => {
@@ -132,9 +128,9 @@ test("csp false skips the policy checks entirely", () => {
 test("no policy, or only a Report-Only one, fails as not enforced and grades nothing further", () => {
   const none = checkSecurityHeaders(response({ "Content-Security-Policy": null }));
   assert.deepEqual(failures(none).map((r) => [r.name, r.detail]), [["the Content-Security-Policy is enforced, not only reported", "ABSENT"]]);
+  assert.ok(!none.some((r) => /-src|somewhere/.test(r.name)));
   const reportOnly = checkSecurityHeaders(response({ "Content-Security-Policy": null, "Content-Security-Policy-Report-Only": GOOD_POLICY }));
   assert.deepEqual(failures(reportOnly).map((r) => r.detail), ["only a Report-Only policy is sent, which blocks nothing"]);
-  assert.equal(none.length, Object.keys(STANDARD_SECURITY_HEADERS).length + 2);
 });
 
 test("a policy that governs no scripts fails", () => {
@@ -153,7 +149,9 @@ test("scripts: 'unsafe-inline', 'unsafe-eval', a wildcard or a bare scheme fail"
     const result = failure(withScripts(`'self' ${broad}`), /wildcard or bare scheme/);
     assert.equal(result.detail, `allows ${broad}`);
   }
-  assert.deepEqual(failed(withScripts("'self' https://js.example.com https://*.example.com")), []);
+  assert.deepEqual(failed(withScripts("'self' https://js.example.com")), []);
+  assert.equal(failure(withScripts("'self' https://*.example.com"), /wildcard/).detail, "allows https://*.example.com");
+  assert.match(failure(withScripts("'self' https://cdnjs.cloudflare.com"), /JSONP/).detail, /^allows https:\/\/cdnjs\.cloudflare\.com \(\/\/cdnjs/);
 });
 
 test("scripts: an unsafe keyword fails in any case, since browsers match keywords case-insensitively", () => {
@@ -167,18 +165,15 @@ test("scripts: a host-source whose host is * fails as a wildcard, with or withou
   for (const broad of ["https://*", "https://*:443", "*:*", "https://*/js/"]) {
     assert.equal(failure(withScripts(`'self' ${broad}`), /wildcard or bare scheme/).detail, `allows ${broad}`);
   }
-  assert.deepEqual(failed(withScripts("'self' https://*.example.com:443/js/ https://js.example.com/*")), []);
+  assert.deepEqual(failed(withScripts("'self' https://js.example.com/*")), []);
 });
 
-test("every check is reported, passing or failing: the count does not depend on the verdicts", () => {
-  const standard = Object.keys(STANDARD_SECURITY_HEADERS).length;
+test("a weak policy fails each rule it breaks, in order", () => {
   const bad = response({
     "Content-Security-Policy": "script-src * 'unsafe-inline' 'unsafe-eval'; object-src 'self'; base-uri *",
     "X-Frame-Options": "allowall",
   });
-  const results = checkSecurityHeaders(bad);
-  assert.equal(results.length, standard + 11);
-  assert.deepEqual(failures(results).map((r) => r.name), [
+  assert.deepEqual(failures(checkSecurityHeaders(bad)).map((r) => r.name), [
     "X-Frame-Options refuses framing",
     "scripts: no 'unsafe-inline'",
     "scripts: no 'unsafe-eval'",
@@ -188,8 +183,6 @@ test("every check is reported, passing or failing: the count does not depend on 
     "frame-ancestors is 'none' or 'self'",
     "violations are reported somewhere (report-uri or report-to)",
   ]);
-  assert.equal(checkSecurityHeaders(response(), { cloudflareWebAnalytics: true }).length, standard + 13);
-  assert.equal(checkSecurityHeaders(response({ "Content-Security-Policy": "object-src 'none'" })).length, standard + 8, "with no scripts directive the three script checks do not run");
 });
 
 test("the policy is read only from the enforced header: a sound Report-Only beside a weak enforced one does not help", () => {

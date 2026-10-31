@@ -8,8 +8,13 @@
  * - At most 10 violations are logged from one request, one JSON line each, with every URL cut to its origin and
  *   path, so no query string reaches the log, and no address, user agent or cookie is ever logged.
  * - The site's own limiter, when it passes one, is asked first, so nobody can fill the logs. A receiver with no `allow`
- *   still works (Capsomer, julieedwards.info and Foxing call it so today, and refusing would end their reports in
- *   silence), but logs `csp_report_unlimited` once per isolate as a warning, so the gap shows in the site's logs.
+ *   still works (Capsomer calls it so today, and refusing would end its reports in silence), but logs
+ *   `csp_report_unlimited` once per isolate as a warning, so the gap shows in the site's logs.
+ * - A violation whose blocked URL or source file is a browser extension's or the browser's own (chrome-extension:,
+ *   moz-extension:, safari-extension:, safari-web-extension:, ms-browser-extension:, resource:, file:, jar:, about:)
+ *   is dropped: the site can do nothing about it (Dropbox, "On CSP reporting and filtering").
+ * - The first time an isolate sees a (directive, blocked origin) pair it logs `csp_new_blocked` as a warning, so a log
+ *   alert on that event hears of a new blocked host without counting every repeat.
  * - Nothing is stored: a store the internet can write to is a storage-exhaustion primitive.
  *
  * Both wire formats are read: report-uri's `{"csp-report": {...}}` (application/csp-report) and the Reporting API's
@@ -20,6 +25,13 @@ import { readCapped } from "./body.mjs";
 import { logEvent } from "./log.mjs";
 
 let warnedUnlimited = false;
+
+/** The browser's own and extensions' schemes, whose violations no site can act on. */
+const NOISE = /^(chrome-extension|moz-extension|safari-extension|safari-web-extension|ms-browser-extension|resource|file|jar|about):/i;
+
+/** The (directive, blocked origin) pairs this isolate has seen, capped so a flood cannot grow it without end. */
+const seen = new Set();
+const MAX_SEEN = 1000;
 
 /** The largest body read; the rest is never read. */
 export const MAX_REPORT_BYTES = 16_384;
@@ -136,6 +148,17 @@ export async function receiveCspReport(request, { allow, allowOrigin, headers = 
   } catch {
     return answer(204);
   }
-  for (const body of cspViolations(parsed).slice(0, MAX_REPORTS)) log(summarizeViolation(body));
+  for (const body of cspViolations(parsed).slice(0, MAX_REPORTS)) {
+    const raw = ["blockedURL", "blocked-uri", "sourceFile", "source-file"].map((n) => body[n]);
+    if (raw.some((v) => typeof v === "string" && NOISE.test(v))) continue;
+    const line = summarizeViolation(body);
+    log(line);
+    const blocked = line.blocked && /^https?:/.test(line.blocked) ? new URL(line.blocked).origin : line.blocked;
+    const key = `${line.directive} ${blocked}`;
+    if (!seen.has(key) && seen.size < MAX_SEEN) {
+      seen.add(key);
+      logEvent("csp_new_blocked", { directive: line.directive, blocked }, { level: "warn" });
+    }
+  }
   return answer(204);
 }

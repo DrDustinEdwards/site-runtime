@@ -8,10 +8,10 @@
  * change something; one that says what the standard already says is refused, so the list stays the list of real
  * deviations.
  *
- * @param {{ overrides?: Readonly<Record<string, HeaderOverride>> }} [site]
- * @returns {Record<string, string>}
+ * `site` is an id in the registry (./sites), whose declared overrides are used; `overrides` is the older form. Not both.
  */
-export function buildSecurityHeaders({ overrides }?: {
+export function buildSecurityHeaders(options?: {
+    site?: string;
     overrides?: Readonly<Record<string, HeaderOverride>>;
 }): Record<string, string>;
 /**
@@ -49,7 +49,9 @@ export const STANDARD_SECURITY_HEADERS: Readonly<Record<string, string>>;
  */
 export const LOGOUT_HEADERS: Readonly<Record<string, string>>;
 /** The Permissions-Policy override a site offering passkey sign-in needs: publickey-credentials-get=(self). */
-export const PASSKEY_OVERRIDES: Readonly<Record<string, { value: string | null; reason: string }>>;
+export { PASSKEY_OVERRIDES } from "./sites.mjs";
+/** `cross-origin` for public media other origins load (images, RSS, Atom and JSON feeds), else `same-origin`. */
+export function corpFor(contentType: string | null | undefined): "cross-origin" | "same-origin";
 /**
  * A header a site sends differently from the standard: its own value, or null to send none, and why. A reason is
  * required, so a deviation is a decision someone wrote down and not an accident.
