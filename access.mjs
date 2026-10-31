@@ -282,7 +282,8 @@ export async function withAdminIdle(request, handle, { prefixes = ["/admin"], id
   const gate = await adminIdle(request, { idleSeconds });
   if (gate.idle) return gate.response;
   const response = await handle();
-  if (!gate.cookie) return response;
+  // A WebSocket upgrade (101) goes back untouched: copying it would drop its socket.
+  if (!gate.cookie || response.status === 101) return response;
   // A response from fetch has immutable headers.
   const out = new Response(response.body, response);
   out.headers.append("Set-Cookie", gate.cookie);
