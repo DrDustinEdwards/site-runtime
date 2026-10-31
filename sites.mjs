@@ -138,12 +138,13 @@ export const capsidMcp = { id: "capsid-mcp", origin: "https://mcp.dustinedwards.
 // workers/security-headers.ts: Carrel's AI door.
 export const carrelMcp = { id: "carrel-mcp", origin: "https://carrel-mcp.dustinedwards.info", headers: popupSignIn };
 
-// The Capsid explorer, Enarratio's site and the Foxhound admin MCP declare nothing: the standard exactly.
+// The Capsid explorer and Enarratio's site declare nothing: the standard exactly.
 export const capsid = { id: "capsid", origin: "https://capsid.dustinedwards.info" };
 
 export const enarratio = { id: "enarratio", origin: "https://enarratio.dustinedwards.info" };
 
-export const foxhoundMcp = { id: "foxhound-mcp", origin: "https://admin-mcp.foxhoundapp.com" };
+// mcp/src/door.ts: Foxhound's admin AI door.
+export const foxhoundMcp = { id: "foxhound-mcp", origin: "https://admin-mcp.foxhoundapp.com", headers: popupSignIn };
 
 // scripts/security-headers.ts
 export const capsomer = {
