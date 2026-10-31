@@ -114,17 +114,52 @@ export function logEvent(event, fields = {}, { level = "log", ...scrub } = {}) {
 
 /**
  * The fields that tie a log line to its request, for a site to spread into its lines: `request_id` (the `cf-ray`
- * header, empty when there is none), `method`, `path` (scrubbed, never the query) and, when given, the deployed `sha`.
+ * header, empty when there is none), `method`, `path` (scrubbed, never the query) and, when given, the response's
+ * `status` and the deployed `sha`.
  * @param {Request} request
- * @param {{ sha?: string } & ScrubOptions} [options]
- * @returns {{ request_id: string, method: string, path: string, sha?: string }}
+ * @param {{ sha?: string, status?: number } & ScrubOptions} [options]
+ * @returns {{ request_id: string, method: string, path: string, status?: number, sha?: string }}
  */
-export function requestFields(request, { sha, ...scrub } = {}) {
+export function requestFields(request, { sha, status, ...scrub } = {}) {
   return {
     request_id: request.headers.get("cf-ray") ?? "",
     method: request.method,
     path: scrubUrl(new URL(request.url).pathname, scrub),
+    ...(status === undefined ? {} : { status }),
     ...(sha ? { sha } : {}),
+  };
+}
+
+/**
+ * Wraps a Worker's fetch handler so each request writes one `request` line: requestFields with the status, the route
+ * (`route(request)` when given, such as the matched pattern, so `/posts/:slug` groups its hits), the ms taken and the
+ * sha. A 5xx or a throw is logged at error (a throw as status 500, then rethrown), a 4xx at warn, the rest at log.
+ * `sha` is a string or a function of the handler's arguments after the request (`(env) => env.DEPLOY_SHA`).
+ * @template {unknown[]} A
+ * @param {(request: Request, ...rest: A) => Response | Promise<Response>} handler
+ * @param {{ sha?: string | ((...rest: A) => string | undefined), route?: (request: Request) => string | undefined } & ScrubOptions} [options]
+ * @returns {(request: Request, ...rest: A) => Promise<Response>}
+ */
+export function withRequestLog(handler, { sha, route, ...scrub } = {}) {
+  return async (request, ...rest) => {
+    const started = Date.now();
+    let status = 500;
+    try {
+      const response = await handler(request, ...rest);
+      status = response.status;
+      return response;
+    } finally {
+      const named = route?.(request);
+      logEvent(
+        "request",
+        {
+          ...requestFields(request, { sha: typeof sha === "function" ? sha(...rest) : sha, status, ...scrub }),
+          ...(named ? { route: named } : {}),
+          ms: Date.now() - started,
+        },
+        { level: status >= 500 ? "error" : status >= 400 ? "warn" : "log", ...scrub },
+      );
+    }
   };
 }
 

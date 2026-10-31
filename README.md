@@ -13,7 +13,7 @@ resource routes (`./origin`), the trailing-slash redirect (`./url`), one structu
 No dependencies (`./sign-in` uses the site's own `better-auth` and
 `@better-auth/passkey`, 1.7.12 or later, which a site that imports it installs itself; they are not declared as peers,
 because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
-tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.53.0"`. `npm test` runs every test in `test/`.
+tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.54.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
 
@@ -322,10 +322,15 @@ return healthResponse({
 - `ping` is check `db` (level fail) and the body's `db: "up" | "down"`; a site with no database leaves it out. The
   backup is check `backup` (level warn), failed when its status carries a `warning`.
 - `status` is fail when a fail check failed, else warn when a warn check failed, else pass. 503 only for fail: a stale
-  backup, a stopped cron or content drift is warn and 200, because the site is up. `ok` is `status === "pass"`, as
-  before, so a monitor reading `ok` sees a stale dump.
+  backup, a stopped cron or content drift is warn and 200, because the site is up. `ok` is `status !== "fail"`, so a
+  keyword monitor on `"ok":true` pages only when the site is down; a warning is in `status` and the checks.
 - `r2Check(name, bucket)` and `kvCheck(name, kv)` are the binding checks: a `head` or `get` of a fixed key, where no
   object is fine and a throw fails.
+- `imagesCheck(name, env.IMAGES)` asks the Images binding for `info` on a 1 x 1 GIF (it reads the header and
+  transforms nothing). `durableObjectCheck(name, env.ROOM)` proves the namespace is bound and mints an id with
+  `idFromName`; it sends no request, which would wake an object and bill it. `queueCheck(name, env.QUEUE)` and
+  `aiCheck(name, env.AI)` prove the binding is there and send or run nothing (a probe message would reach the consumer,
+  and every AI call is billed). All four are level warn; spread one with `level: "fail"` to make it take the site down.
 - `authSpikeCheck(env.DB, { windowMinutes: 60, failures: 50, mails: 50 })` is the sign-in spike alert (F3), level
   warn: it fails when failed sign-ins (`authn_login_fail`) or sign-in mails (`authn_token_created`) in the window pass
   their ceiling, read from `./sign-in`'s `auth_events` table (`eventsDb`), with the counts as its detail. /health
@@ -1135,8 +1140,19 @@ the net, not the rule: never log a token, a code or a secret on purpose. The pac
 `not_found_count_failed`, `access_keys_unreachable`, `csp_report_unlimited`, `health_check_failed`, the cron lines) go
 through it.
 
-`requestFields(request, { sha })` is `{ request_id, method, path, sha }` to spread into a request's lines: `request_id`
-is the `cf-ray` header, so a line matches the request in Cloudflare's logs, and `path` is scrubbed, never the query.
+`requestFields(request, { sha, status })` is `{ request_id, method, path, status, sha }` to spread into a request's
+lines: `request_id` is the `cf-ray` header, so a line matches the request in Cloudflare's logs, and `path` is scrubbed,
+never the query.
+
+`withRequestLog(handler, { sha, route })` wraps a fetch handler so every request writes one `request` line: those
+fields with the response's status, `route` when `route(request)` names one (the matched pattern, so `/posts/:slug`
+groups its hits), and `ms`. A 5xx is logged at error, a 4xx at warn; a throw is logged as 500 and rethrown. `sha` is a
+string or a function of the handler's other arguments:
+
+```js
+import { withRequestLog } from "@dustinedwards/site-runtime/log";
+export default { fetch: withRequestLog(handler, { sha: (env) => env.DEPLOY_SHA }) };
+```
 `OWASP_EVENTS` holds the [OWASP Logging Vocabulary](https://cheatsheetseries.owasp.org/cheatsheets/Logging_Vocabulary_Cheat_Sheet.html)
 names for a site's security events: `authn_login_success`, `authn_login_fail`, `authn_token_created`, `session_logout`,
 `session_expired`, `user_updated`, `user_deleted`, `authz_fail`, `input_validation_fail` and
@@ -1147,9 +1163,9 @@ names for a site's security events: `authn_login_success`, `authn_login_fail`, `
 `./not-found` counts the 404s a site serves, per path, referring host and UTC day, in its D1, so a broken link or a
 moved page shows up with where the link to it is: Rank Math's 404 Monitor without its personal data. The table is
 `page_404_daily` (`id` a random UUID, `day` UTC midnight in epoch milliseconds, `path`, `referrer_host`, `kind`,
-`hit_count`, unique on day, path and referrer host). A new site adds `NOT_FOUND_SQL` as its next migration; Foxhound
-and txasm, which have the first shape (no referrer or kind, unique index `page_404_daily_day_path_uq`), add
-`NOT_FOUND_UPGRADE_SQL` with the version that brings it, since the new upsert needs the new key.
+`hit_count`, unique on day, path and referrer host). A new site adds `NOT_FOUND_SQL` as its next migration; a site
+with the first shape (no referrer or kind, unique index `page_404_daily_day_path_uq`) adds `NOT_FOUND_UPGRADE_SQL` with
+the version that brings it, since the new upsert needs the new key.
 
 ```js
 import { countNotFound } from "@dustinedwards/site-runtime/not-found";
@@ -1161,8 +1177,12 @@ return response;
 - Only the pathname, cut to 512 characters (`NOT_FOUND_PATH_MAX`), never the query (it can carry a token). Of the
   Referer only the host of an http or https URL (`referrerHost`), never its path or query; no user agent or address.
   `notFoundKey(url, now)` is the row's `{ day, path, kind }`.
-- `kind` is "probe" for a path an exploit scanner guesses (`NOT_FOUND_PROBE`: `/wp-admin`, any `.php`, `/.env`,
-  `/.git/`, `/cgi-bin/`, phpMyAdmin), else "page".
+- `kind` is "probe" for a path an exploit scanner guesses, else "page". `NOT_FOUND_PROBE` holds Capsid's traffic
+  report's list too: any `/wp-` (`/wp-admin`, `/wp-content`), server scripts (`.php`, `.asp`, `.jsp`, `.cgi`,
+  `/cgi-bin/`, `/xmlrpc`), dumps and config (`.sql`, `.bak`, `.env`, `.ini`, `.yml`, `.db`, `/config.json`,
+  `/config/`, `env.js`), dotfiles but `/.well-known/`, phpMyAdmin and phpinfo, credential files (`credentials.json`,
+  `aws-exports.js`, `appsettings.json`) and AI-key paths (`/openai/`, `/anthropic/`, `/bedrock/`, `/llm/`). A slug
+  that only contains a word like "secret" stays a page; only a file name with an extension is a probe.
 - GET only. React Router's data request (`/x.data`, `/_.data` for the home page) counts as its page, so a client
   navigation and a document load of the same missing page add to one row.
 - One upsert, so two 404s at once cannot both insert or lose a hit. Written in `ctx.waitUntil`, so it never holds or
@@ -1173,7 +1193,7 @@ return response;
   unless asked for. `pruneNotFound(db, { days = 90 })` deletes older rows; a site runs it from its cron.
 
 **Tests.** `test/log.test.mjs`, `test/url.test.mjs` (a `//` path stays on the site) and `test/not-found.test.mjs` (on
-an in-memory SQLite with `NOT_FOUND_SQL`, and with Foxhound's and txasm's table upgraded by `NOT_FOUND_UPGRADE_SQL`).
+an in-memory SQLite with `NOT_FOUND_SQL`, and with a first-shape table upgraded by `NOT_FOUND_UPGRADE_SQL`).
 
 ## Scheduled jobs
 
@@ -1194,13 +1214,23 @@ async scheduled(controller, env, ctx) {
 ```
 
 - Each job runs in turn; a throw is logged (`cron_job_failed`, with its name and ms) and stored scrubbed and cut to
-  500 characters, and the next job runs. A success logs `cron_job_ok`. A failed write to `cron_runs` is logged
+  500 characters, and the next job runs.
+- Each job has a timeout: its own `timeoutMs`, else `runJobs(db, jobs, { timeoutMs })`, five minutes by default
+  (`CRON_TIMEOUT_MS`). A job past it is recorded failed ("timed out after N ms") and the next job starts, so one hung
+  job never holds up the rest of its trigger. `run(signal)` gets an AbortSignal that is aborted then, for a job that can
+  stop its own work; the runner cannot cancel a promise. A success logs `cron_job_ok`. A failed write to `cron_runs` is logged
   (`cron_run_write_failed`) and the job still runs. After the last job, if any failed, `runJobs` throws one Error
   naming them, so Cloudflare marks the invocation failed. `db` may be a function, like `countNotFound`'s.
-- `cronCheck(db, { graceMinutes = 10 })` is the /health check (name `cron`, level warn): it fails, naming the jobs,
-  when a job's last run failed, its last success is older than twice its interval plus the grace, or it never succeeded
-  and was first started longer ago than that. That is how an outside probe of /health notices a cron that stopped. A
-  job removed from the site keeps its row, which goes stale: delete the row with the job.
+- `cronCheck(db, { jobs, deployedAt, graceMinutes })` is the /health check (name `cron`, level warn): it fails, naming
+  the jobs, when a job's last run failed, its last success is older than its own interval plus the grace, or it never
+  succeeded and was first started longer ago than that. The grace is `graceMinutes` when given, else the larger of
+  10 minutes and a tenth of the interval: 11 minutes for a minutely job, about 26 hours for a daily one. That is how an
+  outside probe of /health notices a cron that stopped.
+- Pass `jobs` (the same list runJobs gets; `run` is not called) and the check reads only those, with their own
+  intervals: a removed job's old row is ignored, and a job with no row at all fails as "never ran" (a trigger that never
+  fires it, a misspelt cron key). `deployedAt` (such as `new Date(env.CF_VERSION_METADATA.timestamp)`) holds that back
+  until the job's window has passed since the deploy; without it a job that has not run yet warns at once. Without
+  `jobs`, a removed job keeps its row, which goes stale: delete the row with the job.
 
 **Tests.** `test/cron.test.mjs` (on an in-memory SQLite with `CRON_SQL`) and `test/health.test.mjs`.
 
@@ -1575,7 +1605,8 @@ clientRegistrationCallback: ({ clientMetadata }) => {
   join the grant's props for the server to check again on every request. `admits: { consent, refusal }` then says who
   is let in, on the consent page and in the refusal (default: the configured administrator). `wantsWrite(requested)`
   decides whether the write box starts ticked (default: the client asked for the write scope), and `health(env)` answers
-  `/health` (default: "ok"). `revokeExistingGrants: false` keeps the user's earlier grants for the same client (the
+  `/health` (default: `healthResponse({ sha: env.DEPLOY_SHA })` from `./health`, so an MCP Worker's /health is
+  `application/health+json`, no-store and noindex, with the deployed commit when `DEPLOY_SHA` is set). `revokeExistingGrants: false` keeps the user's earlier grants for the same client (the
   provider's default revokes them), for a server whose two connectors share one client id.
 - The consent POST must be `application/x-www-form-urlencoded` (else 415) and at most 64 KiB (else 413), read to the
   ceiling before it is parsed.

@@ -43,7 +43,7 @@ test("a 404 to a GET adds to its path's row for the day; the query, a POST and a
   assert.equal(notFoundKey(new URL("https://example.com/_.data")).path, "/");
 });
 
-test("the upgrade takes Foxhound's and txasm's table to one row per referring host, probes kept apart in the report", async () => {
+test("the upgrade takes a first-shape table to one row per referring host, probes kept apart in the report", async () => {
   const store = d1(FIRST_SHAPE);
   const day = notFoundKey(new URL("https://example.com/"), new Date()).day;
   store.db.prepare("INSERT INTO page_404_daily (id, day, path, hit_count) VALUES ('old', ?, '/moved', 3)").run(day);

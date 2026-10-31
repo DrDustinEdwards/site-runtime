@@ -1,7 +1,7 @@
 /**
  * The /health response (health.mjs), in the IETF health check draft's shape: `application/health+json`,
  * `{ status, ok, db?, backup?, sha?, time, checks }`, no-store and noindex. 503 only when a "fail" check failed; a failed
- * "warn" check (the backup's warning among them) is status "warn" and 200. `ok` is `status === "pass"`. Each check is
+ * "warn" check (the backup's warning among them) is status "warn" and 200. `ok` is `status !== "fail"`. Each check is
  * raced against `checkTimeoutMs` (default 3000). The backup read is held per isolate for `backupTtlMs` (default 5 minutes).
  */
 
@@ -48,3 +48,11 @@ export function authSpikeCheck(
   db: import("./sign-in-account.mjs").D1Like,
   limits?: { windowMinutes?: number; failures?: number; mails?: number; now?: () => number },
 ): HealthCheck;
+/** The Images binding answers `info` on a 1 x 1 GIF (reads the header, transforms nothing). Level warn. */
+export function imagesCheck(name: string, images: { info(stream: ReadableStream<Uint8Array>): Promise<unknown> }): HealthCheck;
+/** A Durable Object namespace is bound and mints an id (`idFromName`); no object is woken. Level warn. */
+export function durableObjectCheck(name: string, namespace: { idFromName(name: string): unknown } | undefined): HealthCheck;
+/** A Queue producer binding is present; nothing is sent. Level warn. */
+export function queueCheck(name: string, queue: { send(message: unknown): Promise<unknown> } | undefined): HealthCheck;
+/** The Workers AI binding is present; no model is run (every call is billed). Level warn. */
+export function aiCheck(name: string, ai: { run(...args: any[]): Promise<unknown> } | undefined): HealthCheck;

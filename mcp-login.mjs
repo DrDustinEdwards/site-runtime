@@ -23,6 +23,7 @@
 import { accessSaas, authorizationUrl, finishSignIn, newSignIn } from "./access-login.mjs";
 import { correlationId, recordAudit } from "./audit-log.mjs";
 import { readCapped } from "./body.mjs";
+import { healthResponse } from "./health.mjs";
 import { escapeHtml as escape } from "./html.mjs";
 
 /** @typedef {import("./mcp-login.d.mts").LoginEnv} LoginEnv */
@@ -143,7 +144,7 @@ export function loginHandler({
     refusal: `This account is not the administrator of ${name}.`,
   },
   wantsWrite = (requested) => requested.includes(scopes.write),
-  health = () => text("ok"),
+  health = (env) => healthResponse({ sha: env.DEPLOY_SHA }),
   audit,
   revokeExistingGrants = true,
 }) {
@@ -284,7 +285,7 @@ ${target.local ? `<p><strong>${LOCAL_REDIRECT_WARNING[0]}</strong> ${LOCAL_REDIR
     async fetch(request, env) {
       const { pathname } = new URL(request.url);
       try {
-        if (pathname === "/health") return health(env);
+        if (pathname === "/health") return await health(env);
         if (pathname === "/authorize" && request.method === "GET") return await authorizeGet(request, env);
         if (pathname === "/authorize" && request.method === "POST") return await authorizePost(request, env);
         if (pathname === "/callback" && request.method === "GET") return await callback(request, env);

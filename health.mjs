@@ -6,8 +6,8 @@
  *
  * Every check has a level. A failed "fail" check (the database `ping`, by default any site check) makes the status
  * fail and the response 503; a failed "warn" check (a stale backup, a cron that stopped, content drift) makes it warn
- * and leaves it 200, because the site is up. `ok` is `status === "pass"`, its meaning before the checks: up and no
- * backup warning, so a monitor reading `ok` sees a stale dump.
+ * and leaves it 200, because the site is up. `ok` is `status !== "fail"`: true while the site is up, so a keyword
+ * monitor reading `ok` pages only for an outage, and a warning shows in `status` and the checks.
  *
  * Each check is raced against `checkTimeoutMs`, so a binding that hangs fails its check instead of holding /health.
  *
@@ -62,7 +62,7 @@ export async function healthResponse({ ping, backup, sha, checks = [], backupTtl
   const db = ping ? { db: results[0]?.status === "pass" ? "up" : "down" } : {};
   const body = {
     status,
-    ok: status === "pass",
+    ok: status !== "fail",
     ...db,
     ...(backupStatus === undefined ? {} : { backup: backupStatus }),
     ...(sha ? { sha } : {}),
@@ -151,4 +151,58 @@ export function authSpikeCheck(db, { windowMinutes = 60, failures = 50, mails = 
       return over.length ? { ok: false, detail: `${over.join(" and ")} in ${windowMinutes} minutes` } : true;
     },
   };
+}
+
+// The smallest GIF (1 x 1, transparent): what imagesCheck asks the Images binding to read.
+const PROBE_GIF = /* @__PURE__ */ Uint8Array.from(atob("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"), (c) => c.charCodeAt(0));
+
+/**
+ * A check that the Images binding answers: `info` on a 1 x 1 GIF, which reads the image's header and transforms
+ * nothing. Level warn, so a broken resize path shows without taking the site to 503.
+ * @param {string} name
+ * @param {{ info(stream: ReadableStream<Uint8Array>): Promise<unknown> }} images
+ * @returns {HealthCheck}
+ */
+export function imagesCheck(name, images) {
+  return { name, level: "warn", run: async () => (await images.info(new Blob([PROBE_GIF]).stream()), true) };
+}
+
+/**
+ * A check that a Durable Object namespace is bound and can mint an id (`idFromName`, no request to an object, which
+ * would wake one and bill it). Level warn.
+ * @param {string} name
+ * @param {{ idFromName(name: string): unknown } | undefined} namespace
+ * @returns {HealthCheck}
+ */
+export function durableObjectCheck(name, namespace) {
+  return {
+    name,
+    level: "warn",
+    run: async () => (typeof namespace?.idFromName === "function" ? (namespace.idFromName(PROBE_KEY), true) : { ok: false, detail: "binding missing" }),
+  };
+}
+
+/**
+ * A check that a Queue producer binding is present. It sends nothing: a probe message would reach the consumer. Level warn.
+ * @param {string} name
+ * @param {{ send(message: unknown): Promise<unknown> } | undefined} queue
+ * @returns {HealthCheck}
+ */
+export function queueCheck(name, queue) {
+  return bindingCheck(name, typeof queue?.send === "function");
+}
+
+/**
+ * A check that the Workers AI binding is present. It runs no model: every call is billed. Level warn.
+ * @param {string} name
+ * @param {{ run(...args: any[]): Promise<unknown> } | undefined} ai
+ * @returns {HealthCheck}
+ */
+export function aiCheck(name, ai) {
+  return bindingCheck(name, typeof ai?.run === "function");
+}
+
+/** @param {string} name @param {boolean} present @returns {HealthCheck} */
+function bindingCheck(name, present) {
+  return { name, level: "warn", run: async () => (present ? true : { ok: false, detail: "binding missing" }) };
 }
