@@ -21,8 +21,6 @@
  * neither can work does a site opt into `inlineScripts: "unsafe-inline"`.
  */
 
-import { ALLOWLIST_BYPASSES } from "./csp-bypasses.mjs";
-
 /** @returns {string} a fresh nonce, 24 base64 characters */
 export function generateNonce() {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -81,31 +79,6 @@ function checkSource(source) {
 /** A host source whose host starts with a wildcard: `https://*.example.com`, `*.example.com:443`. */
 export const WILDCARD_HOST = /^([a-z][a-z0-9+.-]*:\/\/)?\*\./i;
 
-/**
- * The known allowlist bypass a script source would let in, or undefined: csp-evaluator's own match
- * (utils.ts matchWildcardUrls). A host source matches a listed URL on the same host (any subdomain, for a wildcard
- * host); with a path, only a listed URL under that path prefix (a path ending in "/") or at that exact path.
- * @param {string} source
- * @returns {string | undefined} the listed URL, scheme-relative
- */
-export function allowlistBypass(source) {
-  if (source.startsWith("'") || !source.includes(".") || /^[a-z][a-z0-9+.-]*:$/i.test(source)) return undefined;
-  let url;
-  try {
-    url = new URL(`https://${source.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").replace(":*", "").replace("*", "wildcard-placeholder")}`);
-  } catch {
-    return undefined;
-  }
-  const wild = url.hostname.startsWith("wildcard-placeholder.");
-  const host = wild ? url.hostname.slice("wildcard-placeholder".length) : url.hostname;
-  const path = url.pathname;
-  return ALLOWLIST_BYPASSES.find((entry) => {
-    const listed = new URL(`https:${entry}`);
-    if (wild ? !listed.hostname.endsWith(host) : listed.hostname !== host) return false;
-    if (path === "/") return true;
-    return path.endsWith("/") ? listed.pathname.startsWith(path) : listed.pathname === path;
-  });
-}
 
 /**
  * @typedef {{
@@ -216,8 +189,6 @@ export function buildContentSecurityPolicy(site) {
     }
     if (/^'strict-dynamic'$/i.test(host)) throw new Error("'strict-dynamic' is not a script source here: pass strictDynamic: true, which checks it has a nonce or hashes to start from");
     if (WILDCARD_HOST.test(host)) throw new Error(`${host} trusts every subdomain, any of which may serve JSONP or a library that runs script: name the host`);
-    const bypass = allowlistBypass(host);
-    if (bypass) throw new Error(`${host} is a known allowlist bypass (${bypass} serves JSONP, AngularJS or Flash): self-host the script or trust it by hash`);
   }
   const typeNames = trustedTypes === true || trustedTypes === undefined ? [] : trustedTypes;
   for (const name of typeNames) {

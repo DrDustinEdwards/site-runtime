@@ -1,3 +1,5 @@
+import type { SiteEntry } from "./sites.mjs";
+
 /**
  * @param {string} policy
  * @returns {Map<string, string[]>} directive name to its sources, lower-cased names
@@ -11,7 +13,7 @@ export function parsePolicy(policy: string): Map<string, string[]>;
  * `baseUriSelf`: true accepts 'self' beside 'none' on frame-ancestors and base-uri, false 'none' alone; left out, either.
  */
 export type CheckOptions = {
-    site?: string;
+    site?: string | SiteEntry;
     standard?: Readonly<Record<string, string>>;
     csp?: boolean;
     cloudflareWebAnalytics?: boolean;

@@ -13,7 +13,7 @@ resource routes (`./origin`), the trailing-slash redirect (`./url`), one structu
 No dependencies (`./sign-in` uses the site's own `better-auth` and
 `@better-auth/passkey`, 1.7.12 or later, which a site that imports it installs itself; they are not declared as peers,
 because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
-tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.37.1"`. `npm test` runs every test in `test/`.
+tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.39.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
 
@@ -61,10 +61,12 @@ a header the standard does not send, so the list stays the list of real deviatio
 `./sites` holds one entry per live site with only its declared deviations, each with the reason the site's code gives:
 header `overrides` in the shape above, and the policy opt-ins the check must accept (`cloudflareWebAnalytics`,
 `inlineScripts`, `formTargets`, `framedBySameOrigin`, `baseUriSelf`, and `passkey`, which applies `PASSKEY_OVERRIDES`). The
-builder and the check read the same entry, so a site cannot build one set and be graded against another:
+builder and the check read the same entry, so a site cannot build one set and be graded against another. Each entry is
+its own export, so a Worker imports its entry by name and bundles that entry, not the registry:
 
 ```js
-const SECURITY_HEADERS = buildSecurityHeaders({ site: "foxing" });       // the standard with Foxing's declared deviations
+import { foxing } from "@dustinedwards/site-runtime/sites";
+const SECURITY_HEADERS = buildSecurityHeaders({ site: foxing });        // the standard with Foxing's declared deviations
 checkSecurityHeaders(response.headers, { site: "foxing" });             // graded against exactly that, opt-ins included
 ```
 
@@ -111,9 +113,8 @@ made before hydration or with no JS. Each is one bare https origin (no wildcard,
 `noForms`; declare the same list in the site's registry entry.
 `baseUriSelf: true` writes `base-uri 'self'`, for a page that sets a same-origin `<base>` (Foxing's EPUB reader). Scripts are `'self'`, the
 site's hashes or nonce, its listed hosts and, on request, the Cloudflare Web Analytics beacon. A script source of `*` (or
-`https://*` and the like), a wildcard subdomain (`https://*.example.com`), a host known to serve JSONP, AngularJS or Flash
-(google/csp-evaluator's allowlist bypasses, copied as data into `csp-bypasses.mjs`; `allowlistBypass(source)` names the
-one matched), a bare scheme, or `'unsafe-inline'` or `'unsafe-eval'` in any case is refused, and a policy with no report
+`https://*` and the like), a wildcard subdomain (`https://*.example.com`), a bare scheme, or `'unsafe-inline'` or
+`'unsafe-eval'` in any case is refused, and a policy with no report
 sink is refused. `'unsafe-inline'` reaches script-src only through the named opt-in below. `extraDirectives` adds a
 kind the builder leaves out (`worker-src`, `manifest-src`, `upgrade-insecure-requests`). One the builder writes is refused,
 since a browser silently ignores a second directive of the same name: `default-src`, `script-src`, `style-src`, `font-src`,
@@ -607,7 +608,7 @@ const auth = betterAuth({
 ```
 
 - Passkey: its relying party is the host of `BETTER_AUTH_URL`, so a passkey made on the live site works there only. The
-  site needs the plugin's `passkey` table, and the `passkey` opt-in in its registry entry (`buildSecurityHeaders({ site })`, which applies `PASSKEY_OVERRIDES`):
+  site needs the plugin's `passkey` table, and the `passkey` opt-in in its registry entry (`buildSecurityHeaders({ site: entry })`, which applies `PASSKEY_OVERRIDES`):
   OSHP's Permissions-Policy turns passkey sign-in off (`publickey-credentials-get=()`). A new passkey is made with
   `authenticatorSelection: { residentKey: "required", userVerification: "preferred" }` (the passkey plugin's option,
   spread over its defaults `preferred`/`preferred`), so it is discoverable: it signs in from the browser's list with no
@@ -959,7 +960,7 @@ changed set of failures.
 ## What the check requires
 
 `checkSecurityHeaders(headers, { site })` grades a real response against the site's registry entry: the set
-`buildSecurityHeaders({ site })` builds, and the opt-ins it declares. Without `site`, `standard` is the floor (default
+`buildSecurityHeaders({ site: entry })` builds, and the opt-ins it declares. Without `site`, `standard` is the floor (default
 `STANDARD_SECURITY_HEADERS`) and each opt-in may be passed by name. Each result names the checklist item it proves (`id`:
 T2, H1, C4 ...); a `warn` result fails nothing, and `failures` leaves it out.
 
@@ -1023,7 +1024,7 @@ file differs, as Foxhound's `scripts/gen-headers.mjs --check` does.
 
 ## Adopting it
 
-1. Add the site's entry to `sites.mjs`, build the set with `buildSecurityHeaders({ site })` and apply it with
+1. Add the site's entry to `sites.mjs`, build the set with `buildSecurityHeaders({ site: entry })` and apply it with
    `applyHeaderSet` on every response, redirects included, and write `_headers` for static assets with `headersFile`.
 2. Build the policy with `buildContentSecurityPolicy` from the site's own list.
 3. In CI, run `checkSecurityHeaders(headers, { site })` on rendered responses and `runOshpSuite` on the set (see

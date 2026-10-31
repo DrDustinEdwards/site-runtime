@@ -286,3 +286,11 @@ test("the beacon check reads default-src for scripts when script-src is absent",
   const result = failure(response({ "Content-Security-Policy": noScripts }), /beacon run/, { cloudflareWebAnalytics: true });
   assert.match(result.detail, /beacon\.min\.js and https:/);
 });
+
+test("a script host known to serve JSONP, AngularJS or Flash fails C5, by csp-evaluator's host-then-path match", () => {
+  const grade = (/** @type {string} */ host) =>
+    failures(checkSecurityHeaders(response({ "Content-Security-Policy": GOOD_POLICY.replace("script-src 'self'", `script-src 'self' ${host}`) }))).some((r) => r.id === "C5");
+  for (const host of ["https://cdnjs.cloudflare.com", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com/ajax/libs/"]) assert.ok(grade(host), host);
+  assert.ok(!grade("https://cdnjs.cloudflare.com/ajax/libs/mathjax/"));
+  assert.ok(!grade("https://www.googletagmanager.com"), "a bypass that needs 'unsafe-eval' cannot fire here");
+});

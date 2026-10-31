@@ -1,6 +1,6 @@
 /**
  * The site registry: one entry per live site, holding only its declared deviations from the bar, each with a reason.
- * buildSecurityHeaders({ site }), checkSecurityHeaders(headers, { site }) and the site-runtime-security bin read it.
+ * buildSecurityHeaders({ site: entry }), checkSecurityHeaders(headers, { site }) and the site-runtime-security bin read it.
  */
 import type { HeaderOverride } from "./headers.mjs";
 
@@ -20,10 +20,11 @@ export type SiteEntry = {
     headers?: Readonly<Record<string, HeaderOverride>>;
     optIns?: SiteOptIns;
 };
-/** OSHP's Permissions-Policy with each named feature allowed for the site's own pages. */
-export function permissionsAllowingSelf(...features: string[]): string;
-/** The Permissions-Policy override a site offering passkey sign-in needs: publickey-credentials-get=(self). */
-export const PASSKEY_OVERRIDES: Readonly<Record<string, HeaderOverride>>;
+export { PASSKEY_OVERRIDES, permissionsAllowingSelf } from "./headers.mjs";
+/** One export per entry, so a Worker bundles only its own. */
+export const dustinedwardsInfo: SiteEntry, foxhound: SiteEntry, foxing: SiteEntry, germomics: SiteEntry, julieedwardsInfo: SiteEntry,
+    bsw: SiteEntry, txasm: SiteEntry, carrel: SiteEntry, carrelDesk: SiteEntry, capsidPortal: SiteEntry, capsidMcp: SiteEntry,
+    capsid: SiteEntry, enarratio: SiteEntry, foxhoundMcp: SiteEntry, capsomer: SiteEntry, prelum: SiteEntry;
 export const SITES: readonly SiteEntry[];
 /** The entry for an id; an unknown id throws. */
 export function siteEntry(id: string): SiteEntry;
