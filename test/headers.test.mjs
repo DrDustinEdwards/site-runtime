@@ -124,11 +124,12 @@ test("the static _headers file leaves out the policy and detaches a header a pat
   assert.throws(() => headersFile({ "X-A": "a\nb" }));
 });
 
-test("charset: true gives each static text type its charset, and subresources cross-origin CORP, merged with a site's own rule", async () => {
+test("charset: true gives each static text type its charset, and subresources and images cross-origin CORP, merged with a site's own rule", async () => {
   const { headersFile } = await import("../headers.mjs");
   const file = headersFile({ "X-Frame-Options": "deny", "Cross-Origin-Resource-Policy": "same-origin" }, { charset: true, paths: { "/*.css": { "Cache-Control": "no-cache" } } });
   assert.match(file, /\n\/\*\.css\n {2}! Cross-Origin-Resource-Policy\n {2}Content-Type: text\/css; charset=utf-8\n {2}Cross-Origin-Resource-Policy: cross-origin\n {2}Cache-Control: no-cache\n/);
   assert.match(file, /\n\/\*\.woff2\n {2}! Cross-Origin-Resource-Policy\n {2}Cross-Origin-Resource-Policy: cross-origin\n/);
   assert.match(file, /\n\/\*\.html\n {2}Content-Type: text\/html; charset=utf-8\n\n/, "a page keeps same-origin");
+  assert.match(file, /\n\/\*\.png\n {2}! Cross-Origin-Resource-Policy\n {2}Cross-Origin-Resource-Policy: cross-origin\n\n/, "a share card or picture loads in another site's preview, with no charset");
   assert.doesNotMatch(headersFile({ "X-Frame-Options": "deny" }), /Content-Type/);
 });

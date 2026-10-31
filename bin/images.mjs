@@ -33,7 +33,7 @@
  *   serial number, an owner name or a MakerNote.
  * - E1 a youtube.com or Vimeo player embedded directly (no facade), or an iframe with no title; E2 a <video> without a
  *   poster, controls or a captions track, or with preload="auto"; E3 an <audio> without controls (its own, or a player's
- *   buttons around it), preload="none" or a transcript link on the page.
+ *   buttons around it), preload="none" or, when it has a source, a transcript link on the page.
  *
  * A site whose home page sends a stranger to another host (a sign-in) is one C1 error: a shared link shows no card of
  * its own, and nothing behind the sign-in can be seen.
@@ -353,7 +353,10 @@ async function auditPage({ url, origin, html, headers, load, probe, onSite, site
     const player = audio.parent && descendants(audio.parent.parent ?? audio.parent).some((e) => e.tag === "button");
     if (attrs.controls === undefined && !player) problems.push("no controls");
     if (attrs.preload?.toLowerCase() !== "none") problems.push(attrs.preload === undefined ? "no preload=\"none\"" : `preload="${attrs.preload}"`);
-    if (!transcript) problems.push("no transcript link on the page");
+    // A sourceless <audio> is a player's one element, which plays what the reader picks later (germomics' dock): the
+    // transcript belongs with the episode it is given, not with every page the player sits on.
+    const sourced = attrs.src !== undefined || descendants(audio).some((e) => e.tag === "source");
+    if (!transcript && sourced) problems.push("no transcript link on the page");
     if (problems.length) add("error", "E3", url, `${attrs.src ? shorten(attrs.src) : "an <audio>"} has ${problems.join(", ")}`);
   }
   return findings;

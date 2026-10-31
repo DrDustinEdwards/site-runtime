@@ -507,7 +507,8 @@ export const prelum = {
   deviations: { C3: beaconNotStrict },
   assets: {
     skipWorker: /* @__PURE__ */ staticPages(["/fonts/*", "/katex/*", "/images/*", "/diagrams/*"], "wrangler.jsonc"),
-    policy: { noForms: true, sources: { img: ["data:"] }, styleAttributesInline: true, extraDirectives: ["manifest-src 'self'"] },
+    // media: the specimen's clip and tone, its own files (default-src 'none' refused them).
+    policy: { noForms: true, sources: { img: ["data:"], media: ["'self'"] }, styleAttributesInline: true, extraDirectives: ["manifest-src 'self'"] },
     paths: {
       "/*": { "Cache-Control": "public, max-age=300, must-revalidate" },
       "/elements.json": { "Access-Control-Allow-Origin": "*" },
