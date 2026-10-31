@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
-import { ToolCallLog, loggedArgs, verifyAuditChain } from "../audit-log.mjs";
+import { ToolCallLog, auditLogCheck, exportAuditLog, loggedArgs, verifyAuditChain } from "../audit-log.mjs";
 
 function storage() {
   const db = new DatabaseSync(":memory:");
@@ -67,6 +67,37 @@ test("PLANT: with the key bound, an editor who recomputes the chain without the 
   }
   assert.deepEqual(await verifyAuditChain(rows()), { ok: true, hashed: 2 }); // what plain SHA-256 cannot catch
   assert.deepEqual(await verifyAuditChain(rows(), "sample-secret"), { ok: false, seq: 1 });
+});
+
+test("PLANT: the copy lands in R2 and checks on its own; only copied rows past retention go; a late finished row alerts", async () => {
+  const { db, state } = storage();
+  const log = new ToolCallLog(state);
+  const env = { TOOL_CALL_LOG: { idFromName: () => "id", get: () => ({ fetch: (url, init) => log.fetch(new Request(url, init)) }) } };
+  for (const callId of ["e1", "e2", "e3"]) await append(log, { caller: "agent:sample", tool: "t", phase: "started", callId, args: {} });
+  await append(log, { caller: "agent:sample", tool: "t", phase: "finished", callId: "e1", args: {} });
+  // e2 started an hour ago and never finished; e1's and e3's rows are long past retention.
+  db.prepare("UPDATE calls SET at = ? WHERE call_id = 'e2'").run(new Date(Date.now() - 3_600_000).toISOString());
+  db.exec("UPDATE calls SET at = '2020-01-01T00:00:00.000Z' WHERE call_id IN ('e1', 'e3')");
+  const check = auditLogCheck(env);
+  assert.equal((await check.run()).detail, "1 call(s) with no finished row after 15 minutes; 4 row(s) not copied for over 2 days");
+
+  // Rows never copied are never deleted, however old.
+  const mark = await log.fetch(new Request("https://tool-call-log.invalid/exported", { method: "POST", body: JSON.stringify({ seq: 0, hash: null }) }));
+  assert.equal((await mark.json()).pruned, 0);
+
+  const bucket = new Map();
+  const r2 = { put: async (key, value) => void bucket.set(key, JSON.parse(value)) };
+  const first = await exportAuditLog(env, r2, { keepDays: 30 });
+  // e1's started row and e3 go; e2 is recent, and e1's finished row is the newest, which the next append chains to.
+  assert.deepEqual(first, { exported: 4, objects: ["tool-calls/000000000001-000000000004.json"], pruned: 2 });
+  assert.deepEqual(db.prepare("SELECT seq FROM calls").all().map((r) => r.seq), [2, 4]);
+
+  // The next copy chains on from the last, and checks only with the hash before it.
+  await append(log, { caller: "agent:sample", tool: "t", phase: "refused", callId: "e4", args: {} });
+  await exportAuditLog(env, r2);
+  const copy = bucket.get("tool-calls/000000000005-000000000005.json");
+  assert.deepEqual(await verifyAuditChain(copy.rows, undefined, copy.previous), { ok: true, hashed: 1 });
+  assert.deepEqual(await verifyAuditChain(copy.rows), { ok: false, seq: 5 });
 });
 
 test("loggedArgs keeps a string of 200 characters and stores a longer one as its length and digest prefix", async () => {

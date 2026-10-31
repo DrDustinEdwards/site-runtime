@@ -22,11 +22,12 @@ export declare const WRITING_RULES: string;
  * Every habit in `text`, each with the words it concerns, its line and its sign: `TELLS`, `OUT_OF_PLACE`, `PATTERNS` and
  * the caller's `phrases` (high), "not X, it's Y" and each dash unless `dashes: "allow"` (medium), a paragraph closing on
  * a list of three (low). Words in `allow` are dropped from every list and pattern. `firstLine` is the file line `text`
- * starts on.
+ * starts on. `model` is the model that wrote it (default Claude): for one whose id does not start with `claude`, `TELLS`
+ * and `OUT_OF_PLACE` (seen in Claude's output only) are left out.
  */
 export function checkProse(
   text: string,
-  options?: { phrases?: string[]; allow?: string[]; dashes?: "flag" | "allow"; firstLine?: number },
+  options?: { phrases?: string[]; allow?: string[]; dashes?: "flag" | "allow"; firstLine?: number; model?: string },
 ): ProseIssue[];
 
 /** `usual` is the 90th percentile of the author's own chunks' distance from their mean (absent on older stored profiles). */

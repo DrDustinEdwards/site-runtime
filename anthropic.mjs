@@ -21,13 +21,20 @@
  *   cannot read `retry-after` or tell a spend cap from a rate limit, its timeout counts only to the first byte, and a
  *   site with no gateway needs the same retries anyway. Two layers would multiply attempts (Foxhound's worst case was 9).
  *   A stream is retried only before its first byte; after that, text has reached the reader.
+ * - WHO REFUSED (G5). Through a gateway, a failure is the gateway's own when it carries neither Anthropic's `request-id`
+ *   header nor Anthropic's error body (`{"type": "error"}`): its rate limit or spend limit (429, error code 2003 in
+ *   Cloudflare's `{"success": false, "error": [{ code, message }]}` envelope), Guardrails (424, 2016 and 2017) and its
+ *   other refusals. The result and the log line say `source: "gateway"` with its `gatewayCode`, or `source: "anthropic"`,
+ *   and a gateway 429 is never retried here: its limits are rules on the gateway, not a wait the caller can sit out.
  * - STOP REASONS (build-with-claude/handling-stop-reasons). `end_turn`, `stop_sequence` and `tool_use` are answers.
  *   `max_tokens`, `model_context_window_exceeded` and `refusal` are typed failures, never a finished answer (a truncated
  *   reply stored or cached as complete is the bug this ends). `pause_turn` is resent with the content so far, at most
  *   `maxPauses` (3) times. Any other value is a failure too, so a new stop reason cannot pass as an answer.
  * - CACHING (build-with-claude/prompt-caching). With `cache` unset, a top-level `cache_control` (automatic caching) is
- *   added when the system prompt alone, estimated at 4 characters a token, reaches the model's minimum; below it the API
- *   would not cache anyway. `cache: true` always adds it, `"1h"` with the one-hour TTL, `false` never. A request whose
+ *   added when the prompt it would cache, the system prompt, the tools and the messages together, estimated at 4
+ *   characters a token, reaches the model's minimum; below it the API would not cache anyway. Automatic caching moves
+ *   its breakpoint to the last cacheable block, so a chat whose history grows past the minimum is cached even when its
+ *   system prompt is short (C7). The proof that it works is the log line's `cacheRead`: above 0 on a repeat call. `cache: true` always adds it, `"1h"` with the one-hour TTL, `false` never. A request whose
  *   system, tools or messages already carry a block-level `cache_control` is left as the caller wrote it: a top-level one
  *   beside four breakpoints, or with a different TTL from the last block's, is a 400.
  * - ERRORS. A failure is `{ ok: false, kind, error }`: `kind` for code, `error` a short sentence safe to show a reader.
@@ -66,7 +73,84 @@ export const MODELS = Object.freeze({
   "claude-haiku-4-5-20251001": Object.freeze({ state: "active", deprecated: null, retires: null, notBefore: "2026-10-15", cacheMin: 4096 }),
   "claude-sonnet-4-20250514": Object.freeze({ state: "retired", deprecated: "2026-04-14", retires: "2026-06-15", notBefore: null, cacheMin: null }),
 });
-export const MODELS_CHECKED = "2026-10-30";
+export const MODELS_CHECKED = "2026-10-31";
+
+/**
+ * The model each kind of call uses, in one place (C8): a site names the role, never an id, so a model change is one
+ * edit here and a release. `fast` for cheap, frequent calls (alt text, a score, a sample), `standard` for writing a
+ * reader sees, `deep` for long reasoning. Each is a dated or pinned id in MODELS, never a family alias.
+ */
+export const MODEL_IDS = Object.freeze({
+  fast: "claude-haiku-4-5-20251001",
+  standard: "claude-sonnet-5",
+  deep: "claude-opus-4-8",
+});
+
+/** The deprecations page as Markdown, which the daily check reads (`parseDeprecations`). */
+export const DEPRECATIONS_URL = "https://platform.claude.com/docs/en/about-claude/model-deprecations.md";
+
+const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+/** "June 15, 2026" as 2026-06-15, or null. @param {string} text */
+function isoDate(text) {
+  const m = /([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})/.exec(text);
+  const month = m ? MONTHS.indexOf(m[1].toLowerCase()) : -1;
+  return m && month >= 0 ? `${m[3]}-${String(month + 1).padStart(2, "0")}-${m[2].padStart(2, "0")}` : null;
+}
+
+/**
+ * The model table of the deprecations page (DEPRECATIONS_URL), as entries shaped like MODELS' without `cacheMin`: each
+ * row of `| API model name | Current state | Deprecated | Tentative retirement date |`. An empty object when the page
+ * holds no such table, so a page that changed shape reads as "could not check", never as "nothing retiring".
+ * @param {string} markdown
+ * @returns {Record<string, Omit<import("./anthropic.d.mts").ModelEntry, "cacheMin">>}
+ */
+export function parseDeprecations(markdown) {
+  /** @type {Record<string, any>} */
+  const out = {};
+  let inTable = false;
+  for (const line of String(markdown).split("\n")) {
+    const cells = line.trim().startsWith("|") ? line.split("|").slice(1, -1).map((c) => c.trim()) : null;
+    if (!cells) inTable = false;
+    else if (/^API model name$/i.test(cells[0] ?? "") && /state/i.test(cells[1] ?? "")) inTable = true;
+    else if (inTable && cells.length >= 4 && /^claude-[a-z0-9.-]+$/.test(cells[0])) {
+      const state = cells[1].toLowerCase();
+      if (state !== "active" && state !== "deprecated" && state !== "retired") continue;
+      const later = /not sooner than/i.test(cells[3]);
+      out[cells[0]] = { state, deprecated: isoDate(cells[2]), retires: later ? null : isoDate(cells[3]), notBefore: later ? isoDate(cells[3]) : null };
+    }
+  }
+  return out;
+}
+
+/**
+ * What is wrong with calling `ids` as of `now`, judged by `table` (the page as `parseDeprecations` read it): an id the
+ * page does not list, one deprecated or retired there, one retiring within 60 days, and one whose entry in MODELS
+ * says otherwise than the page (refresh MODELS). Empty when all is well. The daily AI check runs it over MODEL_IDS.
+ * @param {readonly string[]} ids
+ * @param {Record<string, { state: string; retires: string | null }>} table
+ * @param {Date | number} [now]
+ * @returns {string[]}
+ */
+export function deprecationProblems(ids, table, now = Date.now()) {
+  /** @type {string[]} */
+  const problems = [];
+  for (const id of new Set(ids)) {
+    const live = Object.hasOwn(table, id) ? table[id] : undefined;
+    if (!live) {
+      problems.push(`${id} is not on Anthropic's deprecations page`);
+      continue;
+    }
+    const left = live.retires ? Date.parse(`${live.retires}T00:00:00Z`) - Number(now) : Infinity;
+    if (live.state !== "active" || left <= 60 * DAY_MS) {
+      problems.push(`${id} is ${live.state}${live.retires ? `, retiring ${live.retires}` : ""}; move to its replacement`);
+    }
+    const ours = modelEntry(id);
+    if (ours && (ours.state !== live.state || ours.retires !== live.retires)) {
+      problems.push(`MODELS says ${id} is ${ours.state}${ours.retires ? ` until ${ours.retires}` : ""}, the page says ${live.state}${live.retires ? ` until ${live.retires}` : ""}; refresh MODELS`);
+    }
+  }
+  return problems;
+}
 
 /**
  * Whether a model can still be called: "retired" past its retirement date, "retiring" within 60 days of it, "ok", or
@@ -314,6 +398,7 @@ function prepare(env, app, request, options, streaming) {
     app,
     feature: options.feature,
     model: request.model,
+    gateway: route.gateway,
     url: `${route.baseURL}/v1/messages`,
     headers,
     body,
@@ -336,7 +421,8 @@ function prepare(env, app, request, options, streaming) {
 }
 
 /**
- * The cache setting for this request: the caller's, or automatic when the system prompt reaches the model's minimum.
+ * The cache setting for this request: the caller's, or automatic when the system prompt, tools and messages together
+ * reach the model's minimum.
  * @param {Record<string, any>} request
  * @param {boolean | "1h" | undefined} cache
  * @returns {false | "5m" | "1h"}
@@ -345,9 +431,9 @@ function cacheFor(request, cache) {
   if (cache === false) return false;
   if (cache === "1h") return "1h";
   if (cache === true) return "5m";
-  const system = typeof request.system === "string" ? request.system : JSON.stringify(request.system ?? "");
+  const chars = (/** @type {unknown} */ part) => (typeof part === "string" ? part.length : part == null ? 0 : JSON.stringify(part).length);
   const min = modelEntry(request.model)?.cacheMin ?? 1024;
-  return system.length / 4 >= min ? "5m" : false;
+  return (chars(request.system) + chars(request.tools) + chars(request.messages)) / 4 >= min ? "5m" : false;
 }
 
 /**
@@ -442,13 +528,17 @@ async function send(call, body) {
       return { ok: true, message: parsed ?? {}, requestId, gatewayLogId };
     }
     idle?.stop();
-    const decision = retryDecision(response.status, response.headers, parsed, call.attempts);
+    // G5: through a gateway, an answer with neither Anthropic's request id nor its error body is the gateway's own.
+    const fromGateway = call.gateway && !response.headers.has("request-id") && parsed?.type !== "error";
+    const decision = fromGateway ? { kind: response.status === 429 ? "rate_limited" : response.status >= 500 ? "unavailable" : "rejected", retry: false, waitMs: 0 } : retryDecision(response.status, response.headers, parsed, call.attempts);
     if (decision.retry && call.attempts < call.maxAttempts && Date.now() + decision.waitMs < call.deadline) {
       if (!(await wait(call, decision.waitMs))) return failure("aborted", {});
       continue;
     }
     const providerType = typeof parsed?.error?.type === "string" ? parsed.error.type.slice(0, 64) : undefined;
-    return failure(decision.kind, { status: response.status, requestId, gatewayLogId, providerType, retryAfter: decision.retryAfter });
+    const code = Array.isArray(parsed?.error) ? Number(parsed.error[0]?.code) : NaN;
+    const source = fromGateway ? { source: "gateway", ...(Number.isInteger(code) ? { gatewayCode: code } : {}) } : { source: "anthropic" };
+    return failure(decision.kind, { status: response.status, requestId, gatewayLogId, providerType, retryAfter: decision.retryAfter, ...source });
   }
 }
 
@@ -554,6 +644,8 @@ function finish(call, result) {
     requestId: out.requestId ?? null,
     gatewayLogId: out.gatewayLogId ?? null,
     providerType: out.providerType ?? null,
+    source: out.source ?? null,
+    gatewayCode: out.gatewayCode ?? null,
     ...out.usage,
     durationMs: Date.now() - call.started,
     attempts: out.attempts,

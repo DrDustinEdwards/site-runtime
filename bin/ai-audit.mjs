@@ -3,8 +3,10 @@
  * The AI and MCP check against a live origin, for the family's scoreboard (devkit live/, area 11):
  *
  *   site-runtime-ai-audit --origin https://mcp.example.com [--from https://preview.example.workers.dev] [--kind worker]
+ *     [--grant-env NAME] [--tools-hash HEX] [--conformance-baseline SCENARIO=PASSED/TOTAL ...] [--no-conformance]
+ *     [--prose /path ...] [--prose-model ID] [--models]
  *
- * It holds no grant, so it makes only unauthenticated requests. `--kind` is the site's kind in devkit's live/sites.json:
+ * `--kind` is the site's kind in devkit's live/sites.json:
  * a `worker` is an MCP server and must publish its metadata; a `site` or `static` origin is an MCP server only when it
  * does. Without it, the metadata probes decide: an origin whose /.well-known/oauth-protected-resource[/mcp] answers JSON is an MCP server,
  * one that answers 404 on both is not, and any other answer (a 5xx, an HTML page, a redirect) is an A1 error, since a
@@ -16,9 +18,31 @@
  *   A8   /authorize with garbage parameters is never cacheable (no-store); framing is another area's check
  *   P10  a foreign Origin with no token: 403 (a 401 means the token check ran before the Origin check)
  *   P5   GET on the endpoint: 405 (or 401, auth first); 200 is a warning, and no Mcp-Session-Id on a modern answer
- *   S8   GET /health: 200
+ *   S8   GET /health: 200; L8 its `tool-call-log` check (./audit-log `auditLogCheck`) passes
+ *   P3, P4, P7  the official conformance suite (@modelcontextprotocol/conformance, pinned below, run through npx): the
+ *        authorization server's metadata scenario always, and the server scenarios server-stateless,
+ *        http-header-validation and caching with the test grant. A scenario that does not pass every check is an error,
+ *        unless `--conformance-baseline` records its known count (devkit-conformance's rule: fewer is an error, more is a
+ *        warning to tighten the baseline). `--no-conformance` skips it all.
  *
- * Any other origin has nothing more for this check.
+ * WITH A TEST GRANT. The bearer is read from the environment variable `--grant-env` names (default
+ * MCP_TEST_GRANT_<HOST>, the origin's host upper-cased with every other character an underscore, so
+ * MCP_TEST_GRANT_MCP_EXAMPLE_COM), never from an argument, and is never printed. Make it a READ-ONLY grant (an agent
+ * key without AGENT_WRITE): the daily run needs nothing more, and T7 counts on it. Without one, every check below is
+ * skipped with a warning that names the variable, never silently:
+ *
+ *   T1-T4, T9  tools/list judged by ./mcp-server `toolListProblems`, the same rules a server's own test runs
+ *   T7   two lists in a row are identical, and the read-only grant sees no tool without readOnlyHint
+ *   T12  the list's `toolListHash` equals `--tools-hash`; without one, a warning gives the live hash to pin
+ *   S1   last, a burst of MCP_PER_MINUTE + 5 concurrent tools/list as the test grant gets at least one 429 (a minute of
+ *        refusals for the test grant alone, nobody else's limit). The conformance scenarios and the burst each wait 61 s
+ *        first, so one never runs into the window the last one used.
+ *
+ * Any origin: `--prose /path` (repeatable) fetches a public page that carries AI-written text and runs ./prose
+ * `checkProse` over its text, as written by `--prose-model` (default Claude): what a chatbot leaves in text (a refusal,
+ * a cutoff note, a blank, citation markup) is a W3 error; another high finding is a W1 warning. `--models` (C8) reads
+ * Anthropic's deprecations page and fails on any model in ./anthropic `MODEL_IDS` that is deprecated, retiring within
+ * 60 days, or that MODELS describes otherwise than the page. A site with neither has nothing more for this check.
  *
  * --from fetches from another host (a preview) while the expected values (issuer, resource) stay those of --origin.
  * Each finding is a GitHub annotation, `::error title=<item>::<the URL requested> <detail>`, with `%`, CR and LF escaped
@@ -26,7 +50,14 @@
  * clean, 1 on any error, 2 when the origin does not answer at all, so an outage never reads as findings or as a pass.
  */
 
+import { spawn } from "node:child_process";
+import { createServer } from "node:http";
+import { setTimeout as sleep } from "node:timers/promises";
 import { parseArgs } from "node:util";
+
+import { DEPRECATIONS_URL, MODEL_IDS, deprecationProblems, parseDeprecations } from "../anthropic.mjs";
+import { MCP_PER_MINUTE, toolListHash, toolListProblems } from "../mcp-server.mjs";
+import { checkProse } from "../prose.mjs";
 
 const TIMEOUT_MS = 10_000;
 const VERSION = "2026-07-28";
@@ -42,14 +73,42 @@ const MCP_HEADERS = {
   "mcp-protocol-version": VERSION,
   "mcp-method": "server/discover",
 };
+// The suite, pinned exactly (devkit-conformance's version), and the scenarios a production server can pass as it is.
+const CONFORMANCE = "@modelcontextprotocol/conformance@0.2.0-alpha.10";
+const SERVER_SCENARIOS = ["server-stateless", "http-header-validation", "caching"];
+const WINDOW_MS = 61_000;
 
-const { values } = parseArgs({ options: { origin: { type: "string" }, from: { type: "string" }, kind: { type: "string" } } });
-if (!values.origin || (values.kind !== undefined && !["worker", "site", "static"].includes(values.kind))) {
-  console.error("usage: site-runtime-ai-audit --origin https://example.com [--from https://preview.example] [--kind worker|site|static]");
+const { values } = parseArgs({
+  options: {
+    origin: { type: "string" },
+    from: { type: "string" },
+    kind: { type: "string" },
+    "grant-env": { type: "string" },
+    "tools-hash": { type: "string" },
+    "conformance-baseline": { type: "string", multiple: true },
+    "no-conformance": { type: "boolean" },
+    prose: { type: "string", multiple: true },
+    "prose-model": { type: "string" },
+    models: { type: "boolean" },
+  },
+});
+/** @type {Map<string, { passed: number, total: number }>} */
+const baselines = new Map();
+for (const entry of values["conformance-baseline"] ?? []) {
+  const m = /^([a-z0-9-]+)=(\d+)\/(\d+)$/.exec(entry);
+  if (!m) values.origin = undefined;
+  else baselines.set(m[1], { passed: Number(m[2]), total: Number(m[3]) });
+}
+if (!values.origin || (values.kind !== undefined && !["worker", "site", "static"].includes(values.kind)) || (values.prose ?? []).some((p) => !p.startsWith("/"))) {
+  console.error(
+    "usage: site-runtime-ai-audit --origin https://example.com [--from https://preview.example] [--kind worker|site|static] [--grant-env NAME] " +
+      "[--tools-hash HEX] [--conformance-baseline scenario=passed/total ...] [--no-conformance] [--prose /path ...] [--prose-model ID] [--models]",
+  );
   process.exit(2);
 }
 const origin = values.origin.replace(/\/$/, "");
 const from = values.from?.replace(/\/$/, "");
+const grantEnv = values["grant-env"] ?? `MCP_TEST_GRANT_${new URL(origin).hostname.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
 
 /** @type {{ severity: "error" | "warning", item: string, url: string, detail: string }[]} */
 const findings = [];
@@ -116,6 +175,8 @@ for (const probe of prmProbes) {
 if (values.kind === "worker" && prms.length === 0 && findings.length === 0) report("error", "A1", prmProbes[0].url, "a worker (an MCP server) publishes no protected-resource metadata");
 
 if (prms.length > 0) await auditMcp();
+if (values.prose?.length) await auditProse(values.prose);
+if (values.models) await auditModels();
 
 /** A value in a workflow command, escaped as GitHub requires, so it cannot end the line and start another command. */
 const commandValue = (/** @type {string} */ text) => text.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
@@ -211,9 +272,252 @@ async function auditMcp() {
   }
   await consent.res?.body?.cancel();
 
-  // S8.
-  const health = await get(`${origin}/health`);
+  // S8, and L8: the tool-call log's own check on /health.
+  const health = await get(`${origin}/health`, { headers: { accept: "application/health+json, application/json" } });
   if (!health.res) report("error", "S8", health.url, health.why);
   else if (health.res.status !== 200) report("error", "S8", health.url, `answered ${health.res.status}, not 200`);
-  await health.res?.body?.cancel();
+  const checks = health.res?.ok ? (await jsonOf(health.res))?.checks : null;
+  const logCheck = Array.isArray(checks) ? checks.find((c) => c?.name === "tool-call-log") : undefined;
+  if (!logCheck) report("warning", "L8", health.url, "has no tool-call-log check (site-runtime/audit-log auditLogCheck), so a stopped or spiking log goes unseen");
+  else if (logCheck.status !== "pass") report("error", "L8", health.url, `tool-call-log is ${logCheck.status}: ${String(logCheck.detail ?? "").slice(0, 200)}`);
+  await health.res?.body?.cancel().catch(() => {});
+
+  if (!values["no-conformance"]) {
+    const scenario = "authorization-server-metadata-endpoint";
+    judgeConformance(scenario, asUrl || issuer, await runConformance(["authorization", "--url", issuer, "--scenario", scenario, "--spec-version", VERSION]));
+  }
+
+  const grant = process.env[grantEnv]?.trim();
+  if (!grant) {
+    report("warning", "T1", endpoint, `no test grant in ${grantEnv}: tools/list (T1-T4, T7, T9, T12), the conformance server scenarios and the rate-limit burst (S1) did not run`);
+    return;
+  }
+  await auditTools(endpoint, grant);
+  if (!values["no-conformance"]) {
+    const proxy = await grantProxy(endpoint, grant);
+    try {
+      for (const scenario of SERVER_SCENARIOS) {
+        await sleep(WINDOW_MS);
+        judgeConformance(scenario, endpoint, await runConformance(["server", "--url", proxy.url, "--scenario", scenario, "--spec-version", VERSION]));
+      }
+    } finally {
+      proxy.close();
+    }
+  }
+  await sleep(WINDOW_MS);
+  await burst(endpoint, grant);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// With the test grant.
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** A modern-era request's body: the method, its params, and the per-request envelope. */
+function envelope(/** @type {string} */ method, /** @type {Record<string, unknown>} */ params = {}) {
+  const meta = {
+    "io.modelcontextprotocol/protocolVersion": VERSION,
+    "io.modelcontextprotocol/clientInfo": { name: "site-runtime-ai-audit", version: "1" },
+    "io.modelcontextprotocol/clientCapabilities": {},
+  };
+  return JSON.stringify({ jsonrpc: "2.0", id: 1, method, params: { ...params, _meta: meta } });
+}
+
+/** The JSON-RPC message of an answer sent as JSON or as one server-sent event. */
+async function rpcOf(/** @type {Response} */ res) {
+  const text = await res.text().catch(() => "");
+  if (!/event-stream/i.test(res.headers.get("content-type") ?? "")) {
+    try {
+      return JSON.parse(text);
+    } catch {
+      return null;
+    }
+  }
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.startsWith("data:")) continue;
+    try {
+      const message = JSON.parse(line.slice(5).trim());
+      if (message && ("result" in message || "error" in message)) return message;
+    } catch {}
+  }
+  return null;
+}
+
+/** Every page of tools/list as the grant sees it, or the reason there is none. */
+async function listTools(/** @type {string} */ endpoint, /** @type {string} */ grant) {
+  /** @type {Record<string, any>[]} */
+  const tools = [];
+  let cursor;
+  for (let page = 0; page < 20; page++) {
+    const r = await get(endpoint, {
+      method: "POST",
+      headers: { ...MCP_HEADERS, "mcp-method": "tools/list", authorization: `Bearer ${grant}` },
+      body: envelope("tools/list", cursor ? { cursor } : {}),
+    });
+    if (!r.res) return { url: r.url, tools: null, why: r.why };
+    const rpc = r.res.ok ? await rpcOf(r.res) : (await r.res.body?.cancel().catch(() => {}), null);
+    if (!Array.isArray(rpc?.result?.tools)) {
+      return { url: r.url, tools: null, why: r.res.ok ? `tools/list answered no tools${rpc?.error ? ` (${rpc.error.code})` : ""}` : `the test grant was answered ${r.res.status}` };
+    }
+    tools.push(...rpc.result.tools);
+    cursor = typeof rpc.result.nextCursor === "string" && rpc.result.nextCursor ? rpc.result.nextCursor : undefined;
+    if (!cursor) return { url: r.url, tools, why: "" };
+  }
+  return { url: endpoint, tools: null, why: "tools/list still had a next page after 20" };
+}
+
+async function auditTools(/** @type {string} */ endpoint, /** @type {string} */ grant) {
+  const first = await listTools(endpoint, grant);
+  if (!first.tools) return report("error", "T1", first.url, first.why);
+  for (const p of toolListProblems(first.tools)) report(p.severity, p.item, first.url, `${p.tool}: ${p.detail}`);
+
+  const second = await listTools(endpoint, grant);
+  const names = (/** @type {Record<string, any>[] | null} */ list) => (list ?? []).map((t) => String(t.name)).join(",");
+  if (names(second.tools) !== names(first.tools)) report("error", "T7", first.url, "two tools/list calls in a row listed different tools or a different order");
+  const writes = first.tools.filter((t) => t.annotations?.readOnlyHint !== true).map((t) => t.name);
+  if (writes.length) report("error", "T7", first.url, `the read-only test grant lists tools that are not read-only: ${writes.slice(0, 10).join(", ")}`);
+
+  const hash = await toolListHash(first.tools);
+  const pinned = values["tools-hash"]?.trim().toLowerCase();
+  if (!pinned) report("warning", "T12", first.url, `no --tools-hash pinned; the test grant's list hashes to ${hash}`);
+  else if (pinned !== hash) report("error", "T12", first.url, `the tool list changed: it hashes to ${hash}, not the pinned ${pinned}; review the change, then pin the new hash`);
+}
+
+/** S1: a concurrent burst over the limit, as the test grant, gets at least one 429. */
+async function burst(/** @type {string} */ endpoint, /** @type {string} */ grant) {
+  const count = MCP_PER_MINUTE + 5;
+  const answers = await Promise.all(
+    Array.from({ length: count }, () =>
+      get(endpoint, { method: "POST", headers: { ...MCP_HEADERS, "mcp-method": "tools/list", authorization: `Bearer ${grant}` }, body: envelope("tools/list") }),
+    ),
+  );
+  const statuses = answers.map((a) => a.res?.status ?? 0);
+  await Promise.all(answers.map((a) => a.res?.body?.cancel().catch(() => {})));
+  const limited = answers.filter((a) => a.res?.status === 429);
+  if (limited.length === 0) report("error", "S1", endpoint, `${count} concurrent requests by one caller, none refused (statuses ${[...new Set(statuses)].join(", ")})`);
+  else if (!limited.every((a) => a.res?.headers.has("retry-after"))) report("warning", "S1", endpoint, "a 429 without Retry-After");
+}
+
+/**
+ * A local proxy that adds the grant to each request and sends it on to `endpoint`, so the suite (which takes no header)
+ * tests the real server and never sees the grant. A localhost Origin the suite sends is dropped, since it names the
+ * proxy, not a browser page.
+ */
+async function grantProxy(/** @type {string} */ endpoint, /** @type {string} */ grant) {
+  const target = from && endpoint.startsWith(origin) ? from + endpoint.slice(origin.length) : endpoint;
+  const server = createServer(async (req, res) => {
+    /** @type {Buffer[]} */
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const headers = new Headers();
+    for (const [name, value] of Object.entries(req.headers)) {
+      if (["host", "connection", "content-length", "authorization", "accept-encoding"].includes(name) || value === undefined) continue;
+      if (name === "origin" && /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(String(value))) continue;
+      headers.set(name, Array.isArray(value) ? value.join(", ") : value);
+    }
+    headers.set("authorization", `Bearer ${grant}`);
+    try {
+      const answer = await fetch(target, { method: req.method, headers, body: chunks.length ? Buffer.concat(chunks) : undefined, redirect: "manual", signal: AbortSignal.timeout(TIMEOUT_MS) });
+      const out = {};
+      answer.headers.forEach((value, name) => {
+        if (!["content-encoding", "content-length", "transfer-encoding", "connection"].includes(name)) /** @type {any} */ (out)[name] = value;
+      });
+      res.writeHead(answer.status, out);
+      res.end(Buffer.from(await answer.arrayBuffer()));
+    } catch {
+      res.writeHead(502).end();
+    }
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(undefined)));
+  const address = /** @type {import("node:net").AddressInfo} */ (server.address());
+  return { url: `http://127.0.0.1:${address.port}/mcp`, close: () => server.close() };
+}
+
+/** Runs the pinned suite through npx, without the grant in its environment; the printed count, or why there is none. */
+function runConformance(/** @type {string[]} */ args) {
+  const env = { ...process.env };
+  delete env[grantEnv];
+  return new Promise((resolve) => {
+    let out = "";
+    const child = spawn("npx", ["-y", CONFORMANCE, ...args], { env, stdio: ["ignore", "pipe", "pipe"], timeout: 300_000, shell: process.platform === "win32" });
+    child.stdout.on("data", (d) => (out += d));
+    child.stderr.on("data", (d) => (out += d));
+    child.on("error", (error) => resolve({ count: null, failed: [], why: `npx could not start (${error.message})` }));
+    child.on("close", () => {
+      const plain = out.replace(/\x1b\[[0-9;]*m/g, "");
+      const m = /Passed:\s*(\d+)\/(\d+)/.exec(plain);
+      const failed = [...new Set([...plain.matchAll(/\[([^\]]+?)\s*\]\s+FAILURE\b/g)].map((f) => f[1].trim()))].slice(0, 5);
+      resolve(m ? { count: { passed: Number(m[1]), total: Number(m[2]) }, failed, why: "" } : { count: null, failed, why: plain.trim().split("\n").at(-1)?.slice(0, 200) ?? "no output" });
+    });
+  });
+}
+
+/** One scenario's count against its baseline, devkit-conformance's way. */
+function judgeConformance(/** @type {string} */ scenario, /** @type {string} */ url, /** @type {any} */ run) {
+  const item = { "server-stateless": "P3", "http-header-validation": "P4", caching: "P7" }[scenario] ?? "A4";
+  if (!run.count) return report("warning", item, url, `conformance ${scenario} could not run: ${run.why}`);
+  const { passed, total } = run.count;
+  const failing = run.failed.length ? ` (failing: ${run.failed.join(", ")})` : "";
+  const want = baselines.get(scenario);
+  if (!want) {
+    if (passed < total) report("error", item, url, `conformance ${scenario} passed ${passed}/${total}${failing}`);
+  } else if (total !== want.total) report("warning", item, url, `conformance ${scenario} now has ${total} checks, baseline ${want.total}; re-baseline`);
+  else if (passed < want.passed) report("error", item, url, `conformance ${scenario} passed ${passed}/${total}, below its baseline ${want.passed}${failing}`);
+  else if (passed > want.passed) report("warning", item, url, `conformance ${scenario} passed ${passed}/${total}, above its baseline ${want.passed}; tighten it`);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Any origin: public AI text, and the models.
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** A page's readable text: no script, style or markup, block ends as line breaks, the common entities decoded. */
+function textOf(/** @type {string} */ html) {
+  return html
+    .replace(/<(script|style|noscript|template|svg)\b[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<\/?(?:p|div|li|h[1-6]|br|section|article|blockquote|tr|td|th|dd|dt)\b[^>]*>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;|&rsquo;/g, "’")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** W1 and W3: each page's text through checkProse, as the model that wrote it. */
+async function auditProse(/** @type {string[]} */ paths) {
+  const model = values["prose-model"] ?? "claude";
+  for (const path of paths) {
+    const page = await get(origin + path, { headers: { accept: "text/html" } });
+    if (!page.res) {
+      report("error", "W1", page.url, page.why);
+      continue;
+    }
+    if (!page.res.ok) {
+      report("error", "W1", page.url, `answered ${page.res.status}`);
+      await page.res.body?.cancel().catch(() => {});
+      continue;
+    }
+    for (const issue of checkProse(textOf(await page.res.text()), { model, dashes: "allow" })) {
+      if (issue.severity !== "high") continue;
+      const leftover = ["leftover", "placeholder", "markup"].includes(issue.check);
+      report(leftover ? "error" : "warning", leftover ? "W3" : "W1", page.url, `${issue.message}`.slice(0, 200));
+    }
+  }
+}
+
+/** C8: MODEL_IDS against Anthropic's deprecations page. */
+async function auditModels() {
+  /** @type {string} */
+  let page = "";
+  try {
+    const res = await fetch(DEPRECATIONS_URL, { signal: AbortSignal.timeout(TIMEOUT_MS), headers: { "user-agent": "site-runtime-ai-audit" } });
+    page = res.ok ? await res.text() : "";
+  } catch {}
+  const table = parseDeprecations(page);
+  if (Object.keys(table).length === 0) return report("warning", "C8", DEPRECATIONS_URL, "could not read the model table; the models were not checked today");
+  for (const problem of deprecationProblems(Object.values(MODEL_IDS), table)) report("error", "C8", DEPRECATIONS_URL, problem);
 }
