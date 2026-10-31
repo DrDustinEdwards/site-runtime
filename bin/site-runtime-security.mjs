@@ -154,7 +154,10 @@ for (const [tag] of homeHtml.matchAll(/<(?:script|link)\b[^>]*>/gi)) {
 const nonce = NONCE.exec(home.res.headers.get("Content-Security-Policy") ?? "")?.[1];
 if (nonce) {
   if (!/^[A-Za-z0-9+/_-]{22,}={0,2}$/.test(nonce)) report("error", "C6", home.url, `the nonce ${JSON.stringify(nonce)} is under 128 bits of base64`);
-  const stale = [...homeHtml.matchAll(/<(?:script|style|link)\b[^>]*\snonce="([^"]*)"/gi)].map((m) => m[1]).filter((n) => n !== nonce);
+  // A <noscript> body is text to a browser that runs scripts, so a nonce inside it is never presented; a page that
+  // parses one later (germomics' hydrate-on-intent) sets its own.
+  const live = homeHtml.replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, "");
+  const stale = [...live.matchAll(/<(?:script|style|link)\b[^>]*\snonce="([^"]*)"/gi)].map((m) => m[1]).filter((n) => n !== nonce);
   if (stale.length > 0) report("error", "C6", home.url, `${stale.length} element(s) carry a nonce the header does not name`);
   try {
     const again = await get("/");
