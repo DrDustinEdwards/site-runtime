@@ -54,7 +54,7 @@ export function safeAdminNext(next: string | null | undefined, options?: { prefi
 
 /** An admin's Access session ends after this long without a request: 3600 seconds. */
 export const ADMIN_IDLE_SECONDS: number;
-/** The cookie holding the admin's last request time, signed with their Access token. */
+/** The cookie holding the admin's last request time, signed for their Access session. */
 export const ADMIN_SEEN_COOKIE: "__Host-admin-seen";
 /** Access's logout path, which revokes the session everywhere and clears the cookie. */
 export const ACCESS_LOGOUT_PATH: "/cdn-cgi/access/logout";
