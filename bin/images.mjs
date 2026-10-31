@@ -259,13 +259,13 @@ async function shareCard({ url, body, absolute, load, onSite }) {
     add(file.width >= 1200 ? "warning" : "error", "C2", src, `the og:image is ${file.width} by ${file.height}, not 1200 by 630`);
   }
   const missing = ["og:image:width", "og:image:height", "og:image:type", "og:image:alt"].filter((key) => !meta.get(key));
-  if (missing.length) add("error", "C2", url, `no ${missing.join(", ")}`);
+  if (missing.length) add("error", "C3", url, `no ${missing.join(", ")}`);
   const wrong = [];
   if (file && meta.get("og:image:width") && Number(meta.get("og:image:width")) !== file.width) wrong.push(`og:image:width ${meta.get("og:image:width")} (the file is ${file.width})`);
   if (file && meta.get("og:image:height") && Number(meta.get("og:image:height")) !== file.height) wrong.push(`og:image:height ${meta.get("og:image:height")} (the file is ${file.height})`);
   const type = got.type.split(";")[0].trim().toLowerCase();
   if (meta.get("og:image:type") && meta.get("og:image:type")?.toLowerCase() !== type) wrong.push(`og:image:type ${meta.get("og:image:type")} (the file is ${type})`);
-  if (wrong.length) add("error", "C2", url, `${wrong.join(", ")} does not match the file`);
+  if (wrong.length) add("error", "C3", url, `${wrong.join(", ")} does not match the file`);
   return findings;
 }
 
