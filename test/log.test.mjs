@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { logEvent, scrubFields, scrubText, scrubUrl } from "../log.mjs";
+import { logEvent, routeNamer, scrubFields, scrubText, scrubUrl } from "../log.mjs";
 
 test("emails, URL queries, Stripe keys, Drizzle parameters and route tokens are cut", () => {
   assert.equal(
@@ -30,4 +30,23 @@ test("a line is one JSON object with the event first, and a field cannot rename 
     console.log = original;
   }
   assert.equal(lines[0], '{"event":"signed_in","error":"Error: for [email]"}');
+});
+
+test("routeNamer names the most specific React Router pattern, a .data fetch as its page", () => {
+  const name = routeNamer({
+    root: { path: "" },
+    "routes/home": { parentId: "root", index: true },
+    "routes/blog": { parentId: "root", path: "blog" },
+    "routes/blog.$slug": { parentId: "routes/blog", path: ":slug" },
+    "routes/blog.new": { parentId: "routes/blog", path: "new" },
+    "routes/$lang?.about": { parentId: "root", path: ":lang?/about" },
+    "routes/$": { parentId: "root", path: "*" },
+  });
+  const at = (/** @type {string} */ path) => name(new Request(`https://example.com${path}`));
+  assert.equal(at("/blog/new"), "/blog/new");
+  assert.equal(at("/blog/a-post"), "/blog/:slug");
+  assert.equal(at("/blog/a-post.data"), "/blog/:slug");
+  assert.equal(at("/about"), "/:lang?/about");
+  assert.equal(at("/no/such/page"), "/*");
+  assert.equal(at("/"), "/");
 });

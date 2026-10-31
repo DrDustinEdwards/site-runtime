@@ -1289,6 +1289,16 @@ string or a function of the handler's other arguments:
 import { withRequestLog } from "@dustinedwards/site-runtime/log";
 export default { fetch: withRequestLog(handler, { sha: (env) => env.DEPLOY_SHA }) };
 ```
+
+`routeNamer(build.routes)` is that `route` for a React Router site: the full pattern of the most specific route in the
+build's route table that matches the path (static segments before params, params before a splat; a single-fetch
+`.data` request is named as its page). The build is a module the Worker imports, so the namer is made once:
+
+```js
+import * as build from "virtual:react-router/server-build";
+const route = routeNamer(build.routes);
+export default { fetch: withRequestLog(handler, { sha: (env) => env.DEPLOY_SHA, route }) };
+```
 `OWASP_EVENTS` holds the [OWASP Logging Vocabulary](https://cheatsheetseries.owasp.org/cheatsheets/Logging_Vocabulary_Cheat_Sheet.html)
 names for a site's security events: `authn_login_success`, `authn_login_fail`, `authn_token_created`, `session_logout`,
 `session_expired`, `user_updated`, `user_deleted`, `authz_fail`, `input_validation_fail` and

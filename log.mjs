@@ -164,6 +164,45 @@ export function withRequestLog(handler, { sha, route, ...scrub } = {}) {
 }
 
 /**
+ * A `route` namer for withRequestLog from a React Router build's route table (`build.routes`: each route's `path` and
+ * `parentId`): the full pattern of the most specific route that matches the path, such as `/blog/:slug`, so a log
+ * groups a route's hits whatever the slug. A single-fetch `.data` suffix is read as its page. Static segments outrank
+ * params, and params a splat, as in React Router's ranking. Undefined when nothing matches.
+ * @param {Readonly<Record<string, { path?: string, parentId?: string, index?: boolean } | undefined>>} routes
+ * @returns {(request: Request) => string | undefined}
+ */
+export function routeNamer(routes) {
+  /** @param {string | undefined} id @returns {string[]} */
+  const segments = (id) => {
+    const route = id ? routes[id] : undefined;
+    if (!route) return [];
+    return [...segments(route.parentId), ...(route.path ?? "").split("/").filter(Boolean)];
+  };
+  const patterns = [...new Set(Object.keys(routes).map((id) => segments(id).join("/")))]
+    .map((pattern) => {
+      if (pattern === "") return { name: "/", test: /^\/?$/, score: 10 };
+      const parts = pattern.split("/");
+      const source = parts
+        .map((part) => {
+          if (part === "*") return "(?:/.*)?";
+          const optional = part.endsWith("?");
+          const bare = optional ? part.slice(0, -1) : part;
+          const one = bare.startsWith(":") ? "/[^/]+" : `/${bare.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`;
+          return optional ? `(?:${one})?` : one;
+        })
+        .join("");
+      const score = parts.reduce((sum, part) => sum + (part === "*" ? -2 : part.startsWith(":") ? 3 : part.endsWith("?") ? 1 : 10), 0);
+      return { name: `/${pattern}`, test: new RegExp(`^${source}/?$`, "i"), score };
+    })
+    .sort((a, b) => b.score - a.score);
+  return (request) => {
+    let path = new URL(request.url).pathname;
+    if (path.endsWith(".data")) path = path === "/_root.data" ? "/" : path.slice(0, -5);
+    return patterns.find((pattern) => pattern.test.test(path))?.name;
+  };
+}
+
+/**
  * Event names from the OWASP Logging Vocabulary
  * (https://cheatsheetseries.owasp.org/cheatsheets/Logging_Vocabulary_Cheat_Sheet.html), so a site's security events
  * carry the names a reader or a SIEM rule already knows.
