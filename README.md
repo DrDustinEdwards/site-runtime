@@ -68,8 +68,8 @@ value a cookie cannot carry, and `SameSite=None`. The check fails a cookie witho
 
 `./sites` holds one entry per live site with only its declared deviations, each with the reason the site's code gives:
 header `overrides` in the shape above, and the policy opt-ins the check must accept (`cloudflareWebAnalytics`,
-`inlineScripts`, `inlineStyles`, `formTargets`, `framedBySameOrigin`, `baseUriSelf`, and `passkey`, which applies
-`PASSKEY_OVERRIDES`). Every registry site is graded on five items whether it opts in or not: Integrity-Policy (S2), a
+`inlineScripts`, `inlineStyles`, `formTargets`, `framedBySameOrigin`, `baseUriSelf`, `embeds` (Post embeds, below), and
+`passkey`, which applies `PASSKEY_OVERRIDES`). Every registry site is graded on five items whether it opts in or not: Integrity-Policy (S2), a
 strict script policy (C3: `'strict-dynamic'` beside a nonce or hash, or no script at all), Trusted Types (C7),
 `default-src 'none'` (C9) and COEP (I3). A site meets each, stages it, or declines it in `deviations` with the reason its
 code gives, so the registry is the whole list of what each site skips. The opt-ins that meet or stage them are promises
@@ -100,6 +100,26 @@ its own. `corpFor(contentType)` (`./headers`) is `cross-origin` for public media
 image, a font, a stylesheet or script, an RSS, Atom or JSON feed) and `same-origin` for everything else, so a site marks
 those responses and not every response. A stylesheet must be `cross-origin` for a sandboxed frame (an opaque origin,
 such as Carrel's preview) to load it. The check accepts `cross-origin` on those kinds only.
+
+## Post embeds
+
+`./embeds` is the security side of Prelum's `::embed`: `EMBED_FRAME_SOURCES`, the players' origins (YouTube's no-cookie
+host, TikTok, Spotify, SoundCloud, Apple Podcasts, Amazon Music on each of its domains, Google Maps, X, Bluesky and
+Instagram, Dustin's list of 2026-10-31), and `EMBED_FEATURES`, what a player's iframe asks for (autoplay,
+encrypted-media, fullscreen, picture-in-picture). A site whose posts embed them declares the `embeds` opt-in in its entry:
+
+- `buildSecurityHeaders({ site })` allows the four features for the site and the players (`permissionsAllowingEmbeds`),
+  where OSHP denies them, so a player can play on the click that loaded it, play protected audio and go full screen.
+- `buildContentSecurityPolicy({ embeds: true })` adds the players to `frame-src`; a static site's page policy does it
+  from the entry. The check holds a site that declares `embeds` to every player in its frame-src (C16).
+- No player sends Cross-Origin-Embedder-Policy, so an enforced COEP refuses each one: an entry with `embeds` and an
+  enforced `coep` is refused, and it keeps `coep` Report-Only.
+
+Prelum's test holds that every player its renderer builds is on this list, so a new service is added here first.
+
+```js
+const csp = buildContentSecurityPolicy({ ...mySitePolicy, embeds: true });  // frame-src 'self' + the players
+```
 
 ## The policy, from a list of what the site loads
 

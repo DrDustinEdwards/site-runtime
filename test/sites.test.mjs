@@ -11,7 +11,7 @@ import * as values from "../sites-values.mjs";
 
 const ENDPOINTS = { "Reporting-Endpoints": 'csp-endpoint="https://example.com/csp-report"' };
 /** The opt-ins the policy builder takes; the rest (passkey, inlineStyles, uploads, coep, integrityPolicy) are not the policy's. */
-const POLICY_KEYS = new Set(["inlineScripts", "strictDynamic", "cloudflareWebAnalytics", "framedBySameOrigin", "baseUriSelf", "denyUnlisted", "formTargets", "trustedTypes"]);
+const POLICY_KEYS = new Set(["inlineScripts", "strictDynamic", "cloudflareWebAnalytics", "framedBySameOrigin", "embeds", "baseUriSelf", "denyUnlisted", "formTargets", "trustedTypes"]);
 
 /** A rendered site's page: its set, the policy its opt-ins build, and the Report-Only policy carrying what it stages. */
 function page(/** @type {import("../sites.mjs").SiteEntry} */ entry) {
@@ -40,7 +40,7 @@ test("every entry builds, and a page built from its entry passes the check grade
 
 test("an undeclared deviation fails: an opt-in another site declared, or a gap left out of the entry", () => {
   const capsomer = new Headers({ ...staticHeaders(capsomerEntry).set, "Content-Type": "text/html; charset=utf-8" });
-  assert.deepEqual(failures(checkSecurityHeaders(capsomer, { site: "prelum" })).map((r) => r.id).sort(), ["C9", "H3", "H5", "I3"]);
+  assert.deepEqual(failures(checkSecurityHeaders(capsomer, { site: "prelum" })).map((r) => r.id).sort(), ["C9", "H3", "H5"]);
   const oneYear = page({ ...dustinedwardsInfo, headers: { ...dustinedwardsInfo.headers } });
   oneYear.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   assert.deepEqual(failures(checkSecurityHeaders(oneYear, { site: "dustinedwards-info" })).map((r) => r.id), ["T2"]);

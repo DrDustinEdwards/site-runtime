@@ -22,6 +22,8 @@
  * neither can work does a site opt into `inlineScripts: "unsafe-inline"`.
  */
 
+import { EMBED_FRAME_SOURCES } from "./embeds.mjs";
+
 /** Where every site receives its reports (./csp-report): the default report-uri, and the path the check expects. */
 export const CSP_REPORT_PATH = "/csp-report";
 
@@ -152,6 +154,7 @@ export function broadSource(source, directive = "script-src") {
  *   reportTo?: string,
  *   reportOnly?: boolean,
  *   framedBySameOrigin?: boolean,
+ *   embeds?: boolean,
  *   baseUriSelf?: boolean,
  *   denyUnlisted?: boolean,
  *   noForms?: boolean,
@@ -178,6 +181,8 @@ export function broadSource(source, directive = "script-src") {
  *   breaks, report-to reaches browsers with the Reporting API and report-uri the rest (CSP Evaluator, ASVS 3.4.7).
  *   `framedBySameOrigin`: `frame-ancestors 'self'` in place of 'none', for a site that shows its own pages in frames
  *   (a design system's live specimens). No other origin can be allowed to frame a site.
+ *   `embeds`: the post players (EMBED_FRAME_SOURCES, ./embeds) added to frame-src, for a site whose posts embed them;
+ *   the registry entry's `embeds` opt-in, which also hands them their features (buildSecurityHeaders).
  *   `denyUnlisted`: `default-src 'none'` in place of 'self', so a kind the policy does not name (media, frames,
  *   workers, the manifest) is refused rather than allowed from the site; for a static site that wants nothing more.
  *   `noForms`: `form-action 'none'` in place of 'self', for a site with no forms.
@@ -206,7 +211,7 @@ export function broadSource(source, directive = "script-src") {
  * @returns {{ name: "Content-Security-Policy" | "Content-Security-Policy-Report-Only", value: string }}
  */
 export function buildContentSecurityPolicy(site) {
-  const { sources = {}, scriptHashes = [], styleHashes = [], nonce, nonceStyles = true, inlineScripts, strictDynamic = false, styleAttributesInline = false, cloudflareWebAnalytics = false, reportUri = CSP_REPORT_PATH, reportTo = CSP_REPORT_GROUP, reportOnly = false, framedBySameOrigin = false, baseUriSelf = false, denyUnlisted = false, noForms = false, formTargets = [], trustedTypes, extraDirectives = [] } = site;
+  const { sources = {}, scriptHashes = [], styleHashes = [], nonce, nonceStyles = true, inlineScripts, strictDynamic = false, styleAttributesInline = false, cloudflareWebAnalytics = false, reportUri = CSP_REPORT_PATH, reportTo = CSP_REPORT_GROUP, reportOnly = false, framedBySameOrigin = false, embeds = false, baseUriSelf = false, denyUnlisted = false, noForms = false, formTargets = [], trustedTypes, extraDirectives = [] } = site;
   if (!reportUri || !reportTo) throw new Error("a policy needs both report sinks: reportUri for browsers without the Reporting API, reportTo for the rest");
   if (inlineScripts !== undefined && inlineScripts !== "unsafe-inline") throw new Error(`inlineScripts is "unsafe-inline" or left out, not ${JSON.stringify(inlineScripts)}`);
   if (inlineScripts && (nonce !== undefined || scriptHashes.length > 0)) {
@@ -235,6 +240,7 @@ export function buildContentSecurityPolicy(site) {
       return host;
     });
 
+  const frames = [...(sources.frame ?? []), ...(embeds ? EMBED_FRAME_SOURCES.filter((o) => !(sources.frame ?? []).includes(o)) : [])];
   const scriptHosts = [...list(sources.script, "script-src"), ...(cloudflareWebAnalytics ? CLOUDFLARE_WEB_ANALYTICS.script : [])];
   for (const host of scriptHosts) {
     // Browsers match keywords in any case.
@@ -271,7 +277,7 @@ export function buildContentSecurityPolicy(site) {
     ...((sources.media ?? []).length > 0 ? [`media-src ${["'self'", ...list(sources.media, "media-src")].join(" ")}`] : []),
     // 'self' is always present: the Cloudflare beacon reports to /cdn-cgi/rum on the site's own origin.
     `connect-src ${["'self'", ...list(sources.connect, "connect-src")].join(" ")}`,
-    ...((sources.frame ?? []).length > 0 ? [`frame-src ${["'self'", ...list(sources.frame, "frame-src")].join(" ")}`] : []),
+    ...(frames.length > 0 ? [`frame-src ${["'self'", ...list(frames, "frame-src")].join(" ")}`] : []),
     "object-src 'none'",
     `base-uri ${baseUriSelf ? "'self'" : "'none'"}`,
     `form-action ${noForms ? "'none'" : ["'self'", ...formTargets].join(" ")}`,

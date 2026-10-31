@@ -39,14 +39,14 @@ import { canonicalRedirect } from "./url.mjs";
  */
 
 /** The opt-ins that are the page policy's options too (buildContentSecurityPolicy). */
-const POLICY_OPT_INS = /** @type {const} */ (["cloudflareWebAnalytics", "inlineScripts", "strictDynamic", "framedBySameOrigin", "baseUriSelf", "formTargets"]);
+const POLICY_OPT_INS = /** @type {const} */ (["cloudflareWebAnalytics", "inlineScripts", "strictDynamic", "framedBySameOrigin", "embeds", "baseUriSelf", "formTargets"]);
 
 /**
  * A site's headers from its registry entry (./sites), for its static files and the Worker in front of them: `set`, what
  * every response carries (buildSecurityHeaders({ site }), then `headers`, what the site adds on top, such as Prelum's
  * TDMRep header), and `file`, the `_headers` text (headersFile with charset: true, then the entry's `assets.paths`). A
  * static site whose entry has `assets.policy` serves every page under that one policy, built with its policy opt-ins
- * (denyUnlisted true, cloudflareWebAnalytics, framedBySameOrigin...) and reporting to /csp-report on its own origin or
+ * (denyUnlisted true, cloudflareWebAnalytics, framedBySameOrigin, embeds...) and reporting to /csp-report on its own origin or
  * `assets.reportOrigin`: it is in `set` with its Reporting-Endpoints, and in `file` as a `/*` rule of its own, since
  * headersFile keeps a policy off the set's block. What the entry stages ("report-only" trustedTypes or denyUnlisted)
  * goes in a Report-Only policy beside it (buildStagedPolicy). The site-runtime-headers bin writes `file`.
