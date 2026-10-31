@@ -22,3 +22,16 @@ export function logEvent(
   fields?: Record<string, unknown>,
   options?: ScrubOptions & { level?: "log" | "warn" | "error" },
 ): void;
+/** `{ request_id, method, path, sha? }` for a log line: `cf-ray` (or ""), the method, the scrubbed pathname. */
+export function requestFields(
+  request: Request,
+  options?: { sha?: string } & ScrubOptions,
+): { request_id: string; method: string; path: string; sha?: string };
+/** OWASP Logging Vocabulary event names for sign-in, authorization, input validation and rate limiting. */
+export const OWASP_EVENTS: Readonly<{
+  signInSuccess: "authn_login_success";
+  signInFailure: "authn_login_fail";
+  authorizationFailure: "authz_fail";
+  inputValidationFailure: "input_validation_fail";
+  rateLimitExceeded: "excess_rate_limit_exceeded";
+}>;
