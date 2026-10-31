@@ -14,10 +14,15 @@
  * Least scope first: the write box starts ticked only when the client asked for the write scope, the grant is what the
  * administrator ticked, never what the client asked, and every grant holds the read scope.
  *
+ * A server that keeps the tool-call log (`./audit-log`) and passes `audit` gets a `sign-in` row for every callback,
+ * admitted or refused.
+ *
  * The provider is matched by its errors' names, not imported, so this package keeps no dependencies.
  */
 
 import { accessSaas, authorizationUrl, finishSignIn, newSignIn } from "./access-login.mjs";
+import { correlationId, recordAudit } from "./audit-log.mjs";
+import { readCapped } from "./body.mjs";
 import { escapeHtml as escape } from "./html.mjs";
 
 /** @typedef {import("./mcp-login.d.mts").LoginEnv} LoginEnv */
@@ -92,6 +97,9 @@ export const CONSENT_STYLE = `
   button { font: inherit; padding: .55rem 1.1rem; border-radius: .35rem; cursor: pointer; margin-right: .5rem; min-height: 24px; }
 `;
 
+// The consent POST is reachable without credentials, so its body is checked to be the form and bounded before parsing.
+const CONSENT_FORM_MAX_BYTES = 65_536;
+
 const NOT_CONFIGURED =
   "This server is not configured for sign-in: ACCESS_TEAM_DOMAIN, ACCESS_SAAS_CLIENT_ID or " +
   "ACCESS_SAAS_CLIENT_SECRET is unset. Not configured means not open.";
@@ -113,8 +121,27 @@ export function loginHandler({
   },
   wantsWrite = (requested) => requested.includes(scopes.write),
   health = () => text("ok"),
+  audit,
+  revokeExistingGrants = true,
 }) {
   const serverName = escape(name);
+
+  /**
+   * One sign-in row, when the server keeps the log. A sign-in changes nothing, so a failed write is only reported.
+   * @param {E} env @param {AuthRequest} request @param {string} caller @param {string} outcome @param {boolean} admitted
+   */
+  async function signInRow(env, request, caller, outcome, admitted) {
+    if (!audit) return;
+    await recordAudit(/** @type {Partial<import("./audit-log.d.mts").AuditEnv>} */ (env), {
+      callId: crypto.randomUUID(),
+      phase: "sign-in",
+      caller,
+      result: { isError: !admitted, text: outcome },
+      server: audit,
+      clientId: request.clientId,
+      correlationId: correlationId(),
+    });
+  }
 
   /**
    * Consent has to be an act, so it is a real form. Everything from the client is escaped: a CIMD document's name is
@@ -170,8 +197,13 @@ ${local ? "<p><strong>This sends access to an app on your computer.</strong> Con
   async function authorizePost(request, env) {
     const saas = accessSaas(env);
     if (!saas) return text(NOT_CONFIGURED, 503);
+    if (!(request.headers.get("content-type") ?? "").toLowerCase().startsWith("application/x-www-form-urlencoded")) {
+      return text("The consent form is posted as application/x-www-form-urlencoded.", 415);
+    }
+    const body = await readCapped(request, CONSENT_FORM_MAX_BYTES);
+    if (body === null) return text(`The consent form is larger than ${CONSENT_FORM_MAX_BYTES} bytes.`, 413);
     const oauth = env.OAUTH_PROVIDER;
-    const form = await request.formData();
+    const form = new URLSearchParams(body);
     const handle = String(form.get("handle") ?? "");
     if (form.get("decision") !== "approve") {
       const denied = await oauth.denyConsent(request, handle);
@@ -197,11 +229,13 @@ ${local ? "<p><strong>This sends access to an app on your computer.</strong> Con
     const signedIn = await finishSignIn(saas, { code, redirectUri: `${origin(request, env)}/callback`, verifier, nonce });
     if (!signedIn.ok) {
       console.warn(JSON.stringify({ door: "refused", reason: signedIn.reason }));
+      await signInRow(env, original, "unknown", signedIn.reason, false);
       return redirectError(original, "Cloudflare Access did not confirm the sign-in.", headers);
     }
     const admitted = await admit(env, signedIn);
     if (!admitted) {
       console.warn(JSON.stringify({ door: "refused", reason: "not-admitted" }));
+      await signInRow(env, original, `access:${signedIn.email}`, "not-admitted", false);
       return redirectError(original, admits.refusal, headers);
     }
     // An object admits and travels with the grant: a server's own id for the person, read again on every request.
@@ -215,7 +249,9 @@ ${local ? "<p><strong>This sends access to an app on your computer.</strong> Con
       metadata: { email: signedIn.email, client },
       scope: granted,
       props: { ...extra, email: signedIn.email, scopes: granted, client, clientId: original.clientId },
+      revokeExistingGrants,
     });
+    await signInRow(env, original, `access:${signedIn.email}`, `granted ${granted.join(" ")}`, true);
     return redirect(redirectTo, headers);
   }
 

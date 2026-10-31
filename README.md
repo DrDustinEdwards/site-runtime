@@ -230,7 +230,11 @@ const copied = copiedRuns(draft, examples); // runs of 8+ words lifted from the 
 - `checkProse` flags `TELLS` (phrases current models still write, each with what to do instead) and `OUT_OF_PLACE`
   (their blurb and email words), the caller's own `phrases`, the "not X, it's Y" construction across two sentences, a
   paragraph closing on a list of three and each dash on its line (an unspaced en dash is a range and passes). Each issue
-  has `check`, `message`, `excerpt`, `line` and `severity`. `allow` takes a word back out of every list.
+  has `check`, `message`, `excerpt`, `line`, `severity` and `sign`, the section of Wikipedia's "Signs of AI writing" it
+  falls under (`SIGNS`). `allow` takes a word back out of every list.
+- `PATTERNS` are errors whoever wrote the rest, so they are high: a refusal or knowledge-cutoff note, an unfilled blank
+  (`[Your Name]`, `2025-XX-XX`) and chatbot markup (`oaicite`, `utm_source=chatgpt.com`). Code is skipped. `slopScan`
+  reports them as `filler`.
 - The lists hold only what current Claude models were seen to write, with no style rules, on 2026-10-25: blurbs, bios,
   a companion's replies, UI copy, newsletters, failed-payment and win-back emails, a dispute statement and dashboard
   summaries (Capsid `foxing/ai-writing-tells.md`). The older lists ("delve", "tapestry", "I hope this email finds you
@@ -668,8 +672,38 @@ const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, baseURL, defaultHe
 - The site's own Anthropic key stays the credential; the gateway stores none.
 - `AI_GATEWAY_TOKEN`, when set, goes as `cf-aig-authorization: Bearer ...`, which an authenticated gateway requires.
 - `cf-aig-collect-log-payload: false` keeps request and response bodies out of the gateway's logs (the metadata log of
-  model, tokens, cost and status stays), and `cf-aig-metadata: {"app": ...}` names the site on every log entry, so one
-  gateway serves every site.
+  model, tokens, cost and status stays), and `cf-aig-metadata: {"app": ..., "feature": ...}` names the site (and, when
+  `anthropicRoute(env, app, feature)` is given one, the feature) on every log entry, so one gateway serves every site.
+- `gatewayId` is the id in a standard gateway URL, else `AI_GATEWAY_ID`, else null (a custom domain names no id).
+
+## The Anthropic caller
+
+`./anthropic` is the family's one Messages caller, raw fetch over `anthropicRoute`, so a site writes its prompt and
+nothing else.
+
+```js
+import { messages, stream, structured, untrusted, UNTRUSTED_DATA_RULE } from "@dustinedwards/site-runtime/anthropic";
+const answer = await messages(env, "foxhound", { model, max_tokens: 800, system, messages: [...] }, { feature: "dunning" });
+if (!answer.ok) return fallback(answer.kind); // FAILURE_TEXT[answer.kind] is safe to show a reader
+const parsed = await structured(env, "foxing", request, schema, { feature: "recommendations" });
+for await (const event of stream(env, "foxing", request)) { /* { type: "text", delta } ..., then { type: "done", result } */ }
+const prompt = `${UNTRUSTED_DATA_RULE}\n${untrusted("email", customerText)}`;
+```
+
+- One deadline per call (`timeoutMs`, default 60 s), retries and their waits inside it. One retry layer, here: 429 with
+  `retry-after`, 500, 504, 529 and network errors, with backoff, at most 3 attempts. A spend-cap 429, a 429 without
+  `retry-after`, the spend-limit 400 and every other 4xx are never retried. The gateway's own retries stay off.
+- A stop that is not an answer is a typed failure, never text: `max_tokens` (`truncated`), `refusal`,
+  `model_context_window_exceeded`, an unknown stop; `pause_turn` is resent up to `maxPauses`. `max_tokens` is required, and
+  `temperature`, `top_p` and `top_k` throw: `anthropic-version` is `2026-10-21`, which refuses them.
+- Prompt caching is on by default once the system prompt reaches the model's minimum (`cache: false` turns it off),
+  unless a block already carries its own `cache_control`: the caller's breakpoints are then sent as written.
+- One `anthropic_call` log line per call through `./log`: model, stop reason, request id, gateway log id, tokens and
+  duration, never the prompt or the answer. `onResult(record)` hands the same record to a site's meter, for a stream
+  the reader left early (`aborted`) and a `structured` reply that did not parse (`invalid_output`) too.
+- `MODELS` holds each model the family uses with its retirement date from Anthropic's deprecations page, and
+  `modelStatus(id)` answers `ok`, `retiring` (within 60 days), `retired` or `unknown` for the live check.
+- `untrusted(label, text)` wraps outside text as `<data label>` with `&`, `<` and `>` escaped, so it cannot close its tag.
 
 ## Sign-in
 
@@ -868,9 +902,24 @@ const fired = await fireRoutine(config, "job: ...");
 
 - The URL must be `https://api.anthropic.com/v1/claude_code/routines/trig_.../fire`, so the token only goes to Anthropic.
   The token comes from the routine's API trigger at claude.ai/code/routines and is a Worker secret.
-- `fireRoutine` never throws: `{ ok: true, sessionUrl }`, or `{ ok: false, retry, error }` with `retry` true for the
-  hourly limit (30 per routine, 100 per account) and for an unreachable or failing service.
-- Each fire is a new session; the endpoint has no idempotency key, so the caller keeps a fire from repeating.
+- `fireRoutine` never throws. Its `outcome` is `started` (with `sessionId` and `sessionUrl`), `rate_limited` (429, with
+  `retryAfter`), `unavailable` (5xx, retry later), `refused` (4xx, do not retry), `unreachable` (no connection was made)
+  or `unknown` (a timeout or dropped answer: the session may exist, so it is never retried).
+- Each fire is a new session and the endpoint has no idempotency key, so `fireOnce(store, jobKey, config, text)` records
+  each job before it fires and refuses a second fire for the same key unless `force` is set or the record is older than
+  `refireAfterMs`. The store needs an atomic `add`, so it is D1 or a Durable Object, never KV (eventually consistent:
+  two fires from two locations both read nothing). A reservation older than 10 minutes, left by a worker that died
+  mid-fire, is reported as `unknown`: check whether a session started, then `force`.
+
+```js
+const store = {
+  get: async (k) => (await env.DB.prepare("SELECT v FROM routine_fires WHERE k = ?").bind(k).first("v")) ?? null,
+  put: (k, v) => env.DB.prepare("INSERT INTO routine_fires (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v").bind(k, v).run(),
+  delete: (k) => env.DB.prepare("DELETE FROM routine_fires WHERE k = ?").bind(k).run(),
+  add: async (k, v) => (await env.DB.prepare("INSERT INTO routine_fires (k, v) VALUES (?, ?) ON CONFLICT DO NOTHING RETURNING k").bind(k, v).first()) !== null,
+};
+const fired = await fireOnce(store, `newsletter:${issueId}`, config, "job: ...");
+```
 
 ## The cross-site check
 
@@ -1317,7 +1366,10 @@ clientRegistrationCallback: ({ clientMetadata }) => {
   join the grant's props for the server to check again on every request. `admits: { consent, refusal }` then says who
   is let in, on the consent page and in the refusal (default: the configured administrator). `wantsWrite(requested)`
   decides whether the write box starts ticked (default: the client asked for the write scope), and `health(env)` answers
-  `/health` (default: "ok").
+  `/health` (default: "ok"). `revokeExistingGrants: false` keeps the user's earlier grants for the same client (the
+  provider's default revokes them), for a server whose two connectors share one client id.
+- The consent POST must be `application/x-www-form-urlencoded` (else 415) and at most 64 KiB (else 413), read to the
+  ceiling before it is parsed.
 - The page's one inline style is `CONSENT_STYLE`, rendered exactly, so the server's Content-Security-Policy trusts it by
   `scriptHash(CONSENT_STYLE)`. Give the page no `form-action`: the approve POST redirects through Access to whatever
   redirect URI the client named. A loopback callback (an app on the person's computer) gets a line saying so.
@@ -1329,10 +1381,27 @@ clientRegistrationCallback: ({ clientMetadata }) => {
 - `./audit-log` is the append-only tool-call log: export `ToolCallLog` as the Durable Object bound to `TOOL_CALL_LOG`,
   then `appendAudit(env, row)` before (`started`) and after (`finished`) each call, or once for a `refused` one, with
   `loggedArgs` and `loggedResult`. A string argument over 200 characters is stored as its length and a SHA-256 prefix.
+  A row also carries the server's name and version, the OAuth client id and a correlation id (`correlationId(meta)`, the
+  trace id of a `_meta.traceparent` when the client sent one), and a hash chain over the rows: `verifyAuditChain(rows, key)`
+  names the first row that was changed or removed. Bind the Worker secret `AUDIT_CHAIN_KEY` before the first row and the
+  chain is HMAC-SHA-256 under it, which an editor of the table without the secret cannot recompute; without it the chain
+  is plain SHA-256 and only catches an edit nobody recomputed. Neither catches rows cut off the end. Besides the call phases, `recordAudit` writes `sign-in`,
+  `scope-challenge` and `rate-limited` rows; `loginHandler({ audit: { name, version } })` writes one per sign-in.
 
 **Tests.** `test/mcp-login.test.mjs` runs the handler against a fake provider and a fake Access. The scope from the box,
 the administrator check, the exact registration match and the registration limit were each removed once and seen to fail a
 test.
+
+## The AI and MCP live check
+
+`site-runtime-ai-audit --origin <origin> [--from <host>] [--kind worker|site|static]` is area 11's check in devkit's daily
+run (one areas.json entry per kind, with `--kind` in its `args`). An origin that publishes OAuth protected-resource metadata
+is probed as an MCP server, without a token: its resource and authorization-server metadata (A1, A4), the 401 challenge
+(A2), `no-store` on `/authorize` (A8), a foreign `Origin` (P10), GET on the endpoint (P5) and `/health` (S8). A `worker`
+that publishes none is an A1 error. With no `--kind`, a metadata path that answers anything but 404 or a JSON object is
+an A1 error, so a server whose metadata broke never passes as a site. A site has nothing more for this check.
+Findings print as `::error title=<item>::<url> <detail>`, with `%`, CR and LF escaped as GitHub requires; it exits 0
+clean, 1 on an error, 2 when the origin does not answer.
 
 ## The MCP server scaffold
 
@@ -1363,6 +1432,19 @@ const refusal = authorizeCall(env, caller, SCOPES.write, { site: "sample.example
   is honored and a higher one is not; a missing or failing binding refuses, with `retryAfter` 60. `refuse` is the
   plain-text, `no-store`, `noindex` answer to go with it.
 - `authorizeCall` is the per-call check (rule 12.1): a caller, the administrator (`isAdminUser`) or a well-formed agent
-  principal, and the scope the tool needs. `callerName` is its audit name.
+  principal, and the scope the tool needs. A server with several people, whose door already verified the person, passes
+  `{ kind: "person", email, clientId, scopes }`, and only the grant's scopes decide. `callerName` is its audit name
+  (`access:<email>` for an admin or a person, `agent:<name>`).
+- Each tool declares `scope: "read" | "write"` (or a function of its arguments); `toolScope` reads it and never the
+  `readOnlyHint` annotation, and a tool with none is refused. `toolsForGrant` drops what a grant cannot call.
+  `toolScopeChallenge(env, server, tool)`, passed as `registerTool`'s `scopeChallenge`, makes the SDK answer a write call
+  on a read grant with 403 `insufficient_scope` naming every scope it needs, so the client re-authorizes.
+- `invokeTool(env, server, { caller, tool, args, meta, run })` is the whole call: the scope check, a `refused` row, or a
+  `started` row (the call is refused if it cannot be written), the run, and a `finished` row, written as an error before a
+  throwing handler's exception goes on.
+- `audienceRefusal(auth, resource, scope)` answers 401 `invalid_token` to a token minted for another server (the
+  provider checks this too), `unauthorized` builds a 401 with `resource_metadata` and `scope` for a door the provider
+  does not guard, `mcpOriginRefusal(request, allowed)` answers 403 to a foreign `Origin` (a missing one passes), and
+  `mcpCacheHints({ ttlMs, shared })` is the `ttlMs` and `cacheScope` for list results, `private` unless listed.
 
 **Tests.** `test/mcp-server.test.mjs`, once; the servers' own copies of these tests go when they adopt it.

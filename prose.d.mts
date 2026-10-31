@@ -1,18 +1,28 @@
 /** The one check on AI-written prose and the one measure of an author's voice (prose.mjs). */
 
 export type Severity = "critical" | "high" | "medium" | "low";
-export type ProseIssue = { check: string; message: string; excerpt: string | null; line: number | null; severity: Severity };
+/** `sign` is the section of Wikipedia's "Signs of AI writing" the issue maps to (a value of `SIGNS`); null for the caller's phrases. */
+export type ProseIssue = { check: string; message: string; excerpt: string | null; line: number | null; severity: Severity; sign: string | null };
+export type PatternRule = { check: string; sign: string; severity: Severity; re: RegExp; say: string };
 
+/** The Wikipedia sections the checks map to, by short name. */
+export declare const SIGNS: Record<
+  "significance" | "promotional" | "vocabulary" | "parallelism" | "three" | "collaborative" | "placeholder" | "markup" | "cutoff" | "refusal" | "dash",
+  string
+>;
 export declare const NOT_JUST: RegExp[];
-/** Phrases current models still write, each with what to do instead. */
-export declare const TELLS: [string, string][];
+/** Phrases current models still write, each with what to do instead and the sign it maps to. */
+export declare const TELLS: [string, string, string][];
+/** What a chatbot leaves in text, an error whoever wrote the rest (all high): a refusal, a note on its training, a blank, its citation markup. */
+export declare const PATTERNS: PatternRule[];
 /** What a model is told before it writes; callers add the author's excerpts and guide. */
 export declare const WRITING_RULES: string;
 
 /**
- * Every habit in `text`, each with the words it concerns and its line: `TELLS`, `OUT_OF_PLACE` and the caller's `phrases`
- * (high), "not X, it's Y" and each dash unless `dashes: "allow"` (medium), a paragraph closing on a list of three (low).
- * Words in `allow` are dropped from every list. `firstLine` is the file line `text` starts on.
+ * Every habit in `text`, each with the words it concerns, its line and its sign: `TELLS`, `OUT_OF_PLACE`, `PATTERNS` and
+ * the caller's `phrases` (high), "not X, it's Y" and each dash unless `dashes: "allow"` (medium), a paragraph closing on
+ * a list of three (low). Words in `allow` are dropped from every list and pattern. `firstLine` is the file line `text`
+ * starts on.
  */
 export function checkProse(
   text: string,
