@@ -52,7 +52,7 @@ jobs:
   bump:
     needs: tag
     if: needs.tag.outputs.created == 'true'
-    uses: DrDustinEdwards/devkit/.github/workflows/bump-consumers.yml@dfdb60397d24f15c80b9468059d7d601b2caa6bf # v0.20.1
+    uses: DrDustinEdwards/devkit/.github/workflows/bump-consumers.yml@e99e4651b943f83b6591309b2151e7332786e64a # v0.20.2
     with:
       dry_run: false
     secrets:

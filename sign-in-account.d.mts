@@ -1,0 +1,122 @@
+/** Account security for ./sign-in (sign-in-account.mjs): the auth event log, security notices, sessions list and passkey names. */
+
+/** What `sendSecurityNotice` is called for. */
+export const SECURITY_NOTICE_KINDS: readonly [
+  "passkey-added",
+  "passkey-removed",
+  "sign-in-linked",
+  "sign-in-unlinked",
+  "email-changed",
+  "sessions-revoked",
+  "account-deleted",
+];
+export type SecurityNoticeKind = (typeof SECURITY_NOTICE_KINDS)[number];
+
+/** "Safari on iPhone", "Chrome on Windows", one of the two alone, or null. */
+export function deviceName(userAgent: string | null | undefined): string | null;
+/** The city, region and country in `request.cf` as words, or null. */
+export function coarseLocation(request: (Request & { cf?: { city?: unknown; region?: unknown; country?: unknown } }) | null | undefined): string | null;
+
+export type SessionRow = {
+  id: string;
+  token: string;
+  userAgent?: string | null;
+  createdAt: Date | string;
+  updatedAt?: Date | string | null;
+  location?: unknown;
+};
+/** Better Auth's listSessions rows for a page: current first, then most recently active. `token` goes to /revoke-session. */
+export function sessionRows(
+  sessions: SessionRow[],
+  currentToken: string | null | undefined,
+): {
+  id: string;
+  token: string;
+  device: string | null;
+  signedInAt: Date;
+  lastActiveAt: Date;
+  current: boolean;
+  location: string | null;
+}[];
+
+/** The passkey's provider from its AAGUID ("Apple Passwords", "Google Password Manager", ...), else null. */
+export function passkeyProvider(aaguid: string | null | undefined, userAgent?: string | null): string | null;
+/** The passkey's name, else its provider's, else "Passkey". */
+export function passkeyLabel(passkey: { name?: string | null; aaguid?: string | null }): string;
+
+/** How a Better Auth endpoint ended, from its after hook's `ctx.context.returned`. */
+export function outcome(returned: unknown): { ok: boolean; code?: string };
+
+export type EndpointFacts = {
+  path: string;
+  params?: Record<string, string | undefined>;
+  body?: Record<string, unknown>;
+  returned: unknown;
+  signedIn: boolean;
+  userId?: string | null;
+  linking?: boolean;
+};
+export type AuthEvent = {
+  event: string;
+  fields: Record<string, unknown>;
+  level?: "warn";
+  email?: unknown;
+  notice?: { kind: SecurityNoticeKind; scope?: string; passkeyName?: string };
+};
+/** The log line, and the notice if any, for one Better Auth request, or null. */
+export function authEvent(facts: EndpointFacts): AuthEvent | null;
+/** Writes the event's line with the address hashed (`email_key`), never in clear. */
+export function logAuthEvent(event: Pick<AuthEvent, "event" | "fields" | "level" | "email">): Promise<void>;
+
+/** "Google", "Apple", else the provider id. */
+export function providerName(providerId: string | undefined): string;
+
+export type NoticeDetail = {
+  /** For the subject: "A passkey was added to your account". */
+  title: string;
+  /** What happened, in a sentence. */
+  what: string;
+  at: Date;
+  /** `at` in words, UTC: "October 31, 2026 at 1:52 AM UTC". */
+  when: string;
+  /** The browser and system that made the change, or null. */
+  device: string | null;
+  /** Where Cloudflare placed that request, or null. */
+  location: string | null;
+  /** What to do if it was not the person. */
+  secure: string;
+  scope?: string;
+  passkeyName?: string;
+  provider?: string;
+  oldEmail?: string;
+  newEmail?: string;
+};
+/** The words of a notice. */
+export function noticeDetail(
+  kind: SecurityNoticeKind | string,
+  facts: {
+    siteName: string;
+    at?: Date;
+    userAgent?: string | null;
+    request?: Request | null;
+    scope?: string;
+    passkeyName?: string;
+    provider?: string;
+    oldEmail?: string;
+    newEmail?: string;
+    toOldAddress?: boolean;
+  },
+): NoticeDetail;
+
+export type NoticeUser = { id: string; email: string; name?: string | null };
+/** The site's sender: mails `detail` to `user.email`. */
+export type SendSecurityNotice = (
+  kind: SecurityNoticeKind,
+  notice: { user: NoticeUser; request?: Request; detail: NoticeDetail },
+) => Promise<void> | void;
+/** Calls the sender and never throws; a failure is logged as `security_notice_failed`. */
+export function sendNoticeSafely(
+  send: SendSecurityNotice,
+  kind: SecurityNoticeKind,
+  notice: { user: NoticeUser; request?: Request; detail: NoticeDetail },
+): Promise<void>;

@@ -27,11 +27,16 @@ export function requestFields(
   request: Request,
   options?: { sha?: string } & ScrubOptions,
 ): { request_id: string; method: string; path: string; sha?: string };
-/** OWASP Logging Vocabulary event names for sign-in, authorization, input validation and rate limiting. */
+/** OWASP Logging Vocabulary event names for sign-in, sessions, account changes, authorization, input validation and rate limiting. */
 export const OWASP_EVENTS: Readonly<{
   signInSuccess: "authn_login_success";
   signInFailure: "authn_login_fail";
   authorizationFailure: "authz_fail";
   inputValidationFailure: "input_validation_fail";
   rateLimitExceeded: "excess_rate_limit_exceeded";
+  signInLinkSent: "authn_token_created";
+  signOut: "session_logout";
+  sessionExpired: "session_expired";
+  userUpdated: "user_updated";
+  userDeleted: "user_deleted";
 }>;
