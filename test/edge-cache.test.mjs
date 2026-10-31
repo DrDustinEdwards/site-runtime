@@ -92,3 +92,56 @@ test("a page that lists scheduled posts stays fresh no later than the next one, 
   assert.equal(edge(null), "max-age=86400, stale-while-revalidate=604800");
 });
 
+
+// I3. When D1 is down a re-render throws, and the reader must still get the stored page. The serving is the Workers
+// cache's (developers.cloudflare.com/workers/cache/configuration/: a stale entry within stale-while-revalidate is served
+// when the re-render fails, unless the entry says must-revalidate, proxy-revalidate or s-maxage). That rule is modelled
+// here in a few lines, so the test holds what this package controls: the stored page's headers allow serving it stale,
+// and the failed render is never stored over it.
+test("with the database down, a stale stored page is served and the failed render is not stored", async () => {
+  /** @type {Map<string, { response: Response, at: number }>} */
+  const edge = new Map();
+  const seconds = (/** @type {Response} */ r, /** @type {string} */ name) =>
+    Number(new RegExp(`${name}=(\\d+)`).exec(r.headers.get("Cloudflare-CDN-Cache-Control") ?? "")?.[1] ?? 0);
+  const storable = (/** @type {Response} */ r) => r.headers.get("Cache-Control") === "public, max-age=0";
+  const mayServeStale = (/** @type {Response} */ r) =>
+    !/must-revalidate|proxy-revalidate|s-maxage/.test(`${r.headers.get("Cache-Control")} ${r.headers.get("Cloudflare-CDN-Cache-Control")}`);
+  let databaseUp = true;
+  const renderer = async (/** @type {Request} */ request) => {
+    let response;
+    try {
+      if (!databaseUp) throw new Error("D1_ERROR: database unavailable");
+      response = new Response("the page", { headers: publicPageHeaders() });
+    } catch {
+      response = new Response("Something went wrong", { status: 500, headers: publicPageHeaders() }); // the framework's error page
+    }
+    return settleCacheHeaders(response, request);
+  };
+  const read = async (/** @type {number} */ now) => {
+    const request = new Request("https://example.com/about");
+    const key = cacheKey(request.url);
+    const held = edge.get(key);
+    const age = held ? now - held.at : Infinity;
+    if (held && age <= seconds(held.response, "max-age")) return { status: "HIT", response: held.response.clone() };
+    const fresh = await renderer(forRenderer(request));
+    if (storable(fresh)) {
+      edge.set(key, { response: fresh.clone(), at: now });
+      return { status: held ? "EXPIRED" : "MISS", response: fresh };
+    }
+    if (held && fresh.status >= 500 && mayServeStale(held.response) && age <= seconds(held.response, "max-age") + seconds(held.response, "stale-while-revalidate")) {
+      return { status: "STALE", response: held.response.clone() };
+    }
+    return { status: "DYNAMIC", response: fresh };
+  };
+
+  assert.equal((await read(0)).status, "MISS");
+  databaseUp = false;
+  const twoDaysOn = await read(2 * 86_400);
+  assert.equal(twoDaysOn.status, "STALE");
+  assert.equal(twoDaysOn.response.status, 200);
+  assert.equal(await forReader(twoDaysOn.response, new Request("https://example.com/about")).text(), "the page");
+  assert.equal(await edge.get("/about")?.response.clone().text(), "the page", "the failed render replaced the stored page");
+  // Past the stale window the error shows, and is still not stored.
+  assert.equal((await read(9 * 86_400)).response.status, 500);
+  assert.equal(await edge.get("/about")?.response.clone().text(), "the page");
+});
