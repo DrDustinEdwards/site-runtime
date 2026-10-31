@@ -88,7 +88,7 @@ test("applyHeaderSet stamps the standard set by default and overwrites what a ro
   const headers = new Headers({ "X-Frame-Options": "allowall", "Content-Type": "text/html" });
   applyHeaderSet(headers);
   for (const [name, value] of Object.entries(STANDARD_SECURITY_HEADERS)) assert.equal(headers.get(name), value);
-  assert.equal(headers.get("Content-Type"), "text/html", "a header outside the set was touched");
+  assert.equal(headers.get("Content-Type"), "text/html; charset=utf-8", "a bare text type names its charset");
 });
 
 test("applyHeaderSet with overwrite false keeps a route's value and fills the rest", () => {
