@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DatabaseSync } from "node:sqlite";
-import { hitRules, idleDeadline, purgeExpired, limit, limitedResponse, matchRule, mustStop, ipKey, emailKey } from "../rate-limit/index.mjs";
+import { hitRules, peekRules, idleDeadline, purgeExpired, limit, limitedResponse, matchRule, mustStop, ipKey, emailKey } from "../rate-limit/index.mjs";
 
 /** The Durable Object's `sql.exec(query, ...bindings).toArray()` shape, over an in-memory SQLite. */
 function memorySql() {
@@ -43,6 +43,14 @@ test("a limited hit writes nothing", () => {
   hitRules(sql, MIN, T0 + 1);
   hitRules(sql, MIN, T0 + 2);
   assert.equal(JSON.stringify(rows(sql)), before);
+});
+
+test("a peek counts nothing, and refuses once the failures it guards are spent", () => {
+  const sql = memorySql();
+  assert.deepEqual([peekRules(sql, MIN, T0).ok, peekRules(sql, MIN, T0).used], [true, 0]);
+  for (let i = 0; i < 3; i++) hitRules(sql, MIN, T0);
+  assert.equal(peekRules(sql, MIN, T0 + 1).ok, false);
+  assert.equal(rows(sql)[0].count, 3);
 });
 
 test("two rules: when one is spent neither is counted", () => {

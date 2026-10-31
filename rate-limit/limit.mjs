@@ -8,12 +8,14 @@ import { sha256Hex } from "../encoding.mjs";
 /**
  * One use of `key` against `rules`. `onUnavailable` is required, with no default, so every call site
  * states whether a missing or failing counter lets the request through. "allow" still returns
- * status "unavailable" and logs a structured line: the failure is reported, never swallowed.
+ * status "unavailable" and logs a structured line: the failure is reported, never swallowed. `peek: true` counts
+ * nothing and only says whether the rules are spent, for a limit on failures: peek before the attempt, and `limit`
+ * after a failed one.
  *
- * @param {{ idFromName: (name: string) => any, get: (id: any) => { hit: (rules: import("./core.mjs").Rule[]) => Promise<import("./core.mjs").Hit> } } | undefined} namespace
+ * @param {{ idFromName: (name: string) => any, get: (id: any) => { hit: (rules: import("./core.mjs").Rule[]) => Promise<import("./core.mjs").Hit>, peek?: (rules: import("./core.mjs").Rule[]) => Promise<import("./core.mjs").Hit> } } | undefined} namespace
  * @param {string} key
  * @param {import("./core.mjs").Rule[]} rules
- * @param {{ onUnavailable: "allow" | "refuse" }} options
+ * @param {{ onUnavailable: "allow" | "refuse", peek?: boolean }} options
  * @returns {Promise<Verdict>}
  */
 export async function limit(namespace, key, rules, options) {
@@ -28,7 +30,9 @@ export async function limit(namespace, key, rules, options) {
   };
   if (!namespace) return unavailable("no Durable Object binding");
   try {
-    const hit = await namespace.get(namespace.idFromName(key)).hit(rules);
+    const counter = namespace.get(namespace.idFromName(key));
+    if (options.peek && typeof counter.peek !== "function") return unavailable("the Durable Object has no peek");
+    const hit = options.peek ? await /** @type {NonNullable<typeof counter.peek>} */ (counter.peek)(rules) : await counter.hit(rules);
     return { status: hit.ok ? "ok" : "limited", used: hit.used, limit: hit.limit, retryAfterSeconds: hit.retryAfterSeconds, window: hit.window };
   } catch (error) {
     return unavailable(error instanceof Error ? error.message : String(error));

@@ -19,6 +19,11 @@ export function secondsLeft(windowIndex: number, windowSeconds: number, nowMs: n
  */
 export function hitRules(sql: Sql, rules: Rule[], nowMs: number): Hit;
 /**
+ * Whether `rules` are spent, counting nothing: hitRules' answer without its write, for a limit that counts only
+ * failures (peek before the attempt, hit after a failed one). `used` is the count so far.
+ */
+export function peekRules(sql: Sql, rules: Rule[], nowMs: number): Hit;
+/**
  * The moment the longest window ends, when an idle instance can forget everything.
  * @param {Rule[]} rules
  * @param {number} nowMs

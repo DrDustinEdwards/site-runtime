@@ -45,28 +45,9 @@ export function secondsLeft(windowIndex, windowSeconds, nowMs) {
  * @returns {Hit}
  */
 export function hitRules(sql, rules, nowMs) {
-  assertRules(rules);
-  sql.exec(TABLE_SQL);
-  const state = rules.map((rule) => {
-    const windowIndex = Math.floor(nowMs / 1000 / rule.windowSeconds);
-    const row = sql.exec("SELECT window_index, count FROM rate_window WHERE window_seconds = ?", rule.windowSeconds).toArray()[0];
-    const used = row && row.window_index === windowIndex ? row.count : 0;
-    return { rule, windowIndex, used };
-  });
-
-  const spent = state.filter((s) => s.used >= s.rule.limit);
-  if (spent.length > 0) {
-    const last = spent.reduce((a, b) =>
-      secondsLeft(a.windowIndex, a.rule.windowSeconds, nowMs) >= secondsLeft(b.windowIndex, b.rule.windowSeconds, nowMs) ? a : b,
-    );
-    return {
-      ok: false,
-      used: last.used,
-      limit: last.rule.limit,
-      retryAfterSeconds: secondsLeft(last.windowIndex, last.rule.windowSeconds, nowMs),
-      window: last.rule.windowSeconds,
-    };
-  }
+  const state = windows(sql, rules, nowMs);
+  const refused = spentHit(state, nowMs);
+  if (refused) return refused;
 
   for (const s of state) {
     sql.exec(
@@ -84,6 +65,62 @@ export function hitRules(sql, rules, nowMs) {
     limit: tightest.rule.limit,
     retryAfterSeconds: secondsLeft(tightest.windowIndex, tightest.rule.windowSeconds, nowMs),
     window: tightest.rule.windowSeconds,
+  };
+}
+
+/**
+ * Whether `rules` are spent, counting nothing: hitRules' answer without its write, for a limit that counts only
+ * failures (the caller peeks before the attempt and hits after a failed one). `used` is the count so far.
+ *
+ * @param {Sql} sql
+ * @param {Rule[]} rules
+ * @param {number} nowMs
+ * @returns {Hit}
+ */
+export function peekRules(sql, rules, nowMs) {
+  const state = windows(sql, rules, nowMs);
+  const refused = spentHit(state, nowMs);
+  if (refused) return refused;
+  const tightest = state.reduce((a, b) => (a.rule.limit - a.used <= b.rule.limit - b.used ? a : b));
+  return {
+    ok: true,
+    used: tightest.used,
+    limit: tightest.rule.limit,
+    retryAfterSeconds: secondsLeft(tightest.windowIndex, tightest.rule.windowSeconds, nowMs),
+    window: tightest.rule.windowSeconds,
+  };
+}
+
+/** Each rule's window and its count so far. @param {Sql} sql @param {Rule[]} rules @param {number} nowMs */
+function windows(sql, rules, nowMs) {
+  assertRules(rules);
+  sql.exec(TABLE_SQL);
+  return rules.map((rule) => {
+    const windowIndex = Math.floor(nowMs / 1000 / rule.windowSeconds);
+    const row = sql.exec("SELECT window_index, count FROM rate_window WHERE window_seconds = ?", rule.windowSeconds).toArray()[0];
+    const used = row && row.window_index === windowIndex ? row.count : 0;
+    return { rule, windowIndex, used };
+  });
+}
+
+/**
+ * The refusal when a rule is spent (the one that frees up last, if several), else null.
+ * @param {ReturnType<typeof windows>} state
+ * @param {number} nowMs
+ * @returns {Hit | null}
+ */
+function spentHit(state, nowMs) {
+  const spent = state.filter((s) => s.used >= s.rule.limit);
+  if (spent.length === 0) return null;
+  const last = spent.reduce((a, b) =>
+    secondsLeft(a.windowIndex, a.rule.windowSeconds, nowMs) >= secondsLeft(b.windowIndex, b.rule.windowSeconds, nowMs) ? a : b,
+  );
+  return {
+    ok: false,
+    used: last.used,
+    limit: last.rule.limit,
+    retryAfterSeconds: secondsLeft(last.windowIndex, last.rule.windowSeconds, nowMs),
+    window: last.rule.windowSeconds,
   };
 }
 

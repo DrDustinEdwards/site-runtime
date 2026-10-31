@@ -18,7 +18,11 @@ export const ELSEWHERE = {
   "foxing.app": { mcp: ["https://admin-mcp.foxing.app/mcp"] },
   "capsid.dustinedwards.info": { admin: ["https://portal.dustinedwards.info/"] },
   "txasm.org": { admin: ["/admin/access"] },
+  "foxhoundapp.com": { mcp: ["https://admin-mcp.foxhoundapp.com/mcp", "https://foxhoundapp.com/mcp"] },
 };
+
+/** Where a site's confirm page may be: next to each sign-in page found (txasm's is /signin/confirm), else /sign-in/confirm. */
+const CONFIRM_PATHS = ["/sign-in/confirm", "/signin/confirm", "/login/confirm"];
 
 /**
  * @typedef {{ url: string, status: number, headers: Headers, cookies: string[], body: string, error?: string }} Got
@@ -69,7 +73,7 @@ export async function signInFindings({ origin, from }) {
   origin = origin.replace(/\/$/, "");
   const base = (from ?? origin).replace(/\/$/, "");
   const host = new URL(origin).hostname;
-  const elsewhere = ELSEWHERE[/** @type {keyof typeof ELSEWHERE} */ (host)] ?? {};
+  const elsewhere = /** @type {{ admin?: string[], mcp?: string[] }} */ (ELSEWHERE[/** @type {keyof typeof ELSEWHERE} */ (host)] ?? {});
   const home = await get(`${base}/`);
   if (home.status === 0 || home.status >= 500) throw new Error(`${base} did not answer: ${home.error ?? home.status}`);
 
@@ -136,8 +140,15 @@ export async function signInFindings({ origin, from }) {
     const foreign = await get(`${base}/api/auth/sign-out`, { method: "POST", headers: { origin: "https://sign-in-check.invalid", cookie: "sitecheck=1", "content-type": "application/json" }, body: "{}" });
     if (foreign.status !== 403) flag("D8", "error", foreign.url, `a sign-out from another origin with a cookie answered ${foreign.status}, not 403`);
 
-    // The confirm page stays a warning until every site has the route (site-runtime 0.36.0's confirmSignInLink).
-    const confirm = await get(`${base}/sign-in/confirm?token=sign-in-check-not-a-token&callbackURL=%2F`);
+    // The confirm page stays a warning until every site has the route (site-runtime 0.36.0's confirmSignInLink). The
+    // site's own path: the first that is not a 404, beside a sign-in page found first.
+    const near = [...pages].map((page) => `${new URL(page).pathname.replace(/\/$/, "")}/confirm`);
+    let confirm = /** @type {Got | undefined} */ (undefined);
+    for (const path of new Set([...near, ...CONFIRM_PATHS])) {
+      confirm = await get(`${base}${path}?token=sign-in-check-not-a-token&callbackURL=%2F`);
+      if (confirm.status !== 404) break;
+    }
+    confirm = /** @type {Got} */ (confirm);
     const session = confirm.cookies.find((cookie) => /session/i.test(cookie.split("=")[0]) && keeps(cookie));
     if (session) flag("B7", "error", confirm.url, `a GET with a made-up token set ${session.split("=")[0].trim()}: only the page's POST may sign in`);
     else if (confirm.status === 405 || (confirm.status === 200 && /<form\b[^>]*method=["']?post/i.test(confirm.body))) {
@@ -165,8 +176,8 @@ export async function signInFindings({ origin, from }) {
   }
 
   // MCP: discovery from the 401 (H1, RFC 9728), PKCE S256 only (H2) and CIMD (H4), per the MCP authorization spec 2025-11-25.
-  for (const url of [`${base}/mcp`, ...(elsewhere.mcp ?? [])]) {
-    const declared = url !== `${base}/mcp`;
+  for (const url of new Set([`${base}/mcp`, ...(elsewhere.mcp ?? [])])) {
+    const declared = (elsewhere.mcp ?? []).includes(url);
     const r = await get(url, { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream" }, body: "{}" });
     if (r.status !== 401) {
       if (declared) flag("H1", "error", url, `the MCP server answered ${r.status || r.error} to a request with no token, not 401`);

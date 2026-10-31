@@ -3,20 +3,33 @@ import type { passkey } from "@better-auth/passkey";
 import type { BetterAuthPlugin } from "better-auth";
 import type { emailOTP, magicLink } from "better-auth/plugins";
 import type { limit } from "./rate-limit/index.mjs";
-import type { SendSecurityNotice } from "./sign-in-account.mjs";
+import type { D1Like, FRESH_SECONDS, SendSecurityNotice } from "./sign-in-account.mjs";
 
 export { CONFIRM_PATH, confirmSignInLink } from "./sign-in-link.mjs";
 export {
+  AUTH_EVENTS_SQL,
+  FRESH_SECONDS,
   SECURITY_NOTICE_KINDS,
+  SessionNotFresh,
   accountSessions,
   coarseLocation,
   deviceName,
   passkeyLabel,
   passkeyProvider,
+  pruneAuthEvents,
+  requireFreshSession,
   revokeSessionById,
+  securityHistory,
   sessionRows,
 } from "./sign-in-account.mjs";
-export type { AccountSession, NoticeDetail, SecurityNoticeKind, SendSecurityNotice } from "./sign-in-account.mjs";
+export type {
+  AccountSession,
+  D1Like,
+  NoticeDetail,
+  SecurityHistoryEntry,
+  SecurityNoticeKind,
+  SendSecurityNotice,
+} from "./sign-in-account.mjs";
 
 type SignInEnv = {
   BETTER_AUTH_URL: string;
@@ -42,14 +55,18 @@ export const APP_CODE_PATH: "/email-otp/send-verification-otp";
 /** The app's code request's limit per address: three a minute. */
 export const APP_CODE_RATE_LIMIT: Readonly<{ window: 60; max: 3 }>;
 
-/** How recent a sign-in must be for Better Auth's fresh-session endpoints: 600 seconds (session.freshAge). */
-export const FRESH_SECONDS: 600;
 /** How long a session lasts from its sign-in, used or not: 30 days, in seconds (session.expiresIn, refresh off). */
 export const SESSION_SECONDS: 2592000;
 /** Sign-in mails per address: five an hour. */
 export const LINK_EMAIL_RULES: readonly [Readonly<{ limit: 5; windowSeconds: 3600 }>];
-/** Typed sign-in codes per address, right or wrong: ten a day. */
-export const CODE_EMAIL_RULES: readonly [Readonly<{ limit: 10; windowSeconds: 86400 }>];
+/** Wrong sign-in codes per address, counted across links: three an hour and ten a day. */
+export const CODE_EMAIL_RULES: readonly [Readonly<{ limit: 3; windowSeconds: 3600 }>, Readonly<{ limit: 10; windowSeconds: 86400 }>];
+/** Failed passkey or social sign-ins per address: ten an hour. */
+export const SIGN_IN_FAILURE_RULES: readonly [Readonly<{ limit: 10; windowSeconds: 3600 }>];
+/** Failed sign-ins per passkey (credential id): 100 in 30 days. */
+export const PASSKEY_FAILURE_RULES: readonly [Readonly<{ limit: 100; windowSeconds: 2592000 }>];
+/** The `turnstile` value that lets the link request through unchecked until the site has its Turnstile keys. */
+export const TURNSTILE_OFF_UNTIL_KEYS: "off-until-keys";
 
 /** The hook that blanks an account row's OAuth tokens before Better Auth writes it. */
 type NoOAuthTokensHook = {
@@ -79,12 +96,25 @@ export function signInOptions(
     sendSignInCode?: (data: { email: string; code: string }, ctx?: unknown) => Promise<void> | void;
     /** The page the mailed link opens, whose button's POST goes to confirmSignInLink. Default CONFIRM_PATH. */
     confirmPath?: string;
-    /** The site's RateLimiter Durable Object namespace (`./rate-limit`): turns on the per-address limits. */
+    /**
+     * The site's RateLimiter Durable Object namespace (`./rate-limit`): the per-address limits. Without it, sign-in by a
+     * typed code is refused (its wrong-code count fails closed); the link and passkeys still work.
+     */
     emailLimiter?: Parameters<typeof limit>[0];
     /**
+     * The site's D1 with AUTH_EVENTS_SQL applied: each auth event is also a row there, read back by securityHistory and
+     * /health's authSpikeCheck, and needed to tell a recovery. Without it, events go to the log only.
+     */
+    eventsDb?: D1Like;
+    /**
+     * Without both Turnstile keys the link request is refused (503 TURNSTILE_NOT_SET). "off-until-keys" lets it through
+     * unchecked, with a warning line on each request, until the keys are set. Any other value throws.
+     */
+    turnstile?: typeof TURNSTILE_OFF_UNTIL_KEYS;
+    /**
      * Mails a security notice to `user.email`: a passkey added or removed, a sign-in method linked or unlinked, the email
-     * changed (once to each address), every session or every other session ended, the account deleted. A throw is
-     * logged and never blocks the change.
+     * changed (once to each address), every session or every other session ended, the account deleted, a sign-in from a
+     * new device, a recovery. A throw is logged and never blocks the change.
      */
     sendSecurityNotice?: SendSecurityNotice;
   },
