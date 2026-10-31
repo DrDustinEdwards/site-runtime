@@ -10,7 +10,7 @@
  * site registry (`./sites.mjs`), found by origin or alias. A site with none of them has no findings.
  */
 
-import { siteForOrigin } from "./sites.mjs";
+import { siteForOrigin } from "./sites-values.mjs";
 
 const UA = "Mozilla/5.0 (compatible; site-runtime-sign-in)";
 const TIMEOUT_MS = 15_000;

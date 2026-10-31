@@ -12,7 +12,7 @@
 
 import { writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { siteEntry } from "../sites.mjs";
+import { siteEntry } from "../sites-values.mjs";
 import { staticHeaders } from "../static-site.mjs";
 
 try {
