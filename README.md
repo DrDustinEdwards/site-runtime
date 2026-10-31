@@ -696,7 +696,7 @@ clearly above the fold (its top under 0.8 of the screen at either width) or clea
 | D2 | an original on the site (its host or a subdomain) the page shows or links (`img` src and srcset, `<source>`, `a href`) whose EXIF (JPEG, PNG, WebP, AVIF) or XMP holds GPS, a serial number, an owner name or a MakerNote |
 | E1 | a youtube.com (not youtube-nocookie.com) or Vimeo player in the page with no facade; an iframe with no title |
 | E2 | a `<video>` without a poster, controls or a captions track, or with `preload="auto"` |
-| E3 | an `<audio>` without controls (its own, or a player's buttons around it), without `preload="none"`, or on a page with no transcript link |
+| E3 | an `<audio>` without controls (its own, or a player's buttons around it), without `preload="none"`, or, when it has a source (`src` or a `<source>`), on a page with no transcript link; a sourceless `<audio>` is a player that plays what the reader picks |
 
 It reads the HTML the server sends, so an image a script adds later is not seen, and it reads no CSS: an image a class sizes
 (say, a logo set to 36 px tall) counts at its attributes, an image a stylesheet sets as a background is not a candidate for
