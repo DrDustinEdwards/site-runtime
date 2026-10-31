@@ -79,18 +79,30 @@ export function cacheKey(url, { dimensions = {} } = {}) {
   return `${u.pathname}${search}${extra}`;
 }
 
+/** The names of the cookies in a request's Cookie header. */
+const cookieNames = (/** @type {Request} */ request) =>
+  (request.headers.get("Cookie") ?? "")
+    .split(";")
+    .map((pair) => pair.split("=")[0].trim())
+    .filter(Boolean);
+
 /**
  * Run in the Renderer on every response, last. Anything not marked shared, anything but a 200 (an error page rendered
  * under a shared route's headers) and anything setting a cookie is sent `private, no-store` with no edge header or tag,
- * so it is stored nowhere. Pass the request when the Renderer can be reached with a cookie: a page rendered for one is
- * never stored either. A stored page with no validator gets `Last-Modified`, the time it was rendered: it stays the
+ * so it is stored nowhere. Pass the request: a page rendered for a cookie (other than `publicCookies`, which the key
+ * already holds) is never stored, and neither is the answer to a HEAD, whose empty body would be served to every
+ * reader of the page. A stored page with no validator gets `Last-Modified`, the time it was rendered: it stays the
  * same until a purge or a deploy renders it again, so `forReader` can answer a returning reader 304. Returns the
  * response, rebuilt when its headers are immutable.
  * @param {Response} response
  * @param {Request} [request]
+ * @param {{ publicCookies?: readonly string[] }} [options]
  */
-export function settleCacheHeaders(response, request) {
-  const personal = response.headers.has("Set-Cookie") || Boolean(request?.headers.has("Cookie"));
+export function settleCacheHeaders(response, request, { publicCookies = [] } = {}) {
+  const personal =
+    response.headers.has("Set-Cookie") ||
+    request?.method === "HEAD" ||
+    Boolean(request && !cookieNames(request).every((name) => publicCookies.includes(name)));
   const apply = (/** @type {Headers} */ headers) => {
     if (!headers.has("Cache-Control") || response.status !== 200 || personal) headers.set("Cache-Control", UNCACHED);
     if (headers.get("Cache-Control") !== SHARED_CACHE_CONTROL) {
@@ -110,12 +122,14 @@ export function settleCacheHeaders(response, request) {
   }
 }
 
-/** The names of the cookies in a request's Cookie header. */
-const cookieNames = (/** @type {Request} */ request) =>
-  (request.headers.get("Cookie") ?? "")
-    .split(";")
-    .map((pair) => pair.split("=")[0].trim())
-    .filter(Boolean);
+/**
+ * The request the gateway sends the Renderer: a HEAD goes as a GET, so what the Workers cache renders and stores, on a
+ * miss or a refresh of a stale page, is always the whole page. `forReader` then sends a HEAD reader the headers only.
+ * @param {Request} request
+ */
+export function forRenderer(request) {
+  return request.method === "HEAD" ? new Request(request, { method: "GET" }) : request;
+}
 
 /**
  * Run in the gateway on what the Renderer returns: a stored page answered to a request that carries a cookie is told
@@ -128,6 +142,9 @@ const cookieNames = (/** @type {Request} */ request) =>
  * @param {{ publicCookies?: readonly string[] }} [options]
  */
 export function forReader(response, request, { publicCookies = [] } = {}) {
+  if (request.method === "HEAD" && response.body) {
+    response = new Response(null, { status: response.status, statusText: response.statusText, headers: response.headers });
+  }
   if (response.headers.get("Cache-Control") !== SHARED_CACHE_CONTROL) return response;
   if (!cookieNames(request).every((name) => publicCookies.includes(name))) return privateRender(response);
   return notModified(response, request) ?? response;

@@ -412,7 +412,7 @@ it shows nothing signed in. Everything else stays `private, no-store`.
 
 ```js
 import { WorkerEntrypoint } from "cloudflare:workers";
-import { cacheKey, forReader, publicPageHeaders, purgeTags, settleCacheHeaders } from "@dustinedwards/site-runtime/edge-cache";
+import { cacheKey, forReader, forRenderer, publicPageHeaders, purgeTags, settleCacheHeaders } from "@dustinedwards/site-runtime/edge-cache";
 
 // A public route: stored a day, served stale a week while it re-renders, tagged "pages".
 export const headers = () => publicPageHeaders();
@@ -420,7 +420,7 @@ export const headers = () => publicPageHeaders();
 export class Renderer extends WorkerEntrypoint {
   async fetch(request) {
     const response = await requestHandler(request, context); // then the security headers and the Link header
-    return settleCacheHeaders(response); // last: anything but a shared 200 leaves private, no-store
+    return settleCacheHeaders(response, request); // last: anything but a shared 200 leaves private, no-store
   }
 
   // A purge reaches only the cache of the entrypoint that calls it, so the Renderer purges its own; RPC methods
@@ -433,7 +433,7 @@ export class Renderer extends WorkerEntrypoint {
 export default {
   async fetch(request, env, ctx) {
     // Signed-in paths, APIs and writes answer here, before the Renderer.
-    const page = await ctx.exports.Renderer.fetch(request, { cf: { cacheKey: cacheKey(request.url) } });
+    const page = await ctx.exports.Renderer.fetch(forRenderer(request), { cf: { cacheKey: cacheKey(request.url) } });
     return forReader(page, request); // a request with a cookie is told no-store for the browser
   },
 };
@@ -453,8 +453,12 @@ What else the scheme does, and the helpers that do it:
 - **The key.** `cacheKey(url, { dimensions })` drops `TRACKING_PARAMS` (`utm_*`, `gclid`, `fbclid`, `msclkid` and the
   other click ids and campaign tags) and sorts the rest, so a campaign link gets the stored page. `dimensions` is what
   else a page varies by, such as a theme read from a cookie: `cacheKey(url, { dimensions: { theme } })`.
-- **Nothing personal.** `settleCacheHeaders(response, request)` also refuses to store a response with `Set-Cookie`, and
-  one rendered for a request with a cookie when `request` is passed. `privateRender(response)` is the same for a page
+- **Whole pages only.** `forRenderer(request)` sends a HEAD to the Renderer as a GET, and `forReader` answers it with
+  the headers alone. A HEAD that reached a render would give an empty body, and a stored one would serve that blank
+  page to every reader (germomics' own cache did, refreshing a stale page with a HEAD). `settleCacheHeaders` refuses to
+  store a HEAD's answer as well.
+- **Nothing personal.** `settleCacheHeaders(response, request, { publicCookies })` also refuses to store a response with
+  `Set-Cookie`, and one rendered for a request with a cookie other than `publicCookies`. `privateRender(response)` is the same for a page
   the gateway renders itself for one reader.
 - **Returning readers.** `settleCacheHeaders` stamps a stored page with `Last-Modified`, the time it was rendered. It
   stays the same until a purge or a deploy renders the page again, so `forReader` answers a reader who already holds
@@ -482,7 +486,7 @@ if (isWrite) {
   purgeAfterWrite(request, response, ctx, `carrel ${request.method} ${url.pathname}`);
   return response;
 }
-const page = await ctx.exports.Renderer.fetch(request, { cf: { cacheKey: cacheKey(url, { dimensions: { theme } }) } });
+const page = await ctx.exports.Renderer.fetch(forRenderer(request), { cf: { cacheKey: cacheKey(url, { dimensions: { theme } }) } });
 return forReader(page, request, { publicCookies: ["theme"] });
 // site-api
 createSiteApi({ adapter, key, hooks: [indexNow, schedulePurgeHook()] });

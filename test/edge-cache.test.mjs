@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { cacheKey, forReader, publicPageHeaders, settleCacheHeaders } from "../edge-cache.mjs";
+import { cacheKey, forReader, forRenderer, publicPageHeaders, settleCacheHeaders } from "../edge-cache.mjs";
 
 // A stored page is handed to everyone: an error page, or one with no Cache-Control, must never be kept.
 test("only a shared 200 keeps its edge header, and a reader with a cookie is told no-store", () => {
@@ -36,6 +36,31 @@ test("only a shared 200 keeps its edge header, and a reader with a cookie is tol
   assert.equal(forReader(kept, themed, { publicCookies: ["theme"] }), kept);
   const themedAndSession = new Request("https://example.com/", { headers: { Cookie: "theme=dark; session=x" } });
   assert.equal(forReader(kept, themedAndSession, { publicCookies: ["theme"] }).headers.get("Cache-Control"), "private, no-store");
+});
+
+// germomics, 2026-10-30: a HEAD refreshed a stale page, React Router answered it with an empty 200, and the cache
+// served that blank page to every reader. The Renderer only ever sees a GET, and a HEAD's answer is never stored.
+test("a HEAD never renders or stores a page: the Renderer gets a GET, the reader the headers alone", async () => {
+  const head = new Request("https://example.com/a?b=1", { method: "HEAD", headers: { Accept: "text/html" } });
+  const sent = forRenderer(head);
+  assert.equal(sent.method, "GET");
+  assert.equal(sent.url, head.url);
+  assert.equal(sent.headers.get("Accept"), "text/html");
+  const get = new Request("https://example.com/");
+  assert.equal(forRenderer(get), get);
+
+  const stored = settleCacheHeaders(new Response("<p>page</p>", { headers: publicPageHeaders() }), sent);
+  assert.equal(stored.headers.get("Cache-Tag"), "pages");
+  const answered = forReader(stored, head);
+  assert.equal(answered.status, 200);
+  assert.equal(answered.body, null);
+  assert.equal(answered.headers.get("Cache-Control"), "public, max-age=0");
+
+  const fromHead = settleCacheHeaders(new Response(null, { headers: publicPageHeaders() }), head);
+  assert.equal(fromHead.headers.get("Cache-Control"), "private, no-store");
+  assert.equal(fromHead.headers.get("Cache-Tag"), null);
+  const themed = new Request("https://example.com/", { headers: { Cookie: "theme=dark" } });
+  assert.equal(settleCacheHeaders(new Response("ok", { headers: publicPageHeaders() }), themed, { publicCookies: ["theme"] }).headers.get("Cache-Tag"), "pages");
 });
 
 // A returning reader who holds the stored page gets 304; a page rendered after their copy does not.
