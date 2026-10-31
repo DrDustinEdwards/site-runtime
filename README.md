@@ -7,8 +7,8 @@ servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-lo
 (`./access`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images and their edits (`./image`), link prefetch (`./prefetch`), preloads and Early Hints (`./preload`), the edge page cache (`./edge-cache`), the Server-Timing header (`./server-timing`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), the signed token behind emailed links (`./signed-token`), where a site's Anthropic calls go
 (`./ai-gateway`), starting a Claude Code routine (`./routine`), the check on AI-written prose with the measure of an author's voice (`./prose`), the one sign-in every site
 offers (`./sign-in`, `./sign-in-client`, `./apple-secret`), the Cloudflare Turnstile widget and its server check (`./turnstile`), the same-origin check for
-resource routes (`./origin`), the trailing-slash redirect (`./url`), one structured log line and its scrubbers (`./log`) and the 404 counter
-(`./not-found`).
+resource routes (`./origin`), the trailing-slash redirect (`./url`), one structured log line and its scrubbers (`./log`), the 404 counter
+(`./not-found`) and scheduled jobs with their record (`./cron`).
 
 No dependencies (`./sign-in` uses the site's own `better-auth` and
 `@better-auth/passkey`, 1.7.12 or later, which a site that imports it installs itself; they are not declared as peers,
@@ -275,12 +275,36 @@ Nothing here scores text against an AI detector or aims to pass one.
 
 ## The /health response
 
-`./health` is the uptime probe's answer: `healthResponse({ ping, backup, sha, backupTtlMs, now })` is 200 when `ping`
-resolves and 503 when it throws (logged as `health_db_down`), with `{ ok, db, backup, sha, time }`, `no-store` and
-`noindex`. `ok` is false when the backup status carries a `warning`, so a monitor reading `ok` sees a stale dump, while
-the status stays 200 because the site is up. `sha` is the deployed commit, when the site knows it. The backup read is
-held per isolate for `backupTtlMs` (five minutes by default; 0 reads every time), because listing the R2 bucket is a
-billed Class A operation and the route is public.
+`./health` is the uptime probe's answer, in the IETF health check draft's shape (draft-inadarei-api-health-check-06,
+`application/health+json`): `healthResponse({ ping, backup, sha, checks, backupTtlMs, checkTimeoutMs, now })`, every
+field optional, with `{ status, ok, db, backup, sha, time, checks: [{ name, status, detail }] }`, `no-store` and
+`noindex`.
+
+```js
+import { healthResponse, r2Check } from "@dustinedwards/site-runtime/health";
+import { cronCheck } from "@dustinedwards/site-runtime/cron";
+return healthResponse({
+  ping: () => env.DB.prepare("SELECT 1").first(),
+  backup: () => backupHealth(env.BACKUPS),
+  sha: env.DEPLOY_SHA,
+  checks: [r2Check("media", env.MEDIA), cronCheck(env.DB), { name: "drift", level: "warn", run: contentDrift }],
+});
+```
+
+- A check is `{ name, level, run }`, `level` "fail" by default or "warn". It fails when `run` throws, rejects, resolves
+  `false` or resolves `{ ok: false, detail }`, or does not answer within `checkTimeoutMs` (3000 by default), so /health
+  never hangs on a binding. A thrown error's text is the detail, scrubbed by `./log` and cut to 200 characters; a failed
+  "fail" check is logged as `health_check_failed`.
+- `ping` is check `db` (level fail) and the body's `db: "up" | "down"`; a site with no database leaves it out. The
+  backup is check `backup` (level warn), failed when its status carries a `warning`.
+- `status` is fail when a fail check failed, else warn when a warn check failed, else pass. 503 only for fail: a stale
+  backup, a stopped cron or content drift is warn and 200, because the site is up. `ok` is `status === "pass"`, as
+  before, so a monitor reading `ok` sees a stale dump.
+- `r2Check(name, bucket)` and `kvCheck(name, kv)` are the binding checks: a `head` or `get` of a fixed key, where no
+  object is fine and a throw fails.
+- `sha` is the deployed commit, when the site knows it. The backup read is held per isolate for `backupTtlMs` (five
+  minutes by default; 0 reads every time), because listing the R2 bucket is a billed Class A operation and the route is
+  public.
 
 ## Responsive images
 
@@ -856,14 +880,23 @@ addresses, a URL's query and fragment (in text, and the whole of a field named f
 Drizzle query's bound parameters, and with `tokenPath` the token segment of the site's own routes. Fields named for
 headers, cookies, queries or console arguments are dropped; an Error becomes its name and message. The scrubbers are
 the net, not the rule: never log a token, a code or a secret on purpose. The package's own lines (`share_card_failed`,
-`not_found_count_failed`, `access_keys_unreachable`, `csp_report_unlimited`) go through it.
+`not_found_count_failed`, `access_keys_unreachable`, `csp_report_unlimited`, `health_check_failed`, the cron lines) go
+through it.
+
+`requestFields(request, { sha })` is `{ request_id, method, path, sha }` to spread into a request's lines: `request_id`
+is the `cf-ray` header, so a line matches the request in Cloudflare's logs, and `path` is scrubbed, never the query.
+`OWASP_EVENTS` holds the [OWASP Logging Vocabulary](https://cheatsheetseries.owasp.org/cheatsheets/Logging_Vocabulary_Cheat_Sheet.html)
+names for a site's security events: `authn_login_success`, `authn_login_fail`, `authz_fail`, `input_validation_fail`
+and `excess_rate_limit_exceeded`.
 
 ## The 404 counter
 
-`./not-found` counts the 404s a site serves, per path per UTC day, in its D1, so a broken link or a moved page shows
-up. The table is Foxhound's `page_404_daily` exactly (`id` a random UUID, `day` UTC midnight in epoch milliseconds,
-`path`, `hit_count`, unique on day and path), so Foxhound switches with no migration; another site adds `NOT_FOUND_SQL`
-as its next migration.
+`./not-found` counts the 404s a site serves, per path, referring host and UTC day, in its D1, so a broken link or a
+moved page shows up with where the link to it is: Rank Math's 404 Monitor without its personal data. The table is
+`page_404_daily` (`id` a random UUID, `day` UTC midnight in epoch milliseconds, `path`, `referrer_host`, `kind`,
+`hit_count`, unique on day, path and referrer host). A new site adds `NOT_FOUND_SQL` as its next migration; Foxhound
+and txasm, which have the first shape (no referrer or kind, unique index `page_404_daily_day_path_uq`), add
+`NOT_FOUND_UPGRADE_SQL` with the version that brings it, since the new upsert needs the new key.
 
 ```js
 import { countNotFound } from "@dustinedwards/site-runtime/not-found";
@@ -872,16 +905,51 @@ countNotFound(env.DB, request, response, ctx); // a 404 to a GET, written in ctx
 return response;
 ```
 
-- Only the pathname, cut to 512 characters (`NOT_FOUND_PATH_MAX`), never the query (it can carry a token), and no
-  referrer, user agent or address. `notFoundKey(url, now)` is the row's `{ day, path }`.
+- Only the pathname, cut to 512 characters (`NOT_FOUND_PATH_MAX`), never the query (it can carry a token). Of the
+  Referer only the host of an http or https URL (`referrerHost`), never its path or query; no user agent or address.
+  `notFoundKey(url, now)` is the row's `{ day, path, kind }`.
+- `kind` is "probe" for a path an exploit scanner guesses (`NOT_FOUND_PROBE`: `/wp-admin`, any `.php`, `/.env`,
+  `/.git/`, `/cgi-bin/`, phpMyAdmin), else "page".
 - GET only. React Router's data request (`/x.data`, `/_.data` for the home page) counts as its page, so a client
   navigation and a document load of the same missing page add to one row.
 - One upsert, so two 404s at once cannot both insert or lose a hit. Written in `ctx.waitUntil`, so it never holds or
   fails the response; a failed write is logged (`not_found_count_failed`). `db` may be a function, called inside the
-  background write, so a missing binding is logged too. `recordNotFound(db, url, now)` is the awaited write.
+  background write, so a missing binding is logged too. `recordNotFound(db, url, now, referer)` is the awaited write.
+- `notFoundReport(db, { days = 30, limit = 50, includeProbes = false })` is the admin screen's list:
+  `[{ path, kind, hits, referrers: [{ host, hits }] }]`, most hits first, "" the host for no referrer, probes left out
+  unless asked for. `pruneNotFound(db, { days = 90 })` deletes older rows; a site runs it from its cron.
 
 **Tests.** `test/log.test.mjs`, `test/url.test.mjs` (a `//` path stays on the site) and `test/not-found.test.mjs` (on
-an in-memory SQLite with `NOT_FOUND_SQL`).
+an in-memory SQLite with `NOT_FOUND_SQL`, and with Foxhound's and txasm's table upgraded by `NOT_FOUND_UPGRADE_SQL`).
+
+## Scheduled jobs
+
+`./cron` runs a site's scheduled jobs so that one failure never stops the next, and keeps each job's last start,
+success and failure in its D1, so /health can say when a cron failed or stopped. A site adds `CRON_SQL` (`cron_runs`:
+name, every_minutes, and the first start, last start, last success, last failure and last error, in epoch
+milliseconds) as its next migration.
+
+```js
+import { runJobs } from "@dustinedwards/site-runtime/cron";
+import { pruneNotFound } from "@dustinedwards/site-runtime/not-found";
+async scheduled(controller, env, ctx) {
+  await runJobs(env.DB, [
+    { name: "backup", everyMinutes: 1440, run: () => runBackup(env) },
+    { name: "prune-404", everyMinutes: 1440, run: () => pruneNotFound(env.DB) },
+  ]);
+}
+```
+
+- Each job runs in turn; a throw is logged (`cron_job_failed`, with its name and ms) and stored scrubbed and cut to
+  500 characters, and the next job runs. A success logs `cron_job_ok`. A failed write to `cron_runs` is logged
+  (`cron_run_write_failed`) and the job still runs. After the last job, if any failed, `runJobs` throws one Error
+  naming them, so Cloudflare marks the invocation failed. `db` may be a function, like `countNotFound`'s.
+- `cronCheck(db, { graceMinutes = 10 })` is the /health check (name `cron`, level warn): it fails, naming the jobs,
+  when a job's last run failed, its last success is older than twice its interval plus the grace, or it never succeeded
+  and was first started longer ago than that. That is how an outside probe of /health notices a cron that stopped. A
+  job removed from the site keeps its row, which goes stale: delete the row with the job.
+
+**Tests.** `test/cron.test.mjs` (on an in-memory SQLite with `CRON_SQL`) and `test/health.test.mjs`.
 
 ## A constant-time secret compare
 
