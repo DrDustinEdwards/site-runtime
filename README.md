@@ -13,7 +13,7 @@ resource routes (`./origin`), the trailing-slash redirect (`./url`), one structu
 No dependencies (`./sign-in` uses the site's own `better-auth` and
 `@better-auth/passkey`, 1.7.12 or later, which a site that imports it installs itself; they are not declared as peers,
 because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
-tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.43.0"`. `npm test` runs every test in `test/`.
+tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.45.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
 
@@ -788,10 +788,82 @@ const auth = betterAuth({
   site's D1 (`session`, `rateLimit`), never KV, which is eventually consistent.
 - Async, because Apple's secret is signed with WebCrypto: a site keeps the promise per isolate.
 
-**Tests.** `test/apple-secret.test.mjs` (a key made in the test, the signature verified) and `test/sign-in-link.test.mjs`
-(the mailed URL; only a POST reaches Better Auth's verify, with the client address passed on). The confirm step lives in
-`sign-in-link.mjs`, re-exported by `./sign-in`, so it is tested without Better Auth installed. The rest is Better Auth's
-own plugins, set up; each site's tests sign in through it.
+### Account security: the event log, notices, sessions and passkeys
+
+`sign-in-account.mjs`, re-exported by `./sign-in` and run from a plugin's hooks, so a site gets the log with no code of
+its own and the notices by passing one function.
+
+- The auth event log (F2): one `./log` line per event, named from the OWASP Logging Vocabulary (`OWASP_EVENTS`).
+
+  | Event | Line |
+  | --- | --- |
+  | sign-in, by `via`: `link`, `code`, `passkey`, `google`, `apple` | `authn_login_success` (`user_id`), `authn_login_fail` (`code`, such as `INVALID_TOKEN`, `INVALID_OTP`, `PASSKEY_NOT_FOUND`) |
+  | a sign-in link or the app's code mailed | `authn_token_created` (`via`) |
+  | a per-address limit hit (`emailLimiter`) | `excess_rate_limit_exceeded` (`endpoint`, `bucket`) |
+  | sign-out | `session_logout` |
+  | a session ended from the sessions list | `session_expired` (`reason: "revoked"`, `scope`: `one`, `others`, `all`) |
+  | a passkey added or removed, Google or Apple linked or unlinked, the email changed | `user_updated` (`change`: `passkey_added`, `passkey_removed`, `sign_in_linked`, `sign_in_unlinked`, `email_changed`) |
+  | the account deleted | `user_deleted` |
+  | refused for want of a fresh sign-in | `authz_fail` (`reason`: `SESSION_NOT_FRESH`, or `/delete-user`'s `SESSION_EXPIRED`; `endpoint`) |
+
+  A line carries `user_id` once there is a user, and before that the address hashed as `emailKey` hashes it
+  (`email_key: "email:<sha-256>"`); never the address, a token, a code or a session id. Better Auth's own per-IP limits
+  answer 429 before any hook runs (its router's `onRequest`), so those refusals are not in the log; Workers Logs shows
+  them as 429s on `/api/auth`.
+- Security notices (A8, E1; NIST SP 800-63B-4 4.1.2.1 and 4.6): `signInOptions(env, { ...,
+  sendSecurityNotice })` calls `sendSecurityNotice(kind, { user, request, detail })` for `passkey-added`,
+  `passkey-removed`, `sign-in-linked`, `sign-in-unlinked`, `email-changed` (twice, once to each address, the old one
+  told to get in touch), `sessions-revoked` (every session, or every other one: `detail.scope`) and `account-deleted`
+  (`SECURITY_NOTICE_KINDS`). `user.email` is where it goes. `detail` is the words: `title` (the subject), `what`,
+  `when` (UTC, in words) and `at`, `device` ("Safari on iPhone") and `location` ("Austin, Texas, United States", from
+  `request.cf`; null for a request a site built itself, as `confirmSignInLink` and `auth.api` calls are), and `secure`,
+  what to do if it was not them. Capsomer's `securityNotice` mail takes it as it is:
+
+  ```js
+  sendSecurityNotice: async (kind, { user, detail }) => {
+    const { subject, html, text } = renderEmail(securityNotice, { brand, to: user.email, ...detail, url: `${origin}/account` });
+    await sendMail({ to: user.email, subject, html, text }); // the site's own sender
+  },
+  ```
+
+  A send that throws is logged (`security_notice_failed`, the kind and the error with any address cut out) and the
+  change stands: every hook catches its own error (`auth_event_failed`), because a throw from an after hook would turn
+  a change already made into an error answer. The send goes through Better Auth's `runInBackgroundOrAwait`, so with
+  `advanced: { ...signIn.advanced, backgroundTasks: { handler: (p) => ctx.waitUntil(p) } }` the answer does not wait
+  for the mail. A linked or unlinked provider, the two addresses of an email change and a deleted user's address come
+  from database hooks (the plugin's own, beside the site's `databaseHooks`); the email change is caught on both of
+  Better Auth's paths, `/change-email` for an unconfirmed address and `/verify-email` for a confirmed one.
+- Sessions list (D5): `sessionRows(await auth.api.listSessions({ headers }), session.token)` gives `{ id, token, device,
+  signedInAt, lastActiveAt, current, location }`, the current session first. `device` is `deviceName(userAgent)`, a
+  small parser of the browser and system (Edge, Opera, Samsung Internet, Firefox, Chrome, Safari; iPhone, iPad,
+  Android, ChromeOS, Windows, Mac, Linux), null when the agent names neither. `lastActiveAt` is Better Auth's
+  `updatedAt`, which moves only when it extends the session (once per `updateAge`, a day by default). Better Auth
+  stores the address and the user agent, not a place, so `location` is null unless a site keeps one on the session.
+  Ending one is Better Auth's `/revoke-session` with the row's `token`; every other, `/revoke-other-sessions`; all,
+  `/revoke-sessions`. `/list-sessions` needs a fresh sign-in.
+- Passkey names (A5): a passkey registered with no name is stored with its provider's, from its AAGUID
+  (`passkeyProvider`: the passkey-authenticator-aaguids list trimmed to the password managers people use, by that
+  list's names: "Apple Passwords", "Google Password Manager", "Windows Hello", "1Password" and so on). Apple's own
+  passkeys report the all-zero AAGUID when no attestation is asked for, so a zero from an iPhone, iPad or Mac reads as
+  Apple Passwords. It is the passkey plugin's `registration.afterVerification`, whose name a name the page sends
+  overrides. `passkeyLabel(passkey)` is what a list shows: the name, else the provider, else "Passkey". Better Auth
+  1.7.12 keeps no last-used time.
+- The WebAuthn Signal API (A6), in `./sign-in-client`: `signalUnknownCredential({ rpId, credentialId })` after a passkey
+  is deleted on the site, and after a sign-in fails with `PASSKEY_NOT_FOUND` (the passkey was deleted elsewhere;
+  `signIn.passkey({ returnWebAuthnResponse: true })` gives the credential's id as `webauthn.response.id`), so the
+  provider stops offering it. `signalPasskeys({ rpId, userId, credentialIds, name, displayName })` calls
+  `signalAllAcceptedCredentials` and `signalCurrentUserDetails`. Each runs only where the browser has it (Chrome 132,
+  Safari 26) and swallows a refusal. `userId` is a passkey's user handle, and @better-auth/passkey 1.7.12 makes a new
+  random handle for every passkey and stores none (`generate-register-options`), so the one handle a page has is the
+  passkey just used to sign in (`webauthn.response.response.userHandle`), and `signalPasskeys` reaches that passkey
+  alone. A deleted passkey is therefore signalled by its id, with `signalUnknownCredential`.
+
+**Tests.** `test/apple-secret.test.mjs` (a key made in the test, the signature verified), `test/sign-in-link.test.mjs`
+(the mailed URL; only a POST reaches Better Auth's verify, with the client address passed on) and
+`test/sign-in-account.test.mjs` (user agents, which event a request was, a notice that fails to send). The confirm step
+and the account security live in `sign-in-link.mjs` and `sign-in-account.mjs`, re-exported by `./sign-in`, so they are
+tested without Better Auth installed. The rest is Better Auth's own plugins, set up; each site's tests sign in through
+it.
 
 ## The live sign-in check
 
@@ -942,8 +1014,9 @@ through it.
 `requestFields(request, { sha })` is `{ request_id, method, path, sha }` to spread into a request's lines: `request_id`
 is the `cf-ray` header, so a line matches the request in Cloudflare's logs, and `path` is scrubbed, never the query.
 `OWASP_EVENTS` holds the [OWASP Logging Vocabulary](https://cheatsheetseries.owasp.org/cheatsheets/Logging_Vocabulary_Cheat_Sheet.html)
-names for a site's security events: `authn_login_success`, `authn_login_fail`, `authz_fail`, `input_validation_fail`
-and `excess_rate_limit_exceeded`.
+names for a site's security events: `authn_login_success`, `authn_login_fail`, `authn_token_created`, `session_logout`,
+`session_expired`, `user_updated`, `user_deleted`, `authz_fail`, `input_validation_fail` and
+`excess_rate_limit_exceeded`. `./sign-in` writes its own events with them (Sign-in, Account security).
 
 ## The 404 counter
 

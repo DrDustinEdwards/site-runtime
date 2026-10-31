@@ -3,8 +3,18 @@ import type { passkey } from "@better-auth/passkey";
 import type { BetterAuthPlugin } from "better-auth";
 import type { emailOTP, magicLink } from "better-auth/plugins";
 import type { limit } from "./rate-limit/index.mjs";
+import type { SendSecurityNotice } from "./sign-in-account.mjs";
 
 export { CONFIRM_PATH, confirmSignInLink } from "./sign-in-link.mjs";
+export {
+  SECURITY_NOTICE_KINDS,
+  coarseLocation,
+  deviceName,
+  passkeyLabel,
+  passkeyProvider,
+  sessionRows,
+} from "./sign-in-account.mjs";
+export type { NoticeDetail, SecurityNoticeKind, SendSecurityNotice } from "./sign-in-account.mjs";
 
 type SignInEnv = {
   BETTER_AUTH_URL: string;
@@ -67,12 +77,18 @@ export function signInOptions(
     confirmPath?: string;
     /** The site's RateLimiter Durable Object namespace (`./rate-limit`): turns on the per-address limits. */
     emailLimiter?: Parameters<typeof limit>[0];
+    /**
+     * Mails a security notice to `user.email`: a passkey added or removed, a sign-in method linked or unlinked, the email
+     * changed (once to each address), every session or every other session ended, the account deleted. A throw is
+     * logged and never blocks the change.
+     */
+    sendSecurityNotice?: SendSecurityNotice;
   },
 ): Promise<{
   emailAndPassword: { enabled: false };
   /**
    * Typed one by one, so a site's auth.api knows the magic-link, email OTP and passkey endpoints; then the sign-out
-   * hook, the captcha and the per-address limit, which add none.
+   * hook, the auth event log and notices, the captcha and the per-address limit, which add none.
    */
   plugins: [ReturnType<typeof magicLink>, ReturnType<typeof emailOTP>, ReturnType<typeof passkey>, ...BetterAuthPlugin[]];
   disabledPaths: string[];
