@@ -1,9 +1,26 @@
-// The tricky parts of sign-in's account security: reading a user agent, which event a Better Auth request was, and a
-// notice that fails to send. The hooks themselves ran against Better Auth 1.7.12 in the PR's end-to-end check.
+// The tricky parts of sign-in's account security: reading a user agent, which event a Better Auth request was, a
+// notice that fails to send, the security history and spike counts, and the fresh sign-in a site's own route asks for. The hooks themselves ran against Better Auth 1.7.12 in the PR's end-to-end check.
 import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 
-import { accountSessions, authEvent, deviceName, passkeyProvider, revokeSessionById, sendNoticeSafely } from "../sign-in-account.mjs";
+import { authSpikeCheck } from "../health.mjs";
+import {
+  AUTH_EVENTS_SQL,
+  accountSessions,
+  authEvent,
+  deviceName,
+  hadPasskey,
+  isNewDevice,
+  logAuthEvent,
+  passkeyProvider,
+  pruneAuthEvents,
+  requireFreshSession,
+  revokeSessionById,
+  securityHistory,
+  sendNoticeSafely,
+  signedInDevices,
+} from "../sign-in-account.mjs";
 
 test("a user agent reads as the browser and system a person would name", () => {
   const cases = [
@@ -96,4 +113,79 @@ test("revokeSessionById ends only the asker's own session, and the rows carry no
   assert.equal(await revokeSessionById(auth, request, "b"), true);
   assert.equal(await revokeSessionById(auth, request, "someone-elses"), false);
   assert.deepEqual(revoked, ["tok-b"]);
+});
+
+/** A D1-shaped wrapper over node:sqlite, with the event table. */
+function d1() {
+  const db = new DatabaseSync(":memory:");
+  db.exec(AUTH_EVENTS_SQL);
+  return {
+    db,
+    prepare: (/** @type {string} */ sql) => ({
+      bind: (/** @type {any[]} */ ...v) => ({ run: async () => db.prepare(sql).run(...v), all: async () => ({ results: db.prepare(sql).all(...v) }) }),
+    }),
+  };
+}
+
+/** Runs `fn` with console.error silenced (the log lines are tested elsewhere). @param {() => Promise<void>} fn */
+async function quietly(fn) {
+  const original = console.error;
+  console.error = () => {};
+  try {
+    await fn();
+  } finally {
+    console.error = original;
+  }
+}
+
+const IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+const WINDOWS = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+
+test("a person's history holds their sign-ins and changes with device, never another's or a failure; a new device is told", async () => {
+  const db = d1();
+  await quietly(async () => {
+    await logAuthEvent({ event: "authn_login_success", fields: { via: "link", user_id: "u1" } }, { db, userAgent: IPHONE });
+    await logAuthEvent({ event: "user_updated", fields: { change: "passkey_added", user_id: "u1" } }, { db, userAgent: IPHONE });
+    await logAuthEvent({ event: "authn_login_fail", fields: { via: "code", code: "INVALID_OTP" }, email: "a@example.com" }, { db });
+    await logAuthEvent({ event: "authn_login_success", fields: { via: "passkey", user_id: "u2" } }, { db, userAgent: WINDOWS });
+    await logAuthEvent({ event: "session_logout", fields: { user_id: "u1" } }, { db });
+  });
+  const history = await securityHistory(db, "u1");
+  assert.deepEqual(history.map(({ kind, via, device }) => [kind, via, device]).sort(), [
+    ["passkey-added", null, "Safari on iPhone"],
+    ["sign-in", "link", "Safari on iPhone"],
+  ]);
+  assert.equal(await hadPasskey(db, "u1"), true);
+  assert.equal(await hadPasskey(db, "u2"), false);
+  const seen = await signedInDevices(db, "u1");
+  assert.equal(isNewDevice(deviceName(IPHONE), seen), false);
+  assert.equal(isNewDevice(deviceName(WINDOWS), seen), true);
+  assert.equal(isNewDevice(deviceName(WINDOWS), []), false, "a first sign-in is no new device");
+  assert.doesNotMatch(JSON.stringify(db.db.prepare("SELECT * FROM auth_events").all()), /example\.com/);
+  await pruneAuthEvents(db, Date.now() + 31 * 24 * 60 * 60 * 1000);
+  assert.equal(db.db.prepare("SELECT COUNT(*) AS n FROM auth_events WHERE user_id IS NULL").get()?.n, 0);
+});
+
+test("the spike check warns when failed sign-ins or sign-in mails in its window pass their ceiling", async () => {
+  const db = d1();
+  const now = Date.UTC(2026, 9, 31, 12);
+  const insert = db.db.prepare("INSERT INTO auth_events (at, event) VALUES (?, ?)");
+  for (let i = 0; i < 4; i++) insert.run(now - 60_000, "authn_login_fail");
+  insert.run(now - 2 * 60 * 60_000, "authn_token_created"); // outside the window
+  const check = (/** @type {number} */ failures) => authSpikeCheck(db, { failures, mails: 0, now: () => now }).run();
+  assert.equal(await check(10), true);
+  assert.deepEqual(await check(3), { ok: false, detail: "4 failed sign-ins in 60 minutes" });
+  assert.equal(authSpikeCheck(db).level, "warn");
+});
+
+test("requireFreshSession passes a sign-in under 10 minutes old and refuses an older one as Better Auth does", async () => {
+  const auth = (/** @type {number} */ ageMs) => ({
+    api: { getSession: async () => ({ session: { createdAt: new Date(Date.now() - ageMs) }, user: { id: "u1" } }) },
+  });
+  const request = new Request("https://example.com/account/export");
+  assert.equal((await requireFreshSession(auth(60_000), request))?.user.id, "u1");
+  assert.equal(await requireFreshSession({ api: { getSession: async () => null } }, request), null);
+  await quietly(async () => {
+    await assert.rejects(requireFreshSession(auth(11 * 60_000), request), { statusCode: 403, body: { code: "SESSION_NOT_FRESH", message: "Session is not fresh" } });
+  });
 });

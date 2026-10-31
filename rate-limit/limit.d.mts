@@ -5,21 +5,19 @@
 /**
  * One use of `key` against `rules`. `onUnavailable` is required, with no default, so every call site
  * states whether a missing or failing counter lets the request through. "allow" still returns
- * status "unavailable" and logs a structured line: the failure is reported, never swallowed.
- *
- * @param {{ idFromName: (name: string) => any, get: (id: any) => { hit: (rules: import("./core.mjs").Rule[]) => Promise<import("./core.mjs").Hit> } } | undefined} namespace
- * @param {string} key
- * @param {import("./core.mjs").Rule[]} rules
- * @param {{ onUnavailable: "allow" | "refuse" }} options
- * @returns {Promise<Verdict>}
+ * status "unavailable" and logs a structured line: the failure is reported, never swallowed. `peek: true` counts
+ * nothing and only says whether the rules are spent, for a limit on failures: peek before the attempt, and `limit`
+ * after a failed one.
  */
 export function limit(namespace: {
     idFromName: (name: string) => any;
     get: (id: any) => {
         hit: (rules: import("./core.mjs").Rule[]) => Promise<import("./core.mjs").Hit>;
+        peek?: (rules: import("./core.mjs").Rule[]) => Promise<import("./core.mjs").Hit>;
     };
 } | undefined, key: string, rules: import("./core.mjs").Rule[], options: {
     onUnavailable: "allow" | "refuse";
+    peek?: boolean;
 }): Promise<Verdict>;
 /**
  * Whether the caller must stop here: `limited` always, `unavailable` only when the site chose to refuse.

@@ -17,6 +17,7 @@
  */
 
 import { logEvent, scrubText } from "./log.mjs";
+import { authEventCounts } from "./sign-in-account.mjs";
 
 /** The longest `detail` a check reports. */
 export const CHECK_DETAIL_MAX = 200;
@@ -127,4 +128,27 @@ export function r2Check(name, bucket) {
  */
 export function kvCheck(name, kv) {
   return { name, run: async () => (await kv.get(PROBE_KEY), true) };
+}
+
+/**
+ * The spike alert for sign-in (F3): a warn check that fails when, in the last `windowMinutes`, failed sign-ins or
+ * sign-in mails passed their ceiling, read from `./sign-in`'s `auth_events` table (`eventsDb`). Level warn, so
+ * /health and the daily live check show it and the site stays up. The detail gives the counts, never an address.
+ * @param {import("./sign-in-account.mjs").D1Like} db
+ * @param {{ windowMinutes?: number, failures?: number, mails?: number, now?: () => number }} [limits]
+ * @returns {HealthCheck}
+ */
+export function authSpikeCheck(db, { windowMinutes = 60, failures = 50, mails = 50, now = Date.now } = {}) {
+  return {
+    name: "auth-spike",
+    level: "warn",
+    run: async () => {
+      const counts = await authEventCounts(db, now() - windowMinutes * 60_000);
+      const over = [
+        counts.failures > failures ? `${counts.failures} failed sign-ins` : "",
+        counts.mails > mails ? `${counts.mails} sign-in mails` : "",
+      ].filter(Boolean);
+      return over.length ? { ok: false, detail: `${over.join(" and ")} in ${windowMinutes} minutes` } : true;
+    },
+  };
 }

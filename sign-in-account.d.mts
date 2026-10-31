@@ -1,4 +1,7 @@
-/** Account security for ./sign-in (sign-in-account.mjs): the auth event log, security notices, sessions list and passkey names. */
+/**
+ * Account security for ./sign-in (sign-in-account.mjs): the auth event log and its table, the security history, fresh
+ * sign-in for a site's own routes, security notices, sessions list and passkey names.
+ */
 
 /** What `sendSecurityNotice` is called for. */
 export const SECURITY_NOTICE_KINDS: readonly [
@@ -9,8 +12,61 @@ export const SECURITY_NOTICE_KINDS: readonly [
   "email-changed",
   "sessions-revoked",
   "account-deleted",
+  "new-device",
+  "recovery",
 ];
 export type SecurityNoticeKind = (typeof SECURITY_NOTICE_KINDS)[number];
+
+/** How recent a sign-in must be for a risky change: 600 seconds (Better Auth's session.freshAge, and ./sign-in's own check). */
+export const FRESH_SECONDS: 600;
+/** Whether a session was made within `freshSeconds` (default FRESH_SECONDS). */
+export function sessionIsFresh(session: { createdAt: Date | string | number }, freshSeconds?: number, now?: number): boolean;
+/** The refusal for want of a recent sign-in, in Better Auth's shape: 403, `body.code` "SESSION_NOT_FRESH". */
+export class SessionNotFresh extends Error {
+  status: "FORBIDDEN";
+  statusCode: 403;
+  body: { code: "SESSION_NOT_FRESH"; message: string };
+}
+/**
+ * The asker's session when it was made in the last FRESH_SECONDS, null when nobody is signed in; throws SessionNotFresh
+ * (logged as `authz_fail`) when older. For a site's own risky routes: export and delete account.
+ */
+export function requireFreshSession<S extends { session: { createdAt: Date | string }; user: { id: string } }>(
+  auth: { api: { getSession(o: { headers: Headers }): Promise<S | null> } },
+  request: Request,
+): Promise<S | null>;
+
+/** The D1 calls the event table needs. */
+export type D1Like = {
+  prepare(sql: string): { bind(...values: unknown[]): { run(): Promise<unknown>; all(): Promise<{ results: any[] }> } };
+};
+/** The migration for `auth_events`: one row per auth event, no address, token or code. */
+export const AUTH_EVENTS_SQL: string;
+/** Writes one event's row; a failed write is logged (`auth_event_write_failed`) and never throws. */
+export function recordAuthEvent(
+  db: D1Like,
+  row: { event: string; fields: Record<string, unknown>; userAgent?: string | null; request?: Request | null; at?: number },
+): Promise<void>;
+export type SecurityHistoryEntry = {
+  kind: "sign-in" | "passkey-added" | "passkey-removed" | "sign-in-linked" | "sign-in-unlinked" | "email-changed" | "recovery";
+  /** The way in for a sign-in ("link", "code", "passkey", "google", "apple"), the provider for a link or unlink. */
+  via: string | null;
+  at: Date;
+  device: string | null;
+  location: string | null;
+};
+/** A person's sign-ins, passkey, sign-in method and email changes and recoveries, newest first (default 50). */
+export function securityHistory(db: D1Like, userId: string, limit?: number): Promise<SecurityHistoryEntry[]>;
+/** The devices (deviceName) a person has signed in from, from their history. */
+export function signedInDevices(db: D1Like, userId: string): Promise<(string | null)[]>;
+/** Whether a person's history shows a passkey added. */
+export function hadPasskey(db: D1Like, userId: string): Promise<boolean>;
+/** Whether a sign-in's device is new: the person has signed in before, never from this device. */
+export function isNewDevice(device: string | null, seen: (string | null)[]): boolean;
+/** Failed sign-ins and sign-in mails since `sinceMs`. */
+export function authEventCounts(db: D1Like, sinceMs: number): Promise<{ failures: number; mails: number }>;
+/** Deletes rows with no user after 30 days and every row after a year: a daily job. */
+export function pruneAuthEvents(db: D1Like, now?: number): Promise<void>;
 
 /** "Safari on iPhone", "Chrome on Windows", one of the two alone, or null. */
 export function deviceName(userAgent: string | null | undefined): string | null;
@@ -74,8 +130,11 @@ export type AuthEvent = {
 };
 /** The log line, and the notice if any, for one Better Auth request, or null. */
 export function authEvent(facts: EndpointFacts): AuthEvent | null;
-/** Writes the event's line with the address hashed (`email_key`), never in clear. */
-export function logAuthEvent(event: Pick<AuthEvent, "event" | "fields" | "level" | "email">): Promise<void>;
+/** Writes the event's line with the address hashed (`email_key`), never in clear; with `db`, its `auth_events` row too. */
+export function logAuthEvent(
+  event: Pick<AuthEvent, "event" | "fields" | "level" | "email">,
+  where?: { db?: D1Like | null; userAgent?: string | null; request?: Request | null },
+): Promise<void>;
 
 /** "Google", "Apple", else the provider id. */
 export function providerName(providerId: string | undefined): string;

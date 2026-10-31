@@ -1,6 +1,6 @@
 // A Workers built-in, not an npm package.
 import { DurableObject } from "cloudflare:workers";
-import { hitRules, idleDeadline, purgeExpired } from "./core.mjs";
+import { hitRules, idleDeadline, peekRules, purgeExpired } from "./core.mjs";
 
 /**
  * The Durable Object class a Worker exports and binds (SQLite-backed). One instance per key holds
@@ -20,6 +20,15 @@ export class RateLimiter extends DurableObject {
     const result = hitRules(this.ctx.storage.sql, rules, nowMs);
     if (result.ok) await this.ctx.storage.setAlarm(idleDeadline(rules, nowMs));
     return result;
+  }
+
+  /**
+   * Whether `rules` are spent, counting nothing (`limit(..., { peek: true })`).
+   * @param {import("./core.mjs").Rule[]} rules
+   * @param {number} [nowMs]
+   */
+  async peek(rules, nowMs = Date.now()) {
+    return peekRules(this.ctx.storage.sql, rules, nowMs);
   }
 
   async alarm() {

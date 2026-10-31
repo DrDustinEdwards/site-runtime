@@ -1,5 +1,6 @@
 // The live sign-in check against a fake site: a site that does everything right has no errors, each planted gap fails
-// its own item, a site with no sign-in, admin or MCP has no findings, and a site that does not answer cannot be checked.
+// its own item (the confirm page found at the site's own path, as txasm's /signin/confirm), a site with no sign-in,
+// admin or MCP has no findings, and a site that does not answer cannot be checked.
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { after, before, test } from "node:test";
@@ -22,7 +23,7 @@ const routes = {
   "GET /api/auth/ok": () => [200, { "content-type": "application/json" }, '{"ok":true}'],
   "GET /api/auth/passkey/generate-authenticate-options": (bad) => [200, { "content-type": "application/json", ...PRIVATE, "set-cookie": COOKIE }, JSON.stringify({ rpId: bad ? "sample.workers.dev" : "127.0.0.1" })],
   "POST /api/auth/sign-out": (bad) => [200, { "content-type": "application/json", ...PRIVATE, ...(bad ? { "set-cookie": "session_token=; Path=/" } : { "clear-site-data": '"cache","cookies","storage"' }) }, '{"success":true}'],
-  "GET /sign-in/confirm": (bad) => (bad ? [302, { location: "/", "set-cookie": "__Secure-better-auth.session_token=x; Path=/; HttpOnly; Secure; SameSite=Lax" }] : [405, PRIVATE]),
+  "GET /signin/confirm": (bad) => (bad ? [302, { location: "/", "set-cookie": "__Secure-better-auth.session_token=x; Path=/; HttpOnly; Secure; SameSite=Lax" }] : [405, PRIVATE]),
   "GET /admin": (bad) => (bad ? [200, { "content-type": "text/html" }, "<h1>Admin</h1>"] : [302, { location: "https://sample.cloudflareaccess.com/cdn-cgi/access/login/sample", ...PRIVATE }]),
   "POST /mcp": () => [401, { "www-authenticate": `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource/mcp"` }],
   "GET /.well-known/oauth-protected-resource/mcp": () => [200, { "content-type": "application/json" }, JSON.stringify({ resource: `${origin}/mcp`, authorization_servers: [origin] })],

@@ -40,3 +40,11 @@ export function healthResponse(probe?: {
 export function r2Check(name: string, bucket: { head(key: string): Promise<unknown> }): HealthCheck;
 /** A check that a KV namespace answers: a `get` of a fixed key; null passes, a throw fails. */
 export function kvCheck(name: string, kv: { get(key: string): Promise<unknown> }): HealthCheck;
+/**
+ * The sign-in spike alert (F3), level warn: fails when failed sign-ins or sign-in mails in the last `windowMinutes`
+ * (60) pass `failures` (50) or `mails` (50), read from ./sign-in's `auth_events` table (AUTH_EVENTS_SQL, `eventsDb`).
+ */
+export function authSpikeCheck(
+  db: import("./sign-in-account.mjs").D1Like,
+  limits?: { windowMinutes?: number; failures?: number; mails?: number; now?: () => number },
+): HealthCheck;

@@ -28,25 +28,61 @@ async function signal(method, options) {
 
 /**
  * Tells the provider which of this user's passkeys the site still accepts, so one deleted here leaves the provider's
- * list, and the name and display name to show on them. `userId` is the passkey's user handle, base64url, as the sign-in
- * gave it (`signIn.passkey({ returnWebAuthnResponse: true })`: `webauthn.response.response.userHandle`):
- * @better-auth/passkey 1.7.12 makes a new random handle for each passkey and stores none, so a handle reaches only the
- * passkey made with it. `credentialIds` are the account's `credentialID`s (listPasskeys). Without `userId` it does
- * nothing; after a delete, signal the deleted one with signalUnknownCredential.
+ * list. `userId` is the passkey's user handle, base64url, as the sign-in gave it (`signIn.passkey({
+ * returnWebAuthnResponse: true })`: `webauthn.response.response.userHandle`): @better-auth/passkey 1.7.12 makes a new
+ * random handle for each passkey and stores none, so a handle reaches only the passkey made with it. `credentialIds`
+ * are the account's `credentialID`s (listPasskeys). Resolves true when the browser took the signal.
+ * @param {{ rpId: string, userId: string, credentialIds: string[] }} options
+ */
+export function signalAllAcceptedCredentials({ rpId, userId, credentialIds }) {
+  return signal("signalAllAcceptedCredentials", { rpId, userId, allAcceptedCredentialIds: credentialIds });
+}
+
+/**
+ * Tells the provider the name and display name to show on this user's passkey (after an email change, say). `userId`
+ * as for signalAllAcceptedCredentials. Resolves true when the browser took the signal.
+ * @param {{ rpId: string, userId: string, name: string, displayName?: string }} options
+ */
+export function signalCurrentUserDetails({ rpId, userId, name, displayName }) {
+  return signal("signalCurrentUserDetails", { rpId, userId, name, displayName: displayName || name });
+}
+
+/**
+ * Both of the above, after a passkey sign-in. Without `userId` it does nothing; after a delete, signal the deleted one
+ * with signalUnknownCredential.
  * @param {{ rpId: string, userId?: string | null, credentialIds: string[], name?: string, displayName?: string }} options
  */
 export async function signalPasskeys({ rpId, userId, credentialIds, name, displayName }) {
   if (!userId) return;
-  await signal("signalAllAcceptedCredentials", { rpId, userId, allAcceptedCredentialIds: credentialIds });
-  if (name) await signal("signalCurrentUserDetails", { rpId, userId, name, displayName: displayName || name });
+  await signalAllAcceptedCredentials({ rpId, userId, credentialIds });
+  if (name) await signalCurrentUserDetails({ rpId, userId, name, displayName });
 }
 
 /**
  * Tells the provider the site no longer knows a passkey: after the person deletes it here, and after a sign-in that
- * failed with PASSKEY_NOT_FOUND (one deleted elsewhere). `credentialId` is base64url (the passkey row's `credentialID`,
- * or the failed sign-in's `webauthn.response.id`). Resolves true when the browser took the signal.
+ * failed with PASSKEY_NOT_FOUND (one deleted elsewhere; signInWithPasskey does that one). `credentialId` is base64url
+ * (the passkey row's `credentialID`, or the failed sign-in's `webauthn.response.id`). Resolves true when the browser
+ * took the signal.
  * @param {{ rpId: string, credentialId: string }} options
  */
 export function signalUnknownCredential({ rpId, credentialId }) {
   return signal("signalUnknownCredential", { rpId, credentialId });
+}
+
+/**
+ * The passkey sign-in a page's button or autofill calls in place of `authClient.signIn.passkey`: the same call, with
+ * `returnWebAuthnResponse` on, and when the site does not know the passkey (PASSKEY_NOT_FOUND, deleted here from
+ * another device) it tells the provider with signalUnknownCredential, so the browser stops offering it. Returns
+ * Better Auth's answer. `rpId` defaults to the page's host, which is the relying party `./sign-in` sets.
+ * @template {{ error?: { code?: string } | null, webauthn?: { response?: { id?: string } } }} R
+ * @param {{ signIn: { passkey(options?: Record<string, unknown>): Promise<R> } }} client
+ * @param {Record<string, unknown> & { rpId?: string }} [options] the passkey sign-in's own options (`autoFill`, `fetchOptions`)
+ * @returns {Promise<R>}
+ */
+export async function signInWithPasskey(client, { rpId, ...options } = {}) {
+  const result = await client.signIn.passkey({ ...options, returnWebAuthnResponse: true });
+  const credentialId = result?.webauthn?.response?.id;
+  const host = rpId ?? /** @type {any} */ (globalThis).location?.hostname;
+  if (result?.error?.code === "PASSKEY_NOT_FOUND" && credentialId && host) await signalUnknownCredential({ rpId: host, credentialId });
+  return result;
 }

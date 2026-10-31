@@ -13,7 +13,7 @@ resource routes (`./origin`), the trailing-slash redirect (`./url`), one structu
 No dependencies (`./sign-in` uses the site's own `better-auth` and
 `@better-auth/passkey`, 1.7.12 or later, which a site that imports it installs itself; they are not declared as peers,
 because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
-tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.50.1"`. `npm test` runs every test in `test/`.
+tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.51.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
 
@@ -326,6 +326,10 @@ return healthResponse({
   before, so a monitor reading `ok` sees a stale dump.
 - `r2Check(name, bucket)` and `kvCheck(name, kv)` are the binding checks: a `head` or `get` of a fixed key, where no
   object is fine and a throw fails.
+- `authSpikeCheck(env.DB, { windowMinutes: 60, failures: 50, mails: 50 })` is the sign-in spike alert (F3), level
+  warn: it fails when failed sign-ins (`authn_login_fail`) or sign-in mails (`authn_token_created`) in the window pass
+  their ceiling, read from `./sign-in`'s `auth_events` table (`eventsDb`), with the counts as its detail. /health
+  shows it, and so the daily live check does.
 - `sha` is the deployed commit, when the site knows it. The backup read is held per isolate for `backupTtlMs` (five
   minutes by default; 0 reads every time), because listing the R2 bucket is a billed Class A operation and the route is
   public.
@@ -738,13 +742,17 @@ const auth = betterAuth({
   baseURL: env.BETTER_AUTH_URL,
   secret: env.BETTER_AUTH_SECRET,
   database: drizzleAdapter(db, { provider: "sqlite", schema }),
-  ...(await signInOptions(env, { siteName: "Foxing", sendMagicLink, social: true, emailLimiter: env.AUTH_RATE_LIMITER })),
+  ...(await signInOptions(env, {
+    siteName: "Foxing", sendMagicLink, social: true, emailLimiter: env.AUTH_RATE_LIMITER, eventsDb: env.DB,
+  })),
 });
 // the confirm page's action (CONFIRM_PATH, /sign-in/confirm): return confirmSignInLink(auth, request)
 // the sign-in page's loader: signInMethods(env, { social: true }) -> { google, apple, turnstileSiteKey }
 // the browser: createAuthClient({ plugins: signInClientPlugins() }) from "@dustinedwards/site-runtime/sign-in-client"
 // sendMagicLink({ email, url, token, code }) mails the link and the code together
 // a phone app: signInOptions(env, { ..., appCode: true, sendSignInCode: ({ email, code }) => mailCode(email, code) })
+// a site's own export or delete route: await requireFreshSession(auth, request) (throws SESSION_NOT_FRESH when stale)
+// a person's security history: await securityHistory(env.DB, user.id)
 ```
 
 - Passkey: its relying party is the host of `BETTER_AUTH_URL`, so a passkey made on the live site works there only. The
@@ -760,8 +768,8 @@ const auth = betterAuth({
   `SIGN_IN_EXPIRES_IN_SECONDS` (10 minutes, NIST SP 800-63B-4's limit for an out-of-band sign-in;
   `SIGN_IN_EXPIRES_IN_WORDS` for the mail; Better Auth's default 5 ran out in Foxhound's live test). The link's token and the code are stored hashed (the magic link's `storeToken: "hashed"`,
   SHA-256; the email OTP's `storeOTP: "hashed"`), so a read of the `verification` table signs nobody in. Three wrong
-  tries spend a code, and Better Auth allows three tries a
-  minute per address. Only the link request mails: the email OTP's own endpoints are in `disabledPaths`, so Turnstile
+  tries spend a code, and the wrong ones also count against the address across links (`CODE_EMAIL_RULES`, below), so
+  a new link brings a new code but no fresh tries. Only the link request mails: the email OTP's own endpoints are in `disabledPaths`, so Turnstile
   and the link's limit cover every sign-in mail. Capsomer 0.40.0's `magicLink` template takes the `code`. Passwords
   are off.
 - The link opens a page; only its button signs in. Better Auth's link is `GET /api/auth/magic-link/verify`, which signs
@@ -795,28 +803,40 @@ const auth = betterAuth({
   ```
 - Per address, as well as per IP: with `emailLimiter` (the site's `RateLimiter` Durable Object namespace,
   `./rate-limit`), each address gets five sign-in mails an hour (`LINK_EMAIL_RULES`: the link request, and with
-  `appCode` the app's code request) and ten typed codes a day, right or wrong (`CODE_EMAIL_RULES`: `SIGN_IN_CODE_PATH`).
-  The per-IP limits do nothing against someone spread over many addresses aiming at one inbox, to bomb it with mail or
-  to guess its code: three wrong tries spend a code, but each new link brings a new code with three fresh tries, so ten
-  a day bounds the guesses across re-sent links. It is a plugin's before hook, so a POST straight to `/api/auth` and a
-  form's `auth.api` call spend the same budget; on a request to `/api/auth` it runs after Turnstile and Better Auth's
-  per-IP limit (both run on the request, before any hook), so a request without a Turnstile pass spends nothing. The key is `emailKey("link-email" | "code-email", email)` (`./rate-limit`): a SHA-256 of the address
-  trimmed and lower-cased, so the counter never holds the address; the keys are Foxhound's, so its counts carry over. A
-  refusal is Better Auth's error shape, 429 with `Retry-After` and `code: "EMAIL_RATE_LIMITED"`. A failing counter lets
-  the request through (`onUnavailable: "allow"`, logged as one line naming the bucket only), as Foxhound's did: a
-  Durable Object hiccup must never lock a person out. Without `emailLimiter` there is no per-address limit.
+  `appCode` the app's code request); three wrong codes an hour and ten a day, counted across links
+  (`CODE_EMAIL_RULES`: `SIGN_IN_CODE_PATH`); and ten failed passkey or social sign-ins an hour (`SIGN_IN_FAILURE_RULES`:
+  the passkey's owner, or the address in an app's ID token; an OAuth redirect names no address, so only the per-IP
+  limit holds it). Each passkey gets 100 failed sign-ins in 30 days (`PASSKEY_FAILURE_RULES`, by credential id; NIST
+  SP 800-63B-4's cap per authenticator). The per-IP limits do nothing against someone spread over many addresses
+  aiming at one inbox, to bomb it with mail or to guess its code: three wrong tries spend a code, and a new link brings
+  a new code but no fresh tries. Mails are counted when asked for; codes, passkeys and social sign-ins are checked
+  before (a peek that counts nothing, `./rate-limit`) and counted only when they fail, so signing in right costs
+  nothing. These are a plugin's before and after hooks, so a POST straight to `/api/auth` and a form's `auth.api` call
+  spend the same budget; on a request to `/api/auth` they run after Turnstile and Better Auth's per-IP limit (both run
+  on the request, before any hook), so a request without a Turnstile pass spends nothing. The keys are
+  `emailKey("link-email" | "code-email" | "sign-in-fail" | "passkey-fail", ...)` (`./rate-limit`): a SHA-256 of the
+  address trimmed and lower-cased (or of the credential id), so the counter never holds the address; the first two are
+  Foxhound's, so its counts carry over. A refusal is Better Auth's error shape, 429 with `Retry-After` and `code:
+  "EMAIL_RATE_LIMITED"`. A failing counter lets a mail, a passkey or a social sign-in through (`onUnavailable:
+  "allow"`, logged as one line naming the bucket only), as Foxhound's did: a Durable Object hiccup must never lock a
+  person out. A typed code fails closed: with the counter down, or with no `emailLimiter` at all, `SIGN_IN_CODE_PATH`
+  answers 503 `RATE_LIMIT_UNAVAILABLE`, because the code is the one thing a guesser can try a million of; the link in
+  the same mail still works.
 - Session length: `session.expiresIn` is `SESSION_SECONDS` (30 days, NIST SP 800-63B-4's overall timeout at AAL1)
   with `disableSessionRefresh`, so a session ends 30 days after its sign-in however often it is used (Better Auth's
   default is 7 days sliding forward with each use, which never ends a session in use). Admin pages are behind
   Cloudflare Access, whose session (24 hours by default) is the admin's limit.
-- Fresh sign-in: `session.freshAge` is `FRESH_SECONDS` (10 minutes; Better Auth's default is a day). Better Auth 1.7.12
-  then answers 403 `SESSION_NOT_FRESH` unless the session was made in the last 10 minutes on: adding a passkey
-  (`/passkey/generate-register-options`, `/passkey/verify-registration`), unlinking Google or Apple
+- Fresh sign-in (A7, D6): `session.freshAge` is `FRESH_SECONDS` (10 minutes; Better Auth's default is a day). Better
+  Auth 1.7.12 then answers 403 `SESSION_NOT_FRESH` unless the session was made in the last 10 minutes on: adding a
+  passkey (`/passkey/generate-register-options`, `/passkey/verify-registration`), unlinking Google or Apple
   (`/unlink-account`) and listing sessions (`/list-sessions`), all through its `freshSessionMiddleware`; and deleting the
-  account (`/delete-user`, its own check, 400 `SESSION_EXPIRED`, when no deletion mail is set). Not fresh in 1.7.12:
-  removing or renaming a passkey (`/passkey/delete-passkey`, `/passkey/update-passkey`), changing the email
-  (`/change-email`), revoking sessions; a site that wants those fresh checks `session.createdAt` itself. A page that
-  lists sessions or adds a passkey asks for a new sign-in when it gets `SESSION_NOT_FRESH`. A site that sets its own
+  account (`/delete-user`, its own check, 400 `SESSION_EXPIRED`, when no deletion mail is set). Better Auth leaves
+  removing a passkey (`/passkey/delete-passkey`) and changing the email (`/change-email`) out, so the account plugin's
+  before hook holds them to the same rule with the same answer, 403 `SESSION_NOT_FRESH` (logged as `authz_fail`).
+  Renaming a passkey and revoking sessions stay open. A site's own risky routes, such as exporting or deleting an
+  account outside Better Auth, call `requireFreshSession(auth, request)`: the session when it is fresh, null when
+  nobody is signed in, and a throw of `SessionNotFresh` (403, `body.code: "SESSION_NOT_FRESH"`, Better Auth's shape)
+  when it is older. A page that gets `SESSION_NOT_FRESH` asks for a new sign-in. A site that sets its own
   `session` options keeps this one: `session: { ...signIn.session, expiresIn, updateAge }`. Session lengths are the
   site's for now.
 - Sign-out clears the browser: Better Auth's `/sign-out` (which deletes the session row and its cookie) answers with
@@ -840,7 +860,16 @@ const auth = betterAuth({
   access, refresh and ID tokens on every account write Better Auth makes (createOAuthUser, linkAccount, updateAccount).
   Nothing in sign-in reads them, so none are stored. A site with hooks of its own merges them:
   `databaseHooks: { ...signIn.databaseHooks, user: { ... } }`.
-- Turnstile checks the email link when `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` are both set.
+- Turnstile checks the email link when `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` are both set. Without both,
+  it fails closed: `/sign-in/magic-link` (the one request that mails the link and its code) answers 503
+  `TURNSTILE_NOT_SET` and logs `turnstile_not_set`. A site whose keys are not made yet passes
+  `turnstile: "off-until-keys"` (`TURNSTILE_OFF_UNTIL_KEYS`), which lets the request through unchecked and logs
+  `turnstile_off_until_keys` (warn) on every one, so the gap shows in the logs until the keys are set and the option
+  comes out. It must be written on purpose: any other value throws. The app's code request (`appCode`) has no widget
+  and stays outside Turnstile, held to three a minute.
+- An email change or a recovery ends every other session (D7): after a verified change of address, and after a
+  recovery (below), every session of that person but the one that made it is deleted (`session_expired`, `reason:
+  "email_changed"` or `"recovered"`, `scope: "others"`). Deleting the account deletes them all (Better Auth).
 - Google (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`) and Apple (`APPLE_CLIENT_ID`, the Services ID; `APPLE_TEAM_ID`,
   `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`, the .p8 text) when the site passes `social: true` and has the settings.
   `./apple-secret` signs Apple's client secret, a JWT Apple refuses after six months, fresh from the key in each isolate.
@@ -863,7 +892,8 @@ its own and the notices by passing one function.
   | a per-address limit hit (`emailLimiter`) | `excess_rate_limit_exceeded` (`endpoint`, `bucket`) |
   | sign-out | `session_logout` |
   | a session ended from the sessions list | `session_expired` (`reason: "revoked"`, `scope`: `one`, `others`, `all`) |
-  | a passkey added or removed, Google or Apple linked or unlinked, the email changed | `user_updated` (`change`: `passkey_added`, `passkey_removed`, `sign_in_linked`, `sign_in_unlinked`, `email_changed`) |
+  | a passkey added or removed, Google or Apple linked or unlinked, the email changed, a recovery | `user_updated` (`change`: `passkey_added`, `passkey_removed`, `sign_in_linked`, `sign_in_unlinked`, `email_changed`, `recovered`) |
+  | the other sessions ended after an email change or a recovery | `session_expired` (`reason`: `email_changed`, `recovered`; `scope: "others"`) |
   | the account deleted | `user_deleted` |
   | refused for want of a fresh sign-in | `authz_fail` (`reason`: `SESSION_NOT_FRESH`, or `/delete-user`'s `SESSION_EXPIRED`; `endpoint`) |
 
@@ -874,8 +904,11 @@ its own and the notices by passing one function.
 - Security notices (A8, E1; NIST SP 800-63B-4 4.1.2.1 and 4.6): `signInOptions(env, { ...,
   sendSecurityNotice })` calls `sendSecurityNotice(kind, { user, request, detail })` for `passkey-added`,
   `passkey-removed`, `sign-in-linked`, `sign-in-unlinked`, `email-changed` (twice, once to each address, the old one
-  told to get in touch), `sessions-revoked` (every session, or every other one: `detail.scope`) and `account-deleted`
-  (`SECURITY_NOTICE_KINDS`). `user.email` is where it goes. `detail` is the words: `title` (the subject), `what`,
+  told to get in touch), `sessions-revoked` (every session, or every other one: `detail.scope`), `account-deleted`,
+  `new-device` (E3: a sign-in from a device the person has not signed in from, by `deviceName`, among their other
+  sessions and, with `eventsDb`, their history; a first sign-in is not one) and `recovery` (E4: a sign-in by link or
+  code with no passkey left, by someone whose history shows a passkey added, so it needs `eventsDb`; the notice says
+  every other device was signed out and to add a passkey, which the page then offers) (`SECURITY_NOTICE_KINDS`). `user.email` is where it goes. `detail` is the words: `title` (the subject), `what`,
   `when` (UTC, in words) and `at`, `device` ("Safari on iPhone") and `location` ("Austin, Texas, United States", from
   `request.cf`; null for a request a site built itself, as `confirmSignInLink` and `auth.api` calls are), and `secure`,
   what to do if it was not them. Capsomer's `securityNotice` mail takes it as it is:
@@ -894,6 +927,14 @@ its own and the notices by passing one function.
   for the mail. A linked or unlinked provider, the two addresses of an email change and a deleted user's address come
   from database hooks (the plugin's own, beside the site's `databaseHooks`); the email change is caught on both of
   Better Auth's paths, `/change-email` for an unconfirmed address and `/verify-email` for a confirmed one.
+- Security history (E5): with `eventsDb` (the site's D1, with `AUTH_EVENTS_SQL` as its next migration), every line
+  above is also a row in `auth_events`: the time, the OWASP event, its `change` or `scope`, the way in, the user's id
+  when there is one, and the device and coarse place; never an address, token or code. `securityHistory(db, userId,
+  limit = 50)` gives a person's own sign-ins, passkey and sign-in method changes, email changes and recoveries, newest
+  first, as `{ kind, via, at, device, location }` for a page to show. Deleting the account deletes that person's rows.
+  `pruneAuthEvents(db)` is a daily job (`./cron`): rows with no user go after 30 days, the rest after a year. A failed
+  write is logged (`auth_event_write_failed`) and never stops a sign-in. `./health`'s `authSpikeCheck` reads the same
+  table.
 - Sessions list (D5): `await accountSessions(auth, request)` gives `{ id, device, signedInAt, lastActiveAt, current,
   location }` rows (`sessionRows` over Better Auth's `listSessions`), the current session first, or null when
   `/list-sessions` wants a fresh sign-in (SESSION_NOT_FRESH), so the page offers "sign in again" instead of failing.
@@ -913,10 +954,12 @@ its own and the notices by passing one function.
   overrides. `passkeyLabel(passkey)` is what a list shows: the name, else the provider, else "Passkey". Better Auth
   1.7.12 keeps no last-used time.
 - The WebAuthn Signal API (A6), in `./sign-in-client`: `signalUnknownCredential({ rpId, credentialId })` after a passkey
-  is deleted on the site, and after a sign-in fails with `PASSKEY_NOT_FOUND` (the passkey was deleted elsewhere;
-  `signIn.passkey({ returnWebAuthnResponse: true })` gives the credential's id as `webauthn.response.id`), so the
-  provider stops offering it. `signalPasskeys({ rpId, userId, credentialIds, name, displayName })` calls
-  `signalAllAcceptedCredentials` and `signalCurrentUserDetails`. Each runs only where the browser has it (Chrome 132,
+  is deleted on the site, and after a sign-in fails with `PASSKEY_NOT_FOUND` (the passkey was deleted elsewhere), so
+  the provider stops offering it. A page's passkey button and autofill call `signInWithPasskey(authClient, { autoFill
+  })` in place of `authClient.signIn.passkey(...)`: the same call with `returnWebAuthnResponse`, which signals an
+  unknown credential itself (`rpId` defaults to the page's host). `signalAllAcceptedCredentials({ rpId, userId,
+  credentialIds })` and `signalCurrentUserDetails({ rpId, userId, name, displayName })` wrap the other two signals, and
+  `signalPasskeys` calls both after a passkey sign-in. Each runs only where the browser has it (Chrome 132,
   Safari 26) and swallows a refusal. `userId` is a passkey's user handle, and @better-auth/passkey 1.7.12 makes a new
   random handle for every passkey and stores none (`generate-register-options`), so the one handle a page has is the
   passkey just used to sign in (`webauthn.response.response.userHandle`), and `signalPasskeys` reaches that passkey
@@ -924,7 +967,8 @@ its own and the notices by passing one function.
 
 **Tests.** `test/apple-secret.test.mjs` (a key made in the test, the signature verified), `test/sign-in-link.test.mjs`
 (the mailed URL; only a POST reaches Better Auth's verify, with the client address passed on) and
-`test/sign-in-account.test.mjs` (user agents, which event a request was, a notice that fails to send). The confirm step
+`test/sign-in-account.test.mjs` (user agents, which event a request was, a notice that fails to send, the security
+history and new-device decision, the spike check, `requireFreshSession`). The confirm step
 and the account security live in `sign-in-link.mjs` and `sign-in-account.mjs`, re-exported by `./sign-in`, so they are
 tested without Better Auth installed. The rest is Better Auth's own plugins, set up; each site's tests sign in through
 it.
@@ -939,12 +983,14 @@ outside request can: it sends no mail, makes no account and holds no token, and 
   `webauthn` (A2; a warning when it does not start with `username`), Turnstile on the page and allowed by the CSP (B5).
 - Better Auth (`/api/auth/ok`): the passkey's `rpId` is the site's host, not a workers.dev one (A1); sign-out sends
   `Clear-Site-Data` (D4); a sign-out from another origin with a cookie is 403 (D8); every cookie set is `__Secure-` or
-  `__Host-`, HttpOnly, Secure and SameSite (D1); each answer is `no-store` (D10). `/sign-in/confirm` with a made-up
-  token must never set a session cookie (B7); a missing confirm page is a warning until every site has the route.
+  `__Host-`, HttpOnly, Secure and SameSite (D1); each answer is `no-store` (D10). The confirm page with a made-up token
+  must never set a session cookie (B7): the site's own path, the first that answers among `/confirm` beside each sign-in
+  page found and `/sign-in/confirm`, `/signin/confirm` (txasm's), `/login/confirm`. A missing confirm page is a warning
+  until every site has the route.
 - Admin (`/admin`, and `ELSEWHERE` in `sign-in-live.mjs` for pages on another host): a request with no sign-in gets a
   redirect to `*.cloudflareaccess.com` or a 401/403, never the page (G1; another redirect is a warning), with
   `no-store` and, on anything but a redirect, `noindex` (D10).
-- MCP (`/mcp`, and the servers `ELSEWHERE` names): the 401 names its `resource_metadata` and that metadata names the
+- MCP (`/mcp`, and the servers `ELSEWHERE` names, such as Foxhound's merchant and admin servers): the 401 names its `resource_metadata` and that metadata names the
   server and its authorization server (H1, RFC 9728); the authorization server offers PKCE `S256` only (H2) and Client
   ID Metadata Documents (H4), per the MCP authorization spec of 2025-11-25.
 
@@ -1350,6 +1396,8 @@ if (mustStop(verdict, "refuse")) return limitedResponse(verdict);
   counter is unavailable and the site refuses. Never a success code.
 - `"allow"` still returns `status: "unavailable"` and logs one structured line (the key's bucket, never the address or account).
 - All rules for a key are checked first; if one is spent none is counted, and a refused request writes nothing.
+- `limit(..., { onUnavailable, peek: true })` counts nothing and only says whether the rules are spent (the Durable
+  Object's `peek`), for a limit on failures: peek before the attempt, `limit` after a failed one.
 - An alarm clears an idle instance's rows after its longest window.
 - `emailKey(prefix, email)` is `prefix:` and the SHA-256 of the address trimmed and lower-cased (null for an empty one),
   for a limit per address that never names it; `./sign-in`'s per-address limits use it.

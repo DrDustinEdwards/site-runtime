@@ -11,6 +11,11 @@
  *   request, detail })` hears of each change to how a person signs in, with what happened, when, the device in plain
  *   words, the coarse place Cloudflare saw (`request.cf`) and what to do if it was not them. A failed send is logged
  *   and never undoes or blocks the change.
+ * - SECURITY HISTORY (E5): with the site's D1 (`eventsDb`), each event is also a row in `auth_events`
+ *   (AUTH_EVENTS_SQL); `securityHistory` reads a person's sign-ins, passkey and email changes back with date and device,
+ *   and `authEventCounts` gives /health's spike check (`./health` authSpikeCheck) its counts.
+ * - FRESH SIGN-IN (A7, D6): `requireFreshSession` for a site's own risky routes (export, delete), the same 10-minute
+ *   rule `./sign-in` holds Better Auth's endpoints to.
  * - THE SESSIONS LIST (D5): `sessionRows` turns Better Auth's `listSessions` rows into what a page shows.
  * - PASSKEY NAMES (A5): `passkeyProvider` names a passkey's provider from its AAGUID, so a list never shows a blank.
  */
@@ -26,7 +31,15 @@ export const SECURITY_NOTICE_KINDS = Object.freeze([
   "email-changed",
   "sessions-revoked",
   "account-deleted",
+  "new-device",
+  "recovery",
 ]);
+
+/**
+ * How recent a sign-in must be for a risky change: 10 minutes. `./sign-in` sets Better Auth's session.freshAge to it,
+ * and its own check holds passkey delete and email change to it too (Better Auth 1.7.12 does not).
+ */
+export const FRESH_SECONDS = 10 * 60;
 
 // ---- devices and places ---------------------------------------------------------------------------
 
@@ -155,6 +168,51 @@ export async function revokeSessionById(auth, request, id) {
   if (!session) return false;
   await auth.api.revokeSession({ headers, body: { token: session.token } });
   return true;
+}
+
+// ---- fresh sign-in -----------------------------------------------------------------------------------
+
+/**
+ * Whether a session was made within `freshSeconds`. @param {{ createdAt: Date | string | number }} session
+ * @param {number} [freshSeconds] @param {number} [now]
+ */
+export function sessionIsFresh(session, freshSeconds = FRESH_SECONDS, now = Date.now()) {
+  return now - new Date(session.createdAt).getTime() < freshSeconds * 1000;
+}
+
+/**
+ * The refusal for want of a recent sign-in, in Better Auth's shape (403, `body.code` "SESSION_NOT_FRESH"), so the
+ * "sign in again" a page shows for Better Auth's own refusal works for a site's route too.
+ */
+export class SessionNotFresh extends Error {
+  constructor() {
+    super("Session is not fresh");
+    this.name = "SessionNotFresh";
+    this.status = "FORBIDDEN";
+    this.statusCode = 403;
+    this.body = { code: "SESSION_NOT_FRESH", message: "Session is not fresh" };
+  }
+}
+
+/**
+ * The asker's session when it was made in the last FRESH_SECONDS, null when nobody is signed in, and a throw of
+ * SessionNotFresh (logged as `authz_fail`) when the sign-in is older: for a site's own risky routes, such as exporting
+ * or deleting an account, which Better Auth's freshAge does not reach.
+ * @template {{ session: { createdAt: Date | string }, user: { id: string } }} S
+ * @param {{ api: { getSession(o: { headers: Headers }): Promise<S | null> } }} auth
+ * @param {Request} request
+ * @returns {Promise<S | null>}
+ */
+export async function requireFreshSession(auth, request) {
+  const found = await auth.api.getSession({ headers: request.headers });
+  if (!found) return null;
+  if (sessionIsFresh(found.session)) return found;
+  await logAuthEvent({
+    event: OWASP_EVENTS.authorizationFailure,
+    fields: { reason: "SESSION_NOT_FRESH", endpoint: new URL(request.url).pathname, user_id: found.user.id },
+    level: "warn",
+  });
+  throw new SessionNotFresh();
 }
 
 // ---- passkey names ---------------------------------------------------------------------------------
@@ -319,12 +377,152 @@ export function authEvent({ path, params, body, returned, signedIn, userId, link
 }
 
 /**
- * Writes an event's line, the address hashed as `emailKey` hashes it (`email_key`), never in clear.
+ * Writes an event's line, the address hashed as `emailKey` hashes it (`email_key`), never in clear; with `db`, also
+ * its `auth_events` row (`recordAuthEvent`).
  * @param {Pick<AuthEvent, "event" | "fields" | "level" | "email">} event
+ * @param {{ db?: D1Like | null, userAgent?: string | null, request?: Request | null }} [where]
  */
-export async function logAuthEvent({ event, fields, level, email }) {
+export async function logAuthEvent({ event, fields, level, email }, { db, userAgent, request } = {}) {
   const key = typeof email === "string" ? await emailKey("email", email) : null;
   logEvent(event, { ...fields, ...(key ? { email_key: key } : {}) }, level ? { level } : {});
+  if (db) await recordAuthEvent(db, { event, fields, userAgent: userAgent ?? request?.headers.get("user-agent"), request });
+}
+
+// ---- the event table and the security history ----------------------------------------------------------
+
+/**
+ * @typedef {{ prepare(sql: string): { bind(...values: unknown[]): { run(): Promise<unknown>, all(): Promise<{ results: any[] }> } } }} D1Like
+ */
+
+/**
+ * The migration: a site that passes `eventsDb` adds it as its next file under `migrations/`. One row per auth event:
+ * `at` in epoch ms, the OWASP `event`, the `change` or `scope` its line carries, the way in (`via`), and the device
+ * and coarse place of the request. No address, token or code. `user_id` is null before there is a user (a failed
+ * sign-in, a link mailed), and those rows are kept 30 days, a person's own a year (`pruneAuthEvents`).
+ */
+export const AUTH_EVENTS_SQL = `CREATE TABLE IF NOT EXISTS auth_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  at INTEGER NOT NULL,
+  event TEXT NOT NULL,
+  change TEXT,
+  via TEXT,
+  user_id TEXT,
+  device TEXT,
+  location TEXT
+);
+CREATE INDEX IF NOT EXISTS auth_events_user ON auth_events (user_id, at);
+CREATE INDEX IF NOT EXISTS auth_events_at ON auth_events (at, event);
+`;
+
+/**
+ * Writes one event's row. A failed write is logged (`auth_event_write_failed`) and never stops the sign-in.
+ * @param {D1Like} db
+ * @param {{ event: string, fields: Record<string, unknown>, userAgent?: string | null, request?: Request | null, at?: number }} row
+ */
+export async function recordAuthEvent(db, { event, fields, userAgent, request, at = Date.now() }) {
+  const text = (/** @type {unknown} */ value) => (typeof value === "string" && value ? value : null);
+  try {
+    await db
+      .prepare("INSERT INTO auth_events (at, event, change, via, user_id, device, location) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)")
+      .bind(at, event, text(fields.change) ?? text(fields.scope), text(fields.via), text(fields.user_id), deviceName(userAgent), coarseLocation(request))
+      .run();
+  } catch (error) {
+    logEvent("auth_event_write_failed", { event, error }, { level: "error" });
+  }
+}
+
+/** What a person's history shows, by its row's event and change. */
+const HISTORY_KINDS = /** @type {const} */ ({
+  passkey_added: "passkey-added",
+  passkey_removed: "passkey-removed",
+  sign_in_linked: "sign-in-linked",
+  sign_in_unlinked: "sign-in-unlinked",
+  email_changed: "email-changed",
+  recovered: "recovery",
+});
+
+/**
+ * A person's security history, newest first: each sign-in (`kind` "sign-in", with `via`), passkey added or removed,
+ * sign-in method linked or unlinked, email change and recovery, with `at`, `device` and `location`.
+ * @param {D1Like} db
+ * @param {string} userId
+ * @param {number} [limit]
+ * @returns {Promise<{ kind: string, via: string | null, at: Date, device: string | null, location: string | null }[]>}
+ */
+export async function securityHistory(db, userId, limit = 50) {
+  const changes = Object.keys(HISTORY_KINDS);
+  const { results } = await db
+    .prepare(
+      `SELECT at, event, change, via, device, location FROM auth_events WHERE user_id = ?1
+       AND (event = '${OWASP_EVENTS.signInSuccess}' OR (event = '${OWASP_EVENTS.userUpdated}' AND change IN (${changes.map((c) => `'${c}'`).join(", ")})))
+       ORDER BY at DESC, id DESC LIMIT ?2`,
+    )
+    .bind(userId, limit)
+    .all();
+  return results.map((row) => ({
+    kind: row.event === OWASP_EVENTS.signInSuccess ? "sign-in" : HISTORY_KINDS[/** @type {keyof typeof HISTORY_KINDS} */ (row.change)],
+    via: row.via ?? null,
+    at: new Date(row.at),
+    device: row.device ?? null,
+    location: row.location ?? null,
+  }));
+}
+
+/**
+ * The devices a person has signed in from (`deviceName`, null for an agent it cannot name), from their history.
+ * @param {D1Like} db @param {string} userId
+ * @returns {Promise<(string | null)[]>}
+ */
+export async function signedInDevices(db, userId) {
+  const { results } = await db
+    .prepare(`SELECT DISTINCT device FROM auth_events WHERE user_id = ?1 AND event = '${OWASP_EVENTS.signInSuccess}'`)
+    .bind(userId)
+    .all();
+  return results.map((row) => row.device ?? null);
+}
+
+/** Whether a person's history shows a passkey added, so a sign-in with none left is a recovery. @param {D1Like} db @param {string} userId */
+export async function hadPasskey(db, userId) {
+  const { results } = await db
+    .prepare(`SELECT 1 FROM auth_events WHERE user_id = ?1 AND event = '${OWASP_EVENTS.userUpdated}' AND change = 'passkey_added' LIMIT 1`)
+    .bind(userId)
+    .all();
+  return results.length > 0;
+}
+
+/**
+ * Whether a sign-in's device is one the person has not signed in from before: they have signed in before (another
+ * session, or a sign-in in their history) and never from this device. A first sign-in is no new device.
+ * @param {string | null} device @param {(string | null)[]} seen
+ */
+export function isNewDevice(device, seen) {
+  return seen.length > 0 && !seen.includes(device);
+}
+
+/**
+ * Failed sign-ins and sign-in mails since `sinceMs`, for /health's spike check.
+ * @param {D1Like} db @param {number} sinceMs
+ * @returns {Promise<{ failures: number, mails: number }>}
+ */
+export async function authEventCounts(db, sinceMs) {
+  const { results } = await db
+    .prepare(
+      `SELECT SUM(event = '${OWASP_EVENTS.signInFailure}') AS failures, SUM(event = '${OWASP_EVENTS.signInLinkSent}') AS mails
+       FROM auth_events WHERE at >= ?1`,
+    )
+    .bind(sinceMs)
+    .all();
+  return { failures: Number(results[0]?.failures ?? 0), mails: Number(results[0]?.mails ?? 0) };
+}
+
+/**
+ * Deletes rows with no user after 30 days and every row after a year: a site runs it as a daily job (`./cron`).
+ * Deleting an account deletes that person's rows at once (`./sign-in`).
+ * @param {D1Like} db @param {number} [now]
+ */
+export async function pruneAuthEvents(db, now = Date.now()) {
+  const day = 24 * 60 * 60 * 1000;
+  await db.prepare("DELETE FROM auth_events WHERE (user_id IS NULL AND at < ?1) OR at < ?2").bind(now - 30 * day, now - 365 * day).run();
 }
 
 // ---- security notices -------------------------------------------------------------------------------
@@ -377,6 +575,16 @@ export function noticeDetail(kind, { siteName, at = new Date(), userAgent, reque
       "If this was not you, sign in again and check your passkeys and sign-in methods.",
     ],
     "account-deleted": ["Your account and its data were deleted", null, CONTACT(siteName)],
+    "new-device": [
+      "A new device signed in to your account",
+      null,
+      "If this was not you, sign in now, end that device's session, and check your passkeys and sign-in methods.",
+    ],
+    "recovery": [
+      "You signed in by email, with no passkey on your account",
+      "Every other device was signed out. Add a passkey now so you can sign in without email next time.",
+      IF_NOT_YOU,
+    ],
   };
   const [title, what, secure] = words[kind];
   return {
