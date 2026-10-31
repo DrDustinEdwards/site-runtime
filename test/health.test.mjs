@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { healthResponse } from "../health.mjs";
+import { databaseDown, healthResponse } from "../health.mjs";
 
 test("a stale backup warns at 200 with ok true; a database that throws fails at 503; the backup read is held for the TTL", async () => {
   let reads = 0;
@@ -48,4 +48,14 @@ test("a check that hangs fails at the timeout; a warn check never makes it 503, 
   const failed = await healthResponse({ checks: [{ name: "r2", run: async () => { throw new Error("no access for a@example.com"); } }] });
   assert.equal(failed.status, 503);
   assert.deepEqual((await failed.json()).checks, [{ name: "r2", status: "fail", detail: "no access for [email]" }]);
+});
+
+test("a database-down error becomes a 503 the error page reads; a wrong query stays itself", () => {
+  const down = new Error("D1_ERROR", { cause: new Error("D1 DB storage operation exceeded timeout which caused object to be reset.") });
+  const response = databaseDown(down);
+  assert.ok(response instanceof Response);
+  assert.equal(response.status, 503);
+  assert.equal(response.statusText, "Database unavailable");
+  const wrong = new Error("D1_ERROR: no such table: posts");
+  assert.equal(databaseDown(wrong), wrong);
 });

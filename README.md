@@ -7,13 +7,13 @@ servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-lo
 (`./access`), the check that an Access application lets in exactly the site's admins (`./access-drift`, `site-runtime-access-drift`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images and their edits (`./image`), link prefetch (`./prefetch`), preloads and Early Hints (`./preload`), the Worker in front of a static site (`./static-site`), the edge page cache (`./edge-cache`), the Server-Timing header (`./server-timing`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), the signed token behind emailed links (`./signed-token`), where a site's Anthropic calls go
 (`./ai-gateway`), starting a Claude Code routine (`./routine`), the check on AI-written prose with the measure of an author's voice (`./prose`), the one sign-in every site
 offers (`./sign-in`, `./sign-in-client`, `./apple-secret`), the Cloudflare Turnstile widget and its server check (`./turnstile`), the same-origin check for
-resource routes (`./origin`), the trailing-slash redirect, the gone list and the slug-rename redirect (`./url`), one structured log line and its scrubbers (`./log`), the 404 counter
+resource routes (`./origin`), the trailing-slash redirect, the gone list and the slug-rename redirect (`./url`), one structured log line and its scrubbers (`./log`), the 404 counter and the redirect table
 (`./not-found`) and scheduled jobs with their record (`./cron`).
 
 No dependencies (`./sign-in` uses the site's own `better-auth` and
 `@better-auth/passkey`, 1.7.12 or later, which a site that imports it installs itself; they are not declared as peers,
 because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
-tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.63.0"`. `npm test` runs every test in `test/`.
+tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.65.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
 
