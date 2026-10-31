@@ -1,6 +1,6 @@
 /**
  * Account security for ./sign-in (sign-in-account.mjs): the auth event log and its table, the security history, fresh
- * sign-in for a site's own routes, security notices, sessions list and passkey names.
+ * sign-in for a site's own routes, security notices, sessions list, and the passkey list, offer and nudge.
  */
 
 /** What `sendSecurityNotice` is called for. */
@@ -104,10 +104,43 @@ export function accountSessions(auth: SessionsAuth, request: Request): Promise<A
 /** Ends one of the asker's own sessions by id, server-side; false when the id is not theirs. */
 export function revokeSessionById(auth: SessionsAuth, request: Request, id: string): Promise<boolean>;
 
-/** The passkey's provider from its AAGUID ("Apple Passwords", "Google Password Manager", ...), else null. */
-export function passkeyProvider(aaguid: string | null | undefined, userAgent?: string | null): string | null;
+/** The passkey's provider from its AAGUID ("Apple Passwords", "Google Password Manager", "YubiKey 5 Series", ...), else null. */
+export function knownProvider(aaguid: string | null | undefined, userAgent?: string | null): string | null;
+/** knownProvider, else "Passkey". */
+export function passkeyProvider(aaguid: string | null | undefined, userAgent?: string | null): string;
 /** The passkey's name, else its provider's, else "Passkey". */
 export function passkeyLabel(passkey: { name?: string | null; aaguid?: string | null }): string;
+
+/** A row of Better Auth's `listPasskeys`. */
+export type PasskeyRow = { id: string; name?: string | null; aaguid?: string | null; createdAt?: Date | string | null };
+/** One passkey as the account page lists it. */
+export type AccountPasskey = { id: string; name: string; provider: string; createdAt: Date | null; lastUsedAt: Date | null };
+/** The passkeys as a page lists them, oldest first, with `lastUsed` from passkeyLastUsed. */
+export function passkeyRows(passkeys: PasskeyRow[], lastUsed?: Map<string, Date>): AccountPasskey[];
+/** When each of a person's passkeys last signed them in, by passkey id, from `auth_events` (the last year). */
+export function passkeyLastUsed(db: D1Like, userId: string): Promise<Map<string, Date>>;
+/** The asker's passkeys with when each was last used (with the site's eventsDb); null when nobody is signed in. */
+export function accountPasskeys(
+  auth: {
+    api: {
+      getSession(o: { headers: Headers }): Promise<{ user: { id: string } } | null>;
+      listPasskeys(o: { headers: Headers }): Promise<PasskeyRow[]>;
+    };
+  },
+  request: Request,
+  db?: D1Like | null,
+): Promise<AccountPasskey[] | null>;
+/** True with exactly one passkey: the account page suggests adding another (A9). */
+export function needsSecondPasskey(passkeys: unknown[]): boolean;
+
+/** How long a "Not now" on the passkey offer holds: 30 days. */
+export const PASSKEY_OFFER_DAYS: 30;
+/** The `auth_events` event of a "Not now" on the passkey offer. */
+export const PASSKEY_OFFER_DISMISSED: "passkey_offer_dismissed";
+/** Records a "Not now" on the passkey offer for the person; never throws. */
+export function dismissPasskeyOffer(db: D1Like, userId: string, options?: { request?: Request | null; at?: number }): Promise<void>;
+/** Whether to offer a passkey after another sign-in: none yet, and no "Not now" in the last PASSKEY_OFFER_DAYS. */
+export function shouldOfferPasskey(db: D1Like, userId: string, passkeys: unknown[] | number, now?: number): Promise<boolean>;
 
 /** How a Better Auth endpoint ended, from its after hook's `ctx.context.returned`. */
 export function outcome(returned: unknown): { ok: boolean; code?: string };
