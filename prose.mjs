@@ -6,11 +6,14 @@
  * The habits it looks for are the ones current Claude models were seen to write on 2026-10-25, with no style rules, across
  * book blurbs, bios, a companion's replies, UI copy, newsletters, journal posts, failed-payment and win-back emails, a
  * dispute statement and dashboard summaries (Capsid foxing/ai-writing-tells.md). The older lists ("delve", "tapestry",
- * "I hope this email finds you well", the em dash) are gone: those models no longer write them.
+ * "I hope this email finds you well") are gone: those models no longer write them. A tell goes on a list only after it
+ * is seen in fresh model output, since a list that flags nothing a model writes only flags people.
  *
  * - `checkProse` flags `TELLS`, the words in `OUT_OF_PLACE`, the "not X, it's Y" construction across two sentences, a
- *   paragraph that closes on a list of three, the caller's own words and phrases, and each dash on the line it sits on.
- *   Words the caller allows are dropped from every source.
+ *   paragraph that closes on a list of three, the caller's own words and phrases, each dash on the line it sits on, and
+ *   (`PATTERNS`) what a chatbot leaves in text whoever wrote the rest: a refusal, a note on its training, a blank, its
+ *   citation markup. Each issue names the sign in Wikipedia's field guide (`SIGNS`) it maps to. Words the caller allows
+ *   are dropped from every source.
  * - `profileOf`, `distanceFrom` and `nearestPassages` measure a text against the author's own passages in the manner of
  *   Burrows' Delta (sentence length, punctuation, contractions and function-word rates). Statistics cannot say whose prose
  *   a text is, only that it reads unlike the passages; and the passages nearest the author's usual style are the
@@ -25,9 +28,29 @@
  */
 
 /** @typedef {"critical" | "high" | "medium" | "low"} Severity */
-/** @typedef {{ check: string, message: string, excerpt: string | null, line: number | null, severity: Severity }} ProseIssue */
+/** @typedef {{ check: string, message: string, excerpt: string | null, line: number | null, severity: Severity, sign: string | null }} ProseIssue */
 
 // ---------- the habits
+
+/**
+ * The sections of Wikipedia's field guide to AI writing that the checks map to ("Wikipedia:Signs of AI writing",
+ * WikiProject AI Cleanup, read 2026-10-30), so a flag can say which known sign it is. The page lists observations, not
+ * rules; it files em dashes (2022 to September 2026), knowledge-cutoff statements and prompt refusals under historical
+ * signs. A cutoff statement or a refusal left in the text is still an error, whoever wrote the rest.
+ */
+export const SIGNS = {
+  significance: "Undue emphasis on significance, legacy, and broader trends",
+  promotional: "Promotional and advertisement-like language",
+  vocabulary: 'High density of "AI vocabulary" words',
+  parallelism: "Negative parallelisms",
+  three: "Rule of three",
+  collaborative: "Collaborative communication",
+  placeholder: "Phrasal templates and placeholder text",
+  markup: "Markup irregularities",
+  cutoff: "Statements about knowledge cutoffs",
+  refusal: "Prompt refusal",
+  dash: "Overuse of em dashes",
+};
 
 /**
  * "It's not just a house, it's a promise." / "This isn't only about money; it's about pride." / "It wasn't about money. It
@@ -48,32 +71,32 @@ const CLOSING_TRIAD = /(?:^|[.!?]\s+)([^.!?]*?\b([\p{L}'’]+(?:\s[\p{L}'’]+)?
 const DASH = /\s*—\s*|\s+–\s+|\s--\s/gu;
 
 /**
- * Phrases current models still write, flagged in any text, each with what to do instead. Every one was in the 2026-10-25
- * sample; a phrase that stops turning up in fresh output comes off.
- * @type {[string, string][]}
+ * Phrases current models still write, flagged in any text, each with what to do instead and the sign it maps to. Every
+ * one was in the 2026-10-25 sample; a phrase that stops turning up in fresh output comes off.
+ * @type {[string, string, string][]}
  */
 export const TELLS = [
   // A companion's reply: the compliment, the reassurance before the answer, the offer after it.
-  ["great question", "Answer the question. Cut the compliment."],
-  ["you're not wrong", "Cut the reassurance and give the answer."],
-  ["you're not missing anything", "Cut the reassurance and give the answer."],
-  ["would you like me to", "Stop when the answer is done. Offer more only when the reader needs it."],
-  ["here's the truth", "Delete it and say the claim."],
-  ["here is the truth", "Delete it and say the claim."],
+  ["great question", "Answer the question. Cut the compliment.", SIGNS.collaborative],
+  ["you're not wrong", "Cut the reassurance and give the answer.", SIGNS.collaborative],
+  ["you're not missing anything", "Cut the reassurance and give the answer.", SIGNS.collaborative],
+  ["would you like me to", "Stop when the answer is done. Offer more only when the reader needs it.", SIGNS.collaborative],
+  ["here's the truth", "Delete it and say the claim.", SIGNS.collaborative],
+  ["here is the truth", "Delete it and say the claim.", SIGNS.collaborative],
   // A book blurb's closing verdict.
-  ["stays with you", "End on a fact about the book, or stop."],
-  ["long after the last page", "End on a fact about the book, or stop."],
-  ["impossible to put down", "End on a fact about the book, or stop."],
-  ["remains one of the most", "Say what the book does. Its rank is the reader's to judge."],
+  ["stays with you", "End on a fact about the book, or stop.", SIGNS.promotional],
+  ["long after the last page", "End on a fact about the book, or stop.", SIGNS.promotional],
+  ["impossible to put down", "End on a fact about the book, or stop.", SIGNS.promotional],
+  ["remains one of the most", "Say what the book does. Its rank is the reader's to judge.", SIGNS.significance],
   // A newsletter.
-  ["we're delighted", "Delete it and start with the news."],
-  ["that's why we've built", "Say what it does."],
-  ["that's why we built", "Say what it does."],
-  ["here's what's new", "Name the one change that matters, in a sentence."],
+  ["we're delighted", "Delete it and start with the news.", SIGNS.promotional],
+  ["that's why we've built", "Say what it does.", SIGNS.promotional],
+  ["that's why we built", "Say what it does.", SIGNS.promotional],
+  ["here's what's new", "Name the one change that matters, in a sentence.", SIGNS.promotional],
   // A customer email's reflex permission and sincerity.
-  ["no hard feelings", "Say what happens if they do nothing, and stop."],
-  ["that's completely fine", "Say what happens if they do nothing, and stop."],
-  ["that's okay too", "Say what happens if they do nothing, and stop."],
+  ["no hard feelings", "Say what happens if they do nothing, and stop.", SIGNS.collaborative],
+  ["that's completely fine", "Say what happens if they do nothing, and stop.", SIGNS.collaborative],
+  ["that's okay too", "Say what happens if they do nothing, and stop.", SIGNS.collaborative],
 ];
 
 /**
@@ -81,6 +104,31 @@ export const TELLS = [
  * any text; `slopScan` only when the author's own excerpts never use them, since a word the author writes is theirs.
  */
 export const OUT_OF_PLACE = ["unforgettable", "haunting", "lyrical", "sweeping", "poignant", "profound", "masterpiece", "quietly", "genuinely"];
+
+/** @typedef {{ check: string, sign: string, severity: Severity, re: RegExp, say: string }} PatternRule */
+
+/**
+ * What a chatbot leaves in text, an error in any published text whoever wrote the rest, so all high: its refusal, its
+ * note on its training, a blank it left to fill, its citation markup and tracking tags. Only wording no person writes
+ * to a reader: "Let me know if" and "I hope this helps" end real letters, so they are not here. Matched per line,
+ * outside code.
+ * @type {PatternRule[]}
+ */
+export const PATTERNS = [
+  // "As an AI language model researcher" and "I'm sorry, but I can't help thinking" are a person's words: the model
+  // phrase must not run on into a noun, and the refusal must name the request it refuses.
+  { check: "leftover", sign: SIGNS.refusal, severity: "high", re: /\bas (?:an AI language model|a large language model)\b(?![ \t]+(?!I\b)\p{L})|\bas an AI, I\b|\bI['’]m sorry, but I (?:can(?:not|['’]t)|am unable to) (?:(?:help|assist)(?: you)?|comply) with (?:(?:that|this|your|the) request\b|(?:that|this|it)(?=\s*(?:[.!,;:]|$)))/giu, say: "A chatbot's refusal. Delete it and write the text." },
+  { check: "leftover", sign: SIGNS.cutoff, severity: "high", re: /\b(?:as of|up to) my (?:last |latest )?(?:knowledge|training)(?: data)? (?:update|cut-?off)\b|\bmy knowledge cut-?off\b/giu, say: "A chatbot's note on its training. Delete it and check the fact." },
+  // Not a blank: a link (inline, reference, or `[label]` defined elsewhere in the text, which checkProse drops), a
+  // `[[wiki]]` link, or bracketed text with a digit or a colon ("[Last updated: 2026-10-01]").
+  { check: "placeholder", sign: SIGNS.placeholder, severity: "high", re: /(?<!\[)\[(?:your|insert|recipient|company|client|customer|first|last|full|product|date|name|link|url|phone|email|address)\b[^\]\n\d:]{0,30}\](?![([:\]])|\b(?:19|20)\d\d-XX-XX\b/giu, say: "A blank nobody filled in. Fill it or cut it." },
+  { check: "markup", sign: SIGNS.markup, severity: "high", re: /\boaicite\b|\bcontentReference\[|\bturn\d+(?:search|news|view|file)\d+\b|\butm_source=(?:chatgpt\.com|openai|copilot\.com)|\breferrer=grok\.com/giu, say: "A chatbot's citation markup or tracking tag. Remove it." },
+];
+
+/** Up to twenty characters either side of a match. @param {string} line @param {number} at @param {number} length */
+function around(line, at, length) {
+  return line.slice(Math.max(0, at - 20), at + length + 20).trim();
+}
 
 /** @param {string} s */
 function escapeRegExp(s) {
@@ -93,10 +141,10 @@ function phraseRegExp(phrase) {
 }
 
 /**
- * Every habit in `text`, each with the words it concerns and the line they are on.
+ * Every habit in `text`, each with the words it concerns, the line they are on and the sign in `SIGNS` it maps to.
  *
- * - `TELLS` and `OUT_OF_PLACE` are high severity; `phrases` adds the caller's own (an author's list), also high. `allow`
- *   takes a word or phrase back out of every list.
+ * - `TELLS`, `OUT_OF_PLACE` and `PATTERNS` are high severity; `phrases` adds the caller's own (an author's list), also
+ *   high. `allow` takes a word or phrase back out of every list and pattern.
  * - `dashes: "allow"` leaves em and en dashes alone, for an author whose own prose uses them; by default each line with
  *   one is flagged.
  * - `firstLine` is the file line `text` starts on, when it is a body cut from below a header.
@@ -120,23 +168,38 @@ export function checkProse(text, options = {}) {
     out.push(issue);
   };
 
-  /** @type {[string, string, string][]} */
+  /** @type {[string, string, string, string | null][]} */
   const listed = [
-    ...TELLS.map(([p, say]) => /** @type {[string, string, string]} */ (["tell", p, say])),
-    ...OUT_OF_PLACE.map((w) => /** @type {[string, string, string]} */ (["word", w, "Use the plain word, or cut it and keep the fact."])),
-    ...phrases.map((p) => /** @type {[string, string, string]} */ (["phrase", p, ""])),
+    ...TELLS.map(([p, say, sign]) => /** @type {[string, string, string, string]} */ (["tell", p, say, sign])),
+    ...OUT_OF_PLACE.map((w) => /** @type {[string, string, string, string]} */ (["word", w, "Use the plain word, or cut it and keep the fact.", SIGNS.vocabulary])),
+    ...phrases.map((p) => /** @type {[string, string, string, null]} */ (["phrase", p, "", null])),
   ];
   // Every occurrence counts, two on one line included.
-  for (const [check, phrase, say] of listed) {
+  for (const [check, phrase, say, sign] of listed) {
     if (allowed.has(phrase.toLowerCase())) continue;
     const re = phraseRegExp(phrase);
     lines.forEach((line, i) => {
       for (const m of line.matchAll(re)) {
         const message = check === "phrase" ? `"${phrase}" is on the list of stock phrases.` : `"${m[0]}": ${say}`;
-        out.push({ check, message, excerpt: m[0], line: firstLine + i, severity: "high" });
+        out.push({ check, message, excerpt: m[0], line: firstLine + i, severity: "high", sign });
       }
     });
   }
+
+  // The patterns read the lines outside fenced code, with inline code taken out. A `[label]` that the text defines as a
+  // Markdown reference link is a link, not a blank.
+  const defined = new Set([...text.matchAll(/^ {0,3}\[([^\]\n]+)\]:[ \t]*\S/gmu)].map((m) => `[${m[1].toLowerCase()}]`));
+  let fenced = false;
+  lines.forEach((line, i) => {
+    const fence = /^\s*(?:```|~~~)/.test(line);
+    if (fence) fenced = !fenced;
+    if (fence || fenced) return;
+    for (const { check, sign, severity, re, say } of PATTERNS) {
+      for (const m of line.replace(/`[^`]*`/g, "").matchAll(re)) {
+        if (!allowed.has(m[0].toLowerCase()) && !(check === "placeholder" && defined.has(m[0].toLowerCase()))) out.push({ check, message: `"${m[0]}": ${say}`, excerpt: m[0], line: firstLine + i, severity, sign });
+      }
+    }
+  });
 
   lines.forEach((line, i) => {
     // The construction often spans a line break inside a paragraph ("This wasn't about money.\nIt was about pride.").
@@ -148,12 +211,10 @@ export function checkProse(text, options = {}) {
       return m && m.index < line.length && m.index + m[0].length > line.length ? m : null;
     };
     const m = NOT_JUST.map((re) => re.exec(line) ?? across(re)).find(Boolean);
-    if (m) add({ check: "not-x-but-y", message: `The "not X, it's Y" construction.`, excerpt: m[0], line: firstLine + i, severity: "medium" });
+    if (m) add({ check: "not-x-but-y", message: `The "not X, it's Y" construction.`, excerpt: m[0], line: firstLine + i, severity: "medium", sign: SIGNS.parallelism });
     if (dashes === "flag") {
       for (const d of line.matchAll(DASH)) {
-        const at = d.index ?? 0;
-        const excerpt = line.slice(Math.max(0, at - 20), at + d[0].length + 20).trim();
-        add({ check: "dash", message: "A dash where a comma, a full stop or brackets would do.", excerpt, line: firstLine + i, severity: "medium" });
+        add({ check: "dash", message: "A dash where a comma, a full stop or brackets would do.", excerpt: around(line, d.index ?? 0, d[0].length), line: firstLine + i, severity: "medium", sign: SIGNS.dash });
       }
     }
   });
@@ -165,7 +226,7 @@ export function checkProse(text, options = {}) {
       const paragraph = lines.slice(start, i).join(" ").trim();
       const m = CLOSING_TRIAD.exec(paragraph);
       if (m && !paragraph.startsWith("#")) {
-        add({ check: "closing-triad", message: "The paragraph closes on a list of three: fine if there are three things, padding if it is there for rhythm.", excerpt: m[1].trim(), line: firstLine + Math.max(start, i - 1), severity: "low" });
+        add({ check: "closing-triad", message: "The paragraph closes on a list of three: fine if there are three things, padding if it is there for rhythm.", excerpt: m[1].trim(), line: firstLine + Math.max(start, i - 1), severity: "low", sign: SIGNS.three });
       }
       start = i + 1;
     }
@@ -623,7 +684,7 @@ function isStinger(text) {
  * and no detector. Six kinds:
  * - `length`: a sentence well past the author's long ones, or four or more in a row of the same length when the author's
  *   own vary (measured from the excerpts; skipped under five excerpt sentences of four words or more);
- * - `filler`: a phrase in `TELLS`;
+ * - `filler`: a phrase in `TELLS`, or a chatbot's refusal, note on its training, blank or markup (`PATTERNS`);
  * - `word`: a short closed list of a model's words (OUT_OF_PLACE), each only when the excerpts never use it;
  * - `shape`: a dash used as a joiner, "not X, it's Y" (and "X, not Y"), a paragraph ending on three padded words or on a
  *   two-to-five-word stinger, a "So"/"And"/"But" opener, a bold lead-in and a question to the reader, each only when the
@@ -700,6 +761,9 @@ export function slopScan(text, excerpts, options = {}) {
         found.push({ kind: "filler", excerpt: m[0], line: n, say });
       }
     }
+    for (const { re, say } of PATTERNS) {
+      for (const m of line.matchAll(re)) found.push({ kind: "filler", excerpt: m[0].trim(), line: n, say });
+    }
     for (const word of outOfPlace) {
       for (const m of line.matchAll(phraseRegExp(word))) {
         const at = m.index ?? 0;
@@ -711,8 +775,7 @@ export function slopScan(text, excerpts, options = {}) {
       for (const m of line.matchAll(DASH)) {
         // Between two numbers it is a range (2019—2024), not a joiner.
         if (/\d$/.test(line.slice(0, m.index ?? 0)) && /^\d/.test(line.slice((m.index ?? 0) + m[0].length))) continue;
-        const around = line.slice(Math.max(0, (m.index ?? 0) - 20), (m.index ?? 0) + m[0].length + 20).trim();
-        found.push({ kind: "shape", excerpt: around, line: n, say: "Make this two sentences, or a comma if it is one thought." });
+        found.push({ kind: "shape", excerpt: around(line, m.index ?? 0, m[0].length), line: n, say: "Make this two sentences, or a comma if it is one thought." });
       }
     }
     if (!notXIsTheirs) {
