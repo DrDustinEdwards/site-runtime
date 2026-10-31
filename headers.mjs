@@ -66,14 +66,17 @@ export const PASSKEY_OVERRIDES = Object.freeze({
 
 /**
  * Cross-Origin-Resource-Policy per response kind. Pages, APIs and anything behind a sign-in keep the standard's
- * `same-origin`; public media meant to be loaded by other origins (an og:image a link preview shows, a feed a reader
- * fetches) is `cross-origin`, so a site marks those responses and not every response. The check accepts `cross-origin`
- * only on these kinds.
+ * `same-origin`; public media and subresources meant to be loaded by other origins (an og:image a link preview shows,
+ * a feed a reader fetches, the stylesheet, script or font a sandboxed preview frame loads, whose origin is opaque) are
+ * `cross-origin`, so a site marks those responses and not every response. The check accepts `cross-origin` only on
+ * these kinds.
  * @param {string | null | undefined} contentType the response's Content-Type
  * @returns {"cross-origin" | "same-origin"}
  */
 export function corpFor(contentType) {
-  return /^\s*(image\/|application\/(rss|atom)\+xml|application\/feed\+json)/i.test(contentType ?? "") ? "cross-origin" : "same-origin";
+  return /^\s*(image\/|font\/|text\/css|(text|application)\/javascript|application\/(rss|atom)\+xml|application\/feed\+json)/i.test(contentType ?? "")
+    ? "cross-origin"
+    : "same-origin";
 }
 
 /**
@@ -150,17 +153,29 @@ export function applyHeaderSet(headers, set = STANDARD_SECURITY_HEADERS, { overw
 /** The headers a static `_headers` file leaves out: a page's policy names what that page loads, and may carry a nonce. */
 const POLICY_HEADERS = ["content-security-policy", "content-security-policy-report-only"];
 
+/** The static text files whose Content-Type the asset server sends with no charset, by extension. */
+export const TEXT_TYPES = Object.freeze({
+  html: "text/html",
+  css: "text/css",
+  js: "text/javascript",
+  mjs: "text/javascript",
+  txt: "text/plain",
+  xml: "application/xml",
+  svg: "image/svg+xml",
+});
+
 /**
  * A Cloudflare `_headers` file for the static assets, which the asset server answers without running the Worker, so
  * the Worker's header set never reaches them. `set` (the one the Worker applies) goes on `/*`, minus any
  * Content-Security-Policy; `paths` adds or changes headers on a path pattern (`/assets/*`, `/favicon.svg`). Cloudflare
  * joins a header that two matching rules set, so a path that changes a header of the set first detaches the `/*` value
- * with `! Name`. `comment` lines lead the file, each as `# ...`.
+ * with `! Name`. `comment` lines lead the file, each as `# ...`. `charset: true` adds a Content-Type with
+ * `charset=utf-8` for each text extension in TEXT_TYPES, which the asset server otherwise sends without one.
  * @param {Readonly<Record<string, string>>} set
- * @param {{ paths?: Readonly<Record<string, Readonly<Record<string, string>>>>, comment?: string | readonly string[] }} [options]
+ * @param {{ paths?: Readonly<Record<string, Readonly<Record<string, string>>>>, comment?: string | readonly string[], charset?: boolean }} [options]
  * @returns {string}
  */
-export function headersFile(set, { paths = {}, comment = [] } = {}) {
+export function headersFile(set, { paths = {}, comment = [], charset = false } = {}) {
   const line = (/** @type {string} */ name, /** @type {string} */ value) => {
     if (/[\r\n:]/.test(name) || /[\r\n]/.test(value)) throw new Error(`header ${JSON.stringify(name)} cannot be written on one line`);
     return `  ${name}: ${value}`;
@@ -169,7 +184,8 @@ export function headersFile(set, { paths = {}, comment = [] } = {}) {
   const baseNames = new Set(base.map(([name]) => name.toLowerCase()));
   const notes = (typeof comment === "string" ? comment.split("\n") : comment).map((text) => (text ? `# ${text}` : "#"));
   const blocks = [["/*", ...base.map(([name, value]) => line(name, value))].join("\n")];
-  for (const [pattern, headers] of Object.entries(paths)) {
+  const typed = charset ? Object.entries(TEXT_TYPES).map(([ext, type]) => [`/*.${ext}`, { "Content-Type": `${type}; charset=utf-8` }]) : [];
+  for (const [pattern, headers] of [...typed, ...Object.entries(paths)]) {
     if (!pattern.startsWith("/") || /\s/.test(pattern)) throw new Error(`${JSON.stringify(pattern)} is not a path pattern`);
     const entries = Object.entries(headers);
     const detach = entries.filter(([name]) => baseNames.has(name.toLowerCase())).map(([name]) => `  ! ${name}`);

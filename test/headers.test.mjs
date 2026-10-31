@@ -131,3 +131,10 @@ test("the static _headers file leaves out the policy and detaches a header a pat
   );
   assert.throws(() => headersFile({ "X-A": "a\nb" }));
 });
+
+test("charset: true gives each static text type its charset", async () => {
+  const { headersFile } = await import("../headers.mjs");
+  const file = headersFile({ "X-Frame-Options": "deny" }, { charset: true });
+  assert.match(file, /\n\/\*\.css\n {2}Content-Type: text\/css; charset=utf-8\n/);
+  assert.doesNotMatch(headersFile({ "X-Frame-Options": "deny" }), /Content-Type/);
+});

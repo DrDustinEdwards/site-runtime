@@ -13,7 +13,7 @@ resource routes (`./origin`), the trailing-slash redirect (`./url`), one structu
 No dependencies (`./sign-in` uses the site's own `better-auth` and
 `@better-auth/passkey`, 1.7.12 or later, which a site that imports it installs itself; they are not declared as peers,
 because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
-tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.39.0"`. `npm test` runs every test in `test/`.
+tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.41.0"`. `npm test` runs every test in `test/`.
 
 ## Security headers
 
@@ -77,8 +77,9 @@ site that has not moved to its entry; `site` and `overrides` together are refuse
 entry; it stays out of the standard.
 
 **CORP per response kind.** `corpFor(contentType)` (`./headers`) is `cross-origin` for public media other origins load (an
-image, an RSS, Atom or JSON feed) and `same-origin` for everything else, so a site marks its og:image and feed responses
-and not every response. The check accepts `cross-origin` on those kinds only.
+image, a font, a stylesheet or script, an RSS, Atom or JSON feed) and `same-origin` for everything else, so a site marks
+those responses and not every response. A stylesheet must be `cross-origin` for a sandboxed frame (an opaque origin,
+such as Carrel's preview) to load it. The check accepts `cross-origin` on those kinds only.
 
 ## The policy, from a list of what the site loads
 
@@ -1010,7 +1011,8 @@ it. `headersFile(set, { paths, comment })` (`./headers`) writes the `_headers` f
 files: `set` on `/*` minus any Content-Security-Policy (a page's policy names what that page loads and may carry a
 nonce), then each entry of `paths`, a path pattern and the headers it adds or changes. Cloudflare joins a header that
 two matching rules set, so a path that changes a header of the set first detaches the `/*` value with `! Name`.
-`comment` lines lead the file as `# ...`.
+`comment` lines lead the file as `# ...`. `charset: true` adds a `/*.css`-style rule per text extension (`TEXT_TYPES`)
+giving its Content-Type `charset=utf-8`, which the asset server leaves out.
 
 ```js
 import { headersFile } from "@dustinedwards/site-runtime/headers";
