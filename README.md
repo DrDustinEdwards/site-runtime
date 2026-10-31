@@ -78,9 +78,9 @@ builder and the check read the same entry, so a site cannot build one set and be
 its own export, so a Worker imports its entry by name and bundles that entry, not the registry:
 
 ```js
-import { foxing } from "@dustinedwards/site-runtime/sites";
-const SECURITY_HEADERS = buildSecurityHeaders({ site: foxing });        // the standard with Foxing's declared deviations
-checkSecurityHeaders(response.headers, { site: "foxing" });             // graded against exactly that, opt-ins included
+import { mySite } from "@dustinedwards/site-runtime/sites";             // the site's own entry, by its export name
+const SECURITY_HEADERS = buildSecurityHeaders({ site: mySite });        // the standard with the site's declared deviations
+checkSecurityHeaders(response.headers, { site: "my-site" });            // graded against exactly that, opt-ins included
 ```
 
 A deviation an audit marked as a gap is left out of the registry on purpose, so the check fails it until the site is
@@ -686,7 +686,7 @@ configuration error, not a bad link.
 
 ```js
 import { anthropicRoute } from "@dustinedwards/site-runtime/ai-gateway";
-const { baseURL, headers } = anthropicRoute(env, "foxing");
+const { baseURL, headers } = anthropicRoute(env, "example");
 const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, baseURL, defaultHeaders: headers });
 // or, without the SDK: fetch(`${baseURL}/v1/messages`, { headers: { ...headers, "x-api-key": key, ... } })
 ```
@@ -708,10 +708,10 @@ nothing else.
 
 ```js
 import { messages, stream, structured, untrusted, UNTRUSTED_DATA_RULE } from "@dustinedwards/site-runtime/anthropic";
-const answer = await messages(env, "foxhound", { model, max_tokens: 800, system, messages: [...] }, { feature: "dunning" });
+const answer = await messages(env, "example", { model, max_tokens: 800, system, messages: [...] }, { feature: "summary" });
 if (!answer.ok) return fallback(answer.kind); // FAILURE_TEXT[answer.kind] is safe to show a reader
-const parsed = await structured(env, "foxing", request, schema, { feature: "recommendations" });
-for await (const event of stream(env, "foxing", request)) { /* { type: "text", delta } ..., then { type: "done", result } */ }
+const parsed = await structured(env, "example", request, schema, { feature: "recommendations" });
+for await (const event of stream(env, "example", request)) { /* { type: "text", delta } ..., then { type: "done", result } */ }
 const prompt = `${UNTRUSTED_DATA_RULE}\n${untrusted("email", customerText)}`;
 ```
 
@@ -1320,7 +1320,7 @@ T2, H1, C4 ...); a `warn` result fails nothing, and `failures` leaves it out.
 
 `site-runtime-security --origin <origin> [--from <origin>]` (the package's bin) checks one deployed site against its
 registry entry, the contract devkit-live runs: `--origin` is the site's address and `--from` where it is served now
-(txasm: `--origin https://txasm.org --from https://txasm.dustin-edwards.workers.dev`). Each finding is a line
+(a site before its domain cutover: `--origin https://example.com --from https://example.workers.dev`). Each finding is a line
 `::error title=<item>::<proof URL> <detail>` (or `::warning`), the item a checklist id; exit 0 means no errors, 1 errors,
 anything else that it could not run.
 
