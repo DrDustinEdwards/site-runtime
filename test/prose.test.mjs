@@ -44,11 +44,40 @@ describe("checkProse", () => {
 
   test("PLANT: the caller's phrases, and words allowed back out of every list", () => {
     assert.deepEqual(
-      checkProse("A tapestry. Another tapestry, and a testament to it.", { phrases: ["tapestry", "testament to"] }).map((i) => i.excerpt).sort(),
+      checkProse("A tapestry. Another tapestry, and a testament to it.", { phrases: ["tapestry", "testament to"] }).filter((i) => i.check === "phrase").map((i) => i.excerpt).sort(),
       ["tapestry", "tapestry", "testament to"],
     );
     assert.deepEqual(checks("It stays with you.", { allow: ["stays with you"] }), []);
     assert.deepEqual(checks("We genuinely mean it.", { allow: ["genuinely"] }), []);
+  });
+
+  test("PLANT: what a chatbot leaves in text, high, with its sign and the words as evidence", () => {
+    const planted = [
+      ["As an AI language model, I can't browse.", "leftover"],
+      ["I'm sorry, but I can't help with that.", "leftover"],
+      ["As of my last knowledge update, the shop was open.", "leftover"],
+      ["Best wishes, [Your Name]", "placeholder"],
+      ["Source: https://example.com/a?utm_source=chatgpt.com", "markup"],
+    ];
+    for (const [text, check] of planted) {
+      const found = checkProse(text);
+      assert.deepEqual(found.map((i) => [i.check, i.severity]), [[check, "high"]], text);
+      assert.ok(found[0].sign && found[0].excerpt && text.includes(found[0].excerpt), text);
+    }
+    assert.deepEqual(checks("Best wishes, [Your Name]", { allow: ["[your name]"] }), []);
+  });
+
+  test("CLEAN TWIN: links, code, an AI researcher and a person's own brackets and idioms are not leftovers", () => {
+    assert.deepEqual(checks("See [your name](https://example.com/me) and [link][1].\n`[Your Name]` goes here.\n```\n[Your Name]\n```\nShe works as an AI researcher."), []);
+    const human = [
+      "I'm sorry, but I can't help thinking the committee got this wrong.",
+      "[Last updated: 2026-10-01]",
+      "[First published in The Atlantic, 2019.]",
+      "See [Email] for how to reach me.\n\n[email]: mailto:me@example.com",
+      "Read my [[Date]] notes.",
+      "As an AI language model researcher, I study bias.",
+    ];
+    for (const text of human) assert.deepEqual(checks(text, { dashes: "allow" }), [], text);
   });
 
   test("CLEAN TWIN: the same ideas, written plainly, are not flagged", () => {

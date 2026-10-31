@@ -75,7 +75,7 @@ afterEach(() => {
 
 /** @param {any} env @param {boolean} allowWrite */
 async function approve(env, allowWrite) {
-  const form = new FormData();
+  const form = new URLSearchParams();
   form.set("handle", "h1");
   form.set("decision", "approve");
   if (allowWrite) form.set("allow_write", "1");
@@ -107,6 +107,12 @@ describe("the consent POST", () => {
     const on = setup();
     await approve(on.env, true);
     assert.deepEqual(on.seen.approvedScope, ["s.read", "s.write"]);
+  });
+
+  test("PLANT: a body that is not the form, or is over 64 KiB, is refused before it is parsed", async () => {
+    const { env } = setup();
+    const post = (/** @type {BodyInit} */ body) => handler.fetch(new Request(`${ORIGIN}/authorize`, { method: "POST", body }), env);
+    assert.deepEqual([(await post("{}")).status, (await post(new URLSearchParams({ handle: "x".repeat(70_000) }))).status], [415, 413]);
   });
 });
 

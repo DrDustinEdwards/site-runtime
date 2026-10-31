@@ -29,11 +29,18 @@ export type LoginOptions<E extends LoginEnv> = {
   wantsWrite?(requested: string[]): boolean;
   /** The /health answer. Default: "ok". */
   health?(env: E): Response;
+  /** The server's serverInfo name and version: when set, every callback writes a `sign-in` row to TOOL_CALL_LOG. */
+  audit?: { name: string; version: string };
+  /**
+   * Passed to completeAuthorization. Default true: a new grant revokes the user's earlier ones for the same client. A
+   * server with two connectors sharing one client id passes false, so signing into one does not sign out the other.
+   */
+  revokeExistingGrants?: boolean;
 };
 
 /** The consent page's one inline <style>, for the page's Content-Security-Policy hash. */
 export const CONSENT_STYLE: string;
-/** The provider's defaultHandler: /health, /authorize (consent page and form) and /callback. */
+/** The provider's defaultHandler: /health, /authorize (consent page and form, urlencoded only, 64 KiB at most) and /callback. */
 export function loginHandler<E extends LoginEnv>(options: LoginOptions<E>): { fetch(request: Request, env: E): Promise<Response> };
 /** Whether `user.email` is ADMIN_EMAIL, compared without case. Unset admits nobody. */
 export function isAdminUser(env: { ADMIN_EMAIL?: string }, user: { email?: unknown }): boolean;
