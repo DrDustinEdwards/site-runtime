@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { checkSecurityHeaders, failures, parsePolicy } from "../check.mjs";
-import { CLOUDFLARE_WEB_ANALYTICS, allowlistBypass, buildContentSecurityPolicy, buildPolicy, buildStagedPolicy, generateNonce, renewNonce, reportingEndpoints, scriptHash } from "../csp.mjs";
+import { CLOUDFLARE_WEB_ANALYTICS, buildContentSecurityPolicy, buildPolicy, buildStagedPolicy, generateNonce, renewNonce, reportingEndpoints, scriptHash } from "../csp.mjs";
 import { applyHeaderSet } from "../headers.mjs";
 
 const SINK = { reportUri: "/csp-report" };
@@ -154,16 +154,10 @@ test("a script source that would allow any script is refused", () => {
   assert.doesNotThrow(() => buildContentSecurityPolicy({ ...SINK, sources: { script: ["https://js.example.com"] } }));
 });
 
-test("a wildcard subdomain or a known allowlist-bypass host is refused as a script source", () => {
+test("a wildcard subdomain is refused as a script source", () => {
   for (const host of ["https://*.example.com", "*.example.com:443/js/"]) {
     assert.throws(() => buildContentSecurityPolicy({ ...SINK, sources: { script: [host] } }), /trusts every subdomain/, host);
   }
-  // csp-evaluator's match: the host, then the path prefix when the source has one.
-  for (const host of ["https://cdnjs.cloudflare.com", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com/ajax/libs/"]) {
-    assert.throws(() => buildContentSecurityPolicy({ ...SINK, sources: { script: [host] } }), /known allowlist bypass/, host);
-  }
-  assert.doesNotThrow(() => buildContentSecurityPolicy({ ...SINK, sources: { script: ["https://cdnjs.cloudflare.com/ajax/libs/mathjax/"] } }));
-  assert.equal(allowlistBypass("https://www.googletagmanager.com"), undefined, "a bypass that needs 'unsafe-eval' cannot fire here");
 });
 
 test("an unsafe keyword is refused in any case, since browsers match keywords case-insensitively", () => {

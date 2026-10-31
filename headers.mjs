@@ -11,7 +11,6 @@
  */
 
 import { OWASP_RECOMMENDED } from "./owasp-headers.mjs";
-import { siteOverrides } from "./sites.mjs";
 
 /**
  * The OSHP recommendations this package does not put in the standard set, and why. Each would break a normal site if
@@ -45,8 +44,25 @@ export const STANDARD_SECURITY_HEADERS = Object.freeze(
  */
 export const LOGOUT_HEADERS = Object.freeze({ "Clear-Site-Data": OWASP_RECOMMENDED["Clear-Site-Data"] ?? "" });
 
-/** The passkey override (PASSKEY_OVERRIDES) lives with the registry, which applies it to every site that opts in. */
-export { PASSKEY_OVERRIDES } from "./sites.mjs";
+/**
+ * OSHP's Permissions-Policy with each named feature allowed for the site's own pages, from the parsed list rather
+ * than a string replace, so a change in OSHP's spelling cannot leave a feature denied without a word.
+ * @param {...string} features
+ * @returns {string}
+ */
+export function permissionsAllowingSelf(...features) {
+  const directives = (OWASP_RECOMMENDED["Permissions-Policy"] ?? "").split(",").map((d) => d.trim()).filter(Boolean);
+  const kept = directives.filter((d) => !features.includes(d.split("=")[0] ?? ""));
+  return [...kept, ...features.map((f) => `${f}=(self)`)].join(", ");
+}
+
+/** The override a site that offers passkey sign-in (./sign-in) applies; OSHP's `publickey-credentials-get=()` refuses every passkey. */
+export const PASSKEY_OVERRIDES = Object.freeze({
+  "Permissions-Policy": Object.freeze({
+    value: permissionsAllowingSelf("publickey-credentials-get"),
+    reason: "Passkey sign-in (./sign-in) calls navigator.credentials.get, which OSHP's publickey-credentials-get=() refuses; allowed for the site's own pages only.",
+  }),
+});
 
 /**
  * Cross-Origin-Resource-Policy per response kind. Pages, APIs and anything behind a sign-in keep the standard's
@@ -67,19 +83,35 @@ export function corpFor(contentType) {
  */
 
 /**
+ * The header overrides a registry entry declares: PASSKEY_OVERRIDES when it opts into passkey, then its own. A
+ * Permissions-Policy of its own must still allow the passkey, or the opt-in would be a word with no effect.
+ * @param {import("./sites.mjs").SiteEntry} entry
+ * @returns {Record<string, HeaderOverride>}
+ */
+export function entryOverrides({ id, headers = {}, optIns = {} }) {
+  const merged = { ...(optIns.passkey?.value ? PASSKEY_OVERRIDES : {}), ...headers };
+  if (optIns.passkey?.value && !/publickey-credentials-get=\(self\)/.test(merged["Permissions-Policy"]?.value ?? "")) {
+    throw new Error(`${id} opts into passkey but its Permissions-Policy refuses publickey-credentials-get`);
+  }
+  return merged;
+}
+
+/**
  * The set a site sends: the standard with the site's overrides applied. An override must carry a reason and must
  * change something; one that says what the standard already says is refused, so the list stays the list of real
  * deviations.
  *
- * `site` is an id in the registry (./sites), whose declared overrides are used; `overrides` is the older form, for a
- * site not yet built from the registry. Not both.
+ * `site` is the site's registry entry, imported by name (`import { germomics } from "@dustinedwards/site-runtime/sites"`),
+ * whose declared overrides are used; a Worker that imports one entry bundles that entry and not the registry.
+ * `overrides` is the older form, for a site not yet built from the registry. Not both.
  *
- * @param {{ site?: string, overrides?: Readonly<Record<string, HeaderOverride>> }} [options]
+ * @param {{ site?: import("./sites.mjs").SiteEntry, overrides?: Readonly<Record<string, HeaderOverride>> }} [options]
  * @returns {Record<string, string>}
  */
 export function buildSecurityHeaders({ site, overrides } = {}) {
   if (site !== undefined && overrides !== undefined) throw new Error("pass site or overrides, not both: a site's deviations live in its registry entry");
-  overrides = site === undefined ? (overrides ?? {}) : siteOverrides(site);
+  if (typeof site === "string") throw new Error(`pass the registry entry, not its id: import { ... } from "@dustinedwards/site-runtime/sites" (${site})`);
+  overrides = site === undefined ? (overrides ?? {}) : entryOverrides(site);
   /** @type {Record<string, string>} */
   const set = { ...STANDARD_SECURITY_HEADERS };
   for (const [name, { value, reason }] of Object.entries(overrides)) {

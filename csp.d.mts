@@ -170,8 +170,6 @@ export type SitePolicy = {
 export function reportingEndpoints(group: string, url: string | URL): string;
 /** A host source whose host starts with a wildcard: `https://*.example.com`. */
 export const WILDCARD_HOST: RegExp;
-/** The csp-evaluator allowlist-bypass URL a script source would let in (scheme-relative), or undefined. */
-export function allowlistBypass(source: string): string | undefined;
 /** The Report-Only companion for a staged rollout: the site's policy with `staged` added (Trusted Types first). */
 export function buildStagedPolicy(site: SitePolicy, staged: Partial<SitePolicy>): {
     name: "Content-Security-Policy-Report-Only";

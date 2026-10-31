@@ -9,7 +9,8 @@
  * ids the live check reports under), and a `warn` result is advice that fails nothing.
  */
 
-import { CLOUDFLARE_WEB_ANALYTICS, WILDCARD_HOST, allowlistBypass } from "./csp.mjs";
+import { CLOUDFLARE_WEB_ANALYTICS, WILDCARD_HOST } from "./csp.mjs";
+import { allowlistBypass } from "./csp-bypasses.mjs";
 import { STANDARD_SECURITY_HEADERS, buildSecurityHeaders, corpFor } from "./headers.mjs";
 import { OWASP_REMOVE } from "./owasp-headers.mjs";
 import { siteEntry } from "./sites.mjs";
@@ -90,11 +91,11 @@ function deniedFeatures(value) {
  * @returns {CheckResult[]}
  */
 export function checkSecurityHeaders(headers, options = {}) {
-  const entry = options.site === undefined ? undefined : siteEntry(options.site);
+  const entry = typeof options.site === "string" ? siteEntry(options.site) : options.site;
   const optIn = (/** @type {keyof import("./sites.mjs").SiteOptIns} */ key) => entry?.optIns?.[key]?.value;
   const declared = (/** @type {"framedBySameOrigin" | "baseUriSelf"} */ key) => (entry ? Boolean(optIn(key)) : undefined);
   const {
-    standard = entry ? buildSecurityHeaders({ site: entry.id }) : STANDARD_SECURITY_HEADERS,
+    standard = entry ? buildSecurityHeaders({ site: entry }) : STANDARD_SECURITY_HEADERS,
     csp = true,
     cloudflareWebAnalytics = Boolean(optIn("cloudflareWebAnalytics")),
     inlineScripts = /** @type {"unsafe-inline" | undefined} */ (optIn("inlineScripts")),

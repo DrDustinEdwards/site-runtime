@@ -16,33 +16,18 @@
  * - `aliases`: other origins the same Worker answers for, such as the domain it will move to.
  */
 
-import { OWASP_RECOMMENDED } from "./owasp-headers.mjs";
+import { PASSKEY_OVERRIDES, entryOverrides, permissionsAllowingSelf } from "./headers.mjs";
 
-/**
- * OSHP's Permissions-Policy with each named feature allowed for the site's own pages, from the parsed list rather
- * than a string replace, so a change in OSHP's spelling cannot leave a feature denied without a word.
- * @param {...string} features
- * @returns {string}
- */
-export function permissionsAllowingSelf(...features) {
-  const directives = (OWASP_RECOMMENDED["Permissions-Policy"] ?? "").split(",").map((d) => d.trim()).filter(Boolean);
-  const kept = directives.filter((d) => !features.includes(d.split("=")[0] ?? ""));
-  return [...kept, ...features.map((f) => `${f}=(self)`)].join(", ");
-}
-
-/** The override a site that offers passkey sign-in (./sign-in) applies; OSHP's `publickey-credentials-get=()` refuses every passkey. */
-export const PASSKEY_OVERRIDES = Object.freeze({
-  "Permissions-Policy": Object.freeze({
-    value: permissionsAllowingSelf("publickey-credentials-get"),
-    reason: "Passkey sign-in (./sign-in) calls navigator.credentials.get, which OSHP's publickey-credentials-get=() refuses; allowed for the site's own pages only.",
-  }),
-});
+export { PASSKEY_OVERRIDES, permissionsAllowingSelf };
 
 const beacon = (/** @type {string} */ where) => ({ value: true, reason: `Cloudflare Web Analytics is on; the edge injects the beacon (${where}).` });
 const passkey = { value: true, reason: "The family sign-in offers a passkey (./sign-in)." };
 const STRICT_ORIGIN = "strict-origin-when-cross-origin";
-const capsidCoop = {
-  "Cross-Origin-Opener-Policy": { value: null, reason: "COOP is on trial as Report-Only (COOP_REPORT_ONLY) pending a demonstrated case and a ruling (capsid src/security-headers.ts)." },
+const popupSignIn = {
+  "Cross-Origin-Opener-Policy": {
+    value: null,
+    reason: "AI clients (claude.ai among them) open /authorize in a popup and wait for it through window.opener; same-origin would sever that opener and the sign-in would never return.",
+  },
 };
 
 /**
@@ -58,103 +43,127 @@ const capsidCoop = {
  * @typedef {{ id: string, origin: string, aliases?: readonly string[], headers?: Readonly<Record<string, HeaderOverride>>, optIns?: SiteOptIns }} SiteEntry
  */
 
+/* Each entry is its own export, so a Worker that imports one (`import { germomics } from "./sites"`) bundles that
+ * entry alone; the calls are marked pure so a bundler can drop the rest. */
+
+// workers/security-headers.mjs, workers/csp.mjs
+export const dustinedwardsInfo = {
+  id: "dustinedwards-info",
+  origin: "https://dustinedwards.info",
+  headers: {
+    "Referrer-Policy": { value: STRICT_ORIGIN, reason: "The ratified value for this site; OSHP's no-referrer has not been ruled on for it." },
+    "Permissions-Policy": { value: /* @__PURE__ */ permissionsAllowingSelf("clipboard-write"), reason: "clipboard-write must stay allowed: the copy controls swallow the refusal silently." },
+    "Cross-Origin-Opener-Policy": {
+      value: "same-origin-allow-popups",
+      reason: "Plain same-origin would sever the opener of any cross-origin popup a sign-in or embed opens; allow-popups keeps that working and is the ratified value.",
+    },
+  },
+  optIns: { cloudflareWebAnalytics: /* @__PURE__ */ beacon("workers/csp.mjs") },
+};
+
+// app/lib/http/header-set.ts, app/lib/http/content-security-policy.ts
+export const foxhound = {
+  id: "foxhound",
+  origin: "https://foxhoundapp.com",
+  headers: {
+    "Referrer-Policy": {
+      value: STRICT_ORIGIN,
+      reason: "no-referrer makes browsers send `Origin: null` on same-origin POSTs, which Better Auth refuses (MISSING_OR_NULL_ORIGIN); /api/account/switch also returns the merchant to the page they were on from the Referer.",
+    },
+    "Permissions-Policy": {
+      value: /* @__PURE__ */ permissionsAllowingSelf("publickey-credentials-get", "clipboard-write"),
+      reason: "Passkey sign-in, and navigator.clipboard.writeText for the blog's Copy link and the payment page's copy-email button; allowed for this origin only.",
+    },
+  },
+  optIns: {
+    cloudflareWebAnalytics: /* @__PURE__ */ beacon("content-security-policy.ts"),
+    formTargets: { value: ["https://checkout.stripe.com", "https://connect.stripe.com"], reason: "Stripe Checkout, and Connect OAuth, which /connect's POST redirects to." },
+    passkey,
+  },
+};
+
+// apps/web/workers/security-headers.ts
+export const foxing = {
+  id: "foxing",
+  origin: "https://foxing.app",
+  optIns: {
+    cloudflareWebAnalytics: /* @__PURE__ */ beacon("workers/security-headers.ts"),
+    baseUriSelf: { value: true, reason: "The reader (/read/:slug): Readium writes a same-origin <base> so a book's images and CSS resolve." },
+    passkey,
+  },
+};
+
+// app/lib/security-headers.ts
+export const germomics = {
+  id: "germomics",
+  origin: "https://germomics.com",
+  headers: {
+    "Referrer-Policy": {
+      value: STRICT_ORIGIN,
+      reason: "no-referrer strips the origin from the player's episode requests through OP3, which tells web players apart by Referer, and blanks Web Analytics' referrers.",
+    },
+  },
+  optIns: {
+    cloudflareWebAnalytics: /* @__PURE__ */ beacon("app/lib/security-headers.ts"),
+    inlineScripts: { value: "unsafe-inline", reason: "React Router streams inline hydration scripts and the pre-paint theme script is inline on edge-cached pages." },
+  },
+};
+
+export const julieedwardsInfo = { id: "julieedwards-info", origin: "https://julieedwards.info", optIns: { cloudflareWebAnalytics: /* @__PURE__ */ beacon("workers/security-headers.ts") } };
+
+export const bsw = { id: "bsw", origin: "https://bsw.dustin-edwards.workers.dev", optIns: { cloudflareWebAnalytics: /* @__PURE__ */ beacon("workers/security-headers.ts") } };
+
+// app/lib/security-headers.ts; SITE_ORIGIN is txasm.org (app/lib/site-meta.ts), served from workers.dev until cutover.
+export const txasm = {
+  id: "txasm",
+  origin: "https://txasm.dustin-edwards.workers.dev",
+  aliases: ["https://txasm.org"],
+  optIns: { cloudflareWebAnalytics: /* @__PURE__ */ beacon("app/lib/security-headers.ts"), passkey },
+};
+
+export const carrel = { id: "carrel", origin: "https://carrel.dustinedwards.info", optIns: { cloudflareWebAnalytics: /* @__PURE__ */ beacon("www/headers.mjs") } };
+
+// workers/security-headers.ts: the standard exactly, behind Access; the beacon is never injected.
+export const carrelDesk = { id: "carrel-desk", origin: "https://desk.dustinedwards.info" };
+
+// src/security-headers.ts, src/dashboard-csp.ts
+export const capsidPortal = { id: "capsid-portal", origin: "https://portal.dustinedwards.info" };
+
+// src/security-headers.ts: its only page is the /authorize consent dialog MCP clients open.
+export const capsidMcp = { id: "capsid-mcp", origin: "https://mcp.dustinedwards.info", headers: popupSignIn };
+
+// workers/security-headers.ts: Carrel's AI door.
+export const carrelMcp = { id: "carrel-mcp", origin: "https://carrel-mcp.dustinedwards.info", headers: popupSignIn };
+
+// The Capsid explorer, Enarratio's site and the Foxhound admin MCP declare nothing: the standard exactly.
+export const capsid = { id: "capsid", origin: "https://capsid.dustinedwards.info" };
+
+export const enarratio = { id: "enarratio", origin: "https://enarratio.dustinedwards.info" };
+
+export const foxhoundMcp = { id: "foxhound-mcp", origin: "https://admin-mcp.foxhoundapp.com" };
+
+// scripts/security-headers.ts
+export const capsomer = {
+  id: "capsomer",
+  origin: "https://capsomer.dustinedwards.info",
+  headers: {
+    "Permissions-Policy": {
+      value: /* @__PURE__ */ permissionsAllowingSelf("clipboard-write"),
+      reason: "The states pages show the detail panel's and media library's Copy buttons working (navigator.clipboard.writeText).",
+    },
+    "X-Frame-Options": { value: "sameorigin", reason: "The site frames its own states pages and specimens (site/main.tsx, site/specimen.ts)." },
+  },
+  optIns: {
+    cloudflareWebAnalytics: /* @__PURE__ */ beacon("scripts/security-headers.ts"),
+    framedBySameOrigin: { value: true, reason: "The site frames its own states pages and specimens; no other origin may." },
+  },
+};
+
+export const prelum = { id: "prelum", origin: "https://prelum.dustinedwards.info", optIns: { cloudflareWebAnalytics: /* @__PURE__ */ beacon("specimen/headers.mjs") } };
+
 /** @type {readonly SiteEntry[]} */
-export const SITES = Object.freeze([
-  {
-    // workers/security-headers.mjs, workers/csp.mjs
-    id: "dustinedwards-info",
-    origin: "https://dustinedwards.info",
-    headers: {
-      "Referrer-Policy": { value: STRICT_ORIGIN, reason: "The ratified value for this site; OSHP's no-referrer has not been ruled on for it." },
-      "Permissions-Policy": { value: permissionsAllowingSelf("clipboard-write"), reason: "clipboard-write must stay allowed: the copy controls swallow the refusal silently." },
-      "Cross-Origin-Opener-Policy": {
-        value: "same-origin-allow-popups",
-        reason: "Plain same-origin would sever the opener of any cross-origin popup a sign-in or embed opens; allow-popups keeps that working and is the ratified value.",
-      },
-    },
-    optIns: { cloudflareWebAnalytics: beacon("workers/csp.mjs") },
-  },
-  {
-    // app/lib/http/header-set.ts, app/lib/http/content-security-policy.ts
-    id: "foxhound",
-    origin: "https://foxhoundapp.com",
-    headers: {
-      "Referrer-Policy": {
-        value: STRICT_ORIGIN,
-        reason: "no-referrer makes browsers send `Origin: null` on same-origin POSTs, which Better Auth refuses (MISSING_OR_NULL_ORIGIN); /api/account/switch also returns the merchant to the page they were on from the Referer.",
-      },
-      "Permissions-Policy": {
-        value: permissionsAllowingSelf("publickey-credentials-get", "clipboard-write"),
-        reason: "Passkey sign-in, and navigator.clipboard.writeText for the blog's Copy link and the payment page's copy-email button; allowed for this origin only.",
-      },
-    },
-    optIns: {
-      cloudflareWebAnalytics: beacon("content-security-policy.ts"),
-      formTargets: { value: ["https://checkout.stripe.com", "https://connect.stripe.com"], reason: "Stripe Checkout, and Connect OAuth, which /connect's POST redirects to." },
-      passkey,
-    },
-  },
-  {
-    // apps/web/workers/security-headers.ts
-    id: "foxing",
-    origin: "https://foxing.app",
-    optIns: {
-      cloudflareWebAnalytics: beacon("workers/security-headers.ts"),
-      baseUriSelf: { value: true, reason: "The reader (/read/:slug): Readium writes a same-origin <base> so a book's images and CSS resolve." },
-      passkey,
-    },
-  },
-  {
-    // app/lib/security-headers.ts
-    id: "germomics",
-    origin: "https://germomics.com",
-    headers: {
-      "Referrer-Policy": {
-        value: STRICT_ORIGIN,
-        reason: "no-referrer strips the origin from the player's episode requests through OP3, which tells web players apart by Referer, and blanks Web Analytics' referrers.",
-      },
-    },
-    optIns: {
-      cloudflareWebAnalytics: beacon("app/lib/security-headers.ts"),
-      inlineScripts: { value: "unsafe-inline", reason: "React Router streams inline hydration scripts and the pre-paint theme script is inline on edge-cached pages." },
-    },
-  },
-  { id: "julieedwards-info", origin: "https://julieedwards.info", optIns: { cloudflareWebAnalytics: beacon("workers/security-headers.ts") } },
-  { id: "bsw", origin: "https://bsw.dustin-edwards.workers.dev", optIns: { cloudflareWebAnalytics: beacon("workers/security-headers.ts") } },
-  {
-    // app/lib/security-headers.ts; SITE_ORIGIN is txasm.org (app/lib/site-meta.ts), served from workers.dev until cutover.
-    id: "txasm",
-    origin: "https://txasm.dustin-edwards.workers.dev",
-    aliases: ["https://txasm.org"],
-    optIns: { cloudflareWebAnalytics: beacon("app/lib/security-headers.ts"), passkey },
-  },
-  { id: "carrel", origin: "https://carrel.dustinedwards.info", optIns: { cloudflareWebAnalytics: beacon("www/headers.mjs") } },
-  // workers/security-headers.ts: the standard exactly, behind Access; the beacon is never injected.
-  { id: "carrel-desk", origin: "https://desk.dustinedwards.info" },
-  // src/security-headers.ts, src/dashboard-csp.ts
-  { id: "capsid-portal", origin: "https://portal.dustinedwards.info", headers: capsidCoop },
-  { id: "capsid-mcp", origin: "https://mcp.dustinedwards.info", headers: capsidCoop },
-  // The Capsid explorer, Enarratio's site and the Foxhound admin MCP declare nothing: the standard exactly.
-  { id: "capsid", origin: "https://capsid.dustinedwards.info" },
-  { id: "enarratio", origin: "https://enarratio.dustinedwards.info" },
-  { id: "foxhound-mcp", origin: "https://admin-mcp.foxhoundapp.com" },
-  {
-    // scripts/security-headers.ts
-    id: "capsomer",
-    origin: "https://capsomer.dustinedwards.info",
-    headers: {
-      "Permissions-Policy": {
-        value: permissionsAllowingSelf("clipboard-write"),
-        reason: "The states pages show the detail panel's and media library's Copy buttons working (navigator.clipboard.writeText).",
-      },
-      "X-Frame-Options": { value: "sameorigin", reason: "The site frames its own states pages and specimens (site/main.tsx, site/specimen.ts)." },
-    },
-    optIns: {
-      cloudflareWebAnalytics: beacon("scripts/security-headers.ts"),
-      framedBySameOrigin: { value: true, reason: "The site frames its own states pages and specimens; no other origin may." },
-    },
-  },
-  { id: "prelum", origin: "https://prelum.dustinedwards.info", optIns: { cloudflareWebAnalytics: beacon("specimen/headers.mjs") } },
+export const SITES = /* @__PURE__ */ Object.freeze([
+  dustinedwardsInfo, foxhound, foxing, germomics, julieedwardsInfo, bsw, txasm, carrel, carrelDesk, capsidPortal, capsidMcp, carrelMcp, capsid, enarratio, foxhoundMcp, capsomer, prelum,
 ]);
 
 /**
@@ -179,16 +188,10 @@ export function siteForOrigin(origin) {
 }
 
 /**
- * The header overrides an entry declares: PASSKEY_OVERRIDES when it opts into passkey, then its own. A Permissions-Policy
- * of its own must still allow the passkey, or the opt-in would be a word with no effect.
+ * The header overrides an entry declares (entryOverrides, ./headers), by id.
  * @param {string} id
  * @returns {Record<string, HeaderOverride>}
  */
 export function siteOverrides(id) {
-  const { headers = {}, optIns = {} } = siteEntry(id);
-  const merged = { ...(optIns.passkey?.value ? PASSKEY_OVERRIDES : {}), ...headers };
-  if (optIns.passkey?.value && !/publickey-credentials-get=\(self\)/.test(merged["Permissions-Policy"]?.value ?? "")) {
-    throw new Error(`${id} opts into passkey but its Permissions-Policy refuses publickey-credentials-get`);
-  }
-  return merged;
+  return entryOverrides(siteEntry(id));
 }

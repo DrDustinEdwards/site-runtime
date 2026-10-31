@@ -2,7 +2,8 @@
 // Copyright 2016 Google Inc.): allowlist_bypasses/jsonp.ts, angular.ts and flash.ts, the URLs on commonly allowlisted
 // hosts that serve JSONP endpoints, AngularJS or Flash, any of which lets an attacker run script through a policy that
 // lists the host. The JSONP entries whose host is in jsonp.ts's NEEDS_EVAL are left out: those work only beside
-// 'unsafe-eval', which the builder and the check refuse. Refresh by copying the three lists again.
+// 'unsafe-eval', which the builder and the check refuse. Refresh by copying the three lists again. Only the check (./check) reads
+// it, so the list stays out of a Worker that builds its policy.
 
 /** Scheme-relative URLs (`//host/path`) that bypass a script-src listing their host, or a path prefix of them. */
 export const ALLOWLIST_BYPASSES = Object.freeze([
@@ -168,3 +169,29 @@ export const ALLOWLIST_BYPASSES = Object.freeze([
   "//vk.com/swf/video.swf",
   "//ajax.googleapis.com/ajax/libs/yui/2.8.0r4/build/charts/assets/charts.swf",
 ]);
+
+/**
+ * The known allowlist bypass a script source would let in, or undefined: csp-evaluator's own match
+ * (utils.ts matchWildcardUrls). A host source matches a listed URL on the same host (any subdomain, for a wildcard
+ * host); with a path, only a listed URL under that path prefix (a path ending in "/") or at that exact path.
+ * @param {string} source
+ * @returns {string | undefined} the listed URL, scheme-relative
+ */
+export function allowlistBypass(source) {
+  if (source.startsWith("'") || !source.includes(".") || /^[a-z][a-z0-9+.-]*:$/i.test(source)) return undefined;
+  let url;
+  try {
+    url = new URL(`https://${source.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").replace(":*", "").replace("*", "wildcard-placeholder")}`);
+  } catch {
+    return undefined;
+  }
+  const wild = url.hostname.startsWith("wildcard-placeholder.");
+  const host = wild ? url.hostname.slice("wildcard-placeholder".length) : url.hostname;
+  const path = url.pathname;
+  return ALLOWLIST_BYPASSES.find((entry) => {
+    const listed = new URL(`https:${entry}`);
+    if (wild ? !listed.hostname.endsWith(host) : listed.hostname !== host) return false;
+    if (path === "/") return true;
+    return path.endsWith("/") ? listed.pathname.startsWith(path) : listed.pathname === path;
+  });
+}
