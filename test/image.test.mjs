@@ -234,3 +234,27 @@ test("the share crop and the Article set are sizes the route serves, and a prelo
   assert.match(header, /^<\/media\/a\.jpg\.webp\?v=[a-z0-9]+&w=704>; rel=preload; as=image; type="image\/avif"; imagesrcset="\/media\/a\.jpg\.avif\?[^"]+ 640w, [^"]+"; imagesizes="\(min-width: 704px\) 704px, 100vw"; fetchpriority=high$/);
   assert.throws(() => preloads([{ href: "/f.woff2", as: "font", imageSrcSet: "/a 1w" }]), /image/);
 });
+
+test("over Cloudflare's 1,200 px AVIF limit the AVIF source names the WebP, and the route sends an AVIF it could not write there", async () => {
+  const wide = defineImages({ uses: { hero: { layout: "full-width" } } });
+  const attrs = wide.attributes({ src: "/media/w.jpg", width: 2048, height: 1089 }, "hero");
+  const avif = attrs.sources[0].srcset.split(", ");
+  assert.match(avif.find((c) => c.endsWith(" 1080w")) ?? "", /\/media\/w\.jpg\.avif\?w=1080 1080w/);
+  assert.match(avif.find((c) => c.endsWith(" 2048w")) ?? "", /\/media\/w\.jpg\.webp\?w=2048 2048w/);
+
+  // The binding fell back to WebP: a 301 to the .webp twin, never a WebP named .avif.
+  const fallback = { input: () => ({ transform: () => ({ output: async () => ({ response: () => new Response("small", { headers: { "content-type": "image/webp" } }) }) }) }) };
+  const res = await wide.respond(new Request("https://example.com/media/w.jpg.avif?v=abc123&w=2048"), { object: object(), images: fallback });
+  assert.equal(res.status, 301);
+  assert.equal(res.headers.get("location"), "/media/w.jpg.webp?v=abc123&w=2048");
+  assert.match(res.headers.get("cache-control") ?? "", /immutable/);
+});
+
+test("a size cached under one Cache-Control never answers under another (the site may pick it per request)", async () => {
+  const store = new Map();
+  const cache = /** @type {Cache} */ (/** @type {unknown} */ ({ match: async (/** @type {Request} */ k) => store.get(k.url)?.clone(), put: async (/** @type {Request} */ k, /** @type {Response} */ r) => void store.set(k.url, r) }));
+  const at = () => new Request("https://example.com/media/a.jpg.webp?v=abc123&w=640");
+  await images.respond(at(), { object: object(), images: binding([]), cache, cacheControl: "public, max-age=86400" });
+  const res = await images.respond(at(), { object: object(), images: binding([]), cache, cacheControl: "public, max-age=31536000, immutable" });
+  assert.equal(res.headers.get("cache-control"), "public, max-age=31536000, immutable");
+});
