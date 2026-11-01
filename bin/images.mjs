@@ -21,7 +21,7 @@
  *   without width and height; A5 more than one fetchpriority=high image, a lazy one, or a largest image above the fold
  *   (bigger than any text there) that is lazy or not high; A6 an image below the fold that is not lazy and async or is
  *   high, a lazy image above it, or a preload of one below it; A7 a file, the srcset candidate a browser picks or the
- *   src, more than 1.5 times its shown width times the DPR; A12 a srcset size URL without `immutable` or that is not an
+ *   src, more than 1.5 times its shown width times the DPR (2 for a lone-file slot of 48 px or less, an icon); A12 a srcset size URL without `immutable` or that is not an
  *   edge HIT when asked again, and an original with no ETag or that does not answer 304 to it.
  * - B1 an <img> with no alt; B2 an alt that is the file name, "image", "photo" or a URL.
  * - C1 og:image missing, not absolute https, not 200 or not an image; C2 not 1200 by 630 (a warning when at least 1200
@@ -63,6 +63,8 @@ const VIEWPORTS = [
   { width: 390, height: 844, dpr: 3 },
   { width: 1440, height: 900, dpr: 1 },
 ];
+/** A shown width at or under this is an icon-size slot: one file serves it at 2x. */
+const SMALL_SLOT = 48;
 const ABOVE = 0.8;
 const BELOW = 1.1;
 /** The smallest visible area (CSS px) an image needs to be a page's largest paint rather than an icon. */
@@ -246,7 +248,10 @@ async function auditPage({ url, origin, html, headers, load, probe, onSite, site
       // The slot sizes declares, else the estimated box: the column estimate is the rougher of the two.
       const shownAt = Math.min(slotWidth(attrs.sizes, vp) ?? layouts[i].boxes.get(img)?.width ?? 0, vp.width);
       const pick = shownAt > 0 ? picked(img, shownAt, vp, absolute, files) : null;
-      if (pick && pick.width > 1.5 * shownAt * vp.dpr) {
+      // A fixed small slot (an icon, 48 px or less) with one file is served at 2x, Cloudflare's guidance for a fixed-size image
+      // (developers.cloudflare.com/images/transform-images/make-responsive-images): a 1x file is blurry on the many 2x screens.
+      const slack = shownAt <= SMALL_SLOT && !attrs.srcset ? 2 : 1.5;
+      if (pick && pick.width > slack * shownAt * vp.dpr) {
         add("error", "A7", pick.url, `is ${pick.width} px wide for ${label} shown about ${Math.round(shownAt)} px wide at ${vp.width} (DPR ${vp.dpr}) on ${url}: ${(pick.width / (shownAt * vp.dpr)).toFixed(1)} times what the screen needs`);
       }
     });
