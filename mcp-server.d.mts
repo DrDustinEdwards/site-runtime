@@ -189,9 +189,9 @@ export function toolListHash(tools: ReadonlyArray<Record<string, unknown>>): Pro
 export type CacheableMethod = "tools/list" | "prompts/list" | "resources/list" | "resources/templates/list" | "resources/read" | "server/discover";
 /** The SDK's `cacheHints` option: every cacheable result `ttlMs` (default 60000), private unless named in `shared`. */
 export function mcpCacheHints(options?: { ttlMs?: number; shared?: readonly CacheableMethod[] }): Record<CacheableMethod, { ttlMs: number; cacheScope: "public" | "private" }>;
-/** The methods the list-only test key may send: the handshake, ping, the lists, and notifications. */
+/** The methods the list-only test key may send on: the handshake, ping, the lists, subscriptions/listen, tools/call (refused by invokeTool) and notifications. */
 export const PROBE_METHODS: ReadonlySet<string>;
-/** The test key's request to serve (body already read), or a logged 403 JSON-RPC refusal for any other method. */
+/** The test key's request to serve (body already read), or a logged refusal: 404 -32601 for any other method, 403 for a notification or a body over 64 KiB. */
 export function probeRefusal(
   env: Partial<AuditEnv>,
   server: McpServerInfo,
