@@ -177,17 +177,36 @@ for (const probe of prmProbes) {
 }
 if (values.kind === "worker" && prms.length === 0 && findings.length === 0) report("error", "A1", prmProbes[0].url, "a worker (an MCP server) publishes no protected-resource metadata");
 
-if (prms.length > 0) await auditMcp();
-if (values.prose?.length) await auditProse(values.prose);
-if (values.models) await auditModels();
-
 /** A value in a workflow command, escaped as GitHub requires, so it cannot end the line and start another command. */
 const commandValue = (/** @type {string} */ text) => text.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
-for (const f of findings) console.log(`::${f.severity} title=${f.item}::${commandValue(f.url)} ${commandValue(f.detail)}`);
-const errors = findings.filter((f) => f.severity === "error").length;
-const kind = prms.length > 0 ? "MCP server" : (values.kind ?? "origin");
-console.log(`site-runtime-ai-audit: ${kind} ${origin}; ${errors} error(s), ${findings.length - errors} warning(s).`);
-process.exit(errors > 0 ? 1 : 0);
+
+// A check that throws must not take the findings with it: before this, a crash printed nothing, so the board read
+// "fail, 0 errors" with no cause (capsid-mcp, 2026-11-01). The stop is an error finding of its own, after the others.
+const stopped = (/** @type {unknown} */ error) => {
+  report("error", "audit", origin, `the audit stopped before it finished: ${error instanceof Error ? (error.stack ?? error.message).split("\n").slice(0, 3).join(" | ") : String(error)}`.slice(0, 600));
+};
+for (const event of ["unhandledRejection", "uncaughtException"]) {
+  process.on(event, (error) => {
+    stopped(error);
+    finish();
+  });
+}
+try {
+  if (prms.length > 0) await auditMcp();
+  if (values.prose?.length) await auditProse(values.prose);
+  if (values.models) await auditModels();
+} catch (error) {
+  stopped(error);
+}
+finish();
+
+function finish() {
+  for (const f of findings) console.log(`::${f.severity} title=${f.item}::${commandValue(f.url)} ${commandValue(f.detail)}`);
+  const errors = findings.filter((f) => f.severity === "error").length;
+  const kind = prms.length > 0 ? "MCP server" : (values.kind ?? "origin");
+  console.log(`site-runtime-ai-audit: ${kind} ${origin}; ${errors} error(s), ${findings.length - errors} warning(s).`);
+  process.exit(errors > 0 ? 1 : 0);
+}
 
 // ---------------------------------------------------------------------------------------------------------------------
 // An MCP server.
@@ -298,11 +317,12 @@ async function auditMcp() {
   const keyed = values["grant-path"] ? `${origin}${values["grant-path"]}` : endpoint;
   await auditTools(keyed, grant);
   if (!values["no-conformance"]) {
+    const capabilities = await capabilitiesOf(keyed, grant);
     const proxy = await grantProxy(keyed, grant);
     try {
       for (const scenario of SERVER_SCENARIOS) {
         await sleep(WINDOW_MS);
-        judgeConformance(scenario, keyed, await runMcpConformance(["server", "--url", proxy.url, "--scenario", scenario, "--spec-version", VERSION]));
+        judgeConformance(scenario, keyed, await runMcpConformance(["server", "--url", proxy.url, "--scenario", scenario, "--spec-version", VERSION], capabilities));
       }
     } finally {
       proxy.close();
@@ -367,6 +387,14 @@ async function listTools(/** @type {string} */ endpoint, /** @type {string} */ g
     if (!cursor) return { url: r.url, tools, why: "" };
   }
   return { url: endpoint, tools: null, why: "tools/list still had a next page after 20" };
+}
+
+/** The capabilities the server declares in server/discover to the grant, or null when it does not say. */
+async function capabilitiesOf(/** @type {string} */ endpoint, /** @type {string} */ grant) {
+  const r = await get(endpoint, { method: "POST", headers: { ...MCP_HEADERS, authorization: `Bearer ${grant}` }, body: envelope("server/discover") });
+  if (!r.res?.ok) return (await r.res?.body?.cancel().catch(() => {}), null);
+  const capabilities = (await rpcOf(r.res))?.result?.capabilities;
+  return capabilities && typeof capabilities === "object" ? capabilities : null;
 }
 
 async function auditTools(/** @type {string} */ endpoint, /** @type {string} */ grant) {
@@ -436,29 +464,59 @@ async function grantProxy(/** @type {string} */ endpoint, /** @type {string} */ 
   return { url: `http://127.0.0.1:${address.port}/mcp`, close: () => server.close() };
 }
 
-/** Runs the pinned MCP conformance suite through npx, without the grant in its environment; the printed count, or why there is none. */
-function runMcpConformance(/** @type {string[]} */ args) {
+/**
+ * Runs the pinned MCP conformance suite through npx with --verbose, without the grant in its environment, and reads its checks: the
+ * count over the checks that apply, the failing ids, and the ones left out, or why there is none. Two kinds of failure
+ * say nothing about the server and are left out (a warning names them): one the suite marks untestable (it needs the
+ * suite's own diagnostic tools, test_logging_tool and the like, which a production server does not ship), and a
+ * caching check on a list the server answers -32601 for when its server/discover declares no such capability (SEP-2549
+ * asks hints of results, and a server with no prompts has no prompts/list result; MCP lifecycle: a client must not use a
+ * capability the server did not declare).
+ * @param {string[]} args
+ * @param {Record<string, unknown> | null} [capabilities] the server's declared capabilities, when known
+ */
+function runMcpConformance(args, capabilities = null) {
   const env = { ...process.env };
   delete env[grantEnv];
   return new Promise((resolve) => {
     let out = "";
-    const child = spawn("npx", ["-y", CONFORMANCE, ...args], { env, stdio: ["ignore", "pipe", "pipe"], timeout: 300_000, shell: process.platform === "win32" });
+    const child = spawn("npx", ["-y", CONFORMANCE, ...args, "--verbose"], { env, stdio: ["ignore", "pipe", "pipe"], timeout: 300_000, shell: process.platform === "win32" });
     child.stdout.on("data", (d) => (out += d));
     child.stderr.on("data", (d) => (out += d));
-    child.on("error", (error) => resolve({ count: null, failed: [], why: `npx could not start (${error.message})` }));
-    child.on("close", () => {
-      const plain = out.replace(/\x1b\[[0-9;]*m/g, "");
-      const m = /Passed:\s*(\d+)\/(\d+)/.exec(plain);
-      const failed = [...new Set([...plain.matchAll(/\[([^\]]+?)\s*\]\s+FAILURE\b/g)].map((f) => f[1].trim()))].slice(0, 5);
-      resolve(m ? { count: { passed: Number(m[1]), total: Number(m[2]) }, failed, why: "" } : { count: null, failed, why: plain.trim().split("\n").at(-1)?.slice(0, 200) ?? "no output" });
-    });
+    child.on("error", (error) => resolve({ count: null, failed: [], skipped: [], why: `npx could not start (${error.message})` }));
+    child.on("close", () => resolve(readChecks(out.replace(/\x1b\[[0-9;]*m/g, ""), capabilities)));
   });
+}
+
+/** The suite's --verbose output (a line, then a JSON array of checks) as a count over the checks that apply. */
+function readChecks(/** @type {string} */ plain, /** @type {Record<string, unknown> | null} */ capabilities) {
+  const start = plain.indexOf("\n[");
+  /** @type {any[] | null} */
+  let checks = null;
+  for (let end = plain.indexOf("\n]", start); start >= 0 && end >= 0 && !checks; end = plain.indexOf("\n]", end + 1)) {
+    try {
+      checks = JSON.parse(plain.slice(start + 1, end + 2));
+    } catch {}
+  }
+  if (!Array.isArray(checks)) return { count: null, failed: [], skipped: [], why: plain.trim().split("\n").at(-1)?.slice(0, 200) ?? "no output" };
+  const lists = { "prompts-list": "prompts", "resources-list": "resources", "resources-templates-list": "resources" };
+  const notApplicable = (/** @type {any} */ c) => {
+    if (c.details?.untestable === true) return true;
+    const list = /^sep-2549-(prompts-list|resources-list|resources-templates-list)-caching-hints$/.exec(String(c.id))?.[1];
+    return Boolean(list && c.details?.error?.code === -32601 && capabilities && !(/** @type {Record<string, string>} */ (lists)[list] in capabilities));
+  };
+  const judged = checks.filter((c) => c?.status === "SUCCESS" || c?.status === "FAILURE");
+  const skipped = [...new Set(judged.filter((c) => c.status === "FAILURE" && notApplicable(c)).map((c) => String(c.id)))];
+  const applies = judged.filter((c) => !(c.status === "FAILURE" && notApplicable(c)));
+  const failed = [...new Set(applies.filter((c) => c.status === "FAILURE").map((c) => String(c.id)))];
+  return { count: { passed: applies.filter((c) => c.status === "SUCCESS").length, total: applies.length }, failed: failed.slice(0, 5), skipped, why: "" };
 }
 
 /** One scenario's count against its baseline, devkit-conformance's way. */
 function judgeConformance(/** @type {string} */ scenario, /** @type {string} */ url, /** @type {any} */ run) {
   const item = { "server-stateless": "P3", "http-header-validation": "P4", caching: "P7" }[scenario] ?? "A4";
   if (!run.count) return report("warning", item, url, `conformance ${scenario} could not run: ${run.why}`);
+  if (run.skipped.length) report("warning", item, url, `conformance ${scenario}: ${run.skipped.length} check(s) do not apply here and were left out (${run.skipped.join(", ")})`);
   const { passed, total } = run.count;
   const failing = run.failed.length ? ` (failing: ${run.failed.join(", ")})` : "";
   const want = baselines.get(scenario);

@@ -210,13 +210,15 @@ test("PLANT: the list-only test key lists what a read grant sees and runs nothin
   assert.equal((await door([{ jsonrpc: "2.0", id: 1, method: "initialize" }, { jsonrpc: "2.0", id: 2, method: "tools/list" }]))?.status, 200);
   assert.match(served[0][0], /tools\/list/);
   assert.equal(served[0][1], "probe");
-  // A call hidden in a batch beside a list is refused before the server, and logged under the key's name.
-  const call = await door([{ jsonrpc: "2.0", id: 3, method: "tools/list" }, { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "r" } }]);
-  assert.equal(call?.status, 403);
-  assert.equal((await call?.json()).id, 4);
-  assert.deepEqual(log.rows.map((r) => [r.phase, r.caller, r.tool]), [["refused", "probe:live-check", "r"]]);
-  assert.equal((await door({ jsonrpc: "2.0", id: 5, method: "resources/read" }))?.status, 403);
-  assert.equal(served.length, 1);
+  // A read hidden in a batch beside a list is answered as a method the server lacks (404, -32601) before the server,
+  // and logged under the key's name; tools/call goes on, for the SDK's header checks and invokeTool's refusal below.
+  const read = await door([{ jsonrpc: "2.0", id: 3, method: "tools/list" }, { jsonrpc: "2.0", id: 4, method: "resources/read", params: { uri: "x" } }]);
+  assert.equal(read?.status, 404);
+  assert.deepEqual(await read?.json().then((b) => [b.id, b.error.code]), [4, -32601]);
+  assert.deepEqual(log.rows.map((r) => [r.phase, r.caller, r.tool]), [["refused", "probe:live-check", "resources/read"]]);
+  assert.equal((await door({ jsonrpc: "2.0", method: "notifications/roots/list_changed" }))?.status, 403);
+  assert.equal((await door({ jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "r" } }))?.status, 200);
+  assert.equal(served.length, 2);
 
   // Past the door, it is listed the read tools only, and a call that got there anyway is refused and logged.
   /** @type {Array<{ name: string, callback: Function }>} */
@@ -225,6 +227,7 @@ test("PLANT: the list-only test key lists what a read grant sees and runs nothin
   const tools = [
     { name: "w", scope: "write", config: {}, handler: async () => (ran++, { content: [] }) },
     { name: "r", scope: "read", config: {}, handler: async () => (ran++, { content: [] }) },
+    { name: "a", scope: () => "read", config: {}, handler: async () => (ran++, { content: [] }) },
   ];
   registerTools({ registerTool: (name, _config, callback) => registered.push({ name, callback }) }, tools, { env, server: SERVER, caller: probeCaller() });
   assert.deepEqual(registered.map((t) => t.name), ["r"]);

@@ -1997,8 +1997,12 @@ on the origin (a server whose agent keys have their own door, as Capsid's `/ops/
 the conformance server scenarios `server-stateless`, `http-header-validation` and `caching` (P3, P4, P7) through a local
 proxy that adds the grant, so the suite never sees it, and last a burst of 35 concurrent requests that must meet a 429
 (S1: a minute of refusals for the test grant only). Each conformance scenario and the burst wait 61 s first, so none
-runs into the last one's window. A scenario must pass every check unless `--conformance-baseline scenario=passed/total`
-records its known count (fewer is an error, more a warning to tighten it). The suite is
+runs into the last one's window. The suite runs with `--verbose`, and two kinds of failure are left out of the count with
+a warning naming them, since they say nothing about the server: a check the suite marks untestable (it needs the suite's
+own diagnostic tools, such as `test_logging_tool`, which a production server does not ship), and a caching check on a
+prompts or resources list the server answers -32601 for while its `server/discover` declares no such capability. A
+scenario must pass every other check unless `--conformance-baseline scenario=passed/total` records its known count
+(fewer is an error, more a warning to tighten it). The suite is
 `@modelcontextprotocol/conformance@0.2.0-alpha.10`, through npx; `--no-conformance` skips it. Without a grant, all of
 this is skipped with a warning that names the variable.
 
@@ -2007,7 +2011,8 @@ Any origin: `--prose /path` (repeatable) runs `checkProse` over a public page th
 warning. `--models` fails on any `MODEL_IDS` model the deprecations page calls deprecated or retiring within 60 days
 (C8). A site with none of these has nothing more for this check.
 Findings print as `::error title=<item>::<url> <detail>`, with `%`, CR and LF escaped as GitHub requires; it exits 0
-clean, 1 on an error, 2 when the origin does not answer.
+clean, 1 on an error, 2 when the origin does not answer. A check that throws ends the run with an `audit` error naming
+where it stopped, printed after the findings gathered so far, so a crash never reads as "fail, 0 errors".
 
 ## The MCP server scaffold
 
@@ -2108,12 +2113,18 @@ const probed = await probeDoor(request, env, { server: SERVER, limiter: env.MCP_
 if (probed) return probed;
 ```
 
-`probeDoor` is `isProbeKey`, the limiter keyed on the key, `probeRefusal` (a logged 403 for anything but the handshake,
-ping or a list) and then `serve` with `probeCaller()`, whom `registerTools` lists the read tools and `authorizeCall`
+`probeDoor` is `isProbeKey`, the limiter keyed on the key, `probeRefusal` (a logged refusal for anything but the
+handshake, ping, a list, `subscriptions/listen` or `tools/call`) and then `serve` with `probeCaller()`, whom
+`registerTools` lists only the tools whose declared scope is read (not one whose action decides) and `authorizeCall`
 refuses on every call.
 
 - `isProbeKey` compares in constant time; no secret, a blank one or one under 32 characters admits nothing.
-- `probeRefusal` is an allowlist (`PROBE_METHODS`: initialize, ping, server/discover, the four lists and two
-  notifications), so a method the protocol adds later is refused until it is named. Each refused message is a
-  `refused` row under `probe:live-check`.
+- `probeRefusal` is an allowlist (`PROBE_METHODS`: initialize, ping, server/discover, the four lists,
+  subscriptions/listen, tools/call and two notifications), so a method the protocol adds later is refused until it is
+  named. A refused request is answered 404 with -32601, what the protocol answers for a method the server does not have
+  (SEP-2575), and a refused notification 403. Each is a `refused` row under `probe:live-check`.
+- `tools/call` goes on, so the SDK's own checks answer first: a `Mcp-Method` or `Mcp-Name` header that does not match the
+  body is its 400 (-32020, SEP-2243). Then the tool's `invokeTool` refuses the probe caller before `run`, in words, with
+  a `refused` row, as it refuses an agent key outside its scope. A door that refused the call itself answered 403 where
+  the protocol says 400 or 404 (conformance P3 and P4 on 2026-11-01).
 - `probeCaller()` holds no scope, so any scope check refuses it. The owner page says whether the key is set.
