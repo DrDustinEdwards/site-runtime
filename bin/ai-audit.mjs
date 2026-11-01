@@ -317,7 +317,7 @@ async function auditMcp() {
   const keyed = values["grant-path"] ? `${origin}${values["grant-path"]}` : endpoint;
   await auditTools(keyed, grant);
   if (!values["no-conformance"]) {
-    const capabilities = await capabilitiesOf(keyed, grant);
+    const capabilities = await declaredCapabilities(keyed, grant);
     const proxy = await grantProxy(keyed, grant);
     try {
       for (const scenario of SERVER_SCENARIOS) {
@@ -390,7 +390,7 @@ async function listTools(/** @type {string} */ endpoint, /** @type {string} */ g
 }
 
 /** The capabilities the server declares in server/discover to the grant, or null when it does not say. */
-async function capabilitiesOf(/** @type {string} */ endpoint, /** @type {string} */ grant) {
+async function declaredCapabilities(/** @type {string} */ endpoint, /** @type {string} */ grant) {
   const r = await get(endpoint, { method: "POST", headers: { ...MCP_HEADERS, authorization: `Bearer ${grant}` }, body: envelope("server/discover") });
   if (!r.res?.ok) return (await r.res?.body?.cancel().catch(() => {}), null);
   const capabilities = (await rpcOf(r.res))?.result?.capabilities;
