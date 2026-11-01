@@ -43,13 +43,13 @@ const AUDITS = {
 const median = (/** @type {number[]} */ values) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
 const isHtml = (/** @type {Got} */ got) => (got.headers["content-type"] ?? "").includes("text/html");
 /**
- * True for a file a build named by its content: under /assets/ or /islands/, or a name ending in a hash-like token, the
+ * True for a file a build named by its content: a name ending in a hash-like token, the
  * bundler's `root-DYYv4ssa.css` or `inter-latin-opsz-normal-BwkfbSeq.woff2`. A token is 8 or more letters, digits or
- * underscores after the last hyphen or dot, with a digit or both cases in it, so `apple-touch-icon.png` and
+ * underscores after the last hyphen or dot, with a digit or both cases in it. The path does not count: a directory
+ * called /assets/ also holds files a site names by hand (the Capsid explorer's), which rightly revalidate. So `apple-touch-icon.png` and
  * `logo-mayo-clinic.svg` (plain words) and `icon-1024x1024.png` (a size) are not hashed and rightly revalidate.
  */
 const hashed = (/** @type {string} */ url) => {
-  if (/\/(assets|islands)\//.test(url)) return true;
   const token = /[.-]([A-Za-z0-9_]{8,})\.[a-z0-9]+$/.exec(url)?.[1];
   return !!token && !/^\d+x\d+$/.test(token) && (/\d/.test(token) || (/[a-z]/.test(token) && /[A-Z]/.test(token)));
 };
