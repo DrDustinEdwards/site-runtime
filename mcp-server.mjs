@@ -524,7 +524,7 @@ export const PROBE_METHODS = new Set([
   "resources/templates/list",
   "prompts/list",
   "notifications/initialized",
-  "notifications/cancelled",
+  "notifications/cancelled", // codespell:ignore (the protocol's method name)
 ]);
 
 /** The largest body the test key's door reads; nothing it may send comes near it. */
