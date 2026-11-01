@@ -10,6 +10,8 @@ import { untrusted } from "./anthropic.mjs";
 import { appendAudit, correlationId, loggedArgs, loggedResult, recordAudit } from "./audit-log.mjs";
 import { CSP_REPORT_GROUP, CSP_REPORT_PATH, buildPolicy, reportingEndpoints, scriptHash } from "./csp.mjs";
 import { receiveCspReport } from "./csp-report.mjs";
+import { isProbeKey, PROBE_PRINCIPAL, probeCaller } from "./agent-keys.mjs";
+import { readCappedBytes } from "./body.mjs";
 import { applyHeaderSet, buildSecurityHeaders } from "./headers.mjs";
 import { limit } from "./rate-limit/limit.mjs";
 import { sha256Hex } from "./encoding.mjs";
@@ -300,6 +302,7 @@ export function mcpScopes(prefix) {
  */
 export function callerName(caller) {
   if (caller.kind === "person") return `access:${caller.email}`;
+  if (caller.kind === "probe") return `probe:${caller.principal}`;
   return caller.kind === "admin" ? `access:${caller.props.email}` : `agent:${caller.principal}`;
 }
 
@@ -349,6 +352,7 @@ export function toolsForGrant(tools, held, scopes) {
 export function authorizeCall(env, caller, scope, { site, scopes }) {
   if (scope !== scopes.read && scope !== scopes.write) return "Refused: this tool declares no scope, so it does not run. This is a fault in the server, not the connection.";
   if (!caller) return "Refused: no caller identity reached this tool call. Connect again through the OAuth flow.";
+  if (caller.kind === "probe") return `Refused: this is the list-only test key for ${site}. It can list tools and never runs one.`;
   if (caller.kind === "admin" && !isAdminUser(env, caller.props)) {
     return `Refused: this grant does not belong to the administrator of ${site}, so it owns none of the records this tool names.`;
   }
@@ -483,7 +487,9 @@ export async function invokeTool(env, server, { caller, tool, args, meta, signal
  * @returns {T[]}
  */
 export function registerTools(mcp, tools, { env, server, caller, icons, config, run }) {
-  const listed = toolsForGrant(tools, caller?.scopes ?? [], server.scopes);
+  // The list-only test key holds no scope, so it is listed what a read grant is listed (the live check's T7 reads that
+  // list) and authorizeCall refuses it whatever it calls.
+  const listed = toolsForGrant(tools, caller?.kind === "probe" ? [server.scopes.read] : caller?.scopes ?? [], server.scopes);
   const configOf = config ?? ((/** @type {any} */ tool) => tool.config);
   const runOf = run ?? ((/** @type {any} */ tool, /** @type {Record<string, unknown>} */ args, /** @type {AbortSignal | undefined} */ signal) => tool.handler(env, args, signal));
   for (const tool of listed) {
@@ -500,6 +506,97 @@ export function registerTools(mcp, tools, { env, server, caller, icons, config, 
     );
   }
   return listed;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// THE LIST-ONLY TEST KEY'S DOOR (./agent-keys `isProbeKey`). The key may open a connection and read the server's lists;
+// any other method is refused here, before the SDK sees the request, and logged. An allowlist, so a method added to the
+// protocol later is refused until it is named here.
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** The methods the list-only test key may send: the handshake, ping, the lists, and notifications. */
+export const PROBE_METHODS = new Set([
+  "initialize",
+  "ping",
+  "server/discover",
+  "tools/list",
+  "resources/list",
+  "resources/templates/list",
+  "prompts/list",
+  "notifications/initialized",
+  "notifications/cancelled", // codespell:ignore (the protocol's method name)
+]);
+
+/** The largest body the test key's door reads; nothing it may send comes near it. */
+const PROBE_BODY_MAX = 64 * 1024;
+
+/**
+ * The list-only test key's request, checked: `{ request }` to serve (the same request, its body already read), or
+ * `{ refusal }`, a 403 JSON-RPC error, for a body over 64 KiB or one naming any method `PROBE_METHODS` does not list.
+ * Each refused message is a `refused` row in the tool-call log, under `probe:live-check`, naming the tool a
+ * `tools/call` asked for. A body that is not JSON goes on, for the SDK's parse error, since it runs nothing.
+ * @param {Partial<import("./audit-log.d.mts").AuditEnv>} env
+ * @param {import("./mcp-server.d.mts").McpServerInfo} server
+ * @param {Request} request
+ * @returns {Promise<{ request: Request, refusal?: undefined } | { refusal: Response, request?: undefined }>}
+ */
+export async function probeRefusal(env, server, request) {
+  const refusal = (/** @type {unknown} */ id, /** @type {string} */ message) => ({
+    refusal: new Response(JSON.stringify({ jsonrpc: "2.0", id: id ?? null, error: { code: -32600, message } }), {
+      status: 403,
+      headers: { "content-type": "application/json", "cache-control": "no-store" },
+    }),
+  });
+  if (request.method !== "POST") return { request };
+  const bytes = await readCappedBytes(request, PROBE_BODY_MAX);
+  if (bytes === null) return refusal(null, "Refused: the list-only test key's request is too large.");
+  const text = new TextDecoder().decode(bytes);
+  const served = new Request(request, { body: text });
+  /** @type {unknown} */
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return { request: served };
+  }
+  const messages = (Array.isArray(body) ? body : [body]).filter((m) => m && typeof m === "object");
+  const refused = messages.filter((m) => !PROBE_METHODS.has(String(/** @type {{ method?: unknown }} */ (m).method ?? "")));
+  if (!refused.length) return { request: served };
+  const text403 = `Refused: this is the list-only test key for ${server.site}. It can list tools and never runs one.`;
+  for (const message of refused) {
+    const { method, params } = /** @type {{ method?: unknown, params?: { name?: unknown, _meta?: Record<string, unknown> } }} */ (message);
+    await recordAudit(env, {
+      callId: crypto.randomUUID(),
+      phase: "refused",
+      caller: `probe:${PROBE_PRINCIPAL}`,
+      tool: method === "tools/call" && typeof params?.name === "string" ? params.name : String(method ?? "no method"),
+      result: { isError: true, text: text403 },
+      server: { name: server.name, version: server.version },
+      correlationId: correlationId(params?._meta),
+    });
+  }
+  return refusal(/** @type {{ id?: unknown }} */ (refused[0]).id, text403);
+}
+
+/**
+ * The list-only test key's whole door, for a server's `/mcp` before its OAuth provider: null when the request does not
+ * carry the key (go on to OAuth). Otherwise the limiter, keyed on the key (fails closed; a limited request is a
+ * `rate-limited` row), then `probeRefusal`, then `serve(request, probeCaller())` with the checked request.
+ * @template {Partial<import("./audit-log.d.mts").AuditEnv>} E
+ * @param {Request} request
+ * @param {E} env
+ * @param {{ server: import("./mcp-server.d.mts").McpServerInfo, limiter: Parameters<typeof checkRateLimit>[0], serve: (request: Request, caller: { kind: "probe", principal: string, scopes: string[] }) => Promise<Response> }} options
+ * @returns {Promise<Response | null>}
+ */
+export async function probeDoor(request, env, { server, limiter, serve }) {
+  if (!(await isProbeKey(/** @type {Record<string, unknown>} */ (env), request.headers.get("authorization")))) return null;
+  const limit = await checkRateLimit(limiter, `probe:${PROBE_PRINCIPAL}`);
+  if (!limit.allowed) {
+    await recordAudit(env, { callId: crypto.randomUUID(), phase: "rate-limited", caller: `probe:${PROBE_PRINCIPAL}`, server: { name: server.name, version: server.version } });
+    return refuse(`Rate limited. ${server.site}'s MCP allows ${MCP_PER_MINUTE} requests a minute.`, 429, { "retry-after": String(limit.retryAfter) });
+  }
+  const checked = await probeRefusal(env, server, request);
+  return checked.refusal ?? serve(checked.request, probeCaller());
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

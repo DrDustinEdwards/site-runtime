@@ -85,7 +85,9 @@ export type McpCaller =
   | { kind: "admin"; props: { email: string } & Record<string, unknown>; scopes: readonly string[] }
   | { kind: "agent"; principal: string; scopes: readonly string[] }
   /** Someone the server's own door verified (a server with several people); only the grant's scopes are checked. */
-  | { kind: "person"; email: string; clientId?: string; scopes: readonly string[] };
+  | { kind: "person"; email: string; clientId?: string; scopes: readonly string[] }
+  /** The list-only test key (./agent-keys `probeCaller`): listed what a read grant is, refused every call. */
+  | { kind: "probe"; principal: string; scopes: readonly string[] };
 
 /** One server, as refusals, the step-up challenge and the log name it. */
 export interface McpServerInfo {
@@ -187,3 +189,21 @@ export function toolListHash(tools: ReadonlyArray<Record<string, unknown>>): Pro
 export type CacheableMethod = "tools/list" | "prompts/list" | "resources/list" | "resources/templates/list" | "resources/read" | "server/discover";
 /** The SDK's `cacheHints` option: every cacheable result `ttlMs` (default 60000), private unless named in `shared`. */
 export function mcpCacheHints(options?: { ttlMs?: number; shared?: readonly CacheableMethod[] }): Record<CacheableMethod, { ttlMs: number; cacheScope: "public" | "private" }>;
+/** The methods the list-only test key may send: the handshake, ping, the lists, and notifications. */
+export const PROBE_METHODS: ReadonlySet<string>;
+/** The test key's request to serve (body already read), or a logged 403 JSON-RPC refusal for any other method. */
+export function probeRefusal(
+  env: Partial<AuditEnv>,
+  server: McpServerInfo,
+  request: Request,
+): Promise<{ request: Request; refusal?: undefined } | { refusal: Response; request?: undefined }>;
+/** The test key's whole door before OAuth: null without the key, else the limiter, `probeRefusal`, then `serve`. */
+export function probeDoor<E extends Partial<AuditEnv>>(
+  request: Request,
+  env: E,
+  options: {
+    server: McpServerInfo;
+    limiter: Parameters<typeof checkRateLimit>[0];
+    serve: (request: Request, caller: { kind: "probe"; principal: string; scopes: string[] }) => Promise<Response>;
+  },
+): Promise<Response | null>;

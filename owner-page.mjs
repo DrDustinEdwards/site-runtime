@@ -21,7 +21,7 @@
  */
 
 import { accessSaas, authorizationUrl, finishSignIn, newSignIn } from "./access-login.mjs";
-import { AGENT_KEY_PREFIX, agentKeyNames } from "./agent-keys.mjs";
+import { AGENT_KEY_PREFIX, agentKeyNames, PROBE_KEY_SECRET } from "./agent-keys.mjs";
 import { correlationId, recordAudit } from "./audit-log.mjs";
 import { readCapped } from "./body.mjs";
 import { safeEqual } from "./compare.mjs";
@@ -168,9 +168,9 @@ function resultLine(json) {
 
 /**
  * The page. Everything a client or a caller chose (a client name, a tool's result) is escaped.
- * @param {{ name: string, email: string, csrf: string, grants: GrantSummary[], keys: string[], log: AuditLogRow[] | null | "owner", before: number | null, notice: string }} view
+ * @param {{ name: string, email: string, csrf: string, grants: GrantSummary[], keys: string[], probe: boolean, log: AuditLogRow[] | null | "owner", before: number | null, notice: string }} view
  */
-function page({ name, email, csrf, grants, keys, log, before, notice }) {
+function page({ name, email, csrf, grants, keys, probe, log, before, notice }) {
   const server = escape(name);
   const token = `<input type="hidden" name="csrf" value="${escape(csrf)}">`;
   const grantRows = grants
@@ -216,6 +216,7 @@ ${
     ? `<p>Agents that sign in with a key instead of OAuth. A key is revoked by deleting its Worker secret.</p>\n<ul>\n${keyRows}\n</ul>`
     : "<p>This server holds no agent keys.</p>"
 }
+${probe ? `<p>The list-only test key is set (Worker secret <code>${PROBE_KEY_SECRET}</code>): it can list tools and runs none. Deleting the secret revokes it.</p>` : ""}
 <h2>Tool calls${before ? " (older)" : ""}</h2>
 ${
   log === null
@@ -350,7 +351,7 @@ export function ownerPage({ name, admit, server, readsLog = () => true }) {
         let log = null;
         if (env.TOOL_CALL_LOG) log = signedIn.log ? await readAuditLog(env, { before: before ?? undefined }) : "owner";
         const notice = url.searchParams.get("revoked") ? "Grant revoked." : "";
-        const html = page({ name, email: signedIn.email, csrf: signedIn.csrf, grants: await listOwnerGrants(env.OAUTH_PROVIDER, signedIn.email), keys: agentKeyNames(env), log, before, notice });
+        const html = page({ name, email: signedIn.email, csrf: signedIn.csrf, grants: await listOwnerGrants(env.OAUTH_PROVIDER, signedIn.email), keys: agentKeyNames(env), probe: Boolean(env.MCP_PROBE_KEY?.trim()), log, before, notice });
         return respond(html, 200, "text/html; charset=utf-8");
       }
       if (request.method !== "POST" || (url.pathname !== `${OWNER_PATH}/revoke` && url.pathname !== `${OWNER_PATH}/sign-out`)) return respond("Not found.", 404);
