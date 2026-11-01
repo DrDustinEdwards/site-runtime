@@ -13,6 +13,11 @@
  *   does not say which key matched or where it sat.
  * - LEAST SCOPE. An agent holds the read scope; the write scope only when `AGENT_WRITE` (names separated by commas)
  *   lists it. What an agent may then do is the server's (./mcp-server `authorizeCall`, Carrel's people table).
+ * - THE LIST-ONLY TEST KEY. A server too sensitive for an agent key (an admin server, a money app) can still let the
+ *   daily live check in: the Worker secret `MCP_PROBE_KEY` is a key that connects and lists tools and runs none
+ *   (Dustin 2026-11-01, "do the best practice": RFC 9700 2.3, a token's privileges "restricted to the minimum
+ *   required"). Its caller holds no scope, `authorizeCall` refuses its every call, and the door refuses any method
+ *   but a handshake or a list before the SDK runs (./mcp-server `probeRefusal`).
  */
 
 import { safeEqual } from "./compare.mjs";
@@ -84,4 +89,34 @@ export function agentScopes(env, principal, scopes) {
 export async function agentCaller(env, authorization, scopes) {
   const principal = await agentPrincipal(env, authorization);
   return principal ? { kind: "agent", principal, scopes: agentScopes(env, principal, scopes) } : null;
+}
+
+/** The Worker secret holding a server's list-only test key. */
+export const PROBE_KEY_SECRET = "MCP_PROBE_KEY";
+/** The name the list-only test key is logged under. */
+export const PROBE_PRINCIPAL = "live-check";
+/** The shortest test key admitted, so a short or placeholder secret is never a key (a 32-byte key is 43 characters). */
+const PROBE_KEY_MIN = 32;
+
+/**
+ * True when the header carries the server's list-only test key. Fails closed: no `MCP_PROBE_KEY`, a blank one or one
+ * under 32 characters admits nothing, and the comparison is constant time.
+ * @param {Record<string, unknown>} env
+ * @param {string | null | undefined} authorization
+ * @returns {Promise<boolean>}
+ */
+export async function isProbeKey(env, authorization) {
+  const presented = bearerToken(authorization);
+  const key = typeof env[PROBE_KEY_SECRET] === "string" ? String(env[PROBE_KEY_SECRET]).trim() : "";
+  if (!presented || key.length < PROBE_KEY_MIN) return false;
+  return safeEqual(presented, key);
+}
+
+/**
+ * The caller the list-only test key makes: no scope, so every scope check refuses it, and ./mcp-server's
+ * `registerTools` lists it what a read grant is listed.
+ * @returns {{ kind: "probe", principal: string, scopes: string[] }}
+ */
+export function probeCaller() {
+  return { kind: "probe", principal: PROBE_PRINCIPAL, scopes: [] };
 }

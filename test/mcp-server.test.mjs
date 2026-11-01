@@ -6,6 +6,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { isProbeKey, probeCaller } from "../agent-keys.mjs";
+
 import {
   ApiLegError,
   audienceRefusal,
@@ -16,6 +18,7 @@ import {
   mcpOriginRefusal,
   mcpScopes,
   outsideResult,
+  probeRefusal,
   registerTools,
   routeMcpEra,
   toolListHash,
@@ -181,6 +184,43 @@ test("registerTools lists only what the grant can call, in order, with the serve
   const signal = new AbortController().signal;
   await registered[1].callback({}, { mcpReq: { _meta: {}, signal } });
   assert.deepEqual(signals, [signal]);
+});
+
+test("PLANT: the list-only test key lists what a read grant sees and runs nothing, whatever it sends", async () => {
+  const key = "p".repeat(43);
+  assert.equal(await isProbeKey({ MCP_PROBE_KEY: key }, `Bearer ${key}`), true);
+  // A short or absent secret is never a key, and another token is not this one.
+  assert.equal(await isProbeKey({ MCP_PROBE_KEY: "short" }, "Bearer short"), false);
+  assert.equal(await isProbeKey({}, `Bearer ${key}`), false);
+  assert.equal(await isProbeKey({ MCP_PROBE_KEY: key }, `Bearer ${"q".repeat(43)}`), false);
+
+  const log = auditLog();
+  const env = { TOOL_CALL_LOG: log.TOOL_CALL_LOG };
+  const post = (/** @type {unknown} */ body) => new Request("https://sample.example.com/mcp", { method: "POST", body: JSON.stringify(body) });
+  const listing = await probeRefusal(env, SERVER, post([{ jsonrpc: "2.0", id: 1, method: "initialize" }, { jsonrpc: "2.0", id: 2, method: "tools/list" }]));
+  assert.ok(listing.request && !listing.refusal);
+  assert.match(await listing.request.text(), /tools\/list/);
+  // A call hidden in a batch beside a list is refused before the SDK, and logged under the key's name.
+  const call = await probeRefusal(env, SERVER, post([{ jsonrpc: "2.0", id: 3, method: "tools/list" }, { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "r" } }]));
+  assert.equal(call.refusal?.status, 403);
+  assert.equal((await call.refusal?.json()).id, 4);
+  assert.deepEqual(log.rows.map((r) => [r.phase, r.caller, r.tool]), [["refused", "probe:live-check", "r"]]);
+  assert.equal((await probeRefusal(env, SERVER, post({ jsonrpc: "2.0", id: 5, method: "resources/read" }))).refusal?.status, 403);
+
+  // Past the door, it is listed the read tools only, and a call that got there anyway is refused and logged.
+  /** @type {Array<{ name: string, callback: Function }>} */
+  const registered = [];
+  let ran = 0;
+  const tools = [
+    { name: "w", scope: "write", config: {}, handler: async () => (ran++, { content: [] }) },
+    { name: "r", scope: "read", config: {}, handler: async () => (ran++, { content: [] }) },
+  ];
+  registerTools({ registerTool: (name, _config, callback) => registered.push({ name, callback }) }, tools, { env, server: SERVER, caller: probeCaller() });
+  assert.deepEqual(registered.map((t) => t.name), ["r"]);
+  const result = await registered[0].callback({}, { mcpReq: { _meta: {} } });
+  assert.match(result.content[0].text, /list-only test key/);
+  assert.equal(ran, 0);
+  assert.equal(authorizeCall({}, probeCaller(), SERVER.scopes.read, SERVER)?.startsWith("Refused"), true);
 });
 
 test("PLANT: the tool-list rules catch each item, pass a clean tool, and the pin moves only when the list does", async () => {

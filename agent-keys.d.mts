@@ -15,3 +15,11 @@ export function agentCaller(
   authorization: string | null | undefined,
   scopes: { read: string; write: string },
 ): Promise<{ kind: "agent"; principal: string; scopes: string[] } | null>;
+/** The Worker secret holding a server's list-only test key. */
+export const PROBE_KEY_SECRET: "MCP_PROBE_KEY";
+/** The name the list-only test key is logged under. */
+export const PROBE_PRINCIPAL: "live-check";
+/** True when the header carries the `MCP_PROBE_KEY` test key (constant time; no, blank or short secret admits nothing). */
+export function isProbeKey(env: object, authorization: string | null | undefined): Promise<boolean>;
+/** The list-only test key's caller: no scope, listed what a read grant is, refused every call. */
+export function probeCaller(): { kind: "probe"; principal: string; scopes: string[] };

@@ -2092,3 +2092,25 @@ const caller = await agentCaller(env, request.headers.get("Authorization"), SCOP
 - `agentScopes(env, principal, scopes)` is read, and write when `AGENT_WRITE` (comma-separated) names the agent.
   `bearerToken(header)` is the token alone. Capsid's minted agents (a D1 row per key) are a different model and stay
   Capsid's.
+
+### The list-only test key
+
+A server too sensitive for an agent key (an admin server, a money app) can still let the daily live check in. The
+Worker secret `MCP_PROBE_KEY` is a key that connects and lists tools and runs none: a token's privileges "restricted to
+the minimum required" (RFC 9700, section 2.3), and the live check only lists tools.
+
+```js
+import { isProbeKey, probeCaller } from "@dustinedwards/site-runtime/agent-keys";
+import { probeRefusal, registerTools } from "@dustinedwards/site-runtime/mcp-server";
+if (await isProbeKey(env, request.headers.get("Authorization"))) {
+  const checked = await probeRefusal(env, SERVER, request); // a logged 403 for anything but the handshake, ping or a list
+  if (checked.refusal) return checked.refusal;
+  // serve checked.request with probeCaller(): registerTools lists it the read tools, and authorizeCall refuses every call
+}
+```
+
+- `isProbeKey` compares in constant time; no secret, a blank one or one under 32 characters admits nothing.
+- `probeRefusal` is an allowlist (`PROBE_METHODS`: initialize, ping, server/discover, the four lists and two
+  notifications), so a method the protocol adds later is refused until it is named. Each refused message is a
+  `refused` row under `probe:live-check`.
+- `probeCaller()` holds no scope, so any scope check refuses it. The owner page says whether the key is set.

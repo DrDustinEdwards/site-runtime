@@ -15,6 +15,8 @@ export interface OwnerEnv extends AccessEnv, Partial<AuditEnv> {
   PUBLIC_ORIGIN?: string;
   OAUTH_PROVIDER: OAuthHelpers;
   OAUTH_KV: OwnerKv;
+  /** The list-only test key (./agent-keys `isProbeKey`); the page says whether it is set, never its value. */
+  MCP_PROBE_KEY?: string;
 }
 
 /** A tool-call log row as `readAuditLog` returns it (the table's columns, without the hash). */
