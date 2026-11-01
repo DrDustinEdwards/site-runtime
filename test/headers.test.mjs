@@ -126,8 +126,7 @@ test("the static _headers file leaves out the policy and detaches a header a pat
 
 test("a value over Cloudflare's 2000-character line limit is written on several lines, cut at its top-level commas", async () => {
   const { headersFile } = await import("../headers.mjs");
-  const { permissionsAllowingEmbeds } = await import("../embeds.mjs");
-  const value = permissionsAllowingEmbeds("camera=(), autoplay=()");
+  const value = `camera=(), ${["autoplay", "fullscreen", "encrypted-media", "picture-in-picture"].map((f) => `${f}=(self ${Array.from({ length: 30 }, (_, i) => `"https://player${i}.example.com"`).join(" ")})`).join(", ")}`;
   assert.ok(value.length > 2000);
   const file = headersFile({ "Permissions-Policy": value });
   const lines = file.split("\n").filter((l) => l.startsWith("  Permissions-Policy: "));
