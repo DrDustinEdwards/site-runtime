@@ -108,8 +108,9 @@ host, TikTok, Spotify, SoundCloud, Apple Podcasts, Amazon Music on each of its d
 Instagram, Dustin's list of 2026-10-31), and `EMBED_FEATURES`, what a player's iframe asks for (autoplay,
 encrypted-media, fullscreen, picture-in-picture). A site whose posts embed them declares the `embeds` opt-in in its entry:
 
-- `buildSecurityHeaders({ site })` allows the four features for the site and the players (`permissionsAllowingEmbeds`),
-  where OSHP denies them, so a player can play on the click that loaded it, play protected audio and go full screen.
+- `buildSecurityHeaders({ site })` sets the four features to `*` (`permissionsAllowingEmbeds`), where OSHP denies them. The
+  header is the widest set and each player's iframe `allow` picks from it (MDN, W3C Permissions Policy); `frame-src` is
+  what limits the origins, so the header stays short however many players there are.
 - `buildContentSecurityPolicy({ embeds: true })` adds the players to `frame-src`; a static site's page policy does it
   from the entry. The check holds a site that declares `embeds` to every player in its frame-src (C16).
 - No player sends Cross-Origin-Embedder-Policy, so an enforced COEP refuses each one: an entry with `embeds` and an
