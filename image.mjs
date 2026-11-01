@@ -350,6 +350,10 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
     }
     keyUrl.searchParams.set("__q", String(quality));
     keyUrl.searchParams.set("__v", object.httpEtag);
+    // The Cache-Control the site chose goes in too: a site may pick it per request (dustinedwards.info caches a static
+    // photo for good only under its current `v`), and a size stored under one policy must not answer under another.
+    // A site passes a fixed few values, so this mints no transforms.
+    keyUrl.searchParams.set("__cc", cacheControl);
     const cacheKey = new Request(keyUrl.toString(), { method: "GET" });
     const hit = cache ? await cache.match(cacheKey) : undefined;
     if (hit) return hit;

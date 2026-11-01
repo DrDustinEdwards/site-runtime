@@ -249,3 +249,12 @@ test("over Cloudflare's 1,200 px AVIF limit the AVIF source names the WebP, and 
   assert.equal(res.headers.get("location"), "/media/w.jpg.webp?v=abc123&w=2048");
   assert.match(res.headers.get("cache-control") ?? "", /immutable/);
 });
+
+test("a size cached under one Cache-Control never answers under another (the site may pick it per request)", async () => {
+  const store = new Map();
+  const cache = /** @type {Cache} */ (/** @type {unknown} */ ({ match: async (/** @type {Request} */ k) => store.get(k.url)?.clone(), put: async (/** @type {Request} */ k, /** @type {Response} */ r) => void store.set(k.url, r) }));
+  const at = () => new Request("https://example.com/media/a.jpg.webp?v=abc123&w=640");
+  await images.respond(at(), { object: object(), images: binding([]), cache, cacheControl: "public, max-age=86400" });
+  const res = await images.respond(at(), { object: object(), images: binding([]), cache, cacheControl: "public, max-age=31536000, immutable" });
+  assert.equal(res.headers.get("cache-control"), "public, max-age=31536000, immutable");
+});
