@@ -1960,9 +1960,22 @@ clientRegistrationCallback: ({ clientMetadata }) => {
   alert, it fails when a call's `finished` row is 15 minutes late (the log stopped hearing of a call), when calls in
   the last hour pass `spikePerHour` (600), or when rows have waited two days for a copy. The daily check reads it (L8).
 
+- **The owner page** (`./owner-page`, checklist A15 and L9). `loginHandler` serves `/owner` on every server it fronts
+  (`owner: false` turns it off): the admitted person signs in through the same Access round trip and `/callback` (its
+  state starts `owner.`, and a cookie binds it to the browser that started it), then sees their grants with a Revoke
+  button for each, the agent keys the Worker holds (names only; a key is revoked by deleting its secret) and the
+  tool-call log, 50 rows a page, newest first (a server with several people passes `owner: { readsLog(env, email) }`, so
+  only its owner reads everyone's calls). The session is a random id in a `__Host-` cookie, kept hashed in
+  `OAUTH_KV` for 30 minutes; a revoke or sign-out is a POST that must come from the page's own origin with the
+  session's CSRF token, and a revoke writes a `revoked` row. Its one inline style is `OWNER_STYLE`, which
+  `withMcpHeaders` trusts by hash beside `CONSENT_STYLE`. A server with its own pages (Capsid's Portal, Carrel's Desk)
+  reads the same data with `listOwnerGrants(env.OAUTH_PROVIDER, userId)`, `revokeOwnerGrant(env, oauth, { userId,
+  grantId, caller, server })`, `readAuditLog(env, { before, limit })` and `agentKeyNames(env)` from `./agent-keys`.
+
 **Tests.** `test/mcp-login.test.mjs` runs the handler against a fake provider and a fake Access. The scope from the box,
 the administrator check, the exact registration match and the registration limit were each removed once and seen to fail a
-test.
+test. `test/owner-page.test.mjs` runs the owner page through `loginHandler`; the browser binding of its sign-in and the
+same-origin check on a revoke were each removed once and seen to fail it.
 
 ## The AI and MCP live check
 

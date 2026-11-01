@@ -50,6 +50,19 @@ export async function agentPrincipal(env, authorization) {
 }
 
 /**
+ * The agent names the Worker holds a usable key for, sorted: what an owner page lists. Never the keys.
+ * @param {Record<string, unknown>} env
+ * @returns {string[]}
+ */
+export function agentKeyNames(env) {
+  return Object.entries(env)
+    .filter(([secret, value]) => secret.startsWith(AGENT_KEY_PREFIX) && typeof value === "string" && value.trim())
+    .map(([secret]) => secret.slice(AGENT_KEY_PREFIX.length).toLowerCase())
+    .filter((name) => AGENT_NAME.test(name))
+    .sort();
+}
+
+/**
  * The scopes an agent holds: read, and write when `AGENT_WRITE` names it.
  * @param {{ AGENT_WRITE?: string }} env
  * @param {string} principal

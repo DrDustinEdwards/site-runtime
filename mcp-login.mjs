@@ -25,6 +25,7 @@ import { correlationId, recordAudit } from "./audit-log.mjs";
 import { readCapped } from "./body.mjs";
 import { healthResponse } from "./health.mjs";
 import { escapeHtml as escape } from "./html.mjs";
+import { ownerPage } from "./owner-page.mjs";
 
 /** @typedef {import("./mcp-login.d.mts").LoginEnv} LoginEnv */
 /** @typedef {import("@cloudflare/workers-oauth-provider").AuthRequest} AuthRequest */
@@ -129,8 +130,9 @@ const NOT_CONFIGURED =
   "ACCESS_SAAS_CLIENT_SECRET is unset. Not configured means not open.";
 
 /**
- * The provider's defaultHandler: /health, the consent page and its form on /authorize, and the Access /callback. A
- * missing Access setting answers 503 on every sign-in route.
+ * The provider's defaultHandler: /health, the consent page and its form on /authorize, the Access /callback, and the
+ * owner page on /owner (./owner-page) unless `owner` is false. A missing Access setting answers 503 on every sign-in
+ * route.
  * @template {LoginEnv} E
  * @param {import("./mcp-login.d.mts").LoginOptions<E>} options
  */
@@ -147,8 +149,11 @@ export function loginHandler({
   health = (env) => healthResponse({ sha: env.DEPLOY_SHA }),
   audit,
   revokeExistingGrants = true,
+  owner = true,
 }) {
   const serverName = escape(name);
+  // The owner page (A15, L9) shares the sign-in and the admission check, and its sign-in comes back to /callback.
+  const ownerRoutes = owner ? ownerPage({ name, admit, server: audit, ...(typeof owner === "object" ? owner : {}) }) : null;
 
   /**
    * One sign-in row, when the server keeps the log. A sign-in changes nothing, so a failed write is only reported.
@@ -288,7 +293,11 @@ ${target.local ? `<p><strong>${LOCAL_REDIRECT_WARNING[0]}</strong> ${LOCAL_REDIR
         if (pathname === "/health") return await health(env);
         if (pathname === "/authorize" && request.method === "GET") return await authorizeGet(request, env);
         if (pathname === "/authorize" && request.method === "POST") return await authorizePost(request, env);
-        if (pathname === "/callback" && request.method === "GET") return await callback(request, env);
+        if (pathname === "/callback" && request.method === "GET") {
+          return ownerRoutes?.isOwnerCallback(request) ? await ownerRoutes.callback(request, env) : await callback(request, env);
+        }
+        const owned = await ownerRoutes?.fetch(request, env);
+        if (owned) return owned;
         return text("Not found.", 404);
       } catch (error) {
         // Redirect only to a validated client; render the rest.

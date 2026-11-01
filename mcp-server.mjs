@@ -14,6 +14,7 @@ import { applyHeaderSet, buildSecurityHeaders } from "./headers.mjs";
 import { limit } from "./rate-limit/limit.mjs";
 import { sha256Hex } from "./encoding.mjs";
 import { CONSENT_STYLE, isAdminUser } from "./mcp-login.mjs";
+import { OWNER_STYLE } from "./owner-page.mjs";
 import { originRefusal, originVerdict } from "./origin.mjs";
 import { securityTxtResponse } from "./security-txt.mjs";
 
@@ -61,7 +62,7 @@ export async function routeMcpEra(request, env, ctx, { factory, options, createM
 // ---------------------------------------------------------------------------------------------------------------------
 
 const REPORT_GROUP = CSP_REPORT_GROUP;
-/** The consent style's hash, once per isolate. @type {Promise<string> | undefined} */
+/** The consent and owner styles' hashes as a style-src list, once per isolate. @type {Promise<string> | undefined} */
 let consentHash;
 
 /**
@@ -100,8 +101,8 @@ export function withMcpHeaders(handler, { site, securityTxt, reportPath = CSP_RE
     const { headers } = out;
     if (!/(^|,)\s*no-store\s*(,|$)/i.test(headers.get("Cache-Control") ?? "")) headers.set("Cache-Control", "no-store");
     if (/^\s*text\/html/i.test(headers.get("Content-Type") ?? "")) {
-      consentHash ??= scriptHash(CONSENT_STYLE);
-      headers.set("Content-Security-Policy", buildPolicy(["default-src 'none'", `style-src '${await consentHash}'`, "base-uri 'none'", "frame-ancestors 'none'", types, ...sinks]));
+      consentHash ??= Promise.all([scriptHash(CONSENT_STYLE), scriptHash(OWNER_STYLE)]).then((hashes) => hashes.map((hash) => `'${hash}'`).join(" "));
+      headers.set("Content-Security-Policy", buildPolicy(["default-src 'none'", `style-src ${await consentHash}`, "base-uri 'none'", "frame-ancestors 'none'", types, ...sinks]));
     } else {
       headers.set("Content-Security-Policy", nonHtml);
     }
