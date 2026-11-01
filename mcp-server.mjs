@@ -487,9 +487,13 @@ export async function invokeTool(env, server, { caller, tool, args, meta, signal
  * @returns {T[]}
  */
 export function registerTools(mcp, tools, { env, server, caller, icons, config, run }) {
-  // The list-only test key holds no scope, so it is listed what a read grant is listed (the live check's T7 reads that
-  // list) and authorizeCall refuses it whatever it calls.
-  const listed = toolsForGrant(tools, caller?.kind === "probe" ? [server.scopes.read] : caller?.scopes ?? [], server.scopes);
+  // The list-only test key holds no scope, so it is listed the tools a read grant can always call: those whose declared
+  // scope is read, not one whose action decides (the live check's T7 reads that list and wants every tool read-only).
+  // authorizeCall refuses it whatever it calls.
+  const listed =
+    caller?.kind === "probe"
+      ? tools.filter((tool) => typeof tool.scope !== "function" && toolScope(tool, {}, server.scopes) === server.scopes.read)
+      : toolsForGrant(tools, caller?.scopes ?? [], server.scopes);
   const configOf = config ?? ((/** @type {any} */ tool) => tool.config);
   const runOf = run ?? ((/** @type {any} */ tool, /** @type {Record<string, unknown>} */ args, /** @type {AbortSignal | undefined} */ signal) => tool.handler(env, args, signal));
   for (const tool of listed) {
@@ -509,20 +513,33 @@ export function registerTools(mcp, tools, { env, server, caller, icons, config, 
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// THE LIST-ONLY TEST KEY'S DOOR (./agent-keys `isProbeKey`). The key may open a connection and read the server's lists;
-// any other method is refused here, before the SDK sees the request, and logged. An allowlist, so a method added to the
-// protocol later is refused until it is named here.
+// THE LIST-ONLY TEST KEY'S DOOR (./agent-keys `isProbeKey`). The key may open a connection, read the server's lists and
+// send a tools/call that the server refuses; any other method is answered here, before the SDK sees the request, as the
+// method a server does not have (404, -32601), and logged. An allowlist, so a method added to the protocol later is
+// refused until it is named here.
+//
+// WHY tools/call PASSES. The protocol layer validates a request before it dispatches it: a Mcp-Method or Mcp-Name header
+// that does not match the body is a 400 (-32020, SEP-2243), a method the server lacks a 404 (-32601, SEP-2575). A door
+// that refused tools/call first answered those 403 and broke both MUSTs (conformance P3/P4 on 2026-11-01). Past the
+// SDK's checks the call reaches a tool the key was listed (only read tools are, `registerTools`), and `invokeTool`
+// refuses the probe caller before `run`, in words, with a `refused` row: the same answer an agent key gets for a tool
+// outside its scope. So the key still runs nothing, and the door no longer stands in for the protocol's own answers.
 // ---------------------------------------------------------------------------------------------------------------------
 
-/** The methods the list-only test key may send: the handshake, ping, the lists, and notifications. */
+/**
+ * The methods the list-only test key may send on to the server: the handshake, ping, the lists, the list-changed
+ * stream, tools/call (refused by `invokeTool`, see above) and notifications.
+ */
 export const PROBE_METHODS = new Set([
   "initialize",
   "ping",
   "server/discover",
   "tools/list",
+  "tools/call",
   "resources/list",
   "resources/templates/list",
   "prompts/list",
+  "subscriptions/listen",
   "notifications/initialized",
   "notifications/cancelled", // codespell:ignore (the protocol's method name)
 ]);
@@ -532,24 +549,26 @@ const PROBE_BODY_MAX = 64 * 1024;
 
 /**
  * The list-only test key's request, checked: `{ request }` to serve (the same request, its body already read), or
- * `{ refusal }`, a 403 JSON-RPC error, for a body over 64 KiB or one naming any method `PROBE_METHODS` does not list.
- * Each refused message is a `refused` row in the tool-call log, under `probe:live-check`, naming the tool a
- * `tools/call` asked for. A body that is not JSON goes on, for the SDK's parse error, since it runs nothing.
+ * `{ refusal }`: a 403 JSON-RPC error for a body over 64 KiB, and for a message naming a method `PROBE_METHODS` does not
+ * list a 404 with -32601 (Method not found), what the protocol answers for a method the server does not have, since for
+ * this key it has none. A refused notification is a 403, as it has no id to answer. Each refused message is a `refused`
+ * row in the tool-call log, under `probe:live-check`, naming the method. A body that is not JSON goes on, for the SDK's
+ * parse error, since it runs nothing.
  * @param {Partial<import("./audit-log.d.mts").AuditEnv>} env
  * @param {import("./mcp-server.d.mts").McpServerInfo} server
  * @param {Request} request
  * @returns {Promise<{ request: Request, refusal?: undefined } | { refusal: Response, request?: undefined }>}
  */
 export async function probeRefusal(env, server, request) {
-  const refusal = (/** @type {unknown} */ id, /** @type {string} */ message) => ({
-    refusal: new Response(JSON.stringify({ jsonrpc: "2.0", id: id ?? null, error: { code: -32600, message } }), {
-      status: 403,
+  const refusal = (/** @type {unknown} */ id, /** @type {number} */ status, /** @type {number} */ code, /** @type {string} */ message) => ({
+    refusal: new Response(JSON.stringify({ jsonrpc: "2.0", id: id ?? null, error: { code, message } }), {
+      status,
       headers: { "content-type": "application/json", "cache-control": "no-store" },
     }),
   });
   if (request.method !== "POST") return { request };
   const bytes = await readCappedBytes(request, PROBE_BODY_MAX);
-  if (bytes === null) return refusal(null, "Refused: the list-only test key's request is too large.");
+  if (bytes === null) return refusal(null, 403, -32600, "Refused: the list-only test key's request is too large.");
   const text = new TextDecoder().decode(bytes);
   const served = new Request(request, { body: text });
   /** @type {unknown} */
@@ -562,20 +581,22 @@ export async function probeRefusal(env, server, request) {
   const messages = (Array.isArray(body) ? body : [body]).filter((m) => m && typeof m === "object");
   const refused = messages.filter((m) => !PROBE_METHODS.has(String(/** @type {{ method?: unknown }} */ (m).method ?? "")));
   if (!refused.length) return { request: served };
-  const text403 = `Refused: this is the list-only test key for ${server.site}. It can list tools and never runs one.`;
+  const words = `Refused: this is the list-only test key for ${server.site}. It can list tools and never runs one.`;
   for (const message of refused) {
-    const { method, params } = /** @type {{ method?: unknown, params?: { name?: unknown, _meta?: Record<string, unknown> } }} */ (message);
+    const { method, params } = /** @type {{ method?: unknown, params?: { _meta?: Record<string, unknown> } }} */ (message);
     await recordAudit(env, {
       callId: crypto.randomUUID(),
       phase: "refused",
       caller: `probe:${PROBE_PRINCIPAL}`,
-      tool: method === "tools/call" && typeof params?.name === "string" ? params.name : String(method ?? "no method"),
-      result: { isError: true, text: text403 },
+      tool: String(method ?? "no method"),
+      result: { isError: true, text: words },
       server: { name: server.name, version: server.version },
       correlationId: correlationId(params?._meta),
     });
   }
-  return refusal(/** @type {{ id?: unknown }} */ (refused[0]).id, text403);
+  const first = /** @type {{ id?: unknown }} */ (refused[0]);
+  // A request is answered as the method a server does not have (SEP-2575: 404 and -32601); a notification has no id.
+  return first.id === undefined ? refusal(null, 403, -32600, words) : refusal(first.id, 404, -32601, `Method not found. ${words}`);
 }
 
 /**
