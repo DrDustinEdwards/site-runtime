@@ -1000,8 +1000,10 @@ const auth = betterAuth({
   `SESSION_TOUCH_SECONDS` (five minutes; `sessionTouch`, txasm's touch), after the answer through
   `runInBackgroundOrAwait`. So `lastActiveAt` in the sessions list is when it was last used, not when it signed in
   (refresh is off, so nothing else moves `updatedAt`; freshness counts from `createdAt`, so a touch never makes a
-  sign-in fresh). The place comes from the request's `cf`, so a site's own server-side read passes the request too:
-  `auth.api.getSession({ headers: request.headers, request, asResponse: false })`. A failed write is logged
+  sign-in fresh). The place comes from the request's `cf`, so a site's own server-side read passes the request too,
+  through `auth.api.getSession(sessionLookup(request))`: the request on a GET, never on a POST, and always
+  `asResponse: false`, without which Better Auth answers a call that carries a request with a Response, no `user`
+  in it, and every signed-in page reads the person as signed out (Foxing #169). A failed write is logged
   (`session_touch_failed`) and never fails the read. The site adds `SESSION_DETAILS_SQL` (`ALTER TABLE session ADD
   COLUMN location TEXT; ... device_id TEXT`, leaving out a column it has) and, with `eventsDb`, `AUTH_EVENTS_DEVICE_SQL`;
   in a Drizzle schema the session table gains `location: text("location")` and `deviceId: text("device_id")`. The

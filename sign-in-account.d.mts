@@ -78,6 +78,8 @@ export const DEVICE_COOKIE_SECONDS: number;
 export const SESSION_DETAILS_SQL: string;
 /** The `auth_events` column `device_id`, with `sessionDetails` and `eventsDb`. */
 export const AUTH_EVENTS_DEVICE_SQL: string;
+/** The argument for a site's own `auth.api.getSession` with `sessionDetails`: the request on a GET, always `asResponse: false`. */
+export function sessionLookup(request: Request): { headers: Headers; request?: Request; asResponse: false };
 /** What to write to a session on use (updatedAt, and the place when known), or null: at most every 5 minutes. */
 export function sessionTouch(
   session: { updatedAt?: Date | string | null; createdAt?: Date | string | null; location?: unknown },

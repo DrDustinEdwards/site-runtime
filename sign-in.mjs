@@ -144,6 +144,7 @@ export {
   requireFreshSession,
   revokeSessionById,
   securityHistory,
+  sessionLookup,
   sessionRows,
   sessionTouch,
   shouldOfferPasskey,
@@ -380,7 +381,7 @@ const SESSION_FIELDS = Object.freeze({
  * With `sessionDetails`, a session read through /get-session (the browser's useSession, or the site's
  * `auth.api.getSession`) moves its `updatedAt`, and fills its place, at most every SESSION_TOUCH_SECONDS (`sessionTouch`),
  * after the answer through Better Auth's `runInBackgroundOrAwait`. The place is the request's `cf`, so a site's own
- * `auth.api.getSession` passes the request as well: `getSession({ headers: request.headers, request, asResponse: false })`.
+ * `auth.api.getSession` passes the request as well, through `sessionLookup(request)`: `getSession(sessionLookup(request))`.
  * A failed write is logged (`session_touch_failed`) and never fails the read.
  */
 const SESSION_TOUCH = {

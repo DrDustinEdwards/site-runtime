@@ -134,6 +134,20 @@ export const AUTH_EVENTS_DEVICE_SQL = `ALTER TABLE auth_events ADD COLUMN device
 `;
 
 /**
+ * The argument for a site's own `auth.api.getSession` with `sessionDetails`: on a GET the request too, so the session's
+ * place follows the person; any other method leaves it out, so Better Auth never holds a POST's request. Always
+ * `asResponse: false`: given a request, Better Auth 1.7.12 answers with a Response unless told otherwise, and a
+ * Response has no `user`, so every signed-in page reads the person as signed out (Foxing #169, txasm).
+ * @param {Request} request
+ * @returns {{ headers: Headers, request?: Request, asResponse: false }}
+ */
+export function sessionLookup(request) {
+  return request.method === "GET"
+    ? { headers: request.headers, request, asResponse: false }
+    : { headers: request.headers, asResponse: false };
+}
+
+/**
  * What to write to a session on use, or null when nothing: `updatedAt` now once SESSION_TOUCH_SECONDS have passed since
  * the last write (with `location` when it is known), or at once when the row has no place yet and this request has one
  * (txasm's rule). Better Auth's sliding refresh is off (`./sign-in`), so nothing else moves `updatedAt`, and freshness

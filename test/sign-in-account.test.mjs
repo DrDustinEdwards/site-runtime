@@ -24,6 +24,7 @@ import {
   revokeSessionById,
   securityHistory,
   sendNoticeSafely,
+  sessionLookup,
   sessionTouch,
   shouldOfferPasskey,
   signedInDeviceIds,
@@ -257,3 +258,12 @@ test("the passkey list says when each passkey last signed in, and a Not now hold
 function recordAt(db, event, via, userId, passkeyId, at) {
   return db.prepare("INSERT INTO auth_events (at, event, change, via, user_id) VALUES (?1, ?2, ?3, ?4, ?5)").bind(at, event, passkeyId, via, userId).run();
 }
+
+// Better Auth answers a getSession that carries a request with a Response, no user in it, unless asResponse is false:
+// Foxing #169 and txasm read every signed-in person as signed out that way.
+test("a site's session read carries the request on a GET only, and always asks for the session itself", () => {
+  const page = new Request("https://example.com/account", { headers: { cookie: "session=1" } });
+  assert.deepEqual(sessionLookup(page), { headers: page.headers, request: page, asResponse: false });
+  const form = new Request("https://example.com/account", { method: "POST", headers: { cookie: "session=1" }, body: "x=1" });
+  assert.deepEqual(sessionLookup(form), { headers: form.headers, asResponse: false });
+});
