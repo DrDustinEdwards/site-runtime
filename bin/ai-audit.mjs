@@ -287,7 +287,7 @@ async function auditMcp() {
 
   if (!values["no-conformance"]) {
     const scenario = "authorization-server-metadata-endpoint";
-    judgeConformance(scenario, asUrl || issuer, await runConformance(["authorization", "--url", issuer, "--scenario", scenario, "--spec-version", VERSION]));
+    judgeConformance(scenario, asUrl || issuer, await runMcpConformance(["authorization", "--url", issuer, "--scenario", scenario, "--spec-version", VERSION]));
   }
 
   const grant = process.env[grantEnv]?.trim();
@@ -302,7 +302,7 @@ async function auditMcp() {
     try {
       for (const scenario of SERVER_SCENARIOS) {
         await sleep(WINDOW_MS);
-        judgeConformance(scenario, keyed, await runConformance(["server", "--url", proxy.url, "--scenario", scenario, "--spec-version", VERSION]));
+        judgeConformance(scenario, keyed, await runMcpConformance(["server", "--url", proxy.url, "--scenario", scenario, "--spec-version", VERSION]));
       }
     } finally {
       proxy.close();
@@ -436,8 +436,8 @@ async function grantProxy(/** @type {string} */ endpoint, /** @type {string} */ 
   return { url: `http://127.0.0.1:${address.port}/mcp`, close: () => server.close() };
 }
 
-/** Runs the pinned suite through npx, without the grant in its environment; the printed count, or why there is none. */
-function runConformance(/** @type {string[]} */ args) {
+/** Runs the pinned MCP conformance suite through npx, without the grant in its environment; the printed count, or why there is none. */
+function runMcpConformance(/** @type {string[]} */ args) {
   const env = { ...process.env };
   delete env[grantEnv];
   return new Promise((resolve) => {
