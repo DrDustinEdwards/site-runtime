@@ -11,6 +11,8 @@ export interface LoginEnv extends AccessEnv {
   /** The deployed commit, for the default /health's `sha`. */
   DEPLOY_SHA?: string;
   OAUTH_PROVIDER: OAuthHelpers;
+  /** The provider's KV namespace; the owner page keeps its sign-ins and sessions there. */
+  OAUTH_KV: import("./owner-page.d.mts").OwnerKv;
 }
 
 export type LoginOptions<E extends LoginEnv> = {
@@ -38,6 +40,11 @@ export type LoginOptions<E extends LoginEnv> = {
    * server with two connectors sharing one client id passes false, so signing into one does not sign out the other.
    */
   revokeExistingGrants?: boolean;
+  /**
+   * Default true: /owner serves the owner page (./owner-page), where the admitted person lists and revokes their grants
+   * and reads the tool-call log. Its sign-in returns through /callback. Needs OAUTH_KV.
+   */
+  owner?: boolean;
 };
 
 /**
@@ -48,7 +55,7 @@ export type LoginOptions<E extends LoginEnv> = {
 export function describeRedirect(uri: string): { host: string; local: boolean; warning: string | null };
 /** The consent page's one inline <style>, for the page's Content-Security-Policy hash. */
 export const CONSENT_STYLE: string;
-/** The provider's defaultHandler: /health, /authorize (consent page and form, urlencoded only, 64 KiB at most) and /callback. */
+/** The provider's defaultHandler: /health, /authorize (consent page and form, urlencoded only, 64 KiB at most), /callback and /owner. */
 export function loginHandler<E extends LoginEnv>(options: LoginOptions<E>): { fetch(request: Request, env: E): Promise<Response> };
 /** Whether `user.email` is ADMIN_EMAIL, compared without case. Unset admits nobody. */
 export function isAdminUser(env: { ADMIN_EMAIL?: string }, user: { email?: unknown }): boolean;

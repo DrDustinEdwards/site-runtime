@@ -11,7 +11,7 @@ export interface AuditRow {
   /** One tool call's id, shared by its rows; a fresh one for each other event. */
   callId: string;
   /** The event: a tool call's three, or one of the door's own. */
-  phase: "started" | "finished" | "refused" | "sign-in" | "scope-challenge" | "rate-limited";
+  phase: "started" | "finished" | "refused" | "sign-in" | "scope-challenge" | "rate-limited" | "revoked";
   /** A signed-in email or an agent principal, never a credential. */
   caller: string;
   /** The tool, for a tool call or a scope challenge; empty otherwise. */
@@ -29,8 +29,8 @@ export interface AuditRow {
 
 /**
  * The Durable Object class: rows are inserted and never updated; the one delete is retention, of copied rows only. Adds
- * the newer columns to an older table. Its paths (POST /export and /exported, GET /stats) are for `exportAuditLog` and
- * `auditLogCheck`; any other POST appends.
+ * the newer columns to an older table. Its paths (POST /export and /exported, GET /stats, GET /recent) are for `exportAuditLog`,
+ * `auditLogCheck` and ./owner-page's `readAuditLog`; any other POST appends.
  */
 export declare class ToolCallLog implements DurableObject {
   constructor(state: DurableObjectState, env?: Partial<AuditEnv>);

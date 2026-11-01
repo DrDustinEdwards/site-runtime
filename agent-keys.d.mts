@@ -5,6 +5,8 @@ export const AGENT_KEY_PREFIX: "AGENT_KEY_";
 export function bearerToken(authorization: string | null | undefined): string | null;
 /** The lower-cased name of the `AGENT_KEY_*` secret the header's token matched, or null (blank and misnamed secrets skipped). */
 export function agentPrincipal(env: object, authorization: string | null | undefined): Promise<string | null>;
+/** The agent names with a usable `AGENT_KEY_*` secret, lower-cased and sorted; never the keys. */
+export function agentKeyNames(env: object): string[];
 /** Read, and write when `AGENT_WRITE` (comma-separated names) lists the agent. */
 export function agentScopes(env: { AGENT_WRITE?: string }, principal: string, scopes: { read: string; write: string }): string[];
 /** The `{ kind: "agent", principal, scopes }` caller a key makes, or null. */

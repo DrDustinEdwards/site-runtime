@@ -4,8 +4,8 @@
  *
  * A Durable Object with synchronous SQLite, one instance for the Worker, reached only from the Worker's own code. It
  * has no UPDATE: a row is written once and never changed. Its one DELETE is retention (L7), and it removes only rows
- * already copied out (L6) and older than the retention period. Read it in the Cloudflare dashboard's Durable Object
- * data view, or in the copies.
+ * already copied out (L6) and older than the retention period. Read it on the server's owner page (./owner-page, L9),
+ * in the Cloudflare dashboard's Durable Object data view, or in the copies.
  *
  * - EXPORT (L6). `exportAuditLog(env, bucket)`, from the Worker's cron, copies the rows not yet copied to R2, one JSON
  *   object per batch at `<prefix><first seq>-<last seq>.json` (`{ previous, rows }`, `previous` the hash of the row
@@ -51,6 +51,8 @@ const ORPHAN_MINUTES = 15;
 const EXPORT_LATE_DAYS = 2;
 const RESULT_CHARS = 1000;
 const FIELD_CHARS = 200;
+const RECENT_PAGE = 50;
+const RECENT_MAX = 100;
 
 // The columns added after the table first shipped, each nullable, so an existing log migrates in place.
 const ADDED = ["server", "version", "client_id", "correlation_id", "hash"];
@@ -84,6 +86,10 @@ export class ToolCallLog {
   async fetch(request) {
     const path = new URL(request.url).pathname;
     if (request.method === "GET" && path === "/stats") return Response.json(this.stats());
+    if (request.method === "GET" && path === "/recent") {
+      const query = new URL(request.url).searchParams;
+      return Response.json({ rows: this.recent(Number(query.get("before")) || 0, Number(query.get("limit")) || RECENT_PAGE) });
+    }
     if (request.method !== "POST") return new Response("append only", { status: 405 });
     if (path === "/export") return Response.json(this.unexported(Number((await request.json()).limit) || EXPORT_BATCH));
     if (path === "/exported") {
@@ -125,6 +131,19 @@ export class ToolCallLog {
     // The newest row stays whatever its age: the next append chains to it.
     const pruned = this.sql.exec("DELETE FROM calls WHERE seq <= ? AND at < ? AND seq < (SELECT max(seq) FROM calls) RETURNING seq", through, cutoff).toArray().length;
     return { through, pruned };
+  }
+
+  /**
+   * Up to `limit` rows (at most 100) before the row `before` (0: the newest), newest first: what an owner page shows.
+   * @param {number} before
+   * @param {number} limit
+   */
+  recent(before, limit) {
+    const n = Math.min(Math.max(1, Math.floor(limit)), RECENT_MAX);
+    const columns = "seq, at, call_id, phase, caller, tool, args, result, server, version, client_id, correlation_id";
+    return before > 0
+      ? this.sql.exec(`SELECT ${columns} FROM calls WHERE seq < ? ORDER BY seq DESC LIMIT ?`, Math.floor(before), n).toArray()
+      : this.sql.exec(`SELECT ${columns} FROM calls ORDER BY seq DESC LIMIT ?`, n).toArray();
   }
 
   /**
