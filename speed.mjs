@@ -92,7 +92,13 @@ export function speedFindings(o) {
   }
   for (const got of pages) {
     const status = got.headers["cf-cache-status"] ?? "none";
-    if (!FROM_EDGE.has(status)) add("B1", "error", got.url, `not from the edge on the second request: cf-cache-status ${status}, cache-control ${got.headers["cache-control"] ?? "none"}`);
+    if (!FROM_EDGE.has(status)) {
+      // What the first request saw and where each was answered, so a miss says whether the page was never stored, was
+      // purged between the two, or was answered by another data center (cf-ray ends in the colo).
+      const before = o.first.find((f) => f.url === got.url);
+      const colo = (g) => g?.headers["cf-ray"]?.split("-").pop() ?? "?";
+      add("B1", "error", got.url, `not from the edge on the second request: cf-cache-status ${status} (first ${before?.headers["cf-cache-status"] ?? "none"}), cache-control ${got.headers["cache-control"] ?? "none"}, colo ${colo(before)} then ${colo(got)}`);
+    }
     if (!got.headers.etag && !got.headers["last-modified"]) add("B7", "error", got.url, "no ETag or Last-Modified, so a repeat visit downloads the page again");
     if (!/^(zstd|br)$/.test(got.headers["content-encoding"] ?? "")) add("C3", "error", got.url, `HTML sent ${got.headers["content-encoding"] ?? "uncompressed"}, not zstd or Brotli`);
     if (/no-store/.test(got.headers["cache-control"] ?? "")) add("E2", "error", got.url, "a public page sent no-store, which keeps it out of the back/forward cache");
