@@ -124,6 +124,19 @@ test("the static _headers file leaves out the policy and detaches a header a pat
   assert.throws(() => headersFile({ "X-A": "a\nb" }));
 });
 
+test("a value over Cloudflare's 2000-character line limit is written on several lines, cut at its top-level commas", async () => {
+  const { headersFile } = await import("../headers.mjs");
+  const { permissionsAllowingEmbeds } = await import("../embeds.mjs");
+  const value = permissionsAllowingEmbeds("camera=(), autoplay=()");
+  assert.ok(value.length > 2000);
+  const file = headersFile({ "Permissions-Policy": value });
+  const lines = file.split("\n").filter((l) => l.startsWith("  Permissions-Policy: "));
+  assert.ok(lines.length > 1 && lines.every((l) => l.length <= 2000));
+  // Cloudflare joins the lines with ", ", so the reader gets the same value back.
+  assert.equal(lines.map((l) => l.slice("  Permissions-Policy: ".length)).join(", "), value);
+  assert.throws(() => headersFile({ "X-A": `(${"a".repeat(2100)})` }), /line limit/);
+});
+
 test("charset: true gives each static text type its charset, and subresources and images cross-origin CORP, merged with a site's own rule", async () => {
   const { headersFile } = await import("../headers.mjs");
   const file = headersFile({ "X-Frame-Options": "deny", "Cross-Origin-Resource-Policy": "same-origin" }, { charset: true, paths: { "/*.css": { "Cache-Control": "no-cache" } } });
