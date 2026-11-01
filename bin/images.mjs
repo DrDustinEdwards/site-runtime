@@ -16,7 +16,8 @@
  *
  * The items are the area 6 checklist's:
  * - A2 a raster <img> wider than 300 px (its width attribute, else the file) with no srcset and sizes; A3 a /media size
- *   URL that does not answer image/avif for f=avif (a GIF's are skipped: ./image offers a GIF no AVIF); A4 an <img>
+ *   URL that does not answer image/avif for f=avif (a GIF's are skipped: ./image offers a GIF no AVIF; so is a size
+ *   over Cloudflare's 1,200 px AVIF limit, and one the route sends on to its WebP because the binding wrote WebP); A4 an <img>
  *   without width and height; A5 more than one fetchpriority=high image, a lazy one, or a largest image above the fold
  *   (bigger than any text there) that is lazy or not high; A6 an image below the fold that is not lazy and async or is
  *   high, a lazy image above it, or a preload of one below it; A7 a file, the srcset candidate a browser picks or the
@@ -47,6 +48,7 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 import { parsePolicy } from "../check.mjs";
+import { AVIF_MAX_EDGE } from "../image.mjs";
 
 const MAX_PAGES = 25;
 const MAX_SIZE_URLS = 6;
@@ -294,8 +296,11 @@ async function auditPage({ url, origin, html, headers, load, probe, onSite, site
     if (!parsed.pathname.startsWith("/media/") || /\.gif(\.\w+)?$/i.test(parsed.pathname) || /\.avif$/i.test(parsed.pathname)) continue;
     if (/\.\w+\.webp$/i.test(parsed.pathname)) parsed.pathname = parsed.pathname.replace(/\.webp$/i, ".avif");
     else parsed.searchParams.set("f", "avif");
+    // Over Cloudflare's AVIF limit (AVIF_MAX_EDGE) the page offers the WebP, and the route sends an AVIF request there.
+    if (Number(parsed.searchParams.get("w")) > AVIF_MAX_EDGE) continue;
     const avif = await load(parsed.href);
-    if (avif.status !== 200 || !avif.type.toLowerCase().startsWith("image/avif")) add("error", "A3", parsed.href, `answers ${avif.status || avif.error} ${avif.type || "with no type"}, not image/avif`);
+    const overLimit = avif.status === 200 && /\.webp$/i.test(new URL(avif.url || parsed.href).pathname) && avif.type.toLowerCase().startsWith("image/webp");
+    if (!overLimit && (avif.status !== 200 || !avif.type.toLowerCase().startsWith("image/avif"))) add("error", "A3", parsed.href, `answers ${avif.status || avif.error} ${avif.type || "with no type"}, not image/avif`);
   }
 
   /** @type {Map<string, string>} */

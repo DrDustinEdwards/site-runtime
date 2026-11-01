@@ -10,6 +10,8 @@ export type ImageFormat = "avif" | "webp";
 
 /** Astro's limited screen widths. */
 export const SCREEN_WIDTHS: number[];
+/** The longest side Cloudflare Images encodes as AVIF (its documented limit); a larger size is offered as WebP. */
+export const AVIF_MAX_EDGE: 1200;
 export const IMAGE_FORMATS: { readonly avif: "image/avif"; readonly webp: "image/webp" };
 export const IMAGE_QUALITY: 85;
 /** The R2 custom-metadata field holding a file's focal point ("XxY", 0 to 1). */

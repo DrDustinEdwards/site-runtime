@@ -24,6 +24,10 @@
  *   version's URL still answers, with the current picture.
  * - A size URL ends in its own format's extension (`photo.jpg.webp?w=640`), so a saved or indexed size is never a WebP
  *   named .jpg. `originalKey` gives the route the stored key back; a URL from before, with no such suffix, still answers.
+ * - Cloudflare encodes AVIF only up to 1,200 px on a side and answers WebP above it ("Image dimension, AVIF: 1,200
+ *   pixels", developers.cloudflare.com/images/get-started/limits/; "too large to be quickly encoded to AVIF ... fall back
+ *   to WebP or JPEG", /images/optimization/features/#format). So the AVIF source names the WebP for a larger size, and an
+ *   AVIF request the binding answered in another format is sent to that format's URL: no URL named .avif holds a WebP.
  *
  * The widths, the sizes rule and the three layouts are Astro's (packages/astro/src/assets/layout.ts, Astro 7.4), under
  * its MIT license:
@@ -52,6 +56,9 @@ import { corpFor, UPLOAD_HEADERS } from "./headers.mjs";
  * here; the layouts below add the requested width and twice it.
  */
 export const SCREEN_WIDTHS = [640, 750, 828, 1080, 1280, 1668, 2048, 2560];
+
+/** The longest side Cloudflare Images encodes as AVIF (its documented limit); a larger size is offered as WebP. */
+export const AVIF_MAX_EDGE = 1200;
 
 /** The formats the route writes, in the order a `<picture>` offers them: the first a browser takes wins. */
 export const IMAGE_FORMATS = /** @type {const} */ ({ avif: "image/avif", webp: "image/webp" });
@@ -240,8 +247,12 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
     const shape = use.ratio ? RATIO.exec(use.ratio) : null;
     const aspect = shape ? Number(shape[2]) / Number(shape[1]) : image.height / image.width;
     const shown = use.layout === "full-width" ? image.width : Math.min(/** @type {number} */ (use.width), image.width);
+    // An AVIF larger than Cloudflare encodes would come back WebP, so the AVIF source names that size's WebP: still
+    // every width for a sharp picture on a dense screen, and each URL holds the format it names.
+    const formatAt = (/** @type {keyof typeof IMAGE_FORMATS} */ format, /** @type {number} */ w) =>
+      format === "avif" && Math.max(w, Math.round(w * aspect)) > AVIF_MAX_EDGE ? "webp" : format;
     const srcsetOf = (/** @type {keyof typeof IMAGE_FORMATS} */ format, still = false) =>
-      offered.map((w) => `${url(image.src, { width: w, format, ratio: use.ratio, focus: image.focus, still, version: image.version })} ${w}w`).join(", ");
+      offered.map((w) => `${url(image.src, { width: w, format: formatAt(format, w), ratio: use.ratio, focus: image.focus, still, version: image.version })} ${w}w`).join(", ");
     const sources = GIF_PATH.test(image.src)
       ? [
           { type: IMAGE_FORMATS.avif, srcset: srcsetOf("avif", true), media: REDUCED_MOTION },
@@ -373,6 +384,17 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
     const headers = new Headers(response.headers);
     for (const [name, value] of Object.entries(UPLOAD_HEADERS)) headers.set(name, value);
     headers.set("cross-origin-resource-policy", "cross-origin");
+    // Over Cloudflare's AVIF limit the binding writes WebP. A page from before AVIF_MAX_EDGE may still ask, so the
+    // answer is the WebP's own URL, never a WebP named .avif. Permanent and cached like the size: the limit is fixed.
+    if (format === "avif" && mediaType(headers.get("content-type")) === IMAGE_FORMATS.webp) {
+      await response.body?.cancel();
+      const twin = new URL(request.url);
+      if (suffix) twin.pathname = twin.pathname.replace(/\.avif$/i, ".webp");
+      else twin.searchParams.delete("f");
+      const moved = new Response(null, { status: 301, headers: { location: `${twin.pathname}${twin.search}`, "cache-control": cacheControl, "cross-origin-resource-policy": "cross-origin", "x-image": `w=${width} avif-over-limit webp` } });
+      if (cache) await cache.put(cacheKey, moved.clone());
+      return moved;
+    }
     headers.set("cache-control", cacheControl);
     headers.set("x-image", `w=${width}${ratio ? ` r=${ratio}` : ""}${still ? " still" : ""} ${format}`);
     const out = new Response(response.body, { headers });
