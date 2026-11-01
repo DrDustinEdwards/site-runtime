@@ -104,13 +104,14 @@ such as Carrel's preview) to load it. The check accepts `cross-origin` on those 
 ## Post embeds
 
 `./embeds` is the security side of Prelum's `::embed`: `EMBED_FRAME_SOURCES`, the players' origins (YouTube's no-cookie
-host, TikTok, Spotify, SoundCloud, Apple Podcasts, Amazon Music on each of its domains, Google Maps, X, Bluesky and
+host, TikTok, Spotify, SoundCloud, Apple Podcasts, Amazon Music on amazon.com, Google Maps, X, Bluesky and
 Instagram, Dustin's list of 2026-10-31), and `EMBED_FEATURES`, what a player's iframe asks for (autoplay,
 encrypted-media, fullscreen, picture-in-picture). A site whose posts embed them declares the `embeds` opt-in in its entry:
 
-- `buildSecurityHeaders({ site })` sets the four features to `*` (`permissionsAllowingEmbeds`), where OSHP denies them. The
-  header is the widest set and each player's iframe `allow` picks from it (MDN, W3C Permissions Policy); `frame-src` is
-  what limits the origins, so the header stays short however many players there are.
+- `buildSecurityHeaders({ site })` allows the four features for the page and the players' origins (`permissionsAllowingEmbeds`),
+  where OSHP denies them. Each player's iframe `allow` picks from that set (MDN, W3C Permissions Policy), so the header is
+  a second lock behind `frame-src`. It stays under Cloudflare's 2,000-character `_headers` line because Amazon Music is
+  `music.amazon.com` only, ten origins in all.
 - `buildContentSecurityPolicy({ embeds: true })` adds the players to `frame-src`; a static site's page policy does it
   from the entry. The check holds a site that declares `embeds` to every player in its frame-src (C16).
 - No player sends Cross-Origin-Embedder-Policy, so an enforced COEP refuses each one: an entry with `embeds` and an

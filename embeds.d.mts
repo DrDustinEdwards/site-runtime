@@ -9,5 +9,5 @@ export declare const EMBED_FRAME_SOURCES: readonly string[];
 /** The features a player's iframe asks for: autoplay, encrypted-media, fullscreen, picture-in-picture. */
 export declare const EMBED_FEATURES: readonly string[];
 
-/** `permissions` with each of EMBED_FEATURES set to `*` (each frame's own `allow` picks from it; frame-src names the origins); other features kept. */
+/** `permissions` with each of EMBED_FEATURES allowed for the page and the players' origins (each frame's own `allow` picks from it); other features kept. */
 export declare function permissionsAllowingEmbeds(permissions: string): string;
