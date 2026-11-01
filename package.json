@@ -315,7 +315,11 @@
     "README.md"
   ],
   "scripts": {
-    "test": "node --test \"test/*.test.mjs\""
+    "test": "node --test \"test/*.test.mjs\"",
+    "bloat": "devkit-no-bloat"
   },
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@dustinedwards/devkit": "github:DrDustinEdwards/devkit#v0.21.0"
+  }
 }
