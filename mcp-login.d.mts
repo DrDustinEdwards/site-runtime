@@ -42,9 +42,10 @@ export type LoginOptions<E extends LoginEnv> = {
   revokeExistingGrants?: boolean;
   /**
    * Default true: /owner serves the owner page (./owner-page), where the admitted person lists and revokes their grants
-   * and reads the tool-call log. Its sign-in returns through /callback. Needs OAUTH_KV.
+   * and reads the tool-call log. Its sign-in returns through /callback. Needs OAUTH_KV. A server with several people
+   * passes `{ readsLog(env, email) }`, so only its owner reads everyone's calls; false turns the page off.
    */
-  owner?: boolean;
+  owner?: boolean | { readsLog(env: E, email: string): boolean | Promise<boolean> };
 };
 
 /**

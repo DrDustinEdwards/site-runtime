@@ -168,7 +168,7 @@ function resultLine(json) {
 
 /**
  * The page. Everything a client or a caller chose (a client name, a tool's result) is escaped.
- * @param {{ name: string, email: string, csrf: string, grants: GrantSummary[], keys: string[], log: AuditLogRow[] | null, before: number | null, notice: string }} view
+ * @param {{ name: string, email: string, csrf: string, grants: GrantSummary[], keys: string[], log: AuditLogRow[] | null | "owner", before: number | null, notice: string }} view
  */
 function page({ name, email, csrf, grants, keys, log, before, notice }) {
   const server = escape(name);
@@ -181,14 +181,15 @@ function page({ name, email, csrf, grants, keys, log, before, notice }) {
     })
     .join("\n");
   const keyRows = keys.map((k) => `<li><code>${escape(k)}</code> (Worker secret <code>${AGENT_KEY_PREFIX}${escape(k.toUpperCase())}</code>)</li>`).join("\n");
-  const logRows = (log ?? [])
+  const rows = Array.isArray(log) ? log : [];
+  const logRows = rows
     .map(
       (r) =>
         `<tr><td>${escape(String(r.at).replace("T", " ").slice(0, 19))}</td><td>${escape(r.phase)}</td><td>${escape(r.caller)}</td><td>${escape(r.tool)}</td><td>${escape(resultLine(r.result))}</td></tr>`,
     )
     .join("\n");
-  const oldest = log?.at(-1)?.seq;
-  const older = log && log.length === LOG_PAGE && oldest ? `<p><a href="${OWNER_PATH}?before=${oldest}">Older calls</a></p>` : "";
+  const oldest = rows.at(-1)?.seq;
+  const older = rows.length === LOG_PAGE && oldest ? `<p><a href="${OWNER_PATH}?before=${oldest}">Older calls</a></p>` : "";
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -219,7 +220,9 @@ ${
 ${
   log === null
     ? "<p>This server keeps no tool-call log.</p>"
-    : log.length
+    : log === "owner"
+      ? "<p>The tool-call log holds everyone's calls, so only the server's owner reads it.</p>"
+      : rows.length
       ? `<p>Newest first, times in UTC. Older rows are in the daily copy in R2.</p>
 <div class="scroll"><table><thead><tr><th>Time</th><th>Event</th><th>Caller</th><th>Tool</th><th>Result</th></tr></thead><tbody>
 ${logRows}
@@ -252,15 +255,15 @@ export const OWNER_STYLE = `
  * The owner page's routes for a server's defaultHandler: GET /owner, POST /owner/revoke and /owner/sign-out, and the
  * /callback of an owner sign-in. `fetch` answers null for any other request.
  * @template {OwnerEnv} E
- * @param {{ name: string, admit(env: E, user: { email: string, name?: string }): unknown, server?: { name: string, version: string } }} options
+ * @param {{ name: string, admit(env: E, user: { email: string, name?: string }): unknown, server?: { name: string, version: string }, readsLog?(env: E, email: string): boolean | Promise<boolean> }} options
  */
-export function ownerPage({ name, admit, server }) {
+export function ownerPage({ name, admit, server, readsLog = () => true }) {
   /** @param {Request} request @param {E} env */
   async function session(request, env) {
     const id = cookie(request, SESSION_COOKIE);
     if (!id || !/^[0-9a-f]{64}$/.test(id)) return null;
     const stored = await env.OAUTH_KV.get(`owner:session:${await sha256Hex(id)}`);
-    return stored ? /** @type {{ email: string, csrf: string }} */ (JSON.parse(stored)) : null;
+    return stored ? /** @type {{ email: string, csrf: string, log: boolean }} */ (JSON.parse(stored)) : null;
   }
 
   /** @param {Request} request @param {E} env */
@@ -304,7 +307,9 @@ export function ownerPage({ name, admit, server }) {
     }
     if (!signedIn.ok || !admitted) return respond(`This account cannot open the owner page of ${name}.`, 403);
     const id = randomId();
-    await env.OAUTH_KV.put(`owner:session:${await sha256Hex(id)}`, JSON.stringify({ email: signedIn.email.toLowerCase(), csrf: randomId() }), {
+    const email = signedIn.email.toLowerCase();
+    const log = (await readsLog(env, email)) === true;
+    await env.OAUTH_KV.put(`owner:session:${await sha256Hex(id)}`, JSON.stringify({ email, csrf: randomId(), log }), {
       expirationTtl: SESSION_SECONDS,
     });
     const headers = new Headers();
@@ -341,8 +346,9 @@ export function ownerPage({ name, admit, server }) {
       if (url.pathname === OWNER_PATH && request.method === "GET") {
         if (!signedIn) return startSignIn(request, env);
         const before = Number(url.searchParams.get("before")) || null;
+        /** @type {AuditLogRow[] | null | "owner"} */
         let log = null;
-        if (env.TOOL_CALL_LOG) log = await readAuditLog(env, { before: before ?? undefined });
+        if (env.TOOL_CALL_LOG) log = signedIn.log ? await readAuditLog(env, { before: before ?? undefined }) : "owner";
         const notice = url.searchParams.get("revoked") ? "Grant revoked." : "";
         const html = page({ name, email: signedIn.email, csrf: signedIn.csrf, grants: await listOwnerGrants(env.OAUTH_PROVIDER, signedIn.email), keys: agentKeyNames(env), log, before, notice });
         return respond(html, 200, "text/html; charset=utf-8");

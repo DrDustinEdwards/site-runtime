@@ -153,7 +153,7 @@ export function loginHandler({
 }) {
   const serverName = escape(name);
   // The owner page (A15, L9) shares the sign-in and the admission check, and its sign-in comes back to /callback.
-  const ownerRoutes = owner ? ownerPage({ name, admit, server: audit }) : null;
+  const ownerRoutes = owner ? ownerPage({ name, admit, server: audit, ...(typeof owner === "object" ? owner : {}) }) : null;
 
   /**
    * One sign-in row, when the server keeps the log. A sign-in changes nothing, so a failed write is only reported.

@@ -59,6 +59,8 @@ export function ownerPage<E extends OwnerEnv>(options: {
   admit(env: E, user: { email: string; name?: string }): unknown;
   /** The server's serverInfo name and version, for the log rows the page writes. */
   server?: { name: string; version: string };
+  /** Whether this person reads the whole tool-call log; default everyone admitted (a single-administrator server). */
+  readsLog?(env: E, email: string): boolean | Promise<boolean>;
 }): {
   /** Whether a /callback is an owner sign-in's (its state starts `owner.`). */
   isOwnerCallback(request: Request): boolean;

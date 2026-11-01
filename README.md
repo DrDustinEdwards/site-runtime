@@ -1964,7 +1964,8 @@ clientRegistrationCallback: ({ clientMetadata }) => {
   (`owner: false` turns it off): the admitted person signs in through the same Access round trip and `/callback` (its
   state starts `owner.`, and a cookie binds it to the browser that started it), then sees their grants with a Revoke
   button for each, the agent keys the Worker holds (names only; a key is revoked by deleting its secret) and the
-  tool-call log, 50 rows a page, newest first. The session is a random id in a `__Host-` cookie, kept hashed in
+  tool-call log, 50 rows a page, newest first (a server with several people passes `owner: { readsLog(env, email) }`, so
+  only its owner reads everyone's calls). The session is a random id in a `__Host-` cookie, kept hashed in
   `OAUTH_KV` for 30 minutes; a revoke or sign-out is a POST that must come from the page's own origin with the
   session's CSRF token, and a revoke writes a `revoked` row. Its one inline style is `OWNER_STYLE`, which
   `withMcpHeaders` trusts by hash beside `CONSENT_STYLE`. A server with its own pages (Capsid's Portal, Carrel's Desk)
