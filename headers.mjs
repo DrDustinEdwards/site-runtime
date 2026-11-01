@@ -250,6 +250,48 @@ const STATIC_TYPES = /* @__PURE__ */ Object.freeze({
 /** The types the asset server sends without a charset that need one: text, and SVG, which is XML. */
 const NEEDS_CHARSET = /^(text\/|application\/xml$|image\/svg\+xml$)/;
 
+/** Cloudflare refuses a `_headers` line over this many characters (error 100324). */
+const HEADERS_LINE_LIMIT = 2000;
+
+/**
+ * A value that would put its `_headers` line over Cloudflare's limit, cut at its top-level commas (not those inside
+ * parentheses or quotes) into parts that each fit. Cloudflare joins a header written on several lines with ", ", so the
+ * reader gets the one value back; the Permissions-Policy with the embed players' origins is the case (each feature
+ * carries the whole list). A value that fits, or one with no comma to cut at, is left as it is, the latter throwing.
+ * @param {string} name
+ * @param {string} value
+ * @returns {string[]}
+ */
+function splitLongValue(name, value) {
+  const room = HEADERS_LINE_LIMIT - `  ${name}: `.length;
+  if (value.length <= room) return [value];
+  /** @type {string[]} */
+  const items = [];
+  let depth = 0;
+  let quoted = false;
+  let start = 0;
+  for (let i = 0; i < value.length; i++) {
+    const c = value[i];
+    if (c === '"') quoted = !quoted;
+    else if (!quoted && c === "(") depth++;
+    else if (!quoted && c === ")") depth--;
+    else if (!quoted && depth === 0 && c === ",") {
+      items.push(value.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  items.push(value.slice(start).trim());
+  /** @type {string[]} */
+  const parts = [];
+  for (const item of items) {
+    if (item.length > room) throw new Error(`header ${JSON.stringify(name)} has an item of ${item.length} characters, over the ${HEADERS_LINE_LIMIT}-character line limit of a _headers file`);
+    const last = parts.length - 1;
+    if (last >= 0 && /** @type {string} */ (parts[last]).length + 2 + item.length <= room) parts[last] += `, ${item}`;
+    else parts.push(item);
+  }
+  return parts;
+}
+
 /**
  * A Cloudflare `_headers` file for the static assets, which the asset server answers without running the Worker, so
  * the Worker's header set never reaches them. `set` (the one the Worker applies) goes on `/*`, minus any
@@ -268,7 +310,7 @@ const NEEDS_CHARSET = /^(text\/|application\/xml$|image\/svg\+xml$)/;
 export function headersFile(set, { paths = {}, comment = [], charset = false } = {}) {
   const line = (/** @type {string} */ name, /** @type {string} */ value) => {
     if (/[\r\n:]/.test(name) || /[\r\n]/.test(value)) throw new Error(`header ${JSON.stringify(name)} cannot be written on one line`);
-    return `  ${name}: ${value}`;
+    return splitLongValue(name, value).map((part) => `  ${name}: ${part}`).join("\n");
   };
   const base = Object.entries(set).filter(([name]) => !POLICY_HEADERS.includes(name.toLowerCase()));
   const baseNames = new Set(base.map(([name]) => name.toLowerCase()));
