@@ -284,7 +284,7 @@ export const germomics = {
   deviations: { C3: beaconNotStrict },
   assets: {
     paths: {
-      .../* @__PURE__ */ hashed("/assets/*"),
+      .../* @__PURE__ */ hashed("/assets/*", "/islands/*"),
       // The fonts sit at stable names scripts/fetch-fonts.mjs rewrites in place: a day, then the ETag.
       "/fonts/*": { "Cache-Control": "public, max-age=86400" },
     },
