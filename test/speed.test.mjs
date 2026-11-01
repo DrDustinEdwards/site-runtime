@@ -55,7 +55,8 @@ test("PLANT: each gap fails its own item", () => {
   o.earlyHints = [];
   delete o.hits[0].headers["speculation-rules"];
   o.second[0].headers["speculation-rules"] = '"/cdn-cgi/speculation"';
-  assert.deepEqual(items(speedFindings(o)), ["B1", "B4", "B5", "B7", "C1", "C5", "D1", "E1", "F3"]);
+  o.second[0].headers["cache-control"] = "public, max-age=3600";
+  assert.deepEqual(items(speedFindings(o)), ["B1", "B4", "B5", "B7", "C1", "C2", "C5", "D1", "E1", "F3"]);
 });
 
 test("a 404 is judged by its cache-control: static assets' HIT without an Age passes, a storable 404 fails", () => {
@@ -84,4 +85,6 @@ test("only a hash-like token makes a file immutable: apple-touch-icon.png revali
   // The path says nothing: unhashed files under /assets/ revalidate, a hashed one there is still held to a year.
   assert.deepEqual(run(file("/assets/app.js", revalidate), file("/assets/style.css", revalidate)), []);
   assert.deepEqual(run(file("/assets/app-DYYv4ssa.js", revalidate)), ["C1"]);
+  // An unhashed file a browser keeps an hour without asking (the Capsid explorer's /assets/ once) fails; five minutes passes.
+  assert.deepEqual(run(file("/assets/app.js", "public, max-age=3600"), file("/site.css", "public, max-age=300, must-revalidate")), ["C2"]);
 });

@@ -431,7 +431,8 @@ export const capsid = {
     skipWorker: /* @__PURE__ */ staticPages(["/*"], "explorer/wrangler-config.mjs: the Worker answers only paths with no file"),
     policy: {},
     reportOrigin: "https://mcp.dustinedwards.info",
-    paths: { "/*": { "Cache-Control": "public, max-age=3600" } },
+    // File names are not hashed (explorer/build.mjs writes /assets/explorer.js and the rest by hand), so five minutes, as its siblings.
+    paths: { "/*": { "Cache-Control": "public, max-age=300, must-revalidate" } },
   },
 };
 

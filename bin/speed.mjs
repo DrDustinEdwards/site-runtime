@@ -2,10 +2,11 @@
 // site-runtime-speed: the speed and caching check, run against a live site every day (devkit live/areas.json, area 7).
 // It reads the site's sitemap, fetches a sample of its pages twice, and checks what a visitor's browser gets: pages
 // stored at the edge (B1), nothing personal stored (B4), campaign links on the stored page (B5), validators and 304s
-// (B7), year-long hashed files (C1), validators on the rest (C2), compression (C3), HTTP/3 (C4), one redirect at most
-// (C5), the preload header and its 103 (D1), our speculation rules on a page with no app (E1), no no-store on a public
-// page (E2), the uncached render time (F2), Server-Timing (F3), and PageSpeed Insights' lab and field numbers for the
-// home page (A1, A3, D2, D3, D4, D6).
+// (B7), year-long hashed files (C1), validators and at most five minutes in the browser for pages and the rest (C2),
+// compression (C3), HTTP/3 (C4), one redirect at most from http, www, a page and its other trailing slash (C5), the
+// preload header and its 103 (D1), our speculation rules on a page with no app (E1), no no-store on a public page (E2),
+// the uncached render time (F2), Server-Timing (F3), and PageSpeed Insights' lab and field numbers for the home page
+// (A1, A3, D2, D3, D4, D6).
 //
 //   site-runtime-speed --origin https://example.com [--from https://example.workers.dev] [--max-pages 40] [--kind site]
 //
@@ -178,6 +179,11 @@ for (let i = 0; i < 3; i++) hits.push(await get(`${base}/`));
 
 const host = new URL(base).host;
 const slashPage = urls.find((url) => new URL(url).pathname.length > 1);
+// A reader also arrives on an old http link to a page, on www, or with the other trailing slash: each of those must take
+// one hop too, not only the root.
+const deepPath = slashPage ? new URL(slashPage).pathname : null;
+const otherSlash = deepPath && (deepPath.endsWith("/") ? deepPath.slice(0, -1) : `${deepPath}/`);
+const apex = host.split(".").length === 2;
 const observations = {
   origin,
   base,
@@ -193,8 +199,10 @@ const observations = {
   campaign: await get(`${base}/?utm_source=speedcheck-${nonce()}`),
   redirects: {
     http: await hops(`http://${host}/`),
-    ...(host.split(".").length === 2 ? { www: await hops(`https://www.${host}/`) } : {}),
-    ...(slashPage ? { slash: await hops(`${slashPage}/`) } : {}),
+    ...(deepPath ? { "http page": await hops(`http://${host}${deepPath}`), "http page, other slash": await hops(`http://${host}${otherSlash}`) } : {}),
+    ...(apex ? { www: await hops(`https://www.${host}/`), "http www": await hops(`http://www.${host}/`) } : {}),
+    ...(apex && deepPath ? { "http www page, other slash": await hops(`http://www.${host}${otherSlash}`) } : {}),
+    ...(deepPath ? { slash: await hops(`${base}${otherSlash}`) } : {}),
   },
   earlyHints: await earlyHints(`${base}/`),
   pagespeed: await pagespeed(`${base}/`),

@@ -18,6 +18,8 @@ export const BAR = {
   missTtfbErrorMs: 1500,
   labPhone: 0.95,
   labDesktop: 1,
+  /** The longest a browser may keep a page or an unhashed file without asking again: the five minutes the static sites send. */
+  unhashedMaxAgeS: 300,
 };
 
 /** Lighthouse audits that each answer one checklist item; a score under 0.9 fails it. */
@@ -58,8 +60,12 @@ const hashed = (/** @type {string} */ url) => {
 const allowsStoring = (/** @type {string} */ cacheControl) => {
   const directives = cacheControl.toLowerCase().split(",").map((part) => part.trim());
   if (directives.includes("private") || directives.includes("no-store")) return false;
-  return directives.some((part) => part === "public" || /^(s-)?max-age=[1-9]\d*$/.test(part));
+  return directives.some((part) => part === "public" || /^(max-age|s-maxage)=[1-9]\d*$/.test(part));
 };
+/** The browser's max-age in seconds (s-maxage is the edge's, so it does not count), 0 when there is none. */
+const browserMaxAge = (/** @type {string} */ cacheControl) => Number(/(?:^|,)\s*max-age=(\d+)/i.exec(cacheControl)?.[1] ?? 0);
+/** A page or an unhashed file kept longer than the bar: a deploy reaches a returning reader that much later, and a page and its files can expire apart. */
+const keptTooLong = (/** @type {string} */ cacheControl) => browserMaxAge(cacheControl) > BAR.unhashedMaxAgeS;
 const ms = (/** @type {number} */ n) => `${Math.round(n)} ms`;
 
 /** True when the page runs a React Router app, which prefetches through its own links, not speculation rules. */
@@ -88,6 +94,7 @@ export function speedFindings(o) {
     if (!got.headers.etag && !got.headers["last-modified"]) add("B7", "error", got.url, "no ETag or Last-Modified, so a repeat visit downloads the page again");
     if (!/^(zstd|br)$/.test(got.headers["content-encoding"] ?? "")) add("C3", "error", got.url, `HTML sent ${got.headers["content-encoding"] ?? "uncompressed"}, not zstd or Brotli`);
     if (/no-store/.test(got.headers["cache-control"] ?? "")) add("E2", "error", got.url, "a public page sent no-store, which keeps it out of the back/forward cache");
+    if (keptTooLong(got.headers["cache-control"] ?? "")) add("C2", "error", got.url, `a page sent cache-control ${got.headers["cache-control"]}: browsers keep it over ${BAR.unhashedMaxAgeS} s without asking, so a deploy reaches returning readers late`);
     if (worker && !got.headers["server-timing"]) add("F3", "error", got.url, "no Server-Timing header");
     if (!/rel=("|)preload/.test(got.headers.link ?? "")) add("D1", "error", got.url, "no Link preload header for Early Hints");
   }
@@ -123,6 +130,7 @@ export function speedFindings(o) {
     } else {
       if (!got.headers.etag && !got.headers["last-modified"]) add("C2", "error", got.url, "an unhashed file has no ETag or Last-Modified");
       if (/immutable/.test(cc)) add("C2", "warning", got.url, "an unhashed file is immutable: a change in place reaches no returning reader");
+      else if (keptTooLong(cc)) add("C2", "error", got.url, `an unhashed file sent cache-control ${cc}: browsers keep it over ${BAR.unhashedMaxAgeS} s without asking, so a deploy reaches returning readers late; hash its name or revalidate`);
     }
     if (/\.(css|js|svg)$/.test(new URL(got.url).pathname) && !/^(zstd|br)$/.test(got.headers["content-encoding"] ?? "")) {
       add("C3", "error", got.url, `sent ${got.headers["content-encoding"] ?? "uncompressed"}, not zstd or Brotli`);
