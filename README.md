@@ -1975,7 +1975,8 @@ that publishes none is an A1 error. With no `--kind`, a metadata path that answe
 an A1 error, so a server whose metadata broke never passes as a site.
 
 With a test grant, a bearer read from the environment (`--grant-env NAME`, default `MCP_TEST_GRANT_<HOST>`, the host
-upper-cased with every other character `_`) and never printed, it also runs: `tools/list` judged by `toolListProblems`
+upper-cased with every other character `_`) and never printed, sent to the resource endpoint or to `--grant-path /PATH`
+on the origin (a server whose agent keys have their own door, as Capsid's `/ops/mcp` does), it also runs: `tools/list` judged by `toolListProblems`
 (T1-T4, T9), two lists identical and no tool without `readOnlyHint` (T7: make it a read-only grant, an agent key outside
 `AGENT_WRITE`), the list's `toolListHash` against `--tools-hash` (T12; without one, a warning gives the hash to pin),
 the conformance server scenarios `server-stateless`, `http-header-validation` and `caching` (P3, P4, P7) through a local

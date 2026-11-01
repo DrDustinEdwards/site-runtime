@@ -3,7 +3,7 @@
  * The AI and MCP check against a live origin, for the family's scoreboard (devkit live/, area 11):
  *
  *   site-runtime-ai-audit --origin https://mcp.example.com [--from https://preview.example.workers.dev] [--kind worker]
- *     [--grant-env NAME] [--tools-hash HEX] [--conformance-baseline SCENARIO=PASSED/TOTAL ...] [--no-conformance]
+ *     [--grant-env NAME] [--grant-path /PATH] [--tools-hash HEX] [--conformance-baseline SCENARIO=PASSED/TOTAL ...] [--no-conformance]
  *     [--prose /path ...] [--prose-model ID] [--models]
  *
  * `--kind` is the site's kind in devkit's live/sites.json:
@@ -29,7 +29,9 @@
  * MCP_TEST_GRANT_<HOST>, the origin's host upper-cased with every other character an underscore, so
  * MCP_TEST_GRANT_MCP_EXAMPLE_COM), never from an argument, and is never printed. Make it a READ-ONLY grant (an agent
  * key without AGENT_WRITE): the daily run needs nothing more, and T7 counts on it. Without one, every check below is
- * skipped with a warning that names the variable, never silently:
+ * skipped with a warning that names the variable, never silently. The grant goes to the resource endpoint, or to
+ * `--grant-path` on the origin for a server whose agent keys have a door of their own (Capsid's /ops/mcp, which takes
+ * keys while /mcp takes OAuth tokens only):
  *
  *   T1-T4, T9  tools/list judged by ./mcp-server `toolListProblems`, the same rules a server's own test runs
  *   T7   two lists in a row are identical, and the read-only grant sees no tool without readOnlyHint
@@ -84,6 +86,7 @@ const { values } = parseArgs({
     from: { type: "string" },
     kind: { type: "string" },
     "grant-env": { type: "string" },
+    "grant-path": { type: "string" },
     "tools-hash": { type: "string" },
     "conformance-baseline": { type: "string", multiple: true },
     "no-conformance": { type: "boolean" },
@@ -99,9 +102,9 @@ for (const entry of values["conformance-baseline"] ?? []) {
   if (!m) values.origin = undefined;
   else baselines.set(m[1], { passed: Number(m[2]), total: Number(m[3]) });
 }
-if (!values.origin || (values.kind !== undefined && !["worker", "site", "static"].includes(values.kind)) || (values.prose ?? []).some((p) => !p.startsWith("/"))) {
+if (!values.origin || (values.kind !== undefined && !["worker", "site", "static"].includes(values.kind)) || (values.prose ?? []).some((p) => !p.startsWith("/")) || (values["grant-path"] !== undefined && !/^\/[A-Za-z0-9/._-]*$/.test(values["grant-path"]))) {
   console.error(
-    "usage: site-runtime-ai-audit --origin https://example.com [--from https://preview.example] [--kind worker|site|static] [--grant-env NAME] " +
+    "usage: site-runtime-ai-audit --origin https://example.com [--from https://preview.example] [--kind worker|site|static] [--grant-env NAME] [--grant-path /PATH] " +
       "[--tools-hash HEX] [--conformance-baseline scenario=passed/total ...] [--no-conformance] [--prose /path ...] [--prose-model ID] [--models]",
   );
   process.exit(2);
@@ -292,20 +295,21 @@ async function auditMcp() {
     report("warning", "T1", endpoint, `no test grant in ${grantEnv}: tools/list (T1-T4, T7, T9, T12), the conformance server scenarios and the rate-limit burst (S1) did not run`);
     return;
   }
-  await auditTools(endpoint, grant);
+  const keyed = values["grant-path"] ? `${origin}${values["grant-path"]}` : endpoint;
+  await auditTools(keyed, grant);
   if (!values["no-conformance"]) {
-    const proxy = await grantProxy(endpoint, grant);
+    const proxy = await grantProxy(keyed, grant);
     try {
       for (const scenario of SERVER_SCENARIOS) {
         await sleep(WINDOW_MS);
-        judgeConformance(scenario, endpoint, await runConformance(["server", "--url", proxy.url, "--scenario", scenario, "--spec-version", VERSION]));
+        judgeConformance(scenario, keyed, await runConformance(["server", "--url", proxy.url, "--scenario", scenario, "--spec-version", VERSION]));
       }
     } finally {
       proxy.close();
     }
   }
   await sleep(WINDOW_MS);
-  await burst(endpoint, grant);
+  await burst(keyed, grant);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
