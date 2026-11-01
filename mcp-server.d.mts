@@ -197,3 +197,13 @@ export function probeRefusal(
   server: McpServerInfo,
   request: Request,
 ): Promise<{ request: Request; refusal?: undefined } | { refusal: Response; request?: undefined }>;
+/** The test key's whole door before OAuth: null without the key, else the limiter, `probeRefusal`, then `serve`. */
+export function probeDoor<E extends Partial<AuditEnv>>(
+  request: Request,
+  env: E,
+  options: {
+    server: McpServerInfo;
+    limiter: Parameters<typeof checkRateLimit>[0];
+    serve: (request: Request, caller: { kind: "probe"; principal: string; scopes: string[] }) => Promise<Response>;
+  },
+): Promise<Response | null>;

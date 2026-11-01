@@ -18,7 +18,7 @@ import {
   mcpOriginRefusal,
   mcpScopes,
   outsideResult,
-  probeRefusal,
+  probeDoor,
   registerTools,
   routeMcpEra,
   toolListHash,
@@ -195,17 +195,28 @@ test("PLANT: the list-only test key lists what a read grant sees and runs nothin
   assert.equal(await isProbeKey({ MCP_PROBE_KEY: key }, `Bearer ${"q".repeat(43)}`), false);
 
   const log = auditLog();
-  const env = { TOOL_CALL_LOG: log.TOOL_CALL_LOG };
-  const post = (/** @type {unknown} */ body) => new Request("https://sample.example.com/mcp", { method: "POST", body: JSON.stringify(body) });
-  const listing = await probeRefusal(env, SERVER, post([{ jsonrpc: "2.0", id: 1, method: "initialize" }, { jsonrpc: "2.0", id: 2, method: "tools/list" }]));
-  assert.ok(listing.request && !listing.refusal);
-  assert.match(await listing.request.text(), /tools\/list/);
-  // A call hidden in a batch beside a list is refused before the SDK, and logged under the key's name.
-  const call = await probeRefusal(env, SERVER, post([{ jsonrpc: "2.0", id: 3, method: "tools/list" }, { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "r" } }]));
-  assert.equal(call.refusal?.status, 403);
-  assert.equal((await call.refusal?.json()).id, 4);
+  const limiter = { idFromName: () => "id", get: () => ({ hit: async () => ({ ok: true, used: 1, limit: 30, retryAfterSeconds: 0 }) }) };
+  const env = { TOOL_CALL_LOG: log.TOOL_CALL_LOG, MCP_PROBE_KEY: key };
+  /** @type {Array<[string, string]>} */
+  const served = [];
+  const door = (/** @type {unknown} */ body, auth = `Bearer ${key}`) =>
+    probeDoor(new Request("https://sample.example.com/mcp", { method: "POST", headers: { authorization: auth }, body: JSON.stringify(body) }), env, {
+      server: SERVER,
+      limiter,
+      serve: async (req, caller) => (served.push([await req.text(), caller.kind]), new Response("served")),
+    });
+  // Another token is not the test key's business: null, so the server goes on to OAuth.
+  assert.equal(await door({ jsonrpc: "2.0", id: 0, method: "tools/list" }, "Bearer oauth-token"), null);
+  assert.equal((await door([{ jsonrpc: "2.0", id: 1, method: "initialize" }, { jsonrpc: "2.0", id: 2, method: "tools/list" }]))?.status, 200);
+  assert.match(served[0][0], /tools\/list/);
+  assert.equal(served[0][1], "probe");
+  // A call hidden in a batch beside a list is refused before the server, and logged under the key's name.
+  const call = await door([{ jsonrpc: "2.0", id: 3, method: "tools/list" }, { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "r" } }]);
+  assert.equal(call?.status, 403);
+  assert.equal((await call?.json()).id, 4);
   assert.deepEqual(log.rows.map((r) => [r.phase, r.caller, r.tool]), [["refused", "probe:live-check", "r"]]);
-  assert.equal((await probeRefusal(env, SERVER, post({ jsonrpc: "2.0", id: 5, method: "resources/read" }))).refusal?.status, 403);
+  assert.equal((await door({ jsonrpc: "2.0", id: 5, method: "resources/read" }))?.status, 403);
+  assert.equal(served.length, 1);
 
   // Past the door, it is listed the read tools only, and a call that got there anyway is refused and logged.
   /** @type {Array<{ name: string, callback: Function }>} */

@@ -2100,14 +2100,15 @@ Worker secret `MCP_PROBE_KEY` is a key that connects and lists tools and runs no
 the minimum required" (RFC 9700, section 2.3), and the live check only lists tools.
 
 ```js
-import { isProbeKey, probeCaller } from "@dustinedwards/site-runtime/agent-keys";
-import { probeRefusal, registerTools } from "@dustinedwards/site-runtime/mcp-server";
-if (await isProbeKey(env, request.headers.get("Authorization"))) {
-  const checked = await probeRefusal(env, SERVER, request); // a logged 403 for anything but the handshake, ping or a list
-  if (checked.refusal) return checked.refusal;
-  // serve checked.request with probeCaller(): registerTools lists it the read tools, and authorizeCall refuses every call
-}
+import { probeDoor } from "@dustinedwards/site-runtime/mcp-server";
+// On /mcp, before the OAuth provider. Null means the request carries no test key: go on to OAuth.
+const probed = await probeDoor(request, env, { server: SERVER, limiter: env.MCP_RATE_LIMIT, serve: (req, caller) => handleMcp(req, env, ctx, caller) });
+if (probed) return probed;
 ```
+
+`probeDoor` is `isProbeKey`, the limiter keyed on the key, `probeRefusal` (a logged 403 for anything but the handshake,
+ping or a list) and then `serve` with `probeCaller()`, whom `registerTools` lists the read tools and `authorizeCall`
+refuses on every call.
 
 - `isProbeKey` compares in constant time; no secret, a blank one or one under 32 characters admits nothing.
 - `probeRefusal` is an allowlist (`PROBE_METHODS`: initialize, ping, server/discover, the four lists and two

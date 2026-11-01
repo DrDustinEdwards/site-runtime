@@ -10,7 +10,7 @@ import { untrusted } from "./anthropic.mjs";
 import { appendAudit, correlationId, loggedArgs, loggedResult, recordAudit } from "./audit-log.mjs";
 import { CSP_REPORT_GROUP, CSP_REPORT_PATH, buildPolicy, reportingEndpoints, scriptHash } from "./csp.mjs";
 import { receiveCspReport } from "./csp-report.mjs";
-import { PROBE_PRINCIPAL } from "./agent-keys.mjs";
+import { isProbeKey, PROBE_PRINCIPAL, probeCaller } from "./agent-keys.mjs";
 import { readCappedBytes } from "./body.mjs";
 import { applyHeaderSet, buildSecurityHeaders } from "./headers.mjs";
 import { limit } from "./rate-limit/limit.mjs";
@@ -576,6 +576,27 @@ export async function probeRefusal(env, server, request) {
     });
   }
   return refusal(/** @type {{ id?: unknown }} */ (refused[0]).id, text403);
+}
+
+/**
+ * The list-only test key's whole door, for a server's `/mcp` before its OAuth provider: null when the request does not
+ * carry the key (go on to OAuth). Otherwise the limiter, keyed on the key (fails closed; a limited request is a
+ * `rate-limited` row), then `probeRefusal`, then `serve(request, probeCaller())` with the checked request.
+ * @template {Partial<import("./audit-log.d.mts").AuditEnv>} E
+ * @param {Request} request
+ * @param {E} env
+ * @param {{ server: import("./mcp-server.d.mts").McpServerInfo, limiter: Parameters<typeof checkRateLimit>[0], serve: (request: Request, caller: { kind: "probe", principal: string, scopes: string[] }) => Promise<Response> }} options
+ * @returns {Promise<Response | null>}
+ */
+export async function probeDoor(request, env, { server, limiter, serve }) {
+  if (!(await isProbeKey(/** @type {Record<string, unknown>} */ (env), request.headers.get("authorization")))) return null;
+  const limit = await checkRateLimit(limiter, `probe:${PROBE_PRINCIPAL}`);
+  if (!limit.allowed) {
+    await recordAudit(env, { callId: crypto.randomUUID(), phase: "rate-limited", caller: `probe:${PROBE_PRINCIPAL}`, server: { name: server.name, version: server.version } });
+    return refuse(`Rate limited. ${server.site}'s MCP allows ${MCP_PER_MINUTE} requests a minute.`, 429, { "retry-after": String(limit.retryAfter) });
+  }
+  const checked = await probeRefusal(env, server, request);
+  return checked.refusal ?? serve(checked.request, probeCaller());
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
