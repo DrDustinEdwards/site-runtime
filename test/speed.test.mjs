@@ -82,6 +82,8 @@ test("only a hash-like token makes a file immutable: apple-touch-icon.png revali
   const revalidate = "public, max-age=0, must-revalidate";
   assert.deepEqual(run(file("/apple-touch-icon.png", revalidate), file("/logo-mayo-clinic.svg", revalidate), file("/icon-1024x1024.png", revalidate)), []);
   assert.deepEqual(run(file("/root-DYYv4ssa.css", revalidate), file("/inter-latin-opsz-normal-BwkfbSeq.woff2", revalidate)), ["C1", "C1"]);
+  // A bundler hash may hold a hyphen.
+  assert.deepEqual(run(file("/assets/root-Coj2Oi-v.css", revalidate), file("/assets/lib--DwWN2sy.js", revalidate), file("/assets/site-header-BJVw-j5Y.js", revalidate)), ["C1", "C1", "C1"]);
   // The path says nothing: unhashed files under /assets/ revalidate, a hashed one there is still held to a year.
   assert.deepEqual(run(file("/assets/app.js", revalidate), file("/assets/style.css", revalidate)), []);
   assert.deepEqual(run(file("/assets/app-DYYv4ssa.js", revalidate)), ["C1"]);

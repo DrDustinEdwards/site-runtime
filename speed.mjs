@@ -52,7 +52,9 @@ const isHtml = (/** @type {Got} */ got) => (got.headers["content-type"] ?? "").i
  * `logo-mayo-clinic.svg` (plain words) and `icon-1024x1024.png` (a size) are not hashed and rightly revalidate.
  */
 const hashed = (/** @type {string} */ url) => {
-  const token = /[.-]([A-Za-z0-9_]{8,})\.[a-z0-9]+$/.exec(url)?.[1];
+  // A bundler's hash is base64url, so it may hold a hyphen (`root-Coj2Oi-v.css`, `lib--DwWN2sy.js`): when no hyphen-free
+  // token of 8 or more fits, the last 8 characters after a separator are the hash.
+  const token = (/[.-]([A-Za-z0-9_]{8,})\.[a-z0-9]+$/.exec(url) ?? /[.-]([A-Za-z0-9_-]{8})\.[a-z0-9]+$/.exec(url))?.[1];
   return !!token && !/^\d+x\d+$/.test(token) && (/\d/.test(token) || (/[a-z]/.test(token) && /[A-Z]/.test(token)));
 };
 
