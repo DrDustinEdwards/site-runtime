@@ -27,3 +27,5 @@ jobs:
           package-manager-cache: false
       - name: The rate limiter's windows, refusals and path matcher
         run: npm test
+      - name: Every session read goes through sessionLookup
+        run: node bin/session-check.mjs .

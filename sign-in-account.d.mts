@@ -32,7 +32,7 @@ export class SessionNotFresh extends Error {
  * (logged as `authz_fail`) when older. For a site's own risky routes: export and delete account.
  */
 export function requireFreshSession<S extends { session: { createdAt: Date | string }; user: { id: string } }>(
-  auth: { api: { getSession(o: { headers: Headers }): Promise<S | null> } },
+  auth: { api: { getSession(o: SessionLookup): Promise<S | null> } },
   request: Request,
 ): Promise<S | null>;
 
@@ -79,7 +79,12 @@ export const SESSION_DETAILS_SQL: string;
 /** The `auth_events` column `device_id`, with `sessionDetails` and `eventsDb`. */
 export const AUTH_EVENTS_DEVICE_SQL: string;
 /** The argument for a site's own `auth.api.getSession` with `sessionDetails`: the request on a GET, always `asResponse: false`. */
-export function sessionLookup(request: Request): { headers: Headers; request?: Request; asResponse: false };
+export interface SessionLookup {
+  headers: Headers;
+  request?: Request;
+  asResponse: false;
+}
+export function sessionLookup(request: Request): SessionLookup;
 /** What to write to a session on use (updatedAt, and the place when known), or null: at most every 5 minutes. */
 export function sessionTouch(
   session: { updatedAt?: Date | string | null; createdAt?: Date | string | null; location?: unknown },
@@ -117,7 +122,7 @@ export function sessionRows(sessions: SessionRow[], currentToken: string | null 
 
 export type SessionsAuth = {
   api: {
-    getSession(o: { headers: Headers }): Promise<{ session: { token: string } } | null>;
+    getSession(o: SessionLookup): Promise<{ session: { token: string } } | null>;
     listSessions(o: { headers: Headers }): Promise<SessionRow[]>;
     revokeSession(o: { headers: Headers; body: { token: string } }): Promise<unknown>;
   };
@@ -146,7 +151,7 @@ export function passkeyLastUsed(db: D1Like, userId: string): Promise<Map<string,
 export function accountPasskeys(
   auth: {
     api: {
-      getSession(o: { headers: Headers }): Promise<{ user: { id: string } } | null>;
+      getSession(o: SessionLookup): Promise<{ user: { id: string } } | null>;
       listPasskeys(o: { headers: Headers }): Promise<PasskeyRow[]>;
     };
   },
