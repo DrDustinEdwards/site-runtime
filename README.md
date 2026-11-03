@@ -1003,7 +1003,10 @@ const auth = betterAuth({
   sign-in fresh). The place comes from the request's `cf`, so a site's own server-side read passes the request too,
   through `auth.api.getSession(sessionLookup(request))`: the request on a GET, never on a POST, and always
   `asResponse: false`, without which Better Auth answers a call that carries a request with a Response, no `user`
-  in it, and every signed-in page reads the person as signed out (Foxing #169). A failed write is logged
+  in it, and every signed-in page reads the person as signed out (Foxing #169). Each site's CI runs
+  `site-runtime-session-check [dir ...]` (default `app`), which fails on any `api.getSession(` whose argument is not
+  `sessionLookup(...)`, one `::error file=...,line=...` annotation each (comments, node_modules, build output and test
+  files are skipped). A failed write is logged
   (`session_touch_failed`) and never fails the read. The site adds `SESSION_DETAILS_SQL` (`ALTER TABLE session ADD
   COLUMN location TEXT; ... device_id TEXT`, leaving out a column it has) and, with `eventsDb`, `AUTH_EVENTS_DEVICE_SQL`;
   in a Drizzle schema the session table gains `location: text("location")` and `deviceId: text("device_id")`. The

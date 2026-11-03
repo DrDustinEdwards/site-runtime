@@ -133,13 +133,15 @@ ALTER TABLE session ADD COLUMN device_id TEXT;
 export const AUTH_EVENTS_DEVICE_SQL = `ALTER TABLE auth_events ADD COLUMN device_id TEXT;
 `;
 
+/** @typedef {{ headers: Headers, request?: Request, asResponse: false }} SessionLookup */
+
 /**
  * The argument for a site's own `auth.api.getSession` with `sessionDetails`: on a GET the request too, so the session's
  * place follows the person; any other method leaves it out, so Better Auth never holds a POST's request. Always
  * `asResponse: false`: given a request, Better Auth 1.7.12 answers with a Response unless told otherwise, and a
  * Response has no `user`, so every signed-in page reads the person as signed out (Foxing #169, txasm).
  * @param {Request} request
- * @returns {{ headers: Headers, request?: Request, asResponse: false }}
+ * @returns {SessionLookup}
  */
 export function sessionLookup(request) {
   return request.method === "GET"
@@ -208,7 +210,7 @@ export function sessionRows(sessions, currentToken) {
 
 /**
  * @typedef {{ api: {
- *   getSession(o: { headers: Headers }): Promise<{ session: { token: string } } | null>,
+ *   getSession(o: SessionLookup): Promise<{ session: { token: string } } | null>,
  *   listSessions(o: { headers: Headers }): Promise<SessionRow[]>,
  *   revokeSession(o: { headers: Headers, body: { token: string } }): Promise<unknown>,
  * } }} SessionsAuth
@@ -223,7 +225,7 @@ export function sessionRows(sessions, currentToken) {
 export async function accountSessions(auth, request) {
   const headers = request.headers;
   try {
-    const [current, sessions] = await Promise.all([auth.api.getSession({ headers }), auth.api.listSessions({ headers })]);
+    const [current, sessions] = await Promise.all([auth.api.getSession(sessionLookup(request)), auth.api.listSessions({ headers })]);
     return sessionRows(sessions, current?.session.token);
   } catch (error) {
     if (/** @type {{ body?: { code?: string } }} */ (error)?.body?.code === "SESSION_NOT_FRESH") return null;
@@ -275,12 +277,12 @@ export class SessionNotFresh extends Error {
  * SessionNotFresh (logged as `authz_fail`) when the sign-in is older: for a site's own risky routes, such as exporting
  * or deleting an account, which Better Auth's freshAge does not reach.
  * @template {{ session: { createdAt: Date | string }, user: { id: string } }} S
- * @param {{ api: { getSession(o: { headers: Headers }): Promise<S | null> } }} auth
+ * @param {{ api: { getSession(o: SessionLookup): Promise<S | null> } }} auth
  * @param {Request} request
  * @returns {Promise<S | null>}
  */
 export async function requireFreshSession(auth, request) {
-  const found = await auth.api.getSession({ headers: request.headers });
+  const found = await auth.api.getSession(sessionLookup(request));
   if (!found) return null;
   if (sessionIsFresh(found.session)) return found;
   await logAuthEvent({
@@ -423,7 +425,7 @@ export async function passkeyLastUsed(db, userId) {
  * `eventsDb`; null when nobody is signed in. Listing needs no fresh sign-in, and neither does renaming one
  * (`authClient.passkey.updatePasskey({ id, name })`); deleting one does (FRESH_SECONDS).
  * @param {{ api: {
- *   getSession(o: { headers: Headers }): Promise<{ user: { id: string } } | null>,
+ *   getSession(o: SessionLookup): Promise<{ user: { id: string } } | null>,
  *   listPasskeys(o: { headers: Headers }): Promise<PasskeyRow[]>,
  * } }} auth
  * @param {Request} request
@@ -431,7 +433,7 @@ export async function passkeyLastUsed(db, userId) {
  */
 export async function accountPasskeys(auth, request, db) {
   const headers = request.headers;
-  const found = await auth.api.getSession({ headers });
+  const found = await auth.api.getSession(sessionLookup(request));
   if (!found) return null;
   const [passkeys, lastUsed] = await Promise.all([
     auth.api.listPasskeys({ headers }),

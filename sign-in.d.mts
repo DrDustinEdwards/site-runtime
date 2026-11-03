@@ -55,6 +55,7 @@ export type {
   SecurityHistoryEntry,
   SecurityNoticeKind,
   SendSecurityNotice,
+  SessionLookup,
 } from "./sign-in-account.mjs";
 
 type SignInEnv = {
