@@ -322,6 +322,6 @@
   },
   "license": "UNLICENSED",
   "devDependencies": {
-    "@dustinedwards/devkit": "github:DrDustinEdwards/devkit#v0.21.1"
+    "@dustinedwards/devkit": "github:DrDustinEdwards/devkit#v0.21.2"
   }
 }
