@@ -1188,7 +1188,7 @@ outside request can: it sends no mail, makes no account and holds no token, and 
   page found and `/sign-in/confirm`, `/signin/confirm` (txasm's), `/login/confirm`. A missing confirm page is a warning
   until every site has the route.
 - Admin (`/admin`, and the pages the site's registry entry names in `signIn.admin`, `./sites`: dustinedwards.info's
-  `/lab`, txasm's `/admin/access`, all of Desk and the Portal): a request with no sign-in gets a redirect to
+  `/lab-bench`, txasm's `/admin/access`, all of Desk and the Portal): a request with no sign-in gets a redirect to
   `*.cloudflareaccess.com` or a 401/403, never the page (G1; another redirect is a warning), with `no-store` and, on
   anything but a redirect, `noindex` (D10). A declared page that answers 404 or 5xx is an error, not skipped.
 - MCP (`/mcp`, and the servers the entry names in `signIn.mcp`, such as Foxhound's merchant and admin servers): the
