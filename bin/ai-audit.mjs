@@ -29,7 +29,7 @@
  * MCP_TEST_GRANT_<HOST>, the origin's host upper-cased with every other character an underscore, so
  * MCP_TEST_GRANT_MCP_EXAMPLE_COM), never from an argument, and is never printed. Make it a READ-ONLY grant (an agent
  * key without AGENT_WRITE): the daily run needs nothing more, and T7 counts on it. Without one, every check below is
- * skipped with a warning that names the variable, never silently. The grant goes to the resource endpoint, or to
+ * reported not measured, naming the variable, never silently and never as a pass. The grant goes to the resource endpoint, or to
  * `--grant-path` on the origin for a server whose agent keys have a door of their own (Capsid's /ops/mcp, which takes
  * keys while /mcp takes OAuth tokens only):
  *
@@ -113,9 +113,11 @@ const origin = values.origin.replace(/\/$/, "");
 const from = values.from?.replace(/\/$/, "");
 const grantEnv = values["grant-env"] ?? `MCP_TEST_GRANT_${new URL(origin).hostname.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
 
-/** @type {{ severity: "error" | "warning", item: string, url: string, detail: string }[]} */
+/** @type {{ severity: "error" | "warning" | "unmeasured", item: string, url: string, detail: string }[]} */
 const findings = [];
-const report = (/** @type {"error" | "warning"} */ severity, /** @type {string} */ item, /** @type {string} */ url, /** @type {string} */ detail) =>
+// "unmeasured": an item this run could not measure (no grant, a tool that could not run, a page that could not be read),
+// printed in devkit-live's form, `::notice title=<item>::<url> could not measure: <reason>`, never a pass or a failure.
+const report = (/** @type {"error" | "warning" | "unmeasured"} */ severity, /** @type {string} */ item, /** @type {string} */ url, /** @type {string} */ detail) =>
   findings.push({ severity, item, url, detail });
 
 /**
@@ -183,7 +185,7 @@ const commandValue = (/** @type {string} */ text) => text.replace(/%/g, "%25").r
 // A check that throws must not take the findings with it: before this, a crash printed nothing, so the board read
 // "fail, 0 errors" with no cause (capsid-mcp, 2026-11-01). The stop is an error finding of its own, after the others.
 const stopped = (/** @type {unknown} */ error) => {
-  report("error", "audit", origin, `the audit stopped before it finished: ${error instanceof Error ? (error.stack ?? error.message).split("\n").slice(0, 3).join(" | ") : String(error)}`.slice(0, 600));
+  report("unmeasured", "audit", origin, `the audit stopped before it finished, so the rest was not measured: ${error instanceof Error ? (error.stack ?? error.message).split("\n").slice(0, 3).join(" | ") : String(error)}`.slice(0, 600));
 };
 for (const event of ["unhandledRejection", "uncaughtException"]) {
   process.on(event, (error) => {
@@ -201,11 +203,15 @@ try {
 finish();
 
 function finish() {
-  for (const f of findings) console.log(`::${f.severity} title=${f.item}::${commandValue(f.url)} ${commandValue(f.detail)}`);
+  for (const f of findings) {
+    const line = f.severity === "unmeasured" ? `notice title=${f.item}::${commandValue(f.url)} could not measure: ${commandValue(f.detail)}` : `${f.severity} title=${f.item}::${commandValue(f.url)} ${commandValue(f.detail)}`;
+    console.log(`::${line}`);
+  }
   const errors = findings.filter((f) => f.severity === "error").length;
+  const unmeasured = findings.filter((f) => f.severity === "unmeasured").length;
   const kind = prms.length > 0 ? "MCP server" : (values.kind ?? "origin");
-  console.log(`site-runtime-ai-audit: ${kind} ${origin}; ${errors} error(s), ${findings.length - errors} warning(s).`);
-  process.exit(errors > 0 ? 1 : 0);
+  console.log(`site-runtime-ai-audit: ${kind} ${origin}; ${errors} error(s), ${findings.length - errors - unmeasured} warning(s), ${unmeasured} not measured.`);
+  process.exit(errors > 0 ? 1 : unmeasured > 0 ? 3 : 0);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -311,7 +317,7 @@ async function auditMcp() {
 
   const grant = process.env[grantEnv]?.trim();
   if (!grant) {
-    report("warning", "T1", endpoint, `no test grant in ${grantEnv}: tools/list (T1-T4, T7, T9, T12), the conformance server scenarios and the rate-limit burst (S1) did not run`);
+    report("unmeasured", "T1", endpoint, `no test grant in ${grantEnv}: tools/list (T1-T4, T7, T9, T12), the conformance server scenarios and the rate-limit burst (S1) did not run`);
     return;
   }
   const keyed = values["grant-path"] ? `${origin}${values["grant-path"]}` : endpoint;
@@ -515,7 +521,7 @@ function readChecks(/** @type {string} */ plain, /** @type {Record<string, unkno
 /** One scenario's count against its baseline, devkit-conformance's way. */
 function judgeConformance(/** @type {string} */ scenario, /** @type {string} */ url, /** @type {any} */ run) {
   const item = { "server-stateless": "P3", "http-header-validation": "P4", caching: "P7" }[scenario] ?? "A4";
-  if (!run.count) return report("warning", item, url, `conformance ${scenario} could not run: ${run.why}`);
+  if (!run.count) return report("unmeasured", item, url, `conformance ${scenario} could not run: ${run.why}`);
   if (run.skipped.length) report("warning", item, url, `conformance ${scenario}: ${run.skipped.length} check(s) do not apply here and were left out (${run.skipped.join(", ")})`);
   const { passed, total } = run.count;
   const failing = run.failed.length ? ` (failing: ${run.failed.join(", ")})` : "";
@@ -580,6 +586,6 @@ async function auditModels() {
     page = res.ok ? await res.text() : "";
   } catch {}
   const table = parseDeprecations(page);
-  if (Object.keys(table).length === 0) return report("warning", "C8", DEPRECATIONS_URL, "could not read the model table; the models were not checked today");
+  if (Object.keys(table).length === 0) return report("unmeasured", "C8", DEPRECATIONS_URL, "could not read the model table, so the models were not checked today");
   for (const problem of deprecationProblems(Object.values(MODEL_IDS), table)) report("error", "C8", DEPRECATIONS_URL, problem);
 }

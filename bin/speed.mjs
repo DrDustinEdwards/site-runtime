@@ -11,11 +11,18 @@
 //   site-runtime-speed --origin https://example.com [--from https://example.workers.dev] [--max-pages 40] [--kind site]
 //
 // --from fetches from another host (a site not yet on its domain). --kind static skips what only a Worker does (B4,
-// F3). PSI_API_KEY, when set, is a PageSpeed Insights key; without one Google's shared quota may refuse, which is a
-// warning. Each finding is a GitHub annotation, `::error title=<item>::<url> <detail>`; exit 1 on any error, 2 when the
-// site does not answer, so an outage never reads as findings.
+// F3). PSI_API_KEY, when set, is a PageSpeed Insights key; without one Google's shared quota may refuse. A 429 or 5xx is
+// retried with exponential backoff (Retry-After when given), as Google's API guidance asks; a refusal after that leaves
+// the PageSpeed items not measured. Each finding is a GitHub annotation, `::error title=<item>::<url> <detail>`; an item
+// that could not be measured (that refusal, or a 103 probe that could not read the HTTP/2 answer) is
+// `::notice title=<item>::<url> could not measure: <reason>`, never a pass or a failure. Exit 1 on any error, 3 when
+// nothing failed but an item was not measured (devkit-live's contract), 2 when the site does not answer, so an outage
+// never reads as findings. The 103 probe speaks HTTP/2 itself, so it tunnels through HTTPS_PROXY (HTTP CONNECT, RFC 9110
+// 9.3.6) when the environment names one and NO_PROXY does not exempt the host, as fetch's own requests are routed.
 
+import { request } from "node:http";
 import { connect } from "node:http2";
+import { connect as tlsConnect } from "node:tls";
 import { parseArgs } from "node:util";
 
 import { speedFindings } from "../speed.mjs";
@@ -63,17 +70,56 @@ async function hops(url) {
   return chain;
 }
 
-/** The status codes of the informational responses (103) before the page's own, over HTTP/2. null when it cannot tell. */
-function informational(url) {
+/** The proxy the environment names for an https URL, unless NO_PROXY exempts its host (curl's rules: a suffix, or *). */
+function proxyFor(/** @type {URL} */ u) {
+  const proxy = process.env.HTTPS_PROXY || process.env.https_proxy;
+  if (!proxy) return null;
+  const host = u.hostname.toLowerCase();
+  const exempt = (process.env.NO_PROXY || process.env.no_proxy || "").split(",").map((entry) => entry.trim().toLowerCase().replace(/^\*?\./, "")).filter(Boolean);
+  if (exempt.some((entry) => entry === "*" || host === entry || host.endsWith(`.${entry}`))) return null;
+  return new URL(proxy);
+}
+
+/** A TLS socket to the host offering only h2, through the proxy's CONNECT tunnel when there is one. */
+function h2Socket(/** @type {URL} */ u) {
+  return new Promise((resolve, reject) => {
+    const secure = (socket) => {
+      const tls = tlsConnect({ host: u.hostname, port: Number(u.port || 443), servername: u.hostname, ALPNProtocols: ["h2"], ...(socket ? { socket } : {}) });
+      tls.once("secureConnect", () => (tls.alpnProtocol === "h2" ? resolve(tls) : (tls.destroy(), reject(new Error(`the server chose ${tls.alpnProtocol || "no protocol"}, not h2`)))));
+      tls.once("error", reject);
+    };
+    const proxy = proxyFor(u);
+    if (!proxy) return secure(null);
+    const authority = `${u.hostname}:${u.port || 443}`;
+    const auth = proxy.username ? { "proxy-authorization": `Basic ${Buffer.from(`${decodeURIComponent(proxy.username)}:${decodeURIComponent(proxy.password)}`).toString("base64")}` } : {};
+    const tunnel = request({ host: proxy.hostname, port: Number(proxy.port || 80), method: "CONNECT", path: authority, headers: { host: authority, ...auth }, timeout: 15_000 });
+    tunnel.once("connect", (res, socket) => (res.statusCode === 200 ? secure(socket) : (socket.destroy(), reject(new Error(`the proxy answered ${res.statusCode} to CONNECT`)))));
+    tunnel.once("timeout", () => tunnel.destroy(new Error("the proxy did not answer CONNECT in 15 s")));
+    tunnel.once("error", reject);
+    tunnel.end();
+  });
+}
+
+/** The status codes of the informational responses (103) before the page's own, over HTTP/2, or why they could not be read. */
+async function informational(url) {
+  const u = new URL(url);
+  let socket;
+  try {
+    socket = await h2Socket(u);
+  } catch (error) {
+    return { error: String(error?.message ?? error) };
+  }
   return new Promise((resolve) => {
-    const u = new URL(url);
-    const session = connect(u.origin);
+    const session = connect(u.origin, { createConnection: () => socket });
+    let settled = false;
     const done = (value) => {
+      if (settled) return;
+      settled = true;
       session.close();
       resolve(value);
     };
-    session.on("error", () => done(null));
-    session.setTimeout(15_000, () => done(null));
+    session.on("error", (error) => done({ error: `HTTP/2: ${error.message}` }));
+    session.setTimeout(15_000, () => done({ error: "no HTTP/2 answer in 15 s" }));
     const seen = [];
     const stream = session.request({ ":path": u.pathname + u.search, "user-agent": UA, "x-check": CHECK, "accept-encoding": ENCODINGS });
     stream.on("headers", (headers) => seen.push(Number(headers[":status"])));
@@ -81,7 +127,7 @@ function informational(url) {
       stream.resume();
       done(seen);
     });
-    stream.on("error", () => done(null));
+    stream.on("error", (error) => done({ error: `HTTP/2 stream: ${error.message}` }));
     stream.end();
   });
 }
@@ -91,8 +137,9 @@ async function earlyHints(url) {
   let seen = null;
   for (let i = 0; i < 3; i++) {
     const statuses = await informational(url);
-    if (statuses?.includes(103)) return statuses;
-    seen ??= statuses;
+    if (Array.isArray(statuses) && statuses.includes(103)) return statuses;
+    // A read answer outranks an unread one: three reads without a 103 are "no 103", any unread one alone is not measured.
+    if (!Array.isArray(seen)) seen = statuses;
   }
   return seen;
 }
@@ -133,16 +180,32 @@ function sample(urls, n) {
   return picked;
 }
 
-/** PageSpeed Insights for the home page, phone and desktop: the Lighthouse result and the field data. */
+const PSI_TRIES = 4;
+const sleep = (/** @type {number} */ ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * PageSpeed Insights for the home page, phone and desktop: the Lighthouse result and the field data. A 429 or a 5xx is
+ * retried with exponential backoff and jitter (Retry-After when the answer gives one, at most a minute).
+ */
 async function pagespeed(url) {
   const out = {};
   for (const strategy of ["mobile", "desktop"]) {
     const key = process.env.PSI_API_KEY ? `&key=${process.env.PSI_API_KEY}` : "";
-    try {
-      const r = await fetch(`https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&strategy=${strategy}&category=performance${key}`);
-      out[strategy] = r.ok ? await r.json() : { error: `PageSpeed Insights answered ${r.status}` };
-    } catch (error) {
-      out[strategy] = { error: `PageSpeed Insights could not be reached: ${error.message}` };
+    for (let attempt = 1; attempt <= PSI_TRIES; attempt++) {
+      try {
+        const r = await fetch(`https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&strategy=${strategy}&category=performance${key}`);
+        if (r.ok) {
+          out[strategy] = await r.json();
+          break;
+        }
+        out[strategy] = { error: `PageSpeed Insights answered ${r.status}${attempt > 1 ? ` after ${attempt} tries` : ""}${r.status === 429 && !key ? " (no PSI_API_KEY, so Google's shared keyless quota)" : ""}` };
+        if (r.status !== 429 && r.status < 500) break;
+        const after = Number(r.headers.get("retry-after"));
+        if (attempt < PSI_TRIES) await sleep(Math.min(60_000, Number.isFinite(after) && after > 0 ? after * 1000 : 2 ** attempt * 1000 + Math.random() * 1000));
+      } catch (error) {
+        out[strategy] = { error: `PageSpeed Insights could not be reached: ${error.message}` };
+        if (attempt < PSI_TRIES) await sleep(2 ** attempt * 1000);
+      }
     }
   }
   return out;
@@ -209,7 +272,10 @@ const observations = {
 };
 
 const findings = speedFindings(observations);
-for (const finding of findings) console.log(`::${finding.severity} title=${finding.item}::${finding.url} ${finding.detail}`);
+for (const finding of findings) {
+  console.log(finding.severity === "unmeasured" ? `::notice title=${finding.item}::${finding.url} could not measure: ${finding.detail}` : `::${finding.severity} title=${finding.item}::${finding.url} ${finding.detail}`);
+}
 const errors = findings.filter((finding) => finding.severity === "error").length;
-console.log(`site-runtime-speed: ${urls.length} pages on ${base}; ${errors} errors, ${findings.length - errors} warnings.`);
-process.exit(errors > 0 ? 1 : 0);
+const unmeasured = findings.filter((finding) => finding.severity === "unmeasured").length;
+console.log(`site-runtime-speed: ${urls.length} pages on ${base}; ${errors} errors, ${findings.length - errors - unmeasured} warnings, ${unmeasured} not measured.`);
+process.exit(errors > 0 ? 1 : unmeasured > 0 ? 3 : 0);

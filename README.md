@@ -668,8 +668,10 @@ what makes a render slow. A stored page keeps the marks of the render that store
 `site-runtime-images --origin <origin> [--from <host>]` checks a live site's images and media as served, with plain fetch and
 no browser: the home page and up to 24 sitemap pages, every original each page shows or links (2 MB of each) and 6 size URLs
 a page. Each finding is a GitHub annotation, `::error title=<item>::<proof URL> <detail>` or `::warning ...`, the contract
-devkit-live runs every area's check by; it exits 0 with no errors, 1 with errors, and 2 when it could not run (a bad
-origin, or a home page that does not answer 200). `--from` fetches from where the site is served now and judges every URL
+devkit-live runs every area's check by; it exits 0 with no errors, 1 with errors, 3 when nothing failed but something
+could not be measured, and 2 when it could not run (a bad origin, or a home page that does not answer 200). A request that
+got no answer, and a page that did not answer or answered a server error, is not measured, never a pass or a failure:
+`::notice title=<item>::<url> could not measure: <reason>`. `--from` fetches from where the site is served now and judges every URL
 as the origin, for a site not yet on its domain. A site whose home page sends a stranger to another host (a sign-in, as
 the Capsid Portal and Carrel Desk do) is one C1 error, since a shared link shows that host's card, and nothing behind it is
 read.
@@ -2028,7 +2030,10 @@ prompts or resources list the server answers -32601 for while its `server/discov
 scenario must pass every other check unless `--conformance-baseline scenario=passed/total` records its known count
 (fewer is an error, more a warning to tighten it). The suite is
 `@modelcontextprotocol/conformance@0.2.0-alpha.10`, through npx; `--no-conformance` skips it. Without a grant, all of
-this is skipped with a warning that names the variable.
+this is reported not measured, naming the variable. What the audit could not measure (no grant, a conformance scenario
+that could not run, an unreadable model table, an audit that stopped part way) is a
+`::notice title=<item>::<url> could not measure: <reason>`, never a warning that passes, and the exit is 3 when nothing
+failed: devkit-live's contract.
 
 Any origin: `--prose /path` (repeatable) runs `checkProse` over a public page that carries AI text, as written by
 `--prose-model` (default Claude): a chatbot's leftovers, blanks and markup are W3 errors, another high finding a W1
