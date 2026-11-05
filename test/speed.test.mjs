@@ -59,6 +59,18 @@ test("PLANT: each gap fails its own item", () => {
   assert.deepEqual(items(speedFindings(o)), ["B1", "B4", "B5", "B7", "C1", "C2", "C5", "D1", "E1", "F3"]);
 });
 
+test("C5: a same-host http to https upgrade first is not counted (hstspreload's rule), any other extra hop is", () => {
+  const run = (chain) => {
+    const o = clean();
+    o.redirects = { chain: chain.map(([url, status]) => ({ url, status })) };
+    return items(speedFindings(o));
+  };
+  assert.deepEqual(run([["http://www.example.com/", 301], ["https://www.example.com/", 301], ["https://example.com/", 200]]), []);
+  assert.deepEqual(run([["http://example.com/about/", 301], ["https://example.com/about/", 301], ["https://example.com/about", 200]]), []);
+  assert.deepEqual(run([["https://www.example.com/about/", 301], ["https://www.example.com/about", 301], ["https://example.com/about", 200]]), ["C5"]);
+  assert.deepEqual(run([["http://www.example.com/", 301], ["https://www.example.com/", 301], ["https://example.com/x", 301], ["https://example.com/", 200]]), ["C5"]);
+});
+
 test("a 404 is judged by its cache-control: static assets' HIT without an Age passes, a storable 404 fails", () => {
   const missing = (headers) => ({ url: "https://example.com/x", status: 404, ttfb: 10, body: "", headers });
   const run = (headers) => {

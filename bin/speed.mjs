@@ -3,7 +3,7 @@
 // It reads the site's sitemap, fetches a sample of its pages twice, and checks what a visitor's browser gets: pages
 // stored at the edge (B1), nothing personal stored (B4), campaign links on the stored page (B5), validators and 304s
 // (B7), year-long hashed files (C1), validators and at most five minutes in the browser for pages and the rest (C2),
-// compression (C3), HTTP/3 (C4), one redirect at most from http, www, a page and its other trailing slash (C5), the
+// compression (C3), HTTP/3 (C4), one redirect at most from http, www, a page and its other trailing slash, after a same-host http to https upgrade (C5), the
 // preload header and its 103 (D1), our speculation rules on a page with no app (E1), no no-store on a public page (E2),
 // the uncached render time (F2), Server-Timing (F3), and PageSpeed Insights' lab and field numbers for the home page
 // (A1, A3, D2, D3, D4, D6).
