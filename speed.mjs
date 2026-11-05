@@ -42,6 +42,14 @@ const AUDITS = {
  * @typedef {{ item: string, severity: "error" | "warning", url: string, detail: string }} Finding
  */
 
+/** True when `to` is `from` with only its scheme moved from http to https. */
+const upgradeOnly = (/** @type {string} */ from, /** @type {string | undefined} */ to) => {
+  if (!to) return false;
+  const a = new URL(from);
+  const b = new URL(to);
+  return a.protocol === "http:" && b.protocol === "https:" && a.host === b.host && a.pathname === b.pathname && a.search === b.search;
+};
+
 const median = (/** @type {number[]} */ values) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
 const isHtml = (/** @type {Got} */ got) => (got.headers["content-type"] ?? "").includes("text/html");
 /**
@@ -147,7 +155,10 @@ export function speedFindings(o) {
 
   if (home && !/h3=/.test(home.headers["alt-svc"] ?? "")) add("C4", "error", home.url, "no HTTP/3 (alt-svc h3)");
   for (const [kind, chain] of Object.entries(o.redirects)) {
-    const redirects = chain.filter((hop) => hop.status >= 300 && hop.status < 400).length;
+    // A first hop that only upgrades http to https on the same host, path and query does not count. hstspreload.org
+    // requires it ("Redirect from HTTP to HTTPS on the same host"), so http://www.x cannot go straight to https://x, and
+    // once a browser has the HSTS policy it makes that upgrade itself without asking the server (RFC 6797, 8.3).
+    const redirects = chain.filter((hop, at) => hop.status >= 300 && hop.status < 400 && !(at === 0 && upgradeOnly(hop.url, chain[1]?.url))).length;
     if (redirects > 1) add("C5", "error", chain[0].url, `${kind}: ${redirects} redirects (${chain.map((hop) => `${hop.status} ${hop.url}`).join(" > ")})`);
   }
 

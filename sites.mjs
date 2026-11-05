@@ -198,8 +198,9 @@ export const dustinedwardsInfo = {
       ),
     },
   },
-  // The lab notebook is admin-only, behind its own Access application (dustinedwards-lab-login).
-  signIn: { admin: ["/lab"], mcp: ["https://admin-mcp.dustinedwards.info/mcp"] },
+  // The lab bench is admin-only, behind its own Access application (dustinedwards-lab-login). /lab itself is gone: the
+  // public lab registry is /research/lab, and the bench moved to /lab-bench (the site's app/lab/path.mjs).
+  signIn: { admin: ["/lab-bench"], mcp: ["https://admin-mcp.dustinedwards.info/mcp"] },
 };
 
 // app/lib/http/header-set.ts, app/lib/http/content-security-policy.ts

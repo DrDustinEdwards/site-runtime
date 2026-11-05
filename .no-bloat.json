@@ -1,6 +1,6 @@
 {
   "baseline": {
-    "measured_at": "bfbbecd",
+    "measured_at": "e45ff98",
     "knip": {
       "Unused files": 6,
       "Unlisted dependencies": 8,
@@ -13,12 +13,12 @@
     },
     "tests": {
       "files": 49,
-      "cases": 331
+      "cases": 332
     },
     "comments": {
-      "lines": 6777,
-      "code": 16035,
-      "percentage": 29.71
+      "lines": 6798,
+      "code": 16072,
+      "percentage": 29.72
     }
   }
 }
