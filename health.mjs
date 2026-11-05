@@ -16,9 +16,14 @@
  *
  * Each check is raced against `checkTimeoutMs`, so a binding that hangs fails its check instead of holding /health.
  *
- * The backup read is held per isolate for `backupTtlMs` (five minutes by default). Reading it lists an R2 bucket, which
- * R2 bills as a Class A operation, and this route is public and uncached; the dump runs once a day, so an answer five
- * minutes old loses nothing.
+ * The backup read is kept for `backupTtlMs` (an hour by default) in the data center's Cache API, so every isolate
+ * there shares it. Reading it lists an R2 bucket, which R2 bills as a Class A operation, and this route is public and
+ * polled all day; the dump runs once a day and the warning threshold is a day long, so an answer an hour old loses
+ * nothing. It is not module state: isolates are many and short-lived, so a per-isolate hold left each site listing
+ * its bucket dozens of times an hour (developers.cloudflare.com/workers/best-practices/workers-best-practices/,
+ * "Do not store request-scoped state in global scope"). The Cache API is per data center, not global
+ * (developers.cloudflare.com/workers/runtime-apis/cache/), which a status read can live with. Where `caches` does
+ * not exist (Node tests, a workers.dev address) or `backupTtlMs` is 0, every request reads.
  */
 
 import { logEvent, scrubText } from "./log.mjs";
@@ -30,8 +35,36 @@ export const CHECK_DETAIL_MAX = 200;
 // The key r2Check and kvCheck read: what comes back does not matter, only that the binding answers.
 const PROBE_KEY = "health-check";
 
-/** @type {{ at: number, value: unknown } | null} */
-let held = null;
+// A cache key must be a URL; nothing is fetched from it.
+const BACKUP_CACHE_KEY = "https://health.site-runtime.invalid/backup";
+const DEFAULT_BACKUP_TTL_MS = 60 * 60_000;
+
+/**
+ * The kept backup status, or the result of `read`, which is then kept for `ttlMs`. A cache that is missing or throws
+ * is a miss, never a failure: the status is still read.
+ * @param {() => Promise<unknown>} read
+ * @param {number} ttlMs
+ * @param {{ match(key: string): Promise<Response | undefined>, put(key: string, response: Response): Promise<void> } | undefined} cache
+ */
+async function keptBackup(read, ttlMs, cache) {
+  if (!cache || ttlMs < 1000) return read();
+  try {
+    const hit = await cache.match(BACKUP_CACHE_KEY);
+    if (hit) return await hit.json();
+  } catch {
+    // An unreadable entry is a miss.
+  }
+  const value = await read();
+  try {
+    await cache.put(
+      BACKUP_CACHE_KEY,
+      new Response(JSON.stringify(value), { headers: { "Content-Type": "application/json", "Cache-Control": `public, max-age=${Math.floor(ttlMs / 1000)}` } })
+    );
+  } catch {
+    // A failed write costs one more read.
+  }
+  return value;
+}
 
 /**
  * @typedef {{ name: string, level?: "fail" | "warn", alert?: boolean, run: () => Promise<unknown> }} HealthCheck
@@ -39,11 +72,10 @@ let held = null;
  */
 
 /**
- * @param {{ ping?: () => Promise<unknown>, backup?: () => Promise<unknown>, sha?: string, checks?: HealthCheck[], backupTtlMs?: number, checkTimeoutMs?: number, now?: Date }} probe
+ * @param {{ ping?: () => Promise<unknown>, backup?: () => Promise<unknown>, sha?: string, checks?: HealthCheck[], backupTtlMs?: number, checkTimeoutMs?: number, now?: Date, cache?: { match(key: string): Promise<Response | undefined>, put(key: string, response: Response): Promise<void> } }} probe
  * @returns {Promise<Response>}
  */
-export async function healthResponse({ ping, backup, sha, checks = [], backupTtlMs = 5 * 60_000, checkTimeoutMs = 3000, now = new Date() } = {}) {
-  const at = now.getTime();
+export async function healthResponse({ ping, backup, sha, checks = [], backupTtlMs = DEFAULT_BACKUP_TTL_MS, checkTimeoutMs = 3000, now = new Date(), cache = /** @type {any} */ (globalThis).caches?.default } = {}) {
   /** @type {unknown} */
   let backupStatus;
   /** @type {HealthCheck[]} */
@@ -54,8 +86,7 @@ export async function healthResponse({ ping, backup, sha, checks = [], backupTtl
       name: "backup",
       level: "warn",
       run: async () => {
-        if (!held || at - held.at >= backupTtlMs || at < held.at) held = { at, value: await backup() };
-        backupStatus = held.value;
+        backupStatus = await keptBackup(backup, backupTtlMs, cache);
         const warning = backupStatus && typeof backupStatus === "object" && "warning" in backupStatus && backupStatus.warning;
         return warning ? { ok: false, detail: String(warning) } : true;
       },
