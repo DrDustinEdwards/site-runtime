@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 
-import { CRON_SQL, cronCheck, runJobs } from "../cron.mjs";
+import { CRON_SKIPPED, CRON_SQL, cronCheck, cronFindings, runJobs } from "../cron.mjs";
 
 /** A D1-shaped wrapper over node:sqlite. */
 function d1() {
@@ -57,4 +57,21 @@ test("a hung job times out as failed and the next still runs; a daily job warns 
   // 1440 + 144 minutes: the deploy is recent, so prune's absence is not yet a warning.
   assert.equal(await cronCheck(store, { jobs: registered, deployedAt: at(0), now: at(1584) }).run(), true);
   assert.deepEqual(await cronCheck(store, { jobs: registered, deployedAt: at(0), now: at(1585) }).run(), { ok: false, detail: "backup stale, prune never ran" });
+});
+
+test("a job held on timeout is recorded failed and waited for before the next starts; a skip records no success", async () => {
+  const store = d1();
+  const t0 = Date.UTC(2026, 9, 30);
+  const order = [];
+  const jobs = [
+    { name: "money", everyMinutes: 5, timeoutMs: 10, holdOnTimeout: true, run: () => new Promise((done) => setTimeout(() => done(order.push("money ended")), 40)) },
+    { name: "next", everyMinutes: 5, run: async () => void order.push("next") },
+    { name: "gated", everyMinutes: 5, run: async () => CRON_SKIPPED },
+  ];
+  await assert.rejects(runJobs(store, jobs, { now: () => t0 }), /cron jobs failed: money$/);
+  assert.deepEqual(order, ["money ended", "next"]);
+  const row = (/** @type {string} */ name) => store.db.prepare("SELECT last_ok_at, last_failed_at FROM cron_runs WHERE name = ?").get(name);
+  assert.deepEqual({ ...row("money") }, { last_ok_at: null, last_failed_at: t0 });
+  assert.equal(row("gated")?.last_ok_at, null);
+  assert.deepEqual(await cronFindings(store, { jobs: [{ name: "money", everyMinutes: 5 }], now: new Date(t0) }), [{ name: "money", reason: "failed", lastOkAt: null }]);
 });
