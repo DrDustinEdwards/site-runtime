@@ -54,5 +54,5 @@ export function purgeViaRenderer(why: string, log?: (line: string) => void): Pro
 /** A site-api `PublishHook` that purges after a schedule changes a page. */
 export function schedulePurgeHook(options?: { purge?: (why: string) => Promise<boolean | null> }): {
   name: "edge-page-purge";
-  run(event: { trigger: string; action: string; path: string }): Promise<boolean>;
+  run(event: { trigger: string; action: string; path: string | null }): Promise<boolean>;
 };
