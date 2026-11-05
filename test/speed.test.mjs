@@ -41,8 +41,14 @@ const clean = () => ({
 });
 const items = (findings) => findings.filter((f) => f.severity === "error").map((f) => f.item).sort();
 
-test("a site that does everything right has no errors", () => {
+test("a site that does everything right has no errors; what could not be read is not measured, never a pass or a failure", () => {
   assert.deepEqual(items(speedFindings(clean())), []);
+  const o = clean();
+  o.earlyHints = { error: "the proxy answered 403 to CONNECT" };
+  o.pagespeed = { mobile: { error: "PageSpeed Insights answered 429 after 4 tries" } };
+  const findings = speedFindings(o);
+  assert.deepEqual(items(findings), []);
+  assert.deepEqual(findings.filter((f) => f.severity === "unmeasured").map((f) => f.item).sort(), ["A3", "D1"]);
 });
 
 test("PLANT: each gap fails its own item", () => {

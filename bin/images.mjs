@@ -7,7 +7,8 @@
  *
  * `--from` fetches from where the site is served now while judging every URL as `--origin`, for a site not yet on its
  * domain. Pages are the home page and the sitemap's (one level of sitemap index), at most 25. Each finding is an
- * annotation line, `::error title=<item>::<proof URL> <detail>` (or `::warning`), the contract devkit-live and
+ * annotation line, `::error title=<item>::<proof URL> <detail>` (or `::warning`; what a request that got no answer left
+ * unmeasured is `::notice title=<item>::<url> could not measure: <reason>`, exit 3 when nothing failed), the contract devkit-live and
  * prelum-audit keep; exit 0 with no errors, 1 with errors, 2 when it could not run (no origin, home page unreachable).
  *
  * Where an image sits on a 390 px phone (DPR 3) and a 1440 px desktop (DPR 1) is estimated from the HTML (`placeImages`):
@@ -74,7 +75,7 @@ const RASTER_PATH = /\.(png|jpe?g|webp|avif|gif)(?:$|[?#])/i;
 const RASTER_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/avif", "image/gif"]);
 
 /**
- * @typedef {{ severity: "error" | "warning", item: string, url: string, detail: string }} Finding
+ * @typedef {{ severity: "error" | "warning" | "unmeasured", item: string, url: string, detail: string }} Finding
  * @typedef {{ status: number, type: string, headers: Headers, bytes: Uint8Array, url: string, error?: string }} Fetched
  * @typedef {(url: string, limit?: number, accept?: string) => Promise<Fetched>} Load
  * @typedef {{ tag: string, attrs: Record<string, string | undefined>, children: Array<El | string>, parent: El | null }} El
@@ -129,6 +130,11 @@ export async function auditImages({ origin, from, fetch: get = fetch, maxPages =
   if (entries.length === 0) notes.push(`${origin}/sitemap.xml lists no pages; only the home page was read`);
   await inParallel(pages.map((url, i) => ({ url, i })), PARALLEL, async (job) => {
     const page = await load(job.url, Number.POSITIVE_INFINITY);
+    // A page that did not answer, or answered a server error, was not audited: its images are not measured, never passed.
+    if (page.status === 0 || page.status >= 500) {
+      perPage[job.i] = [{ severity: "unmeasured", item: "page", url: job.url, detail: `answered ${page.status || page.error}, so its images and media were not audited` }];
+      return;
+    }
     if (page.status !== 200 || !/html/i.test(page.type) || away(page)) {
       notes.push(`${job.url} answered ${page.status || page.error} ${page.type}${away(page) ? ` from ${away(page)}` : ""}; not audited`);
       return;
@@ -190,7 +196,7 @@ async function auditPage({ url, origin, html, headers, load, probe, onSite, site
     if (!etag) add("error", "A12", src, "the original has no ETag, so a browser can never revalidate it");
     else {
       const again = await probe(src, { "if-none-match": etag });
-      if (again.status !== 304) add("error", "A12", src, `answers ${again.status || again.error} to If-None-Match with its own ETag, not 304`);
+      if (again.status !== 304) add(again.status ? "error" : "unmeasured", "A12", src, `answers ${again.status || again.error} to If-None-Match with its own ETag, not 304`);
     }
   });
 
@@ -287,7 +293,7 @@ async function auditPage({ url, origin, html, headers, load, probe, onSite, site
 
   for (const size of [...sizeUrls].slice(0, MAX_SIZE_URLS)) {
     const got = await load(size);
-    if (got.status !== 200) add("error", "A12", size, `answers ${got.status || got.error}`);
+    if (got.status !== 200) add(got.status ? "error" : "unmeasured", "A12", size, `answers ${got.status || got.error}`);
     else {
       const cacheControl = got.headers.get("cache-control") ?? "";
       if (!/\bimmutable\b/i.test(cacheControl)) add("error", "A12", size, `Cache-Control is "${cacheControl}", not immutable`);
@@ -305,7 +311,7 @@ async function auditPage({ url, origin, html, headers, load, probe, onSite, site
     if (Number(parsed.searchParams.get("w")) > AVIF_MAX_EDGE) continue;
     const avif = await load(parsed.href);
     const overLimit = avif.status === 200 && /\.webp$/i.test(new URL(avif.url || parsed.href).pathname) && avif.type.toLowerCase().startsWith("image/webp");
-    if (!overLimit && (avif.status !== 200 || !avif.type.toLowerCase().startsWith("image/avif"))) add("error", "A3", parsed.href, `answers ${avif.status || avif.error} ${avif.type || "with no type"}, not image/avif`);
+    if (!overLimit && (avif.status !== 200 || !avif.type.toLowerCase().startsWith("image/avif"))) add(avif.status ? "error" : "unmeasured", "A3", parsed.href, `answers ${avif.status || avif.error} ${avif.type || "with no type"}, not image/avif`);
   }
 
   /** @type {Map<string, string>} */
@@ -398,7 +404,7 @@ async function shareCard({ url, meta, absolute, load }) {
   if (!src) return findings;
   const got = await load(src, READ_LIMIT);
   if (got.status !== 200) {
-    add("error", "C1", src, `the og:image of ${url} answers ${got.status || got.error}`);
+    add(got.status ? "error" : "unmeasured", "C1", src, `the og:image of ${url} answers ${got.status || got.error}`);
     return findings;
   }
   if (!got.type.toLowerCase().startsWith("image/")) add("error", "C1", src, `the og:image of ${url} is ${got.type || "untyped"}, not an image`);
@@ -1060,7 +1066,10 @@ function dedupe(findings) {
 /** A finding as a GitHub annotation line, escaped as workflow commands require. @param {Finding} finding */
 export function annotation({ severity, item, url, detail }) {
   const data = (/** @type {string} */ s) => s.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
-  return `::${severity} title=${data(item).replace(/:/g, "%3A").replace(/,/g, "%2C")}::${data(`${url} ${detail}`)}`;
+  const title = data(item).replace(/:/g, "%3A").replace(/,/g, "%2C");
+  // What could not be measured is a notice in devkit-live's form, never a pass or a failure.
+  if (severity === "unmeasured") return `::notice title=${title}::${data(`${url} could not measure: ${detail}`)}`;
+  return `::${severity} title=${title}::${data(`${url} ${detail}`)}`;
 }
 
 const invokedAs = process.argv[1] ? pathToFileURL(realpathSync(process.argv[1])).href : "";
@@ -1096,6 +1105,7 @@ if (import.meta.url === invokedAs) {
   for (const finding of report.findings) console.log(annotation(finding));
   for (const note of report.notes) console.error(`site-runtime-images: ${note}`);
   const errors = report.findings.filter((f) => f.severity === "error").length;
-  console.log(`site-runtime-images: ${report.pages.length} pages of ${origin}, ${errors} errors, ${report.findings.length - errors} warnings.`);
-  process.exit(errors ? 1 : 0);
+  const unmeasured = report.findings.filter((f) => f.severity === "unmeasured").length;
+  console.log(`site-runtime-images: ${report.pages.length} pages of ${origin}, ${errors} errors, ${report.findings.length - errors - unmeasured} warnings, ${unmeasured} not measured.`);
+  process.exit(errors ? 1 : unmeasured ? 3 : 0);
 }

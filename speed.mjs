@@ -39,7 +39,7 @@ const AUDITS = {
 
 /**
  * @typedef {{ url: string, status: number, headers: Record<string, string>, ttfb: number, body: string, error?: string }} Got
- * @typedef {{ item: string, severity: "error" | "warning", url: string, detail: string }} Finding
+ * @typedef {{ item: string, severity: "error" | "warning" | "unmeasured", url: string, detail: string }} Finding
  */
 
 /** True when `to` is `from` with only its scheme moved from http to https. */
@@ -84,7 +84,7 @@ const runsApp = (/** @type {string} */ html) => /__reactRouterContext|__remixCon
 /**
  * @param {{ origin: string, base: string, kind: string, first: Got[], second: Got[], conditional: Got[], files: Got[],
  *   misses: Got[], hits: Got[], withCookie: Got, missing: Got[], campaign: Got, redirects: Record<string, { url: string, status: number }[]>,
- *   earlyHints: number[] | null, pagespeed: Record<string, any> }} o
+ *   earlyHints: number[] | { error: string } | null, pagespeed: Record<string, any> }} o
  * @returns {Finding[]}
  */
 export function speedFindings(o) {
@@ -162,7 +162,8 @@ export function speedFindings(o) {
     if (redirects > 1) add("C5", "error", chain[0].url, `${kind}: ${redirects} redirects (${chain.map((hop) => `${hop.status} ${hop.url}`).join(" > ")})`);
   }
 
-  if (o.earlyHints === null) add("D1", "warning", `${o.base}/`, "could not read the HTTP/2 response to look for a 103");
+  // An answer that could not be read is not measured: never a pass, and never "no 103" when nothing was seen.
+  if (!Array.isArray(o.earlyHints)) add("D1", "unmeasured", `${o.base}/`, `could not read the HTTP/2 response to look for a 103: ${o.earlyHints?.error ?? "no answer"}`);
   else if (!o.earlyHints.includes(103)) {
     const why = new URL(o.base).host.endsWith(".workers.dev") ? ": workers.dev never sends Early Hints; the site needs its own domain" : "";
     add("D1", "error", `${o.base}/`, `no 103 Early Hints before the page${why}`);
@@ -187,7 +188,8 @@ export function speedFindings(o) {
   for (const [strategy, result] of Object.entries(o.pagespeed)) {
     const url = `${o.base}/`;
     if (result.error) {
-      add("A3", "warning", url, `${strategy}: ${result.error}`);
+      // A refusal (Google's keyless quota answers 429) measures nothing, so the lab and field items stay unmeasured.
+      add("A3", "unmeasured", url, `${strategy}: ${result.error}, so A1, A3, D2, D3, D4 and D6 were not measured`);
       continue;
     }
     const lh = result.lighthouseResult;
