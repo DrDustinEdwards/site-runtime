@@ -3,7 +3,7 @@
  * `{ status, ok, alerts?, db?, backup?, sha?, time, checks }`, no-store and noindex. 503 only when a "fail" check failed; a
  * failed "warn" check (the backup's warning among them) is status "warn" and 200. `ok` is `status !== "fail"`. `alerts`
  * names the failed checks marked `alert` (each also `alert: true` in `checks`), for a watcher to mail on. Each check is
- * raced against `checkTimeoutMs` (default 3000). The backup read is held per isolate for `backupTtlMs` (default 5 minutes).
+ * raced against `checkTimeoutMs` (default 3000). The backup read is kept in the data center's Cache API for `backupTtlMs` (default 1 hour); 0, or no `caches`, reads every time.
  */
 
 /** The longest `detail` a check reports: 200. */
@@ -37,6 +37,8 @@ export function healthResponse(probe?: {
   sha?: string;
   checks?: HealthCheck[];
   backupTtlMs?: number;
+  /** The cache holding the backup read; defaults to `caches.default`. */
+  cache?: { match(key: string): Promise<Response | undefined>; put(key: string, response: Response): Promise<void> };
   checkTimeoutMs?: number;
   now?: Date;
 }): Promise<Response>;
