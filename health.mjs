@@ -24,6 +24,14 @@
  * "Do not store request-scoped state in global scope"). The Cache API is per data center, not global
  * (developers.cloudflare.com/workers/runtime-apis/cache/), which a status read can live with. Where `caches` does
  * not exist (Node tests, a workers.dev address) or `backupTtlMs` is 0, every request reads.
+ *
+ * That workers.dev read is a platform difference, not a different behavior: the code is the same on every site, and
+ * Cloudflare documents that only Workers on custom domains get functional cache operations
+ * (developers.cloudflare.com/workers/runtime-apis/cache/). It is also cheap: a site polled every four minutes lists
+ * its bucket about 11,000 times a month, and R2's free tier is 1 million Class A operations a month
+ * (developers.cloudflare.com/r2/pricing/). Decided 2026-11-05 not to add a second hold (a D1 row, an R2 pointer
+ * object) for it: either puts a table or a release on every site to save nothing, and a site that moves to a custom
+ * domain (txasm at its cutover) gets the hourly hold with no change.
  */
 
 import { logEvent, scrubText } from "./log.mjs";
