@@ -17,21 +17,15 @@
  * Each check is raced against `checkTimeoutMs`, so a binding that hangs fails its check instead of holding /health.
  *
  * The backup read is kept for `backupTtlMs` (an hour by default) in the data center's Cache API, so every isolate
- * there shares it. Reading it lists an R2 bucket, which R2 bills as a Class A operation, and this route is public and
- * polled all day; the dump runs once a day and the warning threshold is a day long, so an answer an hour old loses
- * nothing. It is not module state: isolates are many and short-lived, so a per-isolate hold left each site listing
- * its bucket dozens of times an hour (developers.cloudflare.com/workers/best-practices/workers-best-practices/,
- * "Do not store request-scoped state in global scope"). The Cache API is per data center, not global
- * (developers.cloudflare.com/workers/runtime-apis/cache/), which a status read can live with. Where `caches` does
- * not exist (Node tests, a workers.dev address) or `backupTtlMs` is 0, every request reads.
- *
- * That workers.dev read is a platform difference, not a different behavior: the code is the same on every site, and
- * Cloudflare documents that only Workers on custom domains get functional cache operations
- * (developers.cloudflare.com/workers/runtime-apis/cache/). It is also cheap: a site polled every four minutes lists
- * its bucket about 11,000 times a month, and R2's free tier is 1 million Class A operations a month
- * (developers.cloudflare.com/r2/pricing/). Decided 2026-11-05 not to add a second hold (a D1 row, an R2 pointer
- * object) for it: either puts a table or a release on every site to save nothing, and a site that moves to a custom
- * domain (txasm at its cutover) gets the hourly hold with no change.
+ * there shares it. This route is public and polled all day; the dump runs once a day and the warning threshold is a
+ * day long, so an answer an hour old loses nothing. It is not module state: isolates are many and short-lived
+ * (developers.cloudflare.com/workers/best-practices/workers-best-practices/, "Do not store request-scoped state in
+ * global scope"). The Cache API is per data center, not global (developers.cloudflare.com/workers/runtime-apis/cache/),
+ * and Capsid's watcher reaches each site from a dozen data centers an hour (its cron runs somewhere new each tick), so
+ * the hold alone left each site reading its bucket about once per data center. That is why the read itself must be
+ * cheap: d1-dump 0.13.0's backupHealth reads a pointer object with two gets (R2 Class B) instead of listing the bucket
+ * (Class A, developers.cloudflare.com/r2/pricing/). Where `caches` does not exist (Node tests, a workers.dev address,
+ * where only custom domains get functional cache operations) or `backupTtlMs` is 0, every request reads.
  */
 
 import { logEvent, scrubText } from "./log.mjs";
