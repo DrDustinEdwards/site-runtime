@@ -570,7 +570,7 @@ export async function probeRefusal(env, server, request) {
   const bytes = await readCappedBytes(request, PROBE_BODY_MAX);
   if (bytes === null) return refusal(null, 403, -32600, "Refused: the list-only test key's request is too large.");
   const text = new TextDecoder().decode(bytes);
-  const served = new Request(request, { body: text });
+  const served = new Request(request, { method: "POST", body: text });
   /** @type {unknown} */
   let body;
   try {

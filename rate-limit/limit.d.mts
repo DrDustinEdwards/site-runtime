@@ -9,9 +9,9 @@
  * nothing and only says whether the rules are spent, for a limit on failures: peek before the attempt, and `limit`
  * after a failed one.
  */
-export function limit(namespace: {
-    idFromName: (name: string) => any;
-    get: (id: any) => {
+export function limit<Id>(namespace: {
+    idFromName(name: string): Id;
+    get(id: Id): {
         hit: (rules: import("./core.mjs").Rule[]) => Promise<import("./core.mjs").Hit>;
         peek?: (rules: import("./core.mjs").Rule[]) => Promise<import("./core.mjs").Hit>;
     };

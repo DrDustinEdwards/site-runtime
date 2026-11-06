@@ -156,7 +156,8 @@ export type McpIcon = { src: string; mimeType?: string; sizes?: string[]; theme?
  * `tool.config`, `run` to `tool.handler(env, args, signal)`. Returns the tools listed.
  */
 export function registerTools<T extends { name: string; scope?: unknown }>(
-  mcp: { registerTool: (name: string, config: any, callback: (args: any, ctx: any) => unknown) => unknown },
+  // never: any server whose registerTool takes a name, a config and a callback (the SDK's is generic and overloaded).
+  mcp: { registerTool(name: string, config: never, callback: never): unknown },
   tools: readonly T[],
   options: {
     env: { ADMIN_EMAIL?: string } & Partial<AuditEnv>;
@@ -164,7 +165,7 @@ export function registerTools<T extends { name: string; scope?: unknown }>(
     caller: McpCaller | undefined;
     icons?: readonly McpIcon[];
     config?: (tool: T) => Record<string, unknown>;
-    run?: (tool: T, args: Record<string, unknown>, signal?: AbortSignal) => Promise<any>;
+    run?: (tool: T, args: Record<string, unknown>, signal?: AbortSignal) => Promise<unknown>;
   },
 ): T[];
 
@@ -182,7 +183,7 @@ export function outsideResult(
 /** One finding on a `tools/list` result. */
 export type ToolListProblem = { item: "T1" | "T2" | "T3" | "T4" | "T9"; tool: string; severity: "error" | "warning"; detail: string };
 /** What is wrong with a `tools/list` result's tools (T1 names and text, T2 hints, T3 outputSchema, T4 inputSchema, T9 icons). */
-export function toolListProblems(tools: ReadonlyArray<Record<string, any>>): ToolListProblem[];
+export function toolListProblems(tools: ReadonlyArray<object>): ToolListProblem[];
 /** SHA-256 hex of the tools as `tools/list` sends them, `_meta` left out, sorted by name, canonical JSON (T12). */
 export function toolListHash(tools: ReadonlyArray<Record<string, unknown>>): Promise<string>;
 

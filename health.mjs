@@ -237,7 +237,7 @@ export function queueCheck(name, queue) {
 /**
  * A check that the Workers AI binding is present. It runs no model: every call is billed. Level warn.
  * @param {string} name
- * @param {{ run(...args: any[]): Promise<unknown> } | undefined} ai
+ * @param {{ run(...args: never[]): Promise<unknown> } | undefined} ai
  * @returns {HealthCheck}
  */
 export function aiCheck(name, ai) {

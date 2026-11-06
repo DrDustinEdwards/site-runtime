@@ -2,6 +2,7 @@
  * The admin MCP Worker: the door, OAuth provider, sign-in, /health and the tool-call log's cron that every site's admin
  * MCP server shares (admin-mcp.mjs).
  */
+import type { OAuthProviderOptions } from "@cloudflare/workers-oauth-provider";
 import type { AuditEnv } from "./audit-log.d.mts";
 import type { HealthCheck } from "./health.d.mts";
 import type { LoginEnv } from "./mcp-login.d.mts";
@@ -71,7 +72,7 @@ export interface AdminMcpOptions<E extends AdminMcpEnv> {
   /** Serves one request whose caller the door has established: the server's MCP handler. */
   serve(request: Request, env: E, ctx: ExecutionContext, caller: AdminMcpCaller): Promise<Response>;
   /** The provider class, `@cloudflare/workers-oauth-provider`'s default export (1.2.4 or later), from the server's own dependency. */
-  OAuthProvider: new (options: any) => { fetch(request: Request, env: any, ctx: ExecutionContext): Promise<Response> };
+  OAuthProvider: new (options: OAuthProviderOptions<E>) => { fetch(request: Request, env: E, ctx: ExecutionContext): Promise<Response> };
   /**
    * The service binding to the site: its env name (`binding`) and the name of its /health checks (`name`, and
    * `<name>-reach`, the warn-level request that shows the site is up).

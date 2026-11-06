@@ -6,7 +6,8 @@ export const OPERATOR_RULES: import("./rate-limit/core.mjs").Rule[];
 /** One tool: what GET lists, and what POST runs with the call's `args` (an object, `{}` when none was sent). */
 export interface OperatorTool {
   description: string;
-  run: (args: Record<string, unknown>) => Promise<unknown> | unknown;
+  /** May answer at once or with a promise. */
+  run: (args: Record<string, unknown>) => unknown;
 }
 
 export interface OperatorOptions {

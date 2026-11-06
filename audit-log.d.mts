@@ -1,8 +1,11 @@
 /** The MCP servers' append-only tool-call log, hash-chained (audit-log.mjs). */
 
 export interface AuditEnv {
-  /** Untyped or typed as wrangler generates it (`DurableObjectNamespace<ToolCallLog>`). */
-  TOOL_CALL_LOG: DurableObjectNamespace<any>;
+  /** Untyped or typed as wrangler generates it (`DurableObjectNamespace<ToolCallLog>`): the log reads it through fetch. */
+  TOOL_CALL_LOG: {
+    idFromName(name: string): DurableObjectId;
+    get(id: DurableObjectId): { fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> };
+  };
   /** The Worker secret the chain's Ed25519 signing key is derived from, at least 32 characters; required (devkit worker-deploy `generated-secrets`). */
   AUDIT_SIGNING_KEY: string;
 }

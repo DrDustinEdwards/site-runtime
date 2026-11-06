@@ -42,7 +42,7 @@ const responses = {
   "https://example.com/about": html('<html><head><meta name="robots" content="max-image-preview:large"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image:alt" content="x"></head></html>'),
   "https://example.com/sitemap.xml": () => new Response("<urlset><url><loc>https://example.com/</loc></url><url><loc>https://example.com/about</loc></url></urlset>"),
   "https://example.com/media/big.png": () => new Response(pngWithGps(2000, 1000), { headers: { "content-type": "image/png", "cross-origin-resource-policy": "cross-origin" } }),
-  "https://example.com/media/linked.png": (init) =>
+  "https://example.com/media/linked.png": () =>
     new Response(pngWithGps(800, 600), { headers: { "content-type": "image/png", etag: '"v1"', "cross-origin-resource-policy": "same-origin" } }),
   "https://example.com/img/hero.jpg?w=1200": () => new Response("", { headers: { "content-type": "image/webp", "cache-control": "public, max-age=31536000, immutable", "cf-cache-status": "MISS", "cross-origin-resource-policy": "cross-origin" } }),
   "https://example.com/media/p.jpg?w=640": () => new Response("webp", { headers: { "content-type": "image/webp", "cache-control": "public, max-age=3600", "cf-cache-status": "HIT", "cross-origin-resource-policy": "cross-origin" } }),

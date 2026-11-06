@@ -65,7 +65,7 @@ export type Rule = {
  */
 export type Sql = {
     exec: (query: string, ...bindings: unknown[]) => {
-        toArray: () => any[];
+        toArray: () => Record<string, unknown>[];
     };
 };
 /**

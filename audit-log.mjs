@@ -422,7 +422,7 @@ export async function verifyAuditChain(rows, { keys = [], previous = null } = {}
 /**
  * The correlation id of one request: the trace id of its W3C `_meta.traceparent` when that is well formed, else a
  * fresh id of the same shape, so the log and a tracing system name a call alike.
- * @param {Record<string, unknown> | undefined} [meta]
+ * @param {Record<string, unknown>} [meta]
  */
 export function correlationId(meta) {
   const match = /^[0-9a-f]{2}-([0-9a-f]{32})-[0-9a-f]{16}-[0-9a-f]{2}$/.exec(String(meta?.traceparent ?? ""));
@@ -479,7 +479,8 @@ function logStub(env) {
 export async function exportAuditLog(env, bucket, { prefix = "tool-calls/", keepDays = AUDIT_KEEP_DAYS } = {}) {
   const current = await auditChainKey(env.AUDIT_SIGNING_KEY);
   const stub = logStub(env);
-  const call = async (/** @type {string} */ path, /** @type {unknown} */ body = undefined) => {
+  /** @param {string} path @param {unknown} [body] */
+  const call = async (path, body) => {
     const init = body === undefined ? undefined : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) };
     const response = await stub.fetch(`https://tool-call-log.invalid${path}`, init);
     if (!response.ok) throw new Error(`the tool-call log answered ${response.status} to ${path}`);

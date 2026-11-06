@@ -64,4 +64,4 @@ export function queueCheck(name: string, queue: { send(message: unknown): Promis
 /** A Send Email binding (`send_email`) is present; nothing is sent. Level warn. */
 export function emailCheck(name: string, email: { send(message: unknown): Promise<unknown> } | undefined): HealthCheck;
 /** The Workers AI binding is present; no model is run (every call is billed). Level warn. */
-export function aiCheck(name: string, ai: { run(...args: any[]): Promise<unknown> } | undefined): HealthCheck;
+export function aiCheck(name: string, ai: { run(...args: never[]): Promise<unknown> } | undefined): HealthCheck;

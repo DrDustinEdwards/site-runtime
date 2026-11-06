@@ -16,7 +16,8 @@ because npm checks an optional peer's version even in a site that never imports 
 tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.64.0"`. `npm test` runs every test in `test/`. `npm run typecheck` checks the modules and bins (strict, `checkJs`, Workers and Node
 types; `tsconfig.json`) and the browser pair, `./turnstile` and `./sign-in-client` (DOM types; `tsconfig.browser.json`), against
 the hand-written `.d.mts` beside each; `better-auth`, `@better-auth/passkey` and `@cloudflare/workers-oauth-provider` are dev
-dependencies only so it can read their types. `test/` is not checked yet.
+dependencies only so it can read their types. `test/` is not checked yet. `npm run lint` is Oxlint with the network's shared
+config (devkit's `./oxlint`, in `oxlint.config.ts`), type-aware through the same tsconfigs (`test/` through TypeScript's defaults).
 
 ## Security headers
 

@@ -198,7 +198,7 @@ if (sitemap?.res.status === 200) {
     .map((m) => URL.parse((m[1] ?? "").replace(origin, served)))
     .find((u) => u?.origin === served && u.pathname !== "/");
   if (page) {
-    (await sample(`${page.pathname}${page.search}`))?.res.body?.cancel();
+    await (await sample(`${page.pathname}${page.search}`))?.res.body?.cancel();
     const turned = page.pathname.endsWith("/") ? page.pathname.slice(0, -1) : `${page.pathname}/`;
     const hop = await get(turned).catch(() => null);
     await hop?.res.body?.cancel();
@@ -222,16 +222,16 @@ const refs = [...homeHtml.matchAll(/\s(?:src|href)="([^"]+)"/gi)]
   .filter((u) => u.origin === served && /\.[a-z0-9]+$/i.test(u.pathname) && !/\.html?$/i.test(u.pathname));
 const asset = refs.find((u) => /[-.][A-Za-z0-9_-]{8,}\.(js|css)$/.test(u.pathname));
 const file = refs.find((u) => u.pathname !== asset?.pathname && !/\.(js|css)$/.test(u.pathname)) ?? refs.find((u) => u.pathname !== asset?.pathname);
-for (const u of [asset, file]) if (u) (await sample(u.pathname))?.res.body?.cancel();
+for (const u of [asset, file]) if (u) await (await sample(u.pathname))?.res.body?.cancel();
 if (asset) await expectStatus("A5", `${asset.pathname}.map`, [404, 410], "a public source map hands out the source");
 
 // A missing path.
-(await sample(`/site-runtime-security-${crypto.randomUUID()}`))?.res.body?.cancel();
+await (await sample(`/site-runtime-security-${crypto.randomUUID()}`))?.res.body?.cancel();
 
 // A3: an uploaded file the home page shows, under the prefix the entry declares.
 const uploads = entry?.optIns?.uploads?.value;
 const uploaded = uploads ? [...homeHtml.matchAll(/\s(?:src|href|srcset)="([^"\s]+)/gi)].map((m) => new URL((m[1] ?? "").replaceAll("&amp;", "&"), home.url)).find((u) => u.origin === served && u.pathname.startsWith(uploads)) : undefined;
-if (uploaded) (await sample(`${uploaded.pathname}${uploaded.search}`, "GET", { upload: true }))?.res.body?.cancel();
+if (uploaded) await (await sample(`${uploaded.pathname}${uploaded.search}`, "GET", { upload: true }))?.res.body?.cancel();
 
 // X3: a stylesheet name under a signed-in path is a 404, or at least never a page a shared cache would store as one.
 try {
@@ -270,7 +270,7 @@ if (txt) {
 }
 
 // H10: HEAD and OPTIONS answer with the set; TRACE and a method nobody defined are refused.
-(await sample("/", "HEAD"))?.res.body?.cancel();
+await (await sample("/", "HEAD"))?.res.body?.cancel();
 const options = await sample("/", "OPTIONS");
 await options?.res.body?.cancel();
 if (options && options.res.status >= 500) report("error", "H10", options.url, `OPTIONS answers ${options.res.status}`);
