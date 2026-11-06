@@ -110,7 +110,7 @@ function valuesBody() {
 export function sitesValuesSource() {
   return [
     HEADER,
-    "// The registry's values, the file a Worker bundles (package.json exports, ./sites); the reasons are sites-reasons.mjs.",
+    "// The registry's values, the file a Worker bundles (package.json exports, ./sites); the reasons are sites-deviations.mjs.",
     "",
     'import { entryOverrides, permissionsAllowingSelf } from "./headers.mjs";',
     'export { PASSKEY_OVERRIDES, permissionsAllowingSelf } from "./headers.mjs";',

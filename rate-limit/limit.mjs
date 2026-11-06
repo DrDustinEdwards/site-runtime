@@ -71,14 +71,33 @@ export function limitedResponse(verdict) {
 }
 
 /**
- * A key for a request: `prefix:ip`. Without a client IP header the request shares one `prefix:anon`
- * bucket and `anonymous` is true, so a site can see it happened.
+ * A key for a request: `prefix:ip`, an IPv6 address by its /64 (`prefix:2001-db8-0-1/64`), since one host is
+ * handed a whole /64 and would otherwise get a fresh bucket per address. The /64 is written with `-`, so `bucket`
+ * drops all of it from a log line. Without a client IP header the request shares one `prefix:anon` bucket and
+ * `anonymous` is true, so a site can see it happened.
  * @param {string} prefix
  * @param {Request} request
  */
 export function ipKey(prefix, request) {
   const ip = request.headers.get("CF-Connecting-IP")?.trim();
-  return { key: `${prefix}:${ip || "anon"}`, anonymous: !ip };
+  return { key: `${prefix}:${ip ? ipBucket(ip) : "anon"}`, anonymous: !ip };
+}
+
+/**
+ * An IPv4 address as it is; an IPv6 one as its first four groups (`::` expanded, leading zeros dropped) and `/64`,
+ * and an IPv4-mapped one (`::ffff:192.0.2.1`) as its IPv4 address.
+ * @param {string} ip
+ */
+function ipBucket(ip) {
+  const address = ip.toLowerCase().split("%")[0] ?? "";
+  if (!address.includes(":")) return address;
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(address);
+  if (mapped) return /** @type {string} */ (mapped[1]);
+  const [head = "", tail] = address.split("::");
+  const front = head ? head.split(":") : [];
+  const back = tail ? tail.split(":") : [];
+  const groups = tail === undefined ? front : [...front, ...Array(Math.max(0, 8 - front.length - back.length)).fill("0"), ...back];
+  return `${groups.slice(0, 4).map((g) => (Number.parseInt(g, 16) || 0).toString(16)).join("-")}/64`;
 }
 
 /**

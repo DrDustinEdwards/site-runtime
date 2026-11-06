@@ -1546,8 +1546,12 @@ if (!admin) return redirect(accessSignInUrl(request));                        //
   no idle timeout, and its 24 hours stays the overall limit. A site calls it in its Worker's fetch for admin paths,
   before the app: `{ idle: true, response }` is a redirect to Access's logout (`ACCESS_LOGOUT_PATH`, which revokes the
   session everywhere), to return as is; `{ idle: false, cookie }` is the Set-Cookie (`__Host-admin-seen`) recording
-  this request, to append to the app's response. The last request is that cookie's time when its HMAC, keyed by the
-  Access session (the token's `sub` and `iat`), matches; otherwise the token's `iat`. A request with no Access token is `{ idle: false }`.
+  this request, to append to the app's response. The last request is that cookie's time when its HMAC, of the Access
+  session (the token's `sub` and `iat`) and the time under `secret`, matches; otherwise the token's `iat`. A request
+  with no Access token is `{ idle: false }`. Pass `secret`, a Worker secret only the server holds
+  (`withAdminIdle(request, handle, { secret: env.ADMIN_IDLE_SECRET })`): `sub` and `iat` are in the token the browser
+  carries, so without it whoever holds the token can sign a seen cookie with any time and never go idle. Without one
+  the cookie is keyed by `sub` and `iat` as before and `admin_idle_unkeyed` is logged once per isolate.
 
   A host whose own sign-in is not an Access token on each request (the Capsid Portal, on Access for SaaS with its own
   signed cookie) passes `session: { id, signedInAt }` in its place: `signedInAt` the sign-in time in epoch
@@ -1808,7 +1812,7 @@ import { RateLimiter } from "@dustinedwards/site-runtime/rate-limit/durable-obje
 
 export { RateLimiter }; // the Worker exports the class and binds it in wrangler.jsonc
 
-const { key } = ipKey("ask", request);
+const { key } = ipKey("ask", request); // an IPv6 address counts by its /64: ask:2001-db8-0-1/64
 const verdict = await limit(env.RATE_LIMITER, key, [{ limit: 300, windowSeconds: 3600 }, { limit: 1000, windowSeconds: 86400 }], {
   onUnavailable: "refuse", // or "allow": required
 });

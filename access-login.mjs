@@ -18,6 +18,8 @@
 
 const SKEW_SECONDS = 60;
 const TOKEN_TIMEOUT_MS = 15_000;
+/** How long a key fetch may take, so a slow JWKS endpoint cannot hold a sign-in open. */
+const KEYS_TIMEOUT_MS = 5_000;
 const MAX_NAME = 80;
 
 /**
@@ -91,7 +93,7 @@ export function remoteKeys(jwksUrl) {
   return async (kid, fresh) => {
     let keys = fresh ? undefined : cachedKeys.get(jwksUrl);
     if (!keys) {
-      const response = await fetch(jwksUrl, { headers: { Accept: "application/json" } });
+      const response = await fetch(jwksUrl, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(KEYS_TIMEOUT_MS) });
       if (!response.ok) return undefined;
       const body = /** @type {{ keys?: Jwk[] }} */ (await response.json().catch(() => ({})));
       keys = Array.isArray(body.keys) ? body.keys : [];
