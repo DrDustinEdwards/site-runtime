@@ -1278,6 +1278,32 @@ const fired = await fireOnce(d1FireStore(env.DB), `newsletter:${issueId}`, confi
   Anthropic allows or allow ones it refuses. Its 429 is cheap, starts no session and carries `retryAfter`, and
   `fireOnce` frees the job key on it, so the job waits for the next tick.
 
+## The operator API
+
+`./operator` is the door Capsid reaches a site's operations through (Capsid's `src/site-operator.ts`): `POST {tool, args}`
+with `Authorization: Bearer <token>` runs one of the site's named tools, and `GET` with the same bearer lists them.
+Capsid Admin's backups (check, and back up now) call `backup_status` and `backup_media` on every site through it.
+
+```js
+import { operatorResponse } from "@dustinedwards/site-runtime/operator";
+return operatorResponse(request, {
+  token: env.OPERATOR_TOKEN,
+  limiter: env.RATE_LIMITER,
+  tools: {
+    backup_status: { description: "Reads the backup state now.", run: () => backupStatus(env) },
+    backup_media: { description: "Runs the files backup now.", run: async () => ({ files: await backupFilesNow(env) }) },
+  },
+});
+```
+
+- The bearer is the whole boundary: compared in constant time (`./compare`), never echoed or logged. Unset or under
+  `MIN_TOKEN_LENGTH` (32) closes the route with a 503; a wrong or missing one is a 401 and an `authn_login_fail` line.
+- Authentication comes before the rate limit (`OPERATOR_RULES`, 30 a minute, refused when the counter is unavailable),
+  so an anonymous flood never spends the operator's allowance.
+- The body is read to `OPERATOR_BODY_MAX` (4 KiB). An unknown tool is a 400 naming the tools there are; a tool that
+  throws is a 500 with its message and an `operator_tool_failed` line. A tool's return is sent as `{ok: true, data}`.
+- Every answer is JSON, `no-store` and `noindex`. The route is not under `/admin`, so Access does not cover it.
+
 ## The cross-site check
 
 `./origin` refuses a cross-site request that changes something, on the routes no framework check covers. React
