@@ -6,7 +6,7 @@ import type { AuditEnv } from "./audit-log.d.mts";
 import type { HealthCheck } from "./health.d.mts";
 import type { LoginEnv } from "./mcp-login.d.mts";
 import type { McpServerInfo } from "./mcp-server.d.mts";
-import type { SiteEntry } from "./sites.mjs";
+import type { ServedSiteEntry } from "./sites.mjs";
 
 /** The one MCP route on every admin server. */
 export const ADMIN_MCP_ROUTE: "/mcp";
@@ -63,7 +63,7 @@ export interface AdminMcpOptions<E extends AdminMcpEnv> {
   /** The server as refusals, the step-up and the log name it, with its scopes (./mcp-server mcpScopes). */
   server: McpServerInfo;
   /** The door's registry entry (./sites), for withMcpHeaders. */
-  site: SiteEntry;
+  site: ServedSiteEntry;
   /** The security.txt contact and expiry, as the site itself sends them. */
   securityTxt: { contact: string; expires: Date | string; policy?: string };
   /** The server's own paragraphs on the consent page (trusted HTML). */
@@ -73,10 +73,10 @@ export interface AdminMcpOptions<E extends AdminMcpEnv> {
   /** The provider class, `@cloudflare/workers-oauth-provider`'s default export (1.2.4 or later), from the server's own dependency. */
   OAuthProvider: new (options: any) => { fetch(request: Request, env: any, ctx: ExecutionContext): Promise<Response> };
   /**
-   * The service binding to the site: its env name (`binding`), the name of its /health check (`name`), and `reach`, a
-   * URL the site answers without its API, for a warn-level check that it is up.
+   * The service binding to the site: its env name (`binding`) and the name of its /health checks (`name`, and
+   * `<name>-reach`, the warn-level request that shows the site is up).
    */
-  api: { binding: string; name: string; reach?: string };
+  api: { binding: string; name: string };
   /** Who is let in, at sign-in and again on every request. Default: isAdminUser (ADMIN_EMAIL). */
   admit?(env: E, user: { email: string } & Record<string, unknown>): boolean | Record<string, unknown> | null | Promise<boolean | Record<string, unknown> | null>;
   /** Named agent keys on /mcp (./agent-keys). Default false: an admin server lets in only its administrator and the test key. */

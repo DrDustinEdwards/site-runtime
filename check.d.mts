@@ -1,4 +1,6 @@
-import type { SiteEntry } from "./sites.mjs";
+import type { Deviation, ServedSiteEntry } from "./sites.mjs";
+/** A served entry with its deviations' reasons, as the check reads it (sites-deviations.mjs). */
+export type CheckedSiteEntry = ServedSiteEntry & { deviations?: Readonly<Record<string, Deviation>> };
 
 /**
  * @param {string} policy
@@ -16,7 +18,7 @@ export function parsePolicy(policy: string): Map<string, string[]>;
  * hold a site to the form it declared. `upload`: the response is an uploaded file (A3).
  */
 export type CheckOptions = {
-    site?: string | SiteEntry;
+    site?: string | CheckedSiteEntry;
     standard?: Readonly<Record<string, string>>;
     csp?: boolean;
     cloudflareWebAnalytics?: boolean;
@@ -42,10 +44,10 @@ export function failures(results: CheckResult[]): CheckResult[];
  */
 export function checkSecurityTxt(
     response: { url: string; origin?: string; status: number; headers: Headers; body: string; now?: number },
-    options?: { site?: string | SiteEntry },
+    options?: { site?: string | CheckedSiteEntry },
 ): CheckResult[];
 /** The deviation that covers a failed result, the family's (FAMILY_DEVIATIONS) or the entry's, or undefined. */
-export function declined(entry: SiteEntry | undefined, id: string, name?: string): { reason: string; family: boolean } | undefined;
+export function declined(entry: CheckedSiteEntry | undefined, id: string, name?: string): { reason: string; family: boolean } | undefined;
 /**
  * `id`: the checklist item (T2, H1, C4, ...). `warn`: advice, or an item the site declared a deviation for. `notice`: an
  * item no family site can meet (FAMILY_DEVIATIONS). Neither fails anything.

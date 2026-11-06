@@ -131,16 +131,16 @@ export function adminMcpWorker({
       // The log's copies only, so a bucket that fails to answer warns. One `head` of a fixed key, never a list.
       { ...bound("audit-bucket", env.AUDIT_BUCKET, (b) => r2Check("audit-bucket", b)), level: "warn" },
     ];
-    if (api.reach && typeof siteBinding?.fetch === "function") {
+    // Every server: a real request over the binding, so a site that is down shows here, not only a binding that is
+    // missing. `.invalid` (RFC 6761) names no real host: the site answers it without its API (a redirect to its canonical
+    // host or its 404). Warn: the site is another Worker, and rolling this one back would not mend it.
+    if (typeof siteBinding?.fetch === "function") {
       const fetcher = siteBinding.fetch.bind(siteBinding);
-      const url = api.reach;
-      // A real request to a path the site answers without its API (its 404), so a site that is down shows here. Warn:
-      // the site is another Worker, and rolling this one back would not mend it.
       list.push({
         name: `${api.name}-reach`,
         level: "warn",
         run: async () => {
-          const answer = await fetcher(new Request(url));
+          const answer = await fetcher(new Request(`https://${api.name}.invalid/`, { redirect: "manual" }));
           await answer.body?.cancel();
           return answer.status < 500 || { ok: false, detail: `${api.name} answered ${answer.status}` };
         },

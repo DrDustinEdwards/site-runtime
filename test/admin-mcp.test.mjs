@@ -134,6 +134,16 @@ test("not configured is not open: no PUBLIC_ORIGIN serves nothing, /health fails
   delete env.PUBLIC_ORIGIN;
   assert.equal((await call("/mcp")).status, 503);
   env.PUBLIC_ORIGIN = ORIGIN;
+  // Every server asks the site over its binding (sample-reach): a 404 is up, a 5xx warns.
+  const up = await (await call("/health", { method: "GET" })).json();
+  assert.equal(up.checks.find((/** @type {{ name: string }} */ c) => c.name === "sample-reach")?.status, "pass");
+  /** @type {Request[]} */
+  const asked = [];
+  env.SITE = { fetch: async (/** @type {Request} */ request) => (asked.push(request), new Response(null, { status: 503 })) };
+  const down = await (await call("/health", { method: "GET" })).json();
+  assert.equal(down.checks.find((/** @type {{ name: string }} */ c) => c.name === "sample-reach")?.status, "warn");
+  // A reserved name the site answers without its API, and its redirect is not followed.
+  assert.deepEqual(asked.map((r) => [r.url, r.redirect]), [["https://sample.invalid/", "manual"]]);
   delete env.SITE;
   const health = await call("/health", { method: "GET" });
   assert.equal(health.status, 503);
