@@ -290,6 +290,7 @@ export const germomics = {
       "/fonts/*": { "Cache-Control": "public, max-age=86400" },
     },
   },
+  signIn: { mcp: ["https://admin-mcp.germomics.com/mcp"] },
 };
 
 // workers/security-headers.ts, workers/header-set.ts
@@ -466,6 +467,9 @@ export const dustinedwardsMcp = { id: "dustinedwards-mcp", origin: "https://admi
 // foxing mcp/src/index.ts: Foxing's admin MCP, the standard exactly.
 export const foxingMcp = { id: "foxing-mcp", origin: "https://admin-mcp.foxing.app", optIns: doorOptIns };
 
+// germomics mcp/src/index.ts: Germomics' admin MCP, the standard exactly.
+export const germomicsMcp = { id: "germomics-mcp", origin: "https://admin-mcp.germomics.com", optIns: doorOptIns };
+
 // scripts/security-headers.ts, wrangler.jsonc
 export const capsomer = {
   id: "capsomer",
@@ -527,7 +531,7 @@ export const prelum = {
 /** @type {readonly SiteEntry[]} */
 export const SITES = /* @__PURE__ */ Object.freeze([
   dustinedwardsInfo, foxhound, foxing, germomics, julieedwardsInfo, bsw, txasm, carrel, carrelDesk, capsidPortal, capsidMcp, carrelMcp, capsid, enarratio,
-  foxhoundMcp, dustinedwardsMcp, foxingMcp, capsomer, prelum,
+  foxhoundMcp, dustinedwardsMcp, foxingMcp, germomicsMcp, capsomer, prelum,
 ]);
 
 /**
