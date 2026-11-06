@@ -24,10 +24,10 @@ export const NEVER_PREFETCH = ["/admin", "/api", "/auth", "/logout", "/sign-out"
  * lower case only: `href_matches` takes no ignoreCase, so a site linking "/paper.PDF" names it in `data-no-prefetch`.
  */
 export const FILE_EXTENSIONS = [
-  ...["md", "txt", "xml", "json", "rss", "atom", "csv", "ics", "bib", "ris"],
-  ...["pdf", "epub", "docx", "xlsx", "pptx"],
-  ...["zip", "gz", "tar"],
-  ...["png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "mp3", "mp4", "webm"],
+  "md", "txt", "xml", "json", "rss", "atom", "csv", "ics", "bib", "ris",
+  "pdf", "epub", "docx", "xlsx", "pptx",
+  "zip", "gz", "tar",
+  "png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "mp3", "mp4", "webm",
 ];
 
 /**

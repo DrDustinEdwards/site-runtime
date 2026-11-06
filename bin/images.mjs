@@ -222,7 +222,6 @@ async function auditPage({ url, origin, html, headers, load, probe, onSite, site
     const { attrs } = img;
     const src = absolute(attrs.src);
     const label = attrs.src ? shorten(attrs.src) : "an <img> with no src";
-    const proof = src ?? url;
     if (attrs.alt === undefined) add("error", "B1", url, `${label} has no alt attribute`);
     else if (isPlaceholderAlt(attrs.alt, src)) add("error", "B2", url, `${label} has alt "${attrs.alt}", which says nothing about it`);
     if (attrs.width === undefined || attrs.height === undefined) add("error", "A4", url, `${label} has no ${attrs.width === undefined ? "width" : "height"} attribute, so the page shifts as it loads`);

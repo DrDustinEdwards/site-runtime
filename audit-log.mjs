@@ -237,7 +237,7 @@ export async function verifyAuditChain(rows, key, anchor = null) {
 /**
  * The correlation id of one request: the trace id of its W3C `_meta.traceparent` when that is well formed, else a
  * fresh id of the same shape, so the log and a tracing system name a call alike.
- * @param {Record<string, unknown> | undefined} [meta]
+ * @param {Record<string, unknown>} [meta]
  */
 export function correlationId(meta) {
   const match = /^[0-9a-f]{2}-([0-9a-f]{32})-[0-9a-f]{16}-[0-9a-f]{2}$/.exec(String(meta?.traceparent ?? ""));

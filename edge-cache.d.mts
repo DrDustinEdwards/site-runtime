@@ -36,8 +36,10 @@ export interface PurgeCache {
 export function purgeTags(cache: PurgeCache | undefined, tags: string[], why: string, log?: (line: string) => void): Promise<boolean | null>;
 
 /** Mixes the `purgePages(why, tags?)` RPC method into the Renderer: `class Renderer extends withPurgePages(WorkerEntrypoint)`. */
+// oxlint-disable-next-line typescript/no-explicit-any -- a mixin's constructor must take (...args: any[]); unknown[] refuses WorkerEntrypoint (TS2345), never[] its subclass (TS2510)
 export function withPurgePages<T extends abstract new (...args: any[]) => object>(
   Base: T,
+  // oxlint-disable-next-line typescript/no-explicit-any -- the same mixin constructor, as TypeScript requires it
 ): T & (abstract new (...args: any[]) => { purgePages(why: string, tags?: string[]): Promise<boolean | null> });
 
 /** In the gateway: an accepted write (below 400) asks the Renderer to purge, in `waitUntil`. */

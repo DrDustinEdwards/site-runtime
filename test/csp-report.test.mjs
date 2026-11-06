@@ -43,6 +43,7 @@ test("a report is logged once per violation and answered 204, with the site's he
 
 test("too large, unreadable, limited or empty: still 204, nothing logged", async () => {
   const big = JSON.stringify({ "csp-report": { pad: "x".repeat(MAX_REPORT_BYTES) } });
+  /** @type {Array<[Request, import("../csp-report.mjs").ReceiveOptions]>} */
   const cases = [
     [post(big), {}],
     [post(legacy, { "Content-Length": String(MAX_REPORT_BYTES + 1) }), {}],

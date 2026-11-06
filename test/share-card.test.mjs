@@ -11,7 +11,10 @@ function fakeImageResponse(/** @type {Uint8Array | Error} */ out, /** @type {str
       const body = new ReadableStream({
         pull(c) {
           if (out instanceof Error) c.error(out);
-          else (c.enqueue(out), c.close());
+          else {
+            c.enqueue(out);
+            c.close();
+          }
         },
       });
       super(body);

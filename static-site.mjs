@@ -135,7 +135,7 @@ export function staticSite({ site, headers: extra = {}, preload = "", reportPath
         // The 404 page through the asset server, so its own `_headers` rules (its policy) come with it.
         const page = await env.ASSETS.fetch(new Request(new URL(notFound, url)));
         if (page.ok) {
-          response.body?.cancel();
+          await response.body?.cancel();
           response = new Response(request.method === "HEAD" ? null : page.body, { status: 404, headers: page.headers });
         }
       }

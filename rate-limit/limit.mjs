@@ -12,7 +12,8 @@ import { sha256Hex } from "../encoding.mjs";
  * nothing and only says whether the rules are spent, for a limit on failures: peek before the attempt, and `limit`
  * after a failed one.
  *
- * @param {{ idFromName: (name: string) => any, get: (id: any) => { hit: (rules: import("./core.mjs").Rule[]) => Promise<import("./core.mjs").Hit>, peek?: (rules: import("./core.mjs").Rule[]) => Promise<import("./core.mjs").Hit> } } | undefined} namespace
+ * @template Id
+ * @param {{ idFromName(name: string): Id, get(id: Id): { hit: (rules: import("./core.mjs").Rule[]) => Promise<import("./core.mjs").Hit>, peek?: (rules: import("./core.mjs").Rule[]) => Promise<import("./core.mjs").Hit> } } | undefined} namespace
  * @param {string} key
  * @param {import("./core.mjs").Rule[]} rules
  * @param {{ onUnavailable: "allow" | "refuse", peek?: boolean }} options

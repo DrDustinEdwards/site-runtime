@@ -347,7 +347,7 @@ const ZERO_AAGUID = "00000000-0000-0000-0000-000000000000";
  * asks for no attestation (as `./sign-in` does), so with the user agent of an iPhone, iPad or Mac a zero reads as Apple
  * Passwords, the provider every browser there saves to unless the person picked another, which has its own AAGUID.
  * @param {string | null | undefined} aaguid
- * @param {string | null | undefined} [userAgent] the browser that made it, at registration
+ * @param {string | null} [userAgent] the browser that made it, at registration
  * @returns {string | null}
  */
 export function knownProvider(aaguid, userAgent) {
@@ -360,7 +360,7 @@ export function knownProvider(aaguid, userAgent) {
 /**
  * The passkey's provider in words, for a page: `knownProvider`, else "Passkey".
  * @param {string | null | undefined} aaguid
- * @param {string | null | undefined} [userAgent]
+ * @param {string | null} [userAgent]
  */
 export function passkeyProvider(aaguid, userAgent) {
   return knownProvider(aaguid, userAgent) ?? "Passkey";
