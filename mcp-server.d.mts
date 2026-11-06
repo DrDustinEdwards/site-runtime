@@ -4,7 +4,7 @@
  * (mcp-server.mjs).
  */
 import type { AuditEnv } from "./audit-log.d.mts";
-import type { SiteEntry } from "./sites.mjs";
+import type { ServedSiteEntry } from "./sites.mjs";
 
 /**
  * The door's fetch handler: every response (404s and the OAuth library's redirects included) with the entry's full set,
@@ -15,7 +15,7 @@ import type { SiteEntry } from "./sites.mjs";
 export function withMcpHeaders<Env>(
   handler: (request: Request, env: Env, ctx: unknown) => Response | Promise<Response>,
   options: {
-    site: SiteEntry;
+    site: ServedSiteEntry;
     securityTxt: { contact: string; expires: Date | string; policy?: string };
     reportPath?: string;
     allowReport?: (request: Request, env: Env) => boolean | Promise<boolean>;

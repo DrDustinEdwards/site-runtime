@@ -57,6 +57,17 @@ export type SiteEntry = {
     /** What the live sign-in check probes beyond /admin and /mcp; a declared page or server that does not answer is an error. */
     signIn?: SignInProbes;
 };
+/** `T` with every `reason` key removed, at any depth. */
+type WithoutReasons<T> = T extends readonly (infer U)[]
+    ? readonly WithoutReasons<U>[]
+    : T extends object
+      ? { [K in keyof T as K extends "reason" ? never : K]: WithoutReasons<T[K]> }
+      : T;
+/**
+ * An entry as `./sites` serves it (sites-values.mjs): SiteEntry without its reasons and deviations, which only the
+ * check reads (sites-deviations.mjs). Every function that takes an entry takes this, so a Worker passes what it imported.
+ */
+export type ServedSiteEntry = WithoutReasons<Omit<SiteEntry, "deviations">>;
 /** Admin pages (a path on the site, or a URL on another host) and MCP server URLs the live sign-in check must find gated. */
 export type SignInProbes = { admin?: readonly string[]; mcp?: readonly string[] };
 /**

@@ -50,7 +50,7 @@ const POLICY_OPT_INS = /** @type {const} */ (["cloudflareWebAnalytics", "inlineS
  * `assets.reportOrigin`: it is in `set` with its Reporting-Endpoints, and in `file` as a `/*` rule of its own, since
  * headersFile keeps a policy off the set's block. What the entry stages ("report-only" trustedTypes or denyUnlisted)
  * goes in a Report-Only policy beside it (buildStagedPolicy). The site-runtime-headers bin writes `file`.
- * @param {import("./sites.mjs").SiteEntry} entry
+ * @param {import("./sites.mjs").ServedSiteEntry} entry
  * @param {{ headers?: Readonly<Record<string, string>> }} [options]
  * @returns {{ set: Record<string, string>, file: string }}
  */
@@ -99,7 +99,7 @@ export function staticHeaders(entry, { headers = {} } = {}) {
  * written from, with `headers` added to it; without `site`, `headers` is the whole set. `preload` is the `Link` header
  * value from `preloads(...).header`.
  * @param {{
- *   site?: import("./sites.mjs").SiteEntry,
+ *   site?: import("./sites.mjs").ServedSiteEntry,
  *   headers?: Readonly<Record<string, string>>,
  *   preload?: string,
  *   reportPath?: string | null,

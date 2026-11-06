@@ -1,4 +1,4 @@
-import type { SiteEntry } from "./sites.mjs";
+import type { ServedSiteEntry } from "./sites.mjs";
 
 /**
  * @typedef {{ value: string | null, reason: string }} HeaderOverride
@@ -16,7 +16,7 @@ import type { SiteEntry } from "./sites.mjs";
  * Integrity-Policy, or its Report-Only form.
  */
 export function buildSecurityHeaders(options?: {
-    site?: SiteEntry;
+    site?: ServedSiteEntry;
     overrides?: Readonly<Record<string, HeaderOverride>>;
     coep?: Coep;
 }): Record<string, string>;
@@ -61,7 +61,7 @@ export function permissionsAllowingSelf(...features: string[]): string;
 /** The Permissions-Policy override a site offering passkey sign-in needs: publickey-credentials-get=(self). */
 export const PASSKEY_OVERRIDES: Readonly<Record<string, HeaderOverride>>;
 /** PASSKEY_OVERRIDES when the entry opts into passkey, then its own overrides. */
-export function entryOverrides(entry: SiteEntry): Record<string, HeaderOverride>;
+export function entryOverrides(entry: ServedSiteEntry): Record<string, HeaderOverride>;
 /** `cross-origin` for public media and subresources other origins load (images, fonts, CSS, scripts, feeds), else `same-origin`. */
 export function corpFor(contentType: string | null | undefined): "cross-origin" | "same-origin";
 /**

@@ -6,7 +6,7 @@ import type { AuditEnv } from "./audit-log.d.mts";
 import type { HealthCheck } from "./health.d.mts";
 import type { LoginEnv } from "./mcp-login.d.mts";
 import type { McpServerInfo } from "./mcp-server.d.mts";
-import type { SiteEntry } from "./sites.mjs";
+import type { ServedSiteEntry } from "./sites.mjs";
 
 /** The one MCP route on every admin server. */
 export const ADMIN_MCP_ROUTE: "/mcp";
@@ -63,7 +63,7 @@ export interface AdminMcpOptions<E extends AdminMcpEnv> {
   /** The server as refusals, the step-up and the log name it, with its scopes (./mcp-server mcpScopes). */
   server: McpServerInfo;
   /** The door's registry entry (./sites), for withMcpHeaders. */
-  site: SiteEntry;
+  site: ServedSiteEntry;
   /** The security.txt contact and expiry, as the site itself sends them. */
   securityTxt: { contact: string; expires: Date | string; policy?: string };
   /** The server's own paragraphs on the consent page (trusted HTML). */

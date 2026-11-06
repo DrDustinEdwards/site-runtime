@@ -77,7 +77,7 @@ let consentHash;
  * @template Env
  * @param {(request: Request, env: Env, ctx: unknown) => Response | Promise<Response>} handler
  * @param {{
- *   site: import("./sites.mjs").SiteEntry,
+ *   site: import("./sites.mjs").ServedSiteEntry,
  *   securityTxt: { contact: string, expires: Date | string, policy?: string },
  *   reportPath?: string,
  *   allowReport?: (request: Request, env: Env) => boolean | Promise<boolean>,
