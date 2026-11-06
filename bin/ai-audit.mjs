@@ -454,7 +454,7 @@ async function grantProxy(/** @type {string} */ endpoint, /** @type {string} */ 
     }
     headers.set("authorization", `Bearer ${grant}`);
     // Streamed, never buffered: a subscriptions/listen answer is an event stream that stays open, so reading it whole
-    // held back its first frame (the acknowledgement) until the timeout, and the suite failed SEP-2575's ack and
+    // held back its first frame (the acknowledgment) until the timeout, and the suite failed SEP-2575's ack and
     // subscription-id checks on every server. The upstream request ends when the suite closes its side.
     const upstream = new AbortController();
     res.on("close", () => upstream.abort());
