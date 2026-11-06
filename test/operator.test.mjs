@@ -15,7 +15,7 @@ function tools() {
   return { ran, tools: { backup_status: { description: "Reads the backup state.", run: async (/** @type {unknown} */ args) => (ran.push(args), { age_hours: 1 }) } } };
 }
 
-test("PLANT: an unset, short, wrong or missing token runs nothing", async () => {
+test("PLANT: an unset, short, wrong or missing token runs nothing; the right one runs only a named tool", async () => {
   for (const [token, headers, status] of /** @type {const} */ ([
     [undefined, { authorization: `Bearer ${TOKEN}` }, 503],
     ["short", { authorization: "Bearer short" }, 503],
@@ -28,9 +28,7 @@ test("PLANT: an unset, short, wrong or missing token runs nothing", async () => 
     assert.equal(t.ran.length, 0);
     assert.doesNotMatch(await res.text(), /t{40}/, "the token is never echoed");
   }
-});
-
-test("the right token lists the tools, runs a named one with its args, and refuses an unknown one", async () => {
+  // The right token lists the tools, runs a named one with its args, and refuses an unknown one.
   const t = tools();
   const auth = { authorization: `Bearer ${TOKEN}` };
   const list = await (await operatorResponse(call(auth, "", "GET"), { token: TOKEN, limiter, tools: t.tools })).json();
