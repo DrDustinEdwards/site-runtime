@@ -29,6 +29,8 @@ jobs:
       - run: npm ci
       - name: Typecheck the modules and bins against their declarations
         run: npm run typecheck
+      - name: Lint
+        run: npm run lint
       - name: The rate limiter's windows, refusals and path matcher
         run: npm test
       - name: Every session read goes through sessionLookup

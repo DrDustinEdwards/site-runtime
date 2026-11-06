@@ -38,7 +38,7 @@ export function requireFreshSession<S extends { session: { createdAt: Date | str
 
 /** The D1 calls the event table needs. */
 export type D1Like = {
-  prepare(sql: string): { bind(...values: unknown[]): { run(): Promise<unknown>; all(): Promise<{ results: any[] }> } };
+  prepare(sql: string): { bind(...values: unknown[]): { run(): Promise<unknown>; all(): Promise<{ results: Record<string, unknown>[] }> } };
 };
 /** The migration for `auth_events`: one row per auth event, no address, token or code. */
 export const AUTH_EVENTS_SQL: string;
@@ -222,7 +222,7 @@ export type NoticeDetail = {
 };
 /** The words of a notice. */
 export function noticeDetail(
-  kind: SecurityNoticeKind | string,
+  kind: SecurityNoticeKind | (string & {}),
   facts: {
     siteName: string;
     at?: Date;

@@ -58,7 +58,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { parseArgs } from "node:util";
+import { parseArgs, stripVTControlCharacters } from "node:util";
 
 import { DEPRECATIONS_URL, MODEL_IDS, deprecationProblems, parseDeprecations } from "../anthropic.mjs";
 import { MCP_PER_MINUTE, toolListHash, toolListProblems } from "../mcp-server.mjs";
@@ -133,12 +133,10 @@ const report = (/** @type {"error" | "warning" | "unmeasured"} */ severity, /** 
 async function get(url, init = {}) {
   const requested = from && url.startsWith(origin) ? from + url.slice(origin.length) : url;
   try {
-    const res = await fetch(requested, {
-      redirect: "manual",
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-      ...init,
-      headers: { "user-agent": "site-runtime-ai-audit", ...init.headers },
-    });
+    // Headers, not a spread: init.headers may be a Headers object, whose entries a spread drops.
+    const headers = new Headers(init.headers);
+    if (!headers.has("user-agent")) headers.set("user-agent", "site-runtime-ai-audit");
+    const res = await fetch(requested, { redirect: "manual", signal: AbortSignal.timeout(TIMEOUT_MS), ...init, headers });
     return { url: requested, res, why: "" };
   } catch (error) {
     const why = error instanceof Error && error.name === "TimeoutError" ? `no answer in ${TIMEOUT_MS / 1000} s` : `could not fetch (${error instanceof Error ? error.message : String(error)})`;
@@ -432,7 +430,7 @@ async function burst(/** @type {string} */ endpoint, /** @type {string} */ grant
     ),
   );
   const statuses = answers.map((a) => a.res?.status ?? 0);
-  await Promise.all(answers.map((a) => a.res?.body?.cancel().catch(() => {})));
+  await Promise.allSettled(answers.map(async (a) => a.res?.body?.cancel()));
   const limited = answers.filter((a) => a.res?.status === 429);
   if (limited.length === 0) report("error", "S1", endpoint, `${count} concurrent requests by one caller, none refused (statuses ${[...new Set(statuses)].join(", ")})`);
   else if (!limited.every((a) => a.res?.headers.has("retry-after"))) report("warning", "S1", endpoint, "a 429 without Retry-After");
@@ -445,10 +443,8 @@ async function burst(/** @type {string} */ endpoint, /** @type {string} */ grant
  */
 async function grantProxy(/** @type {string} */ endpoint, /** @type {string} */ grant) {
   const target = from && endpoint.startsWith(origin) ? from + endpoint.slice(origin.length) : endpoint;
-  const server = createServer(async (req, res) => {
-    /** @type {Buffer[]} */
-    const chunks = [];
-    for await (const chunk of req) chunks.push(chunk);
+  /** @param {import("node:http").IncomingMessage} req @param {import("node:http").ServerResponse} res */
+  const proxy = async (req, res) => {
     const headers = new Headers();
     for (const [name, value] of Object.entries(req.headers)) {
       if (["host", "connection", "content-length", "authorization", "accept-encoding"].includes(name) || value === undefined) continue;
@@ -462,6 +458,10 @@ async function grantProxy(/** @type {string} */ endpoint, /** @type {string} */ 
     const upstream = new AbortController();
     res.on("close", () => upstream.abort());
     try {
+      // Read inside the try, so a request stream that fails is a 502 too, not an unhandled rejection.
+      /** @type {Buffer[]} */
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
       const answer = await fetch(target, { method: req.method, headers, body: chunks.length ? Buffer.concat(chunks) : undefined, redirect: "manual", signal: AbortSignal.any([upstream.signal, AbortSignal.timeout(TIMEOUT_MS)]) });
       /** @type {Record<string, string>} */
       const out = {};
@@ -476,7 +476,9 @@ async function grantProxy(/** @type {string} */ endpoint, /** @type {string} */ 
       if (res.headersSent) res.destroy();
       else res.writeHead(502).end();
     }
-  });
+  };
+  // proxy catches every failure itself, so the promise it returns never rejects.
+  const server = createServer((req, res) => void proxy(req, res));
   await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(undefined)));
   const address = /** @type {import("node:net").AddressInfo} */ (server.address());
   return { url: `http://127.0.0.1:${address.port}/mcp`, close: () => server.close() };
@@ -507,7 +509,7 @@ function runMcpConformance(args, capabilities = null) {
     child.stderr.on("data", (d) => (out += d));
     child.on("error", (error) => resolve({ count: null, failed: [], skipped: [], why: `npx could not start (${error.message})` }));
     child.on("close", () => {
-      const why = out.replace(/\x1b\[[0-9;]*m/g, "").trim().split("\n").at(-1)?.slice(0, 200) || "no output";
+      const why = stripVTControlCharacters(out).trim().split("\n").at(-1)?.slice(0, 200) || "no output";
       resolve(readChecks(savedChecks(dir), why, capabilities));
       rmSync(dir, { recursive: true, force: true });
     });

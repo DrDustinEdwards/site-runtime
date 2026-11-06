@@ -54,8 +54,8 @@ export function publicPageHeaders({ tags = [PAGES_CACHE_TAG], freshSeconds = 86_
  * Renderer still gets the full URL. `utm_` is a prefix.
  */
 export const TRACKING_PARAMS = [
-  ...["utm_", "gclid", "gbraid", "wbraid", "dclid", "gad_source", "fbclid", "msclkid", "twclid", "ttclid", "li_fat_id"],
-  ...["igshid", "yclid", "mc_cid", "mc_eid", "_ga", "_gl", "_hsenc", "_hsmi", "mkt_tok", "srsltid"],
+  "utm_", "gclid", "gbraid", "wbraid", "dclid", "gad_source", "fbclid", "msclkid", "twclid", "ttclid", "li_fat_id",
+  "igshid", "yclid", "mc_cid", "mc_eid", "_ga", "_gl", "_hsenc", "_hsmi", "mkt_tok", "srsltid",
 ];
 
 const tracking = (/** @type {string} */ name) => TRACKING_PARAMS.some((t) => (t.endsWith("_") ? name.startsWith(t) : name === t));
@@ -171,7 +171,8 @@ function notModified(response, request) {
   if (!fresh) return null;
   const headers = new Headers(response.headers);
   for (const name of ["Content-Length", "Content-Encoding", "Content-Type"]) headers.delete(name);
-  response.body?.cancel();
+  // The 304 carries no body, so the stored one is dropped; a cancel that fails changes nothing the reader gets.
+  response.body?.cancel().catch(() => {});
   return new Response(null, { status: 304, headers });
 }
 

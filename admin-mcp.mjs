@@ -177,7 +177,8 @@ export function adminMcpWorker({
       provider = new OAuthProvider({
         apiRoute: ADMIN_MCP_ROUTE,
         apiHandler,
-        defaultHandler,
+        // The provider adds OAUTH_PROVIDER to env before the login handler runs, which its types do not say.
+        defaultHandler: /** @type {ExportedHandler<E>} */ (/** @type {unknown} */ (defaultHandler)),
         authorizeEndpoint: "/authorize",
         tokenEndpoint: "/token",
         // AUDIENCE BINDING (rule 12.2, RFC 8707): every grant and token is pinned to exactly this server's /mcp. Nothing is

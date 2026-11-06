@@ -26,7 +26,10 @@ const CONFIRM_PATHS = ["/sign-in/confirm", "/signin/confirm", "/login/confirm"];
 /** One request, never followed. @returns {Promise<Got>} */
 async function get(/** @type {string} */ url, /** @type {RequestInit} */ init = {}) {
   try {
-    const r = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(TIMEOUT_MS), ...init, headers: { "user-agent": UA, ...init.headers } });
+    // Headers, not a spread: init.headers may be a Headers object, whose entries a spread drops.
+    const headers = new Headers(init.headers);
+    if (!headers.has("user-agent")) headers.set("user-agent", UA);
+    const r = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(TIMEOUT_MS), ...init, headers });
     const body = /html|json|text/.test(r.headers.get("content-type") ?? "") ? await r.text() : (await r.arrayBuffer(), "");
     return { url, status: r.status, headers: r.headers, cookies: r.headers.getSetCookie(), body };
   } catch (error) {
@@ -139,12 +142,12 @@ export async function signInFindings({ origin, from, probes }) {
     // The confirm page stays a warning until every site has the route (site-runtime 0.36.0's confirmSignInLink). The
     // site's own path: the first that is not a 404, beside a sign-in page found first.
     const near = [...pages].map((page) => `${new URL(page).pathname.replace(/\/$/, "")}/confirm`);
-    let confirm = /** @type {Got | undefined} */ (undefined);
+    let tried = /** @type {Got | undefined} */ (undefined);
     for (const path of new Set([...near, ...CONFIRM_PATHS])) {
-      confirm = await get(`${base}${path}?token=sign-in-check-not-a-token&callbackURL=%2F`);
-      if (confirm.status !== 404) break;
+      tried = await get(`${base}${path}?token=sign-in-check-not-a-token&callbackURL=%2F`);
+      if (tried.status !== 404) break;
     }
-    confirm = /** @type {Got} */ (confirm);
+    const confirm = /** @type {Got} */ (tried);
     const session = confirm.cookies.find((cookie) => /session/i.test(cookie.split("=")[0]) && keeps(cookie));
     if (session) flag("B7", "error", confirm.url, `a GET with a made-up token set ${session.split("=")[0].trim()}: only the page's POST may sign in`);
     else if (confirm.status === 405 || (confirm.status === 200 && /<form\b[^>]*method=["']?post/i.test(confirm.body))) {
@@ -170,7 +173,7 @@ export async function signInFindings({ origin, from, probes }) {
     found.push(`admin ${url}`);
     const there = new URL(end.headers.get("location") ?? end.url, end.url);
     if (end.status === 200 && there.pathname.startsWith(new URL(url).pathname.replace(/\/$/, ""))) flag("G1", "error", end.url, "an admin page answered 200 to a request with no sign-in");
-    else if (end.status === 200 || (end.status >= 300 && end.status < 400 && !/\.cloudflareaccess\.com$/.test(there.hostname))) flag("G1", "warning", url, `redirects to ${there.origin}${there.pathname}, not Cloudflare Access`);
+    else if (end.status === 200 || (end.status >= 300 && end.status < 400 && !there.hostname.endsWith(".cloudflareaccess.com"))) flag("G1", "warning", url, `redirects to ${there.origin}${there.pathname}, not Cloudflare Access`);
     private_(r, "an admin response");
     // A redirect has no page to index, and Access's own redirect is Cloudflare's to set.
     if ((r.status < 300 || r.status >= 400) && !noindex(r)) flag("D10", "error", r.url, `an admin response (${r.status}) has no noindex`);

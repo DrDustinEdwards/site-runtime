@@ -557,7 +557,7 @@ function retryDecision(status, headers, body, attempt) {
     if (!headers.has("retry-after") || !Number.isFinite(seconds) || seconds < 0) return { kind: "rate_limited", retry: false, waitMs: 0 };
     return { kind: "rate_limited", retry: true, waitMs: seconds * 1000, retryAfter: seconds };
   }
-  if (status === 400 && /^You have reached your specified/.test(String(body?.error?.message ?? ""))) {
+  if (status === 400 && String(body?.error?.message ?? "").startsWith("You have reached your specified")) {
     return { kind: "spend_limit", retry: false, waitMs: 0 };
   }
   if (RETRY_STATUS.has(status)) return { kind: "unavailable", retry: true, waitMs: backoff(attempt) };
