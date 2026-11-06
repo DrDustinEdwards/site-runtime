@@ -1554,8 +1554,10 @@ if (!admin) return redirect(accessSignInUrl(request));                        //
   session (the token's `sub` and `iat`) and the time under `secret`, matches; otherwise the token's `iat`. A request
   with no Access token is `{ idle: false }`. Pass `secret`, a Worker secret only the server holds
   (`withAdminIdle(request, handle, { secret: env.ADMIN_IDLE_SECRET })`): `sub` and `iat` are in the token the browser
-  carries, so without it whoever holds the token can sign a seen cookie with any time and never go idle. Without one
-  the cookie is keyed by `sub` and `iat` as before and `admin_idle_unkeyed` is logged once per isolate.
+  carries, so without it whoever holds the token can sign a seen cookie with any time and never go idle. It is
+  required, at least 32 characters: with a session to time and no secret, `adminIdle` throws, so a Worker missing its
+  key fails on its admin paths rather than timing its admins with a cookie they could write. devkit's worker-deploy
+  mints it (`generated-secrets: ADMIN_IDLE_SECRET`); a request with no Access token and no `session` needs none.
 
   A host whose own sign-in is not an Access token on each request (the Capsid Portal, on Access for SaaS with its own
   signed cookie) passes `session: { id, signedInAt }` in its place: `signedInAt` the sign-in time in epoch

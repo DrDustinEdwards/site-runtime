@@ -223,29 +223,23 @@ function tokenClaims(token) {
   }
 }
 
-/** Whether the missing-secret warning has been logged in this isolate. */
-let warnedUnkeyed = false;
-
 /**
- * HMAC-SHA-256 of the session (the token's `sub` and `iat`, which stay the same if Access signs the token again) and
- * the time, so a stale cookie or one copied from another session is ignored. The key is `secret`, which only the
- * server holds: `sub` and `iat` are in the token the admin's browser carries, so a cookie keyed by them alone could be
- * written by whoever holds the token, with any time, and never go idle. Without `secret` it falls back to that, and
- * logs `admin_idle_unkeyed` once per isolate, so a site that has not set one yet keeps working and is told.
+ * HMAC-SHA-256, keyed by `secret`, of the session (the token's `sub` and `iat`, which stay the same if Access signs the
+ * token again) and the time, so a stale cookie or one copied from another session is ignored. Only the server holds
+ * the key: `sub` and `iat` are in the token the admin's browser carries, so a cookie keyed by them alone could be
+ * written by whoever holds the token, with any time, and never go idle.
  * @param {Record<string, unknown>} claims
  * @param {string} time
- * @param {string | undefined} secret
+ * @param {string} secret
  */
 async function seenMac(claims, time, secret) {
   const enc = new TextEncoder();
-  if (!secret && !warnedUnkeyed) {
-    warnedUnkeyed = true;
-    logEvent("admin_idle_unkeyed", {}, { level: "warn" });
-  }
-  const session = `${claims.sub}.${claims.iat}`;
-  const key = await crypto.subtle.importKey("raw", enc.encode(secret || session), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  return base64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(secret ? `${session}.${time}` : time))));
+  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return base64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(`${claims.sub}.${claims.iat}.${time}`))));
 }
+
+/** The shortest `secret` adminIdle takes: 32 characters, 256 bits as the deploy mints it (base64url of 32 bytes). */
+const MIN_IDLE_SECRET_LENGTH = 32;
 
 /** The request header a page sets on its polling fetches, so they are timed but do not count as activity. */
 export const BACKGROUND_HEADER = "x-background";
@@ -269,12 +263,14 @@ function isBackground(request) {
  * site to append to its response. A background request (isBackground) is checked but records nothing, so a page left
  * polling does not keep its admin signed in. A site with two Access apps (each its own token) gives each its own
  * `cookieName` (a `__Host-` name), so moving between them does not read the other's cookie as no request. `secret`
- * (a server-only value, such as a Worker secret) keys the cookie's signature (seenMac).
+ * (a server-only value, such as a Worker secret, at least 32 characters) keys the cookie's signature (seenMac). It is
+ * required: with a session to time and no secret it throws, so a Worker missing its key fails on its admin paths
+ * instead of timing its admins with a cookie they could write.
  * @param {Request} request
- * @param {{ idleSeconds?: number, now?: number, session?: { id: string, signedInAt: number } | null, cookieName?: string, secret?: string }} [options] `now` in epoch milliseconds
+ * @param {{ idleSeconds?: number, now?: number, session?: { id: string, signedInAt: number } | null, cookieName?: string, secret: string }} options `now` in epoch milliseconds
  * @returns {Promise<{ idle: true, response: Response } | { idle: false, cookie?: string }>}
  */
-export async function adminIdle(request, { idleSeconds = ADMIN_IDLE_SECONDS, now = Date.now(), session, cookieName = ADMIN_SEEN_COOKIE, secret } = {}) {
+export async function adminIdle(request, { idleSeconds = ADMIN_IDLE_SECONDS, now = Date.now(), session, cookieName = ADMIN_SEEN_COOKIE, secret }) {
   /** @type {Record<string, unknown>} */
   let claims;
   if (session) {
@@ -283,6 +279,9 @@ export async function adminIdle(request, { idleSeconds = ADMIN_IDLE_SECONDS, now
     const token = accessToken(request, { cookie: true });
     if (!token) return { idle: false };
     claims = tokenClaims(token);
+  }
+  if (typeof secret !== "string" || secret.length < MIN_IDLE_SECRET_LENGTH) {
+    throw new TypeError(`adminIdle needs secret, a server-only value of at least ${MIN_IDLE_SECRET_LENGTH} characters (a Worker secret such as ADMIN_IDLE_SECRET)`);
   }
   const seconds = Math.floor(now / 1000);
   const [time, mac] = (cookieValue(request, cookieName) ?? "").split(".");
@@ -313,10 +312,10 @@ export async function adminIdle(request, { idleSeconds = ADMIN_IDLE_SECONDS, now
  * straight to `handle`.
  * @param {Request} request
  * @param {() => Promise<Response>} handle
- * @param {{ prefixes?: readonly string[], idleSeconds?: number, session?: { id: string, signedInAt: number } | null, cookieName?: string, secret?: string }} [options]
+ * @param {{ prefixes?: readonly string[], idleSeconds?: number, session?: { id: string, signedInAt: number } | null, cookieName?: string, secret: string }} options
  * @returns {Promise<Response>}
  */
-export async function withAdminIdle(request, handle, { prefixes = ["/admin"], idleSeconds, session, cookieName, secret } = {}) {
+export async function withAdminIdle(request, handle, { prefixes = ["/admin"], idleSeconds, session, cookieName, secret }) {
   const { pathname } = new URL(request.url);
   if (!prefixes.some((prefix) => prefix === "/" || pathname === prefix || pathname.startsWith(`${prefix}/`))) return handle();
   const gate = await adminIdle(request, { idleSeconds, session, cookieName, secret });
