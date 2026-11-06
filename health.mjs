@@ -244,6 +244,17 @@ export function aiCheck(name, ai) {
   return bindingCheck(name, typeof ai?.run === "function");
 }
 
+/**
+ * A check that a Send Email binding (`send_email` in the wrangler config) is present. It sends nothing: a probe would mail
+ * someone. Level warn.
+ * @param {string} name
+ * @param {{ send(message: unknown): Promise<unknown> } | undefined} email
+ * @returns {HealthCheck}
+ */
+export function emailCheck(name, email) {
+  return bindingCheck(name, typeof email?.send === "function");
+}
+
 /** @param {string} name @param {boolean} present @returns {HealthCheck} */
 function bindingCheck(name, present) {
   return { name, level: "warn", run: async () => (present ? true : { ok: false, detail: "binding missing" }) };
