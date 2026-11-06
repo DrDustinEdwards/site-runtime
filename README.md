@@ -378,9 +378,10 @@ return healthResponse({
   object is fine and a throw fails.
 - `imagesCheck(name, env.IMAGES)` asks the Images binding for `info` on a 1 x 1 GIF (it reads the header and
   transforms nothing). `durableObjectCheck(name, env.ROOM)` proves the namespace is bound and mints an id with
-  `idFromName`; it sends no request, which would wake an object and bill it. `queueCheck(name, env.QUEUE)` and
-  `aiCheck(name, env.AI)` prove the binding is there and send or run nothing (a probe message would reach the consumer,
-  and every AI call is billed). All four are level warn; spread one with `level: "fail"` to make it take the site down.
+  `idFromName`; it sends no request, which would wake an object and bill it. `queueCheck(name, env.QUEUE)`,
+  `emailCheck(name, env.SEND_EMAIL)` and `aiCheck(name, env.AI)` prove the binding is there and send or run nothing (a probe
+  message would reach the consumer, a probe mail would reach a person, and every AI call is billed); name the Send Email
+  check `email` and devkit-ops-audit (H5) counts the binding as probed. All five are level warn; spread one with `level: "fail"` to make it take the site down.
 - `authSpikeCheck(env.DB, { windowMinutes: 60, failures: 50, mails: 50 })` is the sign-in spike alert (F3), level
   warn and an alert: it fails when failed sign-ins (`authn_login_fail`) or sign-in mails (`authn_token_created`) in the
   window pass their ceiling, read from `./sign-in`'s `auth_events` table (`eventsDb`), with the counts as its detail.
