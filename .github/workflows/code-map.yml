@@ -1,16 +1,17 @@
 name: code-map
 
-# After each push to main, devkit's shared code-map workflow measures this repository's modules and functions and
+# Nightly, devkit's shared code-map workflow measures this repository's modules and functions and
 # publishes code-map.json to the code-map branch, where the Capsid system explorer reads it. Never a gate on a pull request.
+# Nightly rather than on every push, so the map is at most a day behind (devkit README, "No second run on main").
 # The map installs only typescript and reads the modules tsconfig.json lists; the browser pair (tsconfig.browser.json) and the
 # generated sites-values.mjs are not among them.
 
 on:
-  push:
-    branches: [main]
+  schedule:
+    - cron: "17 4 * * *"
   workflow_dispatch:
 
-# One run at a time, so an older push's map never lands after a newer one.
+# One run at a time, so an older map never lands after a newer one.
 concurrency:
   group: code-map
   cancel-in-progress: false
