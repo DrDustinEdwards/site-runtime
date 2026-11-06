@@ -61,8 +61,8 @@ export function purgeTags(
 // oxlint-disable-next-line typescript/no-explicit-any -- a mixin's constructor must take (...args: any[]); unknown[] refuses WorkerEntrypoint (TS2345), never[] its subclass (TS2510)
 export function withPurgePages<T extends abstract new (...args: any[]) => object>(
   Base: T,
-  // oxlint-disable-next-line typescript/no-explicit-any -- the same mixin constructor, as TypeScript requires it
 ): T &
+  // oxlint-disable-next-line typescript/no-explicit-any -- the same mixin constructor, as TypeScript requires it
   (abstract new (...args: any[]) => {
     purgePages(why: string, tags?: string[]): Promise<boolean | null>;
   });
