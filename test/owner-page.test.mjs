@@ -28,7 +28,7 @@ function setup() {
       return { toArray: () => rows };
     },
   };
-  const log = new ToolCallLog(/** @type {any} */ ({ storage: { sql } }), { AUDIT_CHAIN_KEY: "sample-chain-key-0123456789abcdefghijkl" });
+  const log = new ToolCallLog(/** @type {any} */ ({ storage: { sql } }), { AUDIT_SIGNING_KEY: "sample-chain-key-0123456789abcdefghijkl" });
   /** @type {Map<string, string>} */
   const kv = new Map();
   const grants = [

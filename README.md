@@ -2015,17 +2015,18 @@ clientRegistrationCallback: ({ clientMetadata }) => {
 - **The chain and its key** (the design follows AWS CloudTrail's log file validation: a keyless chain, signatures that
   name their key, old public keys kept for checking). Each row's `hash` is SHA-256 of the row before's hash and this
   row's values; `sig` is an Ed25519 signature of it (RFC 8032) under a key derived (HKDF-SHA-256, RFC 5869) from the
-  Worker secret `AUDIT_CHAIN_KEY`, and `key_id` names the key (`auditChainKey(secret)` gives its `id` and `publicKey`).
+  Worker secret `AUDIT_SIGNING_KEY`, and `key_id` names the key (`auditChainKey(secret)` gives its `id` and `publicKey`).
   The secret is required (at least 32 characters): without it nothing is written, every tool call is refused and
-  `auditLogCheck` fails. Mint it in the deploy, `generated-secrets: AUDIT_CHAIN_KEY` (devkit worker-deploy); nobody
-  ever sees it, and only its public key leaves the Worker.
+  `auditLogCheck` fails. Mint it in the deploy, `generated-secrets: AUDIT_SIGNING_KEY` (devkit worker-deploy); nobody
+  ever sees it, and only its public key leaves the Worker. It has a new name so a site can mint it before it moves to
+  0.84 (0.83 never reads it); 0.83's HMAC secret `AUDIT_CHAIN_KEY` is no longer read, so delete it.
   - **Re-anchoring.** When the log starts under a key that did not sign its newest row (its first key, or a new one),
     it first writes a `chain-key` row signed by the new key, `{ from, fromPublicKey, to, publicKey }`, whose hash covers
     everything before it. The chain never breaks, and the new key vouches for the old one. `from: null` is the move
     from the unsigned rows of 0.83 and earlier.
   - **Rotating** (a suspected leak, or a scheduled change): replace the secret with a fresh value nobody sees, then let
     the Worker start; the next start anchors. One command, from the Worker's directory:
-    `node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64url'))" | npx wrangler secret put AUDIT_CHAIN_KEY --name <worker>`.
+    `node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64url'))" | npx wrangler secret put AUDIT_SIGNING_KEY --name <worker>`.
     Rows signed before stay checkable through the anchor and through each copy's `keys`.
   - **Checking.** `verifyAuditChain(rows, { keys, previous })` checks every hash and, given trusted public keys
     (base64url), every signature, and names the first row that fails with a `reason` (`hash`, `unsigned`, `unknown
@@ -2044,7 +2045,7 @@ clientRegistrationCallback: ({ clientMetadata }) => {
 - `auditLogCheck(env)` goes in `/health`'s checks (`healthResponse({ checks: [auditLogCheck(env)] })`): level warn and
   alert, it fails when a call's `finished` row is 15 minutes late (the log stopped hearing of a call), when calls in
   the last hour pass `spikePerHour` (600), when rows have waited two days for a copy, when the last copy's chain check
-  failed, or when `AUDIT_CHAIN_KEY` is missing or short. The daily check reads it (L8).
+  failed, or when `AUDIT_SIGNING_KEY` is missing or short. The daily check reads it (L8).
 
 - **The owner page** (`./owner-page`, checklist A15 and L9). `loginHandler` serves `/owner` on every server it fronts
   (`owner: false` turns it off): the admitted person signs in through the same Access round trip and `/callback` (its

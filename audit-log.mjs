@@ -30,11 +30,11 @@
  *
  * Tamper evidence: each row's `hash` is SHA-256 over the previous row's hash and this row's values, and each row is
  * signed: `sig` is an Ed25519 signature (RFC 8032) of `hash` under a key derived from the Worker secret
- * `AUDIT_CHAIN_KEY` (HKDF-SHA-256, RFC 5869), and `key_id` names the public key that checks it. The design follows AWS
+ * `AUDIT_SIGNING_KEY` (HKDF-SHA-256, RFC 5869), and `key_id` names the public key that checks it. The design follows AWS
  * CloudTrail's log file validation: a keyless hash chain that never breaks, signatures that name their key's
  * fingerprint, and public keys a verifier keeps after the private one is retired.
  * - The secret is required. Without it no row is written, so no tool runs (a `started` row is refused) and
- *   `auditLogCheck` fails. devkit's worker-deploy mints it (`generated-secrets: AUDIT_CHAIN_KEY`); nobody sees it.
+ *   `auditLogCheck` fails. devkit's worker-deploy mints it (`generated-secrets: AUDIT_SIGNING_KEY`); nobody sees it.
  * - KEY ANCHOR. When the log starts with a key that did not sign its newest row (the first key, or a new one), it first
  *   writes a `chain-key` row, signed by the new key: `{ from, fromPublicKey, to, publicKey }`. Its hash covers the
  *   newest row before it, so the new key vouches for everything before; `from: null` marks the move from the unsigned
@@ -64,7 +64,7 @@ const RESULT_CHARS = 1000;
 const FIELD_CHARS = 200;
 const RECENT_PAGE = 50;
 const RECENT_MAX = 100;
-/** The shortest AUDIT_CHAIN_KEY accepted, as for ADMIN_IDLE_SECRET: worker-deploy mints 43 characters. */
+/** The shortest AUDIT_SIGNING_KEY accepted, as for ADMIN_IDLE_SECRET: worker-deploy mints 43 characters. */
 const KEY_CHARS = 32;
 const ANCHOR = "chain-key";
 
@@ -90,7 +90,7 @@ const derived = new Map();
  */
 export function auditChainKey(secret) {
   if (typeof secret !== "string" || secret.length < KEY_CHARS) {
-    return Promise.reject(new Error(`AUDIT_CHAIN_KEY is not bound or is shorter than ${KEY_CHARS} characters, so the tool-call log writes nothing`));
+    return Promise.reject(new Error(`AUDIT_SIGNING_KEY is not bound or is shorter than ${KEY_CHARS} characters, so the tool-call log writes nothing`));
   }
   let key = derived.get(secret);
   if (!key) {
@@ -144,7 +144,7 @@ export class ToolCallLog {
     this.sql.exec("CREATE TABLE IF NOT EXISTS chain_keys (id TEXT PRIMARY KEY, public_key TEXT NOT NULL, first_at TEXT NOT NULL)");
     // The key is derived and anchored before any row is written; appends wait for it, and each reads the hash the one
     // before it wrote, so they run one at a time.
-    this.key = auditChainKey(env?.AUDIT_CHAIN_KEY);
+    this.key = auditChainKey(env?.AUDIT_SIGNING_KEY);
     this.key.catch(() => {}); // a missing key is answered on each append and in stats
     /** @type {Promise<unknown>} */
     this.tail = this.key.then((key) => this.anchor(key));
@@ -477,7 +477,7 @@ function logStub(env) {
  * @returns {Promise<{ exported: number, objects: string[], pruned: number, verified: { ok: true, hashed: number, signed: number } | { ok: false, seq: unknown, reason: string } | null }>}
  */
 export async function exportAuditLog(env, bucket, { prefix = "tool-calls/", keepDays = AUDIT_KEEP_DAYS } = {}) {
-  const current = await auditChainKey(env.AUDIT_CHAIN_KEY);
+  const current = await auditChainKey(env.AUDIT_SIGNING_KEY);
   const stub = logStub(env);
   const call = async (/** @type {string} */ path, /** @type {unknown} */ body = undefined) => {
     const init = body === undefined ? undefined : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) };
@@ -516,7 +516,7 @@ export async function exportAuditLog(env, bucket, { prefix = "tool-calls/", keep
 /**
  * The tool-call log's /health check (L8, ./health's `healthResponse({ checks })`), level warn and alert: fails when a
  * call's `finished` row is 15 minutes late, when calls in the last hour pass `spikePerHour`, when rows have waited
- * more than two days for a copy, when the last copy's chain check failed, or when AUDIT_CHAIN_KEY is missing or short
+ * more than two days for a copy, when the last copy's chain check failed, or when AUDIT_SIGNING_KEY is missing or short
  * (then nothing is logged and every tool call is refused). The detail gives counts, a seq and a reason only.
  * @param {Partial<import("./audit-log.d.mts").AuditEnv>} env
  * @param {{ spikePerHour?: number }} [options]

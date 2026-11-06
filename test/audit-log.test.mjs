@@ -41,7 +41,7 @@ test("PLANT: an old plain chain is anchored by the first key, appends sent at on
   const plain = { at: "2026-10-02T00:00:00.000Z", call_id: "p1", phase: "started", caller: "access:a@example.com", tool: "t", args: "{}" };
   db.prepare("INSERT INTO calls (at, call_id, phase, caller, tool, args, hash) VALUES (?, ?, ?, ?, ?, ?, ?)").run(...Object.values(plain), plainHash("", plain));
 
-  const log = new ToolCallLog(state, { AUDIT_CHAIN_KEY: KEY_A });
+  const log = new ToolCallLog(state, { AUDIT_SIGNING_KEY: KEY_A });
   const row = { caller: "access:a@example.com", tool: "sample_tool", server: { name: "sample-mcp", version: "1.0.0" }, clientId: "https://client.example.com/meta" };
   const answers = await Promise.all(
     ["started", "finished", "refused"].map((phase, i) => append(log, { ...row, callId: `c${i}`, phase, args: { note: "line one\r\nline two" } })),
@@ -71,12 +71,12 @@ test("PLANT: an old plain chain is anchored by the first key, appends sent at on
 
 test("PLANT: a new key re-anchors the chain, which checks with the new key alone; a forged anchor is not trusted", async () => {
   const { db, state } = storage();
-  const first = new ToolCallLog(state, { AUDIT_CHAIN_KEY: KEY_A });
+  const first = new ToolCallLog(state, { AUDIT_SIGNING_KEY: KEY_A });
   for (const callId of ["k1", "k2"]) await append(first, { caller: "agent:sample", tool: "t", phase: "started", callId, args: {} });
   const [a, b] = await Promise.all([auditChainKey(KEY_A), auditChainKey(KEY_B)]);
 
   // The secret is replaced and the Worker starts again: the chain goes on, vouched for by the new key.
-  const second = new ToolCallLog(state, { AUDIT_CHAIN_KEY: KEY_B });
+  const second = new ToolCallLog(state, { AUDIT_SIGNING_KEY: KEY_B });
   await append(second, { caller: "agent:sample", tool: "t", phase: "started", callId: "k3", args: {} });
   const rows = all(db);
   assert.deepEqual(JSON.parse(String(rows[3].args)), { from: a.id, fromPublicKey: a.publicKey, to: b.id, publicKey: b.publicKey });
@@ -89,19 +89,19 @@ test("PLANT: a new key re-anchors the chain, which checks with the new key alone
   assert.deepEqual(await verifyAuditChain(all(db), { keys: [b.publicKey] }), { ok: false, seq: 1, reason: "unknown key" });
 });
 
-test("PLANT: without AUDIT_CHAIN_KEY nothing is written and the check says why", async () => {
+test("PLANT: without AUDIT_SIGNING_KEY nothing is written and the check says why", async () => {
   const { db, state } = storage();
   const log = new ToolCallLog(state, {});
-  await assert.rejects(append(log, { caller: "agent:sample", tool: "t", phase: "started", callId: "n1", args: {} }), /AUDIT_CHAIN_KEY is not bound/);
+  await assert.rejects(append(log, { caller: "agent:sample", tool: "t", phase: "started", callId: "n1", args: {} }), /AUDIT_SIGNING_KEY is not bound/);
   assert.equal(all(db).length, 0);
   const env = { TOOL_CALL_LOG: { idFromName: () => "id", get: () => ({ fetch: (url, init) => log.fetch(new Request(url, init)) }) } };
-  assert.match(String((await auditLogCheck(env).run()).detail), /AUDIT_CHAIN_KEY is not bound/);
+  assert.match(String((await auditLogCheck(env).run()).detail), /AUDIT_SIGNING_KEY is not bound/);
 });
 
 test("PLANT: the copy lands in R2 checked and checks on its own; only copied rows past retention go; a late finished row alerts", async () => {
   const { db, state } = storage();
-  const log = new ToolCallLog(state, { AUDIT_CHAIN_KEY: KEY_A });
-  const env = { AUDIT_CHAIN_KEY: KEY_A, TOOL_CALL_LOG: { idFromName: () => "id", get: () => ({ fetch: (url, init) => log.fetch(new Request(url, init)) }) } };
+  const log = new ToolCallLog(state, { AUDIT_SIGNING_KEY: KEY_A });
+  const env = { AUDIT_SIGNING_KEY: KEY_A, TOOL_CALL_LOG: { idFromName: () => "id", get: () => ({ fetch: (url, init) => log.fetch(new Request(url, init)) }) } };
   for (const callId of ["e1", "e2", "e3"]) await append(log, { caller: "agent:sample", tool: "t", phase: "started", callId, args: {} });
   await append(log, { caller: "agent:sample", tool: "t", phase: "finished", callId: "e1", args: {} });
   // e2 started an hour ago and never finished; e1's and e3's rows and the anchor are long past retention.

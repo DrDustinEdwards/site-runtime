@@ -4,7 +4,7 @@ export interface AuditEnv {
   /** Untyped or typed as wrangler generates it (`DurableObjectNamespace<ToolCallLog>`). */
   TOOL_CALL_LOG: DurableObjectNamespace<any>;
   /** The Worker secret the chain's Ed25519 signing key is derived from, at least 32 characters; required (devkit worker-deploy `generated-secrets`). */
-  AUDIT_CHAIN_KEY: string;
+  AUDIT_SIGNING_KEY: string;
 }
 
 export interface AuditRow {
@@ -58,7 +58,7 @@ export const AUDIT_KEEP_DAYS: number;
 /**
  * Checks each batch not yet copied, copies it to `bucket` as `<prefix><first seq>-<last seq>.json` (`{ previous, keys,
  * verified, rows }`; prefix default `tool-calls/`), marks it copied, then deletes copied rows older than `keepDays`
- * (default 90). Up to 20 batches of 1000 a run; throws when a write fails or AUDIT_CHAIN_KEY is missing. `verified` is
+ * (default 90). Up to 20 batches of 1000 a run; throws when a write fails or AUDIT_SIGNING_KEY is missing. `verified` is
  * the run's first failed check, else its last pass. Run it from the cron; lock the prefix in R2.
  */
 export function exportAuditLog(
@@ -69,7 +69,7 @@ export function exportAuditLog(
 /**
  * The log's /health check, "tool-call-log", level warn and alert: fails on a `started` row with no `finished` after 15
  * minutes, on more than `spikePerHour` (600) calls in the last hour, on rows not copied for over two days, on a failed
- * chain check of the last copy, or on a missing or short AUDIT_CHAIN_KEY.
+ * chain check of the last copy, or on a missing or short AUDIT_SIGNING_KEY.
  */
 export function auditLogCheck(env: Partial<AuditEnv>, options?: { spikePerHour?: number }): import("./health.d.mts").HealthCheck;
 /** The trace id of a well-formed `_meta.traceparent`, else a fresh 32-hex id. */
