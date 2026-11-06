@@ -82,7 +82,7 @@ export async function sendEmail(binding, mail, options = {}) {
   };
   if (mail.replyTo) message.replyTo = cleanAddress(mail.replyTo);
   try {
-    const result = /** @type {{ messageId?: unknown } | null | undefined} */ (await binding.send(message));
+    const result = /** @type {{ messageId?: unknown } | null | undefined} */ (await binding.send(/** @type {never} */ (message)));
     return { sent: true, messageId: typeof result?.messageId === "string" ? result.messageId : null };
   } catch (err) {
     const e = /** @type {{ code?: unknown; message?: unknown }} */ (err ?? {});

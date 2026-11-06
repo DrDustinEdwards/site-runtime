@@ -15,9 +15,12 @@ export interface Mail {
   headers?: Record<string, string>;
 }
 
-/** The send_email binding (SendEmail in @cloudflare/workers-types), or any object with its send. */
+/**
+ * The send_email binding (SendEmail in @cloudflare/workers-types, whatever its version's message types), or any object
+ * with a send. sendEmail hands it a Mail.
+ */
 export interface EmailBinding {
-  send(message: Mail): Promise<unknown>;
+  send(message: never): Promise<unknown>;
 }
 
 /**
