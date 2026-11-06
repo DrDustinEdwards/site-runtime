@@ -3,7 +3,7 @@
 The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-homes-2026-10-06.md): the security headers
 (the root export and `./headers`, `./csp`, `./csp-report`, `./check`, `./owasp`), the rate limiter (`./rate-limit`,
 `./rate-limit/durable-object`), the members model (`./members`), the Access for SaaS sign-in (`./access-login`), the MCP
-servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-log`), server scaffold (`./mcp-server`) and named agent keys (`./agent-keys`), the Access request-token check
+servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-log`), server scaffold (`./mcp-server`), the admin MCP Worker built from them (`./admin-mcp`) and named agent keys (`./agent-keys`), the Access request-token check
 (`./access`), the check that an Access application lets in exactly the site's admins (`./access-drift`, `site-runtime-access-drift`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images and their edits (`./image`), link prefetch (`./prefetch`), preloads and Early Hints (`./preload`), the Worker in front of a static site (`./static-site`), the edge page cache (`./edge-cache`), the Server-Timing header (`./server-timing`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), the signed token behind emailed links (`./signed-token`), where a site's Anthropic calls go
 (`./ai-gateway`), starting a Claude Code routine (`./routine`), the check on AI-written prose with the measure of an author's voice (`./prose`), the one sign-in every site
 offers (`./sign-in`, `./sign-in-client`, `./apple-secret`), the Cloudflare Turnstile widget and its server check (`./turnstile`), the same-origin check for
@@ -2117,6 +2117,51 @@ const refusal = authorizeCall(env, caller, SCOPES.write, { site: "sample.example
   needs no copy of its own. A 101 upgrade passes as it is.
 
 **Tests.** `test/mcp-server.test.mjs`, once; the servers' own copies of these tests go when they adopt it.
+
+## The admin MCP Worker
+
+`./admin-mcp` is the whole Worker of a site's admin MCP server (Dustin Edwards Admin, Foxing Admin, Germomics Admin,
+Foxhound Admin): the door, the OAuth provider, the sign-in, `/health` and the tool-call log's cron. A server keeps only
+what is its own: its tools, its MCP handler and its API leg.
+
+```js
+import OAuthProvider from "@cloudflare/workers-oauth-provider";
+import { adminMcpWorker } from "@dustinedwards/site-runtime/admin-mcp";
+export { RateLimiter as McpRateLimit } from "@dustinedwards/site-runtime/rate-limit/durable-object";
+export { ToolCallLog } from "@dustinedwards/site-runtime/audit-log";
+
+export default adminMcpWorker({
+  name: "Sample Admin",
+  server: SERVER, // { site, scopes: mcpScopes("sample"), name, version }
+  site: sampleMcp, // the door's ./sites entry
+  securityTxt: { contact: "security@example.com", expires: "2027-09-28T00:00:00Z" },
+  about: "<p>Sample Admin runs sample.example.com. It will always be able to read. Changes need the box below.</p>",
+  api: { binding: "SITE", name: "sample" },
+  OAuthProvider,
+  serve: (request, env, ctx, caller) => handleMcp(request, env, ctx, caller),
+});
+```
+
+- Every request gets the `request` log line, `withMcpHeaders`' set, security.txt and report sink, and a throw becomes a
+  logged 500 that still carries the set. With `PUBLIC_ORIGIN` unset every route is 503.
+- `/mcp`: a present Origin other than the server's own or `ADMIN_MCP_ORIGINS` (claude.ai) is 403, and so is a Host
+  other than `PUBLIC_ORIGIN`'s, both before the token is read. Then the list-only test key (`probeDoor`), then an agent
+  key where `agentKeys: true` (dustinedwards-info's Grok; an admin server is otherwise only its administrator's), then
+  the provider. Behind it the door checks the token's audience again, asks `admit` again (default `isAdminUser`), refuses
+  a grant with no scope list, and rate limits by email on `MCP_RATE_LIMIT` (30 a minute, fails closed, a `rate-limited`
+  row). `serve` gets `{ kind: "admin", props, scopes, auth }` (the provider's `ctx.auth`, for a server that hands the
+  SDK its `authInfo`), `{ kind: "agent", principal, scopes }` or the probe caller.
+- The provider is bound to `PUBLIC_ORIGIN` + `/mcp` (RFC 8707) with `requiredScopes` both scopes, CIMD on, and DCR
+  allowing only `DCR_CALLBACKS` and `DCR_REDIRECT_URIS` exactly, after `registrationLimited`. `/authorize`, `/callback`,
+  `/owner` and `/health` are `loginHandler`'s.
+- `/health`: `oauth-kv`, the site binding (`api.name`, by presence), `mcp-rate-limit` and `tool-call-log-binding` fail;
+  `audit-bucket` warns; `api.reach`, a URL the site answers without its API, adds a warn-level request; `checks(env)`
+  adds the server's own; then `auditLogCheck`.
+- `scheduled` copies the tool-call log to `AUDIT_BUCKET` and prunes it (`exportAuditLog`), and throws without the bucket.
+- `routes(request, env, ctx)` answers a server's own paths first (dustinedwards-info's `/probe`); null goes on.
+
+**Tests.** `test/admin-mcp.test.mjs` runs the door against a fake provider. The Host check, the scope-list check, the
+second `admit` and the `agentKeys` switch were each removed once and seen to fail it.
 
 ## Named agent keys
 
