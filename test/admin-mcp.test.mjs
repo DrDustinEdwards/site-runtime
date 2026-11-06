@@ -137,6 +137,9 @@ test("not configured is not open: no PUBLIC_ORIGIN serves nothing, /health fails
   // Every server asks the site over its binding (sample-reach): a 404 is up, a 5xx warns.
   const up = await (await call("/health", { method: "GET" })).json();
   assert.equal(up.checks.find((/** @type {{ name: string }} */ c) => c.name === "sample-reach")?.status, "pass");
+  env.SITE = { fetch: async () => new Response(null, { status: 503 }) };
+  const down = await (await call("/health", { method: "GET" })).json();
+  assert.equal(down.checks.find((/** @type {{ name: string }} */ c) => c.name === "sample-reach")?.status, "warn");
   delete env.SITE;
   const health = await call("/health", { method: "GET" });
   assert.equal(health.status, 503);
