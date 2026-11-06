@@ -333,7 +333,7 @@
     "@better-auth/passkey": "1.7.17",
     "@cloudflare/workers-oauth-provider": "1.2.4",
     "@cloudflare/workers-types": "5.20261030.1",
-    "@dustinedwards/devkit": "github:DrDustinEdwards/devkit#v0.21.5",
+    "@dustinedwards/devkit": "github:DrDustinEdwards/devkit#v0.22.0",
     "@types/node": "24.19.2",
     "better-auth": "1.7.17",
     "typescript": "5.9.3"
