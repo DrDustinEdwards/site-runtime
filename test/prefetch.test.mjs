@@ -10,7 +10,8 @@ test("the rules never reach signed-in areas, APIs or a sign-out, and refuse a ma
   const res = speculationRulesResponse({ exclude: ["/drafts"] });
   assert.equal(res.headers.get("content-type"), "application/speculationrules+json");
   const text = await res.text();
-  for (const path of ["/admin", "/admin/*", "/api/*", "/logout", "/drafts/*"]) assert.ok(text.includes(`"href_matches":"${path}"`), path);
+  for (const path of ["/admin", "/admin/*", "/api/*", "/logout", "/drafts/*"])
+    assert.ok(text.includes(`"href_matches":"${path}"`), path);
   assert.ok(!text.includes("prerender"));
   assert.throws(() => speculationRulesResponse({ exclude: ["drafts*"] }), /path prefix/);
 });
@@ -20,7 +21,8 @@ test("the rules never reach signed-in areas, APIs or a sign-out, and refuse a ma
 test("links to files and links with a query string are not prefetched, unless the site lets queries through", () => {
   const rules = (/** @type {object} */ options) => JSON.stringify(speculationRules(options));
   const text = rules({});
-  for (const ext of ["md", "xml", "json", "txt", "rss", "atom", "pdf", "zip"]) assert.ok(text.includes(`"href_matches":"/*.${ext}"`), ext);
+  for (const ext of ["md", "xml", "json", "txt", "rss", "atom", "pdf", "zip"])
+    assert.ok(text.includes(`"href_matches":"/*.${ext}"`), ext);
   assert.ok(text.includes('"href_matches":{"pathname":"/*","search":"(.+)"}'));
   assert.ok(!rules({ excludeQueries: false }).includes('"search"'));
 });

@@ -52,7 +52,11 @@ export function cardText(value) {
  * @param {{ fonts: unknown[], width?: number, height?: number, headers?: Record<string, string> }} options
  * @returns {Promise<Response | null>}
  */
-export async function renderShareCard(ImageResponse, html, { fonts, width = SHARE_CARD_WIDTH, height = SHARE_CARD_HEIGHT, headers = {} }) {
+export async function renderShareCard(
+  ImageResponse,
+  html,
+  { fonts, width = SHARE_CARD_WIDTH, height = SHARE_CARD_HEIGHT, headers = {} },
+) {
   try {
     const card = html.replace(/>\s+</g, "><").trim();
     const sized = `<div style="display:flex;width:${width}px;height:${height}px;">${card}</div>`;
@@ -60,7 +64,12 @@ export async function renderShareCard(ImageResponse, html, { fonts, width = SHAR
     const png = await new Response(image.body).arrayBuffer();
     if (png.byteLength === 0) throw new Error("empty PNG");
     return new Response(png, {
-      headers: { "Content-Type": SHARE_CARD_TYPE, "Cache-Control": "public, max-age=0, s-maxage=604800, immutable", ...SHARE_CARD_HEADERS, ...headers },
+      headers: {
+        "Content-Type": SHARE_CARD_TYPE,
+        "Cache-Control": "public, max-age=0, s-maxage=604800, immutable",
+        ...SHARE_CARD_HEADERS,
+        ...headers,
+      },
     });
   } catch (err) {
     logEvent("share_card_failed", { error: err }, { level: "error" });
@@ -76,26 +85,37 @@ export async function renderShareCard(ImageResponse, html, { fonts, width = SHAR
  * @param {{ cache?: Cache, cacheOrigin?: string, fetch?: typeof fetch }} [options]
  * @returns {Promise<ArrayBuffer | null>}
  */
-export async function googleFont(family, weight, { cache, cacheOrigin = "https://share-card.invalid", fetch: get = fetch } = {}) {
+export async function googleFont(
+  family,
+  weight,
+  { cache, cacheOrigin = "https://share-card.invalid", fetch: get = fetch } = {},
+) {
   const key = `${cacheOrigin}/${encodeURIComponent(family)}-${weight}.font`;
   const hit = await cache?.match(key);
   if (hit) return hit.arrayBuffer();
   try {
-    const css = await get(`https://fonts.googleapis.com/css2?family=${encodeURIComponent(family)}:wght@${weight}`, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1)" },
-    }).then((r) => r.text());
-    const url = css.match(/src:\s*url\((.+?)\)\s*format\(['"]?(?:woff|truetype|opentype)['"]?\)/)?.[1];
+    const css = await get(
+      `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family)}:wght@${weight}`,
+      {
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1)" },
+      },
+    ).then((r) => r.text());
+    const url = css.match(
+      /src:\s*url\((.+?)\)\s*format\(['"]?(?:woff|truetype|opentype)['"]?\)/,
+    )?.[1];
     if (!url) return null;
     const res = await get(url);
     if (!res.ok) return null;
     const bytes = await res.arrayBuffer();
-    await cache?.put(key, new Response(bytes, { headers: { "Cache-Control": "public, max-age=31536000" } }));
+    await cache?.put(
+      key,
+      new Response(bytes, { headers: { "Cache-Control": "public, max-age=31536000" } }),
+    );
     return bytes;
   } catch {
     return null;
   }
 }
-
 
 /**
  * The card route's answer: the cached PNG under `cacheKey` when there is one, else the render of `html` with `fonts`
@@ -115,25 +135,42 @@ export async function googleFont(family, weight, { cache, cacheOrigin = "https:/
  * }} options
  * @returns {Promise<Response>}
  */
-export async function shareCardResponse(ImageResponse, { html, fonts, cacheKey, cache = zoneCache(), ctx, width, height, headers = {} }) {
+export async function shareCardResponse(
+  ImageResponse,
+  { html, fonts, cacheKey, cache = zoneCache(), ctx, width, height, headers = {} },
+) {
   const store = cacheKey !== undefined ? cache : undefined;
   const hit = await store?.match(cacheKey ?? "").catch(() => undefined);
   if (hit) return hit;
   let png = null;
   try {
-    const [cardHtml, cardFonts] = await Promise.all([typeof html === "function" ? html() : html, typeof fonts === "function" ? fonts() : fonts]);
-    png = await renderShareCard(ImageResponse, cardHtml, { fonts: cardFonts, width, height, headers });
+    const [cardHtml, cardFonts] = await Promise.all([
+      typeof html === "function" ? html() : html,
+      typeof fonts === "function" ? fonts() : fonts,
+    ]);
+    png = await renderShareCard(ImageResponse, cardHtml, {
+      fonts: cardFonts,
+      width,
+      height,
+      headers,
+    });
   } catch (error) {
     logEvent("share_card_failed", { error }, { level: "error" });
   }
   if (!png) {
     return new Response("Card unavailable", {
       status: 503,
-      headers: { "Content-Type": "text/plain; charset=utf-8", "Retry-After": "300", "Cache-Control": "no-store" },
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Retry-After": "300",
+        "Cache-Control": "no-store",
+      },
     });
   }
   if (store && cacheKey !== undefined) {
-    const put = store.put(cacheKey, png.clone()).catch((error) => logEvent("share_card_cache_failed", { error }, { level: "warn" }));
+    const put = store
+      .put(cacheKey, png.clone())
+      .catch((error) => logEvent("share_card_cache_failed", { error }, { level: "warn" }));
     if (ctx) ctx.waitUntil(put);
     else await put;
   }
@@ -142,5 +179,6 @@ export async function shareCardResponse(ImageResponse, { html, fonts, cacheKey, 
 
 /** The Workers zone cache, when the runtime has one. @returns {Cache | undefined} */
 function zoneCache() {
-  return /** @type {{ caches?: { default?: Cache } }} */ (/** @type {unknown} */ (globalThis)).caches?.default;
+  return /** @type {{ caches?: { default?: Cache } }} */ (/** @type {unknown} */ (globalThis))
+    .caches?.default;
 }

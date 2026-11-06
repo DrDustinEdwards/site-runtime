@@ -16,7 +16,13 @@ import { siteEntry } from "../sites-values.mjs";
 import { staticHeaders } from "../static-site.mjs";
 
 try {
-  const { values } = parseArgs({ options: { site: { type: "string" }, out: { type: "string" }, header: { type: "string", multiple: true } } });
+  const { values } = parseArgs({
+    options: {
+      site: { type: "string" },
+      out: { type: "string" },
+      header: { type: "string", multiple: true },
+    },
+  });
   if (!values.site || !values.out) throw new Error("--site and --out are required");
   /** @type {Record<string, string>} */
   const headers = {};
@@ -27,6 +33,8 @@ try {
   }
   writeFileSync(values.out, staticHeaders(siteEntry(values.site), { headers }).file);
 } catch (error) {
-  console.error(`${error instanceof Error ? error.message : error}\nusage: site-runtime-headers --site <id> --out <file> [--header "Name: value"]...`);
+  console.error(
+    `${error instanceof Error ? error.message : error}\nusage: site-runtime-headers --site <id> --out <file> [--header "Name: value"]...`,
+  );
   process.exit(2);
 }

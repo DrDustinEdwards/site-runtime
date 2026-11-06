@@ -26,15 +26,37 @@ export async function limit(namespace, key, rules, options) {
   const first = rules?.[0];
   /** @param {string} detail @returns {Verdict} */
   const unavailable = (detail) => {
-    console.error(JSON.stringify({ event: "rate-limit-unavailable", bucket: bucket(key), onUnavailable: options.onUnavailable, detail }));
-    return { status: "unavailable", used: 0, limit: first?.limit ?? 0, retryAfterSeconds: 60, detail };
+    console.error(
+      JSON.stringify({
+        event: "rate-limit-unavailable",
+        bucket: bucket(key),
+        onUnavailable: options.onUnavailable,
+        detail,
+      }),
+    );
+    return {
+      status: "unavailable",
+      used: 0,
+      limit: first?.limit ?? 0,
+      retryAfterSeconds: 60,
+      detail,
+    };
   };
   if (!namespace) return unavailable("no Durable Object binding");
   try {
     const counter = namespace.get(namespace.idFromName(key));
-    if (options.peek && typeof counter.peek !== "function") return unavailable("the Durable Object has no peek");
-    const hit = options.peek ? await /** @type {NonNullable<typeof counter.peek>} */ (counter.peek)(rules) : await counter.hit(rules);
-    return { status: hit.ok ? "ok" : "limited", used: hit.used, limit: hit.limit, retryAfterSeconds: hit.retryAfterSeconds, window: hit.window };
+    if (options.peek && typeof counter.peek !== "function")
+      return unavailable("the Durable Object has no peek");
+    const hit = options.peek
+      ? await /** @type {NonNullable<typeof counter.peek>} */ (counter.peek)(rules)
+      : await counter.hit(rules);
+    return {
+      status: hit.ok ? "ok" : "limited",
+      used: hit.used,
+      limit: hit.limit,
+      retryAfterSeconds: hit.retryAfterSeconds,
+      window: hit.window,
+    };
   } catch (error) {
     return unavailable(error instanceof Error ? error.message : String(error));
   }
@@ -55,7 +77,9 @@ function bucket(key) {
  * @param {"allow" | "refuse"} onUnavailable
  */
 export function mustStop(verdict, onUnavailable) {
-  return verdict.status === "limited" || (verdict.status === "unavailable" && onUnavailable === "refuse");
+  return (
+    verdict.status === "limited" || (verdict.status === "unavailable" && onUnavailable === "refuse")
+  );
 }
 
 /**
@@ -67,7 +91,11 @@ export function limitedResponse(verdict) {
   const unavailable = verdict.status === "unavailable";
   return new Response(unavailable ? "Temporarily unavailable" : "Too many requests", {
     status: unavailable ? 503 : 429,
-    headers: { "Retry-After": String(verdict.retryAfterSeconds), "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+    headers: {
+      "Retry-After": String(verdict.retryAfterSeconds),
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
   });
 }
 
@@ -97,8 +125,14 @@ function ipBucket(ip) {
   const [head = "", tail] = address.split("::");
   const front = head ? head.split(":") : [];
   const back = tail ? tail.split(":") : [];
-  const groups = tail === undefined ? front : [...front, ...Array(Math.max(0, 8 - front.length - back.length)).fill("0"), ...back];
-  return `${groups.slice(0, 4).map((g) => (Number.parseInt(g, 16) || 0).toString(16)).join("-")}/64`;
+  const groups =
+    tail === undefined
+      ? front
+      : [...front, ...Array(Math.max(0, 8 - front.length - back.length)).fill("0"), ...back];
+  return `${groups
+    .slice(0, 4)
+    .map((g) => (Number.parseInt(g, 16) || 0).toString(16))
+    .join("-")}/64`;
 }
 
 /**

@@ -23,7 +23,10 @@ function presentKeys(keys) {
 
 /** @param {string} hex */
 function hmacKey(hex) {
-  return crypto.subtle.importKey("raw", fromHex(hex), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
+  return crypto.subtle.importKey("raw", fromHex(hex), { name: "HMAC", hash: "SHA-256" }, false, [
+    "sign",
+    "verify",
+  ]);
 }
 
 /**

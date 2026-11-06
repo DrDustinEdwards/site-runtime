@@ -1,7 +1,25 @@
-export type TitleSpec = { id: string; label: string; layer: 2 | 3; permissions: string[]; expires: boolean };
-export type Title = { id: string; label: string; layer: 0 | 1 | 2 | 3; permissions: string[]; expires: boolean };
+export type TitleSpec = {
+  id: string;
+  label: string;
+  layer: 2 | 3;
+  permissions: string[];
+  expires: boolean;
+};
+export type Title = {
+  id: string;
+  label: string;
+  layer: 0 | 1 | 2 | 3;
+  permissions: string[];
+  expires: boolean;
+};
 export type Catalog = { permissions: string[]; titles: Map<string, Title> };
-export type MemberRow = { email: string; name?: string; title: string; end_date: string | null; status: "active" | "removed" | "expired" };
+export type MemberRow = {
+  email: string;
+  name?: string;
+  title: string;
+  end_date: string | null;
+  status: "active" | "removed" | "expired";
+};
 export type Actor = { email: string; title: string; layer: number; permissions: Set<string> };
 export type Verdict = { ok: true } | { ok: false; reason: string };
 export type Change =
@@ -44,7 +62,12 @@ export function resolveActor(
 /** Whether the actor holds a permission. The only question a handler asks. */
 export function can(actor: Actor | null, permission: string): boolean;
 /** The first term end after today (or after `after`, to renew), or null for a title that does not expire. */
-export function defaultEndDate(title: Title, termEnds: string[], nowMs: number, after?: string | null): string | null;
+export function defaultEndDate(
+  title: Title,
+  termEnds: string[],
+  nowMs: number,
+  after?: string | null,
+): string | null;
 /** Whether `actor` may make `change`, under both rules: below your own layer, nothing you do not hold. */
 export function checkChange(
   actor: Actor | null,

@@ -4,7 +4,9 @@ export interface AuditEnv {
   /** Untyped or typed as wrangler generates it (`DurableObjectNamespace<ToolCallLog>`): the log reads it through fetch. */
   TOOL_CALL_LOG: {
     idFromName(name: string): DurableObjectId;
-    get(id: DurableObjectId): { fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> };
+    get(id: DurableObjectId): {
+      fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
+    };
   };
   /** A Worker secret, bound before the first row: the chain is then HMAC-SHA-256 under it, which an editor without it cannot recompute. */
   AUDIT_CHAIN_KEY?: string;
@@ -14,7 +16,14 @@ export interface AuditRow {
   /** One tool call's id, shared by its rows; a fresh one for each other event. */
   callId: string;
   /** The event: a tool call's three, or one of the door's own. */
-  phase: "started" | "finished" | "refused" | "sign-in" | "scope-challenge" | "rate-limited" | "revoked";
+  phase:
+    | "started"
+    | "finished"
+    | "refused"
+    | "sign-in"
+    | "scope-challenge"
+    | "rate-limited"
+    | "revoked";
   /** A signed-in email or an agent principal, never a credential. */
   caller: string;
   /** The tool, for a tool call or a scope challenge; empty otherwise. */
@@ -65,13 +74,19 @@ export function exportAuditLog(
  * The log's /health check, "tool-call-log", level warn and alert: fails on a `started` row with no `finished` after 15
  * minutes, on more than `spikePerHour` (600) calls in the last hour, or on rows not copied for over two days.
  */
-export function auditLogCheck(env: Partial<AuditEnv>, options?: { spikePerHour?: number }): import("./health.d.mts").HealthCheck;
+export function auditLogCheck(
+  env: Partial<AuditEnv>,
+  options?: { spikePerHour?: number },
+): import("./health.d.mts").HealthCheck;
 /** The trace id of a well-formed `_meta.traceparent`, else a fresh 32-hex id. */
 export function correlationId(meta?: Record<string, unknown>): string;
 /** The arguments as the log stores them: a string over 200 characters becomes its length and a SHA-256 prefix. */
 export function loggedArgs(args: Record<string, unknown>): Promise<Record<string, unknown>>;
 /** The result as the log stores it: whether it failed, and its first 1000 characters. */
-export function loggedResult(output: { isError?: boolean; content: Array<{ text: string }> }): { isError: boolean; text: string };
+export function loggedResult(output: { isError?: boolean; content: Array<{ text: string }> }): {
+  isError: boolean;
+  text: string;
+};
 /** Appends one row; throws when the binding is missing or the write fails. */
 export function appendAudit(env: Partial<AuditEnv>, row: AuditRow): Promise<void>;
 /** Appends one row; a failure goes to the Worker log instead of throwing. */

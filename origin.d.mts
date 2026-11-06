@@ -13,7 +13,11 @@ export function originRefusal(headers?: Record<string, string>): Response;
  * Null when the request may go on (GET, HEAD, OPTIONS; Sec-Fetch-Site same-origin or none, or same-site with
  * `sameSite: true`; with no Sec-Fetch-Site, an Origin that passes), else the refusal.
  */
-export function refuseCrossSite(request: Request, headers?: Record<string, string>, options?: { sameSite?: boolean }): Response | null;
+export function refuseCrossSite(
+  request: Request,
+  headers?: Record<string, string>,
+  options?: { sameSite?: boolean },
+): Response | null;
 /** The resource isolation policy (web.dev/articles/fetch-metadata) for signed-in routes. */
 export function isolationVerdict(request: Request): {
   ok: boolean;

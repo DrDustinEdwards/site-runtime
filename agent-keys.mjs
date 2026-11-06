@@ -61,7 +61,10 @@ export async function agentPrincipal(env, authorization) {
  */
 export function agentKeyNames(env) {
   return Object.entries(env)
-    .filter(([secret, value]) => secret.startsWith(AGENT_KEY_PREFIX) && typeof value === "string" && value.trim())
+    .filter(
+      ([secret, value]) =>
+        secret.startsWith(AGENT_KEY_PREFIX) && typeof value === "string" && value.trim(),
+    )
     .map(([secret]) => secret.slice(AGENT_KEY_PREFIX.length).toLowerCase())
     .filter((name) => AGENT_NAME.test(name))
     .sort();
@@ -75,7 +78,9 @@ export function agentKeyNames(env) {
  * @returns {string[]}
  */
 export function agentScopes(env, principal, scopes) {
-  const writers = String(env.AGENT_WRITE ?? "").split(",").map((name) => name.trim().toLowerCase());
+  const writers = String(env.AGENT_WRITE ?? "")
+    .split(",")
+    .map((name) => name.trim().toLowerCase());
   return writers.includes(principal) ? [scopes.read, scopes.write] : [scopes.read];
 }
 
@@ -88,7 +93,9 @@ export function agentScopes(env, principal, scopes) {
  */
 export async function agentCaller(env, authorization, scopes) {
   const principal = await agentPrincipal(env, authorization);
-  return principal ? { kind: "agent", principal, scopes: agentScopes(env, principal, scopes) } : null;
+  return principal
+    ? { kind: "agent", principal, scopes: agentScopes(env, principal, scopes) }
+    : null;
 }
 
 /** The Worker secret holding a server's list-only test key. */

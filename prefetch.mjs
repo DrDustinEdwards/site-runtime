@@ -24,10 +24,34 @@ export const NEVER_PREFETCH = ["/admin", "/api", "/auth", "/logout", "/sign-out"
  * lower case only: `href_matches` takes no ignoreCase, so a site linking "/paper.PDF" names it in `data-no-prefetch`.
  */
 export const FILE_EXTENSIONS = [
-  "md", "txt", "xml", "json", "rss", "atom", "csv", "ics", "bib", "ris",
-  "pdf", "epub", "docx", "xlsx", "pptx",
-  "zip", "gz", "tar",
-  "png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "mp3", "mp4", "webm",
+  "md",
+  "txt",
+  "xml",
+  "json",
+  "rss",
+  "atom",
+  "csv",
+  "ics",
+  "bib",
+  "ris",
+  "pdf",
+  "epub",
+  "docx",
+  "xlsx",
+  "pptx",
+  "zip",
+  "gz",
+  "tar",
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "avif",
+  "svg",
+  "mp3",
+  "mp4",
+  "webm",
 ];
 
 /**
@@ -47,19 +71,36 @@ const EAGERNESS = new Set(["conservative", "moderate", "eager"]);
  * elsewhere, `rel=nofollow` and anything marked `data-no-prefetch`.
  * @param {{ exclude?: string[], excludeQueries?: boolean, eagerness?: "conservative" | "moderate" | "eager", prerender?: boolean }} [options]
  */
-export function speculationRules({ exclude = [], excludeQueries = true, eagerness = "moderate", prerender = false } = {}) {
-  if (!EAGERNESS.has(eagerness)) throw new Error(`speculationRules: eagerness "${eagerness}" is not conservative, moderate or eager.`);
+export function speculationRules({
+  exclude = [],
+  excludeQueries = true,
+  eagerness = "moderate",
+  prerender = false,
+} = {}) {
+  if (!EAGERNESS.has(eagerness))
+    throw new Error(
+      `speculationRules: eagerness "${eagerness}" is not conservative, moderate or eager.`,
+    );
   for (const path of exclude) {
-    if (!/^\/[^*?#]*$/.test(path)) throw new Error(`speculationRules: exclude "${path}" is not a path prefix such as /drafts.`);
+    if (!/^\/[^*?#]*$/.test(path))
+      throw new Error(`speculationRules: exclude "${path}" is not a path prefix such as /drafts.`);
   }
   const prefixes = [...new Set([...NEVER_PREFETCH, ...exclude])];
   const where = {
     and: [
       { href_matches: "/*" },
-      ...prefixes.flatMap((p) => [{ not: { href_matches: p } }, { not: { href_matches: `${p.replace(/\/$/, "")}/*` } }]),
+      ...prefixes.flatMap((p) => [
+        { not: { href_matches: p } },
+        { not: { href_matches: `${p.replace(/\/$/, "")}/*` } },
+      ]),
       ...FILE_EXTENSIONS.map((ext) => ({ not: { href_matches: `/*.${ext}` } })),
       ...(excludeQueries ? [{ not: { href_matches: WITH_QUERY } }] : []),
-      { not: { selector_matches: "[download], [target]:not([target=_self]), [rel~=nofollow], [data-no-prefetch], [data-no-prefetch] a" } },
+      {
+        not: {
+          selector_matches:
+            "[download], [target]:not([target=_self]), [rel~=nofollow], [data-no-prefetch], [data-no-prefetch] a",
+        },
+      },
     ],
   };
   /** @type {Record<string, unknown[]>} */
@@ -90,4 +131,7 @@ export function speculationRulesResponse(options, request) {
 }
 
 /** The header a page response carries so the browser reads the rules. */
-export const SPECULATION_RULES_HEADER = /** @type {const} */ ({ name: "Speculation-Rules", value: `"${SPECULATION_RULES_PATH}"` });
+export const SPECULATION_RULES_HEADER = /** @type {const} */ ({
+  name: "Speculation-Rules",
+  value: `"${SPECULATION_RULES_PATH}"`,
+});

@@ -37,7 +37,10 @@ function loadTurnstile() {
     const script = document.createElement("script");
     script.src = SCRIPT_URL;
     script.async = true;
-    script.onload = () => resolve(/** @type {Turnstile} */ (/** @type {{ turnstile?: Turnstile }} */ (globalThis).turnstile));
+    script.onload = () =>
+      resolve(
+        /** @type {Turnstile} */ (/** @type {{ turnstile?: Turnstile }} */ (globalThis).turnstile),
+      );
     script.onerror = () => {
       // Forgotten, so the next mount tries again rather than waiting on a script that never came.
       loading = undefined;
@@ -64,13 +67,19 @@ export function mountTurnstile(el, siteKey, options = {}) {
   loadTurnstile().then(
     (turnstile) => {
       // flexible: as wide as the form (300px at least), not Cloudflare's fixed 300px box.
-      if (!removed) widgetId = turnstile.render(el, { sitekey: siteKey, size: "flexible", callback: options.onToken });
+      if (!removed)
+        widgetId = turnstile.render(el, {
+          sitekey: siteKey,
+          size: "flexible",
+          callback: options.onToken,
+        });
     },
     (error) => console.error(error),
   );
   return () => {
     removed = true;
-    if (widgetId !== undefined) /** @type {{ turnstile?: Turnstile }} */ (globalThis).turnstile?.remove(widgetId);
+    if (widgetId !== undefined)
+      /** @type {{ turnstile?: Turnstile }} */ (globalThis).turnstile?.remove(widgetId);
   };
 }
 
@@ -89,7 +98,11 @@ const MAX_TOKEN_LENGTH = 2048;
  * @param {{ remoteIp?: string | null, hostname?: string, action?: string, timeoutMs?: number, fetch?: typeof fetch }} [options]
  * @returns {Promise<{ ok: boolean, errors: string[], hostname?: string, action?: string }>}
  */
-export async function verifyTurnstile(token, secret, { remoteIp, hostname, action, timeoutMs = 10_000, fetch: post = fetch } = {}) {
+export async function verifyTurnstile(
+  token,
+  secret,
+  { remoteIp, hostname, action, timeoutMs = 10_000, fetch: post = fetch } = {},
+) {
   if (!secret) return { ok: false, errors: ["missing-secret"] };
   if (typeof token !== "string" || token.length === 0 || token.length > MAX_TOKEN_LENGTH) {
     return { ok: false, errors: ["missing-input-response"] };
@@ -99,7 +112,11 @@ export async function verifyTurnstile(token, secret, { remoteIp, hostname, actio
   /** @type {{ success?: unknown, "error-codes"?: unknown, hostname?: unknown, action?: unknown }} */
   let answer;
   try {
-    const res = await post(SITEVERIFY_URL, { method: "POST", body, signal: AbortSignal.timeout(timeoutMs) });
+    const res = await post(SITEVERIFY_URL, {
+      method: "POST",
+      body,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
     if (!res.ok) return { ok: false, errors: ["siteverify-unreachable"] };
     answer = await res.json();
   } catch {
@@ -110,8 +127,11 @@ export async function verifyTurnstile(token, secret, { remoteIp, hostname, actio
     ...(typeof answer?.hostname === "string" ? { hostname: answer.hostname } : {}),
     ...(typeof answer?.action === "string" ? { action: answer.action } : {}),
   };
-  if (answer?.success !== true) return { ok: false, errors: errors.length ? errors : ["not-success"], ...seen };
-  if (hostname !== undefined && seen.hostname !== hostname) return { ok: false, errors: ["hostname-mismatch"], ...seen };
-  if (action !== undefined && seen.action !== action) return { ok: false, errors: ["action-mismatch"], ...seen };
+  if (answer?.success !== true)
+    return { ok: false, errors: errors.length ? errors : ["not-success"], ...seen };
+  if (hostname !== undefined && seen.hostname !== hostname)
+    return { ok: false, errors: ["hostname-mismatch"], ...seen };
+  if (action !== undefined && seen.action !== action)
+    return { ok: false, errors: ["action-mismatch"], ...seen };
   return { ok: true, errors: [], ...seen };
 }

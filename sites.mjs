@@ -45,7 +45,10 @@ import { PASSKEY_OVERRIDES, corpFor, entryOverrides, permissionsAllowingSelf } f
 
 export { PASSKEY_OVERRIDES, permissionsAllowingSelf };
 
-const beacon = (/** @type {string} */ where) => ({ value: true, reason: `Cloudflare Web Analytics is on; the edge injects the beacon (${where}).` });
+const beacon = (/** @type {string} */ where) => ({
+  value: true,
+  reason: `Cloudflare Web Analytics is on; the edge injects the beacon (${where}).`,
+});
 const passkey = { value: true, reason: "The family sign-in offers a passkey (./sign-in)." };
 const STRICT_ORIGIN = "strict-origin-when-cross-origin";
 
@@ -53,12 +56,14 @@ const STRICT_ORIGIN = "strict-origin-when-cross-origin";
 // and React Router and Better Auth refuse it with a 400, so the emailed link never signs anyone in.
 const signInReferrer = {
   value: STRICT_ORIGIN,
-  reason: "no-referrer makes browsers send `Origin: null` on same-origin form POSTs, which React Router and Better Auth refuse; the sign-in link's confirm page is one.",
+  reason:
+    "no-referrer makes browsers send `Origin: null` on same-origin form POSTs, which React Router and Better Auth refuse; the sign-in link's confirm page is one.",
 };
 const popupSignIn = {
   "Cross-Origin-Opener-Policy": {
     value: null,
-    reason: "AI clients (claude.ai among them) open /authorize in a popup and wait for it through window.opener; same-origin would sever that opener and the sign-in would never return.",
+    reason:
+      "AI clients (claude.ai among them) open /authorize in a popup and wait for it through window.opener; same-origin would sever that opener and the sign-in would never return.",
   },
 };
 
@@ -110,42 +115,72 @@ export const FAMILY_DEVIATIONS = /* @__PURE__ */ Object.freeze({
 
 const coepCredentialless = {
   value: /** @type {const} */ ("credentialless"),
-  reason: "The pages embed no frame and load nothing from another origin that needs a cookie (the beacon included).",
+  reason:
+    "The pages embed no frame and load nothing from another origin that needs a cookie (the beacon included).",
 };
-const coepStaged = (/** @type {string} */ why) => ({ value: /** @type {const} */ ("credentialless"), reportOnly: true, reason: `Report-Only first: ${why}; the coep reports (./csp-report) show what enforcing would refuse.` });
+const coepStaged = (/** @type {string} */ why) => ({
+  value: /** @type {const} */ ("credentialless"),
+  reportOnly: true,
+  reason: `Report-Only first: ${why}; the coep reports (./csp-report) show what enforcing would refuse.`,
+});
 /** A site whose posts embed players (./embeds): none sends COEP, so enforcing it would refuse every one. */
-const coepEmbeds = (/** @type {string} */ why) => coepStaged(`${why}; and a post's players (./embeds) send no Cross-Origin-Embedder-Policy, so enforcing it would refuse them`);
-const embeds = (/** @type {string} */ where) => ({ value: true, reason: `Posts embed the players Dustin uses through Prelum's ::embed (${where}), loaded only on the reader's click.` });
-const doorCoep = { value: /** @type {const} */ ("credentialless"), reason: "The door's pages load nothing from another origin (default-src 'none'). Its COOP stays off for the popup sign-in, so this isolates nothing; it refuses what nothing loads." };
+const coepEmbeds = (/** @type {string} */ why) =>
+  coepStaged(
+    `${why}; and a post's players (./embeds) send no Cross-Origin-Embedder-Policy, so enforcing it would refuse them`,
+  );
+const embeds = (/** @type {string} */ where) => ({
+  value: true,
+  reason: `Posts embed the players Dustin uses through Prelum's ::embed (${where}), loaded only on the reader's click.`,
+});
+const doorCoep = {
+  value: /** @type {const} */ ("credentialless"),
+  reason:
+    "The door's pages load nothing from another origin (default-src 'none'). Its COOP stays off for the popup sign-in, so this isolates nothing; it refuses what nothing loads.",
+};
 
 const integrityStaged = {
   value: /** @type {const} */ ("report-only"),
-  reason: "React Router writes integrity for every chunk into the import map and the modulepreloads (subResourceIntegrity: true, react-router.config.ts), and the edge injects the beacon with its own; Report-Only until the integrity-violation reports show none missing.",
+  reason:
+    "React Router writes integrity for every chunk into the import map and the modulepreloads (subResourceIntegrity: true, react-router.config.ts), and the edge injects the beacon with its own; Report-Only until the integrity-violation reports show none missing.",
 };
 const integrityStagedStatic = {
   value: /** @type {const} */ ("report-only"),
-  reason: "The build writes its own <script> tags; Report-Only until each carries integrity (integrityHash, ./csp) and crossorigin, which Integrity-Policy needs of a classic script, and the reports show none missing.",
+  reason:
+    "The build writes its own <script> tags; Report-Only until each carries integrity (integrityHash, ./csp) and crossorigin, which Integrity-Policy needs of a classic script, and the reports show none missing.",
 };
-const integrityNoScript = { value: /** @type {const} */ ("enforce"), reason: "The door's pages run no script (default-src 'none'), so none lacks integrity." };
+const integrityNoScript = {
+  value: /** @type {const} */ ("enforce"),
+  reason: "The door's pages run no script (default-src 'none'), so none lacks integrity.",
+};
 
 const typesStaged = {
   value: /** @type {const} */ ("report-only"),
-  reason: "React DOM 19 writes dangerouslySetInnerHTML, and every <script> it creates, through innerHTML with a plain string (react-dom-client), which require-trusted-types-for 'script' refuses unless a policy makes it; the Report-Only policy (buildStagedPolicy) names each sink a page reaches before one is written.",
+  reason:
+    "React DOM 19 writes dangerouslySetInnerHTML, and every <script> it creates, through innerHTML with a plain string (react-dom-client), which require-trusted-types-for 'script' refuses unless a policy makes it; the Report-Only policy (buildStagedPolicy) names each sink a page reaches before one is written.",
 };
 const typesStagedStatic = {
   value: /** @type {const} */ ("report-only"),
-  reason: "The Report-Only policy (buildStagedPolicy) names any sink the site's own scripts hand a string to before it is enforced.",
+  reason:
+    "The Report-Only policy (buildStagedPolicy) names any sink the site's own scripts hand a string to before it is enforced.",
 };
-const typesNoScript = { value: /** @type {const} */ (true), reason: "The door's pages run no script, so no string reaches a sink." };
+const typesNoScript = {
+  value: /** @type {const} */ (true),
+  reason: "The door's pages run no script, so no string reaches a sink.",
+};
 
 const unlistedStaged = {
   value: /** @type {const} */ ("report-only"),
-  reason: "default-src 'self' still lets in every kind the policy does not name (the web manifest among them); denyUnlisted in the Report-Only policy (buildStagedPolicy) names each kind a page needs before default-src 'none' is enforced.",
+  reason:
+    "default-src 'self' still lets in every kind the policy does not name (the web manifest among them); denyUnlisted in the Report-Only policy (buildStagedPolicy) names each kind a page needs before default-src 'none' is enforced.",
 };
-const nothingUnlisted = { value: true, reason: "A static site that loads nothing beyond what its policy names: default-src 'none'." };
+const nothingUnlisted = {
+  value: true,
+  reason: "A static site that loads nothing beyond what its policy names: default-src 'none'.",
+};
 
 const beaconNotStrict = {
-  reason: "buildContentSecurityPolicy refuses strictDynamic beside cloudflareWebAnalytics: 'strict-dynamic' makes a browser ignore host sources, and the edge injects the Web Analytics beacon with no nonce, and with an integrity that changes at each Cloudflare release, so neither a nonce nor a hash can let it run.",
+  reason:
+    "buildContentSecurityPolicy refuses strictDynamic beside cloudflareWebAnalytics: 'strict-dynamic' makes a browser ignore host sources, and the edge injects the Web Analytics beacon with no nonce, and with an integrity that changes at each Cloudflare release, so neither a nonce nor a hash can let it run.",
 };
 
 /** The doors' set: no script, nothing loaded, so each promise is met by the policy withMcpHeaders (./mcp-server) writes. */
@@ -153,12 +188,17 @@ const doorOptIns = {
   coep: doorCoep,
   integrityPolicy: integrityNoScript,
   trustedTypes: typesNoScript,
-  denyUnlisted: { value: true, reason: "The door's policy is default-src 'none': its consent page loads one hashed <style> and nothing else." },
+  denyUnlisted: {
+    value: true,
+    reason:
+      "The door's policy is default-src 'none': its consent page loads one hashed <style> and nothing else.",
+  },
 };
 
 const IMMUTABLE = { "Cache-Control": "public, max-age=31536000, immutable" };
 /** The build's content-hashed output: Vite's /assets/, and devkit siteScript's /islands/ where a site has them. */
-const hashed = (/** @type {string[]} */ ...patterns) => Object.fromEntries(patterns.map((p) => [p, IMMUTABLE]));
+const hashed = (/** @type {string[]} */ ...patterns) =>
+  Object.fromEntries(patterns.map((p) => [p, IMMUTABLE]));
 const sharedImage = { "Cross-Origin-Resource-Policy": /* @__PURE__ */ corpFor("image/png") };
 const staticPages = (/** @type {string[]} */ patterns, /** @type {string} */ where) => ({
   value: patterns,
@@ -175,10 +215,14 @@ export const dustinedwardsInfo = {
   id: "dustinedwards-info",
   origin: "https://dustinedwards.info",
   headers: {
-    "Referrer-Policy": { value: STRICT_ORIGIN, reason: "The ratified value for this site; OSHP's no-referrer has not been ruled on for it." },
+    "Referrer-Policy": {
+      value: STRICT_ORIGIN,
+      reason: "The ratified value for this site; OSHP's no-referrer has not been ruled on for it.",
+    },
     "Permissions-Policy": {
       value: /* @__PURE__ */ permissionsAllowingSelf("clipboard-write", "screen-wake-lock"),
-      reason: "clipboard-write must stay allowed: the copy controls swallow the refusal silently. The procedure run view keeps the screen awake (navigator.wakeLock, app/enhance/run.ts).",
+      reason:
+        "clipboard-write must stay allowed: the copy controls swallow the refusal silently. The procedure run view keeps the screen awake (navigator.wakeLock, app/enhance/run.ts).",
     },
   },
   optIns: {
@@ -195,7 +239,13 @@ export const dustinedwardsInfo = {
       .../* @__PURE__ */ hashed("/assets/*", "/islands/*"),
       // Pictures at static paths that other origins load: the share card, and those a page or Carrel's preview draws.
       .../* @__PURE__ */ Object.fromEntries(
-        ["/diagrams/*", "/phage-hunters/*", "/dustin-edwards-og-image.png", "/dustin-edwards-logo.svg", "/dustin-edwards-logo-dark.svg"].map((p) => [p, sharedImage]),
+        [
+          "/diagrams/*",
+          "/phage-hunters/*",
+          "/dustin-edwards-og-image.png",
+          "/dustin-edwards-logo.svg",
+          "/dustin-edwards-logo-dark.svg",
+        ].map((p) => [p, sharedImage]),
       ),
     },
   },
@@ -212,19 +262,29 @@ export const foxhound = {
   headers: {
     "Referrer-Policy": {
       value: STRICT_ORIGIN,
-      reason: "no-referrer makes browsers send `Origin: null` on same-origin POSTs, which Better Auth refuses (MISSING_OR_NULL_ORIGIN); /api/account/switch also returns the merchant to the page they were on from the Referer.",
+      reason:
+        "no-referrer makes browsers send `Origin: null` on same-origin POSTs, which Better Auth refuses (MISSING_OR_NULL_ORIGIN); /api/account/switch also returns the merchant to the page they were on from the Referer.",
     },
     "Permissions-Policy": {
-      value: /* @__PURE__ */ permissionsAllowingSelf("publickey-credentials-get", "clipboard-write"),
-      reason: "Passkey sign-in, and navigator.clipboard.writeText for the blog's Copy link and the payment page's copy-email button; allowed for this origin only.",
+      value: /* @__PURE__ */ permissionsAllowingSelf(
+        "publickey-credentials-get",
+        "clipboard-write",
+      ),
+      reason:
+        "Passkey sign-in, and navigator.clipboard.writeText for the blog's Copy link and the payment page's copy-email button; allowed for this origin only.",
     },
   },
   optIns: {
     cloudflareWebAnalytics: /* @__PURE__ */ beacon("content-security-policy.ts"),
-    formTargets: { value: ["https://checkout.stripe.com", "https://connect.stripe.com"], reason: "Stripe Checkout, and Connect OAuth, which /connect's POST redirects to." },
+    formTargets: {
+      value: ["https://checkout.stripe.com", "https://connect.stripe.com"],
+      reason: "Stripe Checkout, and Connect OAuth, which /connect's POST redirects to.",
+    },
     passkey,
     embeds: /* @__PURE__ */ embeds("the blog"),
-    coep: /* @__PURE__ */ coepEmbeds("the merchant app returns from Stripe and draws its charts and the admin's pages behind a sign-in"),
+    coep: /* @__PURE__ */ coepEmbeds(
+      "the merchant app returns from Stripe and draws its charts and the admin's pages behind a sign-in",
+    ),
     integrityPolicy: integrityStaged,
     trustedTypes: typesStaged,
     denyUnlisted: unlistedStaged,
@@ -250,9 +310,15 @@ export const foxing = {
   headers: { "Referrer-Policy": signInReferrer },
   optIns: {
     cloudflareWebAnalytics: /* @__PURE__ */ beacon("workers/security-headers.ts"),
-    baseUriSelf: { value: true, reason: "The reader (/read/:slug): Readium writes a same-origin <base> so a book's images and CSS resolve." },
+    baseUriSelf: {
+      value: true,
+      reason:
+        "The reader (/read/:slug): Readium writes a same-origin <base> so a book's images and CSS resolve.",
+    },
     passkey,
-    coep: /* @__PURE__ */ coepStaged("the reader frames each book's pages and loads its covers and fonts"),
+    coep: /* @__PURE__ */ coepStaged(
+      "the reader frames each book's pages and loads its covers and fonts",
+    ),
     integrityPolicy: integrityStaged,
     trustedTypes: typesStaged,
     denyUnlisted: unlistedStaged,
@@ -270,18 +336,26 @@ export const germomics = {
   headers: {
     "Referrer-Policy": {
       value: STRICT_ORIGIN,
-      reason: "no-referrer strips the origin from the player's episode requests through OP3, which tells web players apart by Referer, and blanks Web Analytics' referrers.",
+      reason:
+        "no-referrer strips the origin from the player's episode requests through OP3, which tells web players apart by Referer, and blanks Web Analytics' referrers.",
     },
     "Permissions-Policy": {
       value: /* @__PURE__ */ permissionsAllowingSelf("autoplay", "clipboard-write", "web-share"),
-      reason: "The player resumes with audio.play() (player-context.tsx); Copy link, the transcript quote and the feed URL use navigator.clipboard.writeText, and Copy link offers navigator.share (CopyLink.tsx).",
+      reason:
+        "The player resumes with audio.play() (player-context.tsx); Copy link, the transcript quote and the feed URL use navigator.clipboard.writeText, and Copy link offers navigator.share (CopyLink.tsx).",
     },
   },
   optIns: {
     cloudflareWebAnalytics: /* @__PURE__ */ beacon("app/lib/security-headers.ts"),
-    inlineStyles: { value: true, reason: "TipTap and the data pages' map set inline styles, so styles keep 'unsafe-inline' and the nonce stays off style-src (app/lib/security-headers.ts)." },
+    inlineStyles: {
+      value: true,
+      reason:
+        "TipTap and the data pages' map set inline styles, so styles keep 'unsafe-inline' and the nonce stays off style-src (app/lib/security-headers.ts).",
+    },
     embeds: /* @__PURE__ */ embeds("the episode notes and blog"),
-    coep: /* @__PURE__ */ coepEmbeds("the data pages load Google Maps' script, tiles and fonts and the games Phaser's assets, none of which this site controls"),
+    coep: /* @__PURE__ */ coepEmbeds(
+      "the data pages load Google Maps' script, tiles and fonts and the games Phaser's assets, none of which this site controls",
+    ),
     integrityPolicy: integrityStaged,
     trustedTypes: typesStaged,
     denyUnlisted: unlistedStaged,
@@ -304,7 +378,11 @@ export const julieedwardsInfo = {
   origin: "https://julieedwards.info",
   optIns: {
     cloudflareWebAnalytics: /* @__PURE__ */ beacon("workers/security-headers.ts"),
-    denyUnlisted: { value: true, reason: "One page that loads its own files, its photos' two hosts and the beacon; the manifest is named." },
+    denyUnlisted: {
+      value: true,
+      reason:
+        "One page that loads its own files, its photos' two hosts and the beacon; the manifest is named.",
+    },
     coep: coepCredentialless,
     integrityPolicy: integrityStaged,
     trustedTypes: typesStaged,
@@ -312,7 +390,10 @@ export const julieedwardsInfo = {
   deviations: { C3: beaconNotStrict },
   assets: {
     paths: {
-      "/assets/*": { ...IMMUTABLE, "Cross-Origin-Resource-Policy": /* @__PURE__ */ corpFor("text/css") },
+      "/assets/*": {
+        ...IMMUTABLE,
+        "Cross-Origin-Resource-Policy": /* @__PURE__ */ corpFor("text/css"),
+      },
       "/opengraph-image.png": sharedImage,
     },
   },
@@ -323,10 +404,17 @@ export const julieedwardsInfo = {
 export const bsw = {
   id: "bsw",
   origin: "https://bsw.dustin-edwards.workers.dev",
-  oldSite: { value: "https://biosciencewriters.com", reason: "The old IIS site still answers there until the domain moves to this Worker." },
+  oldSite: {
+    value: "https://biosciencewriters.com",
+    reason: "The old IIS site still answers there until the domain moves to this Worker.",
+  },
   optIns: {
     cloudflareWebAnalytics: /* @__PURE__ */ beacon("workers/security-headers.ts"),
-    denyUnlisted: { value: true, reason: "Marketing pages that load their own files, data: images and the beacon; the manifest is named." },
+    denyUnlisted: {
+      value: true,
+      reason:
+        "Marketing pages that load their own files, data: images and the beacon; the manifest is named.",
+    },
     coep: coepCredentialless,
     integrityPolicy: integrityStaged,
     trustedTypes: typesStaged,
@@ -335,7 +423,7 @@ export const bsw = {
   assets: {
     paths: {
       // The site's photographs carry a hash of their bytes in their names (app/lib/media/images.ts).
-      ...(/* @__PURE__ */ hashed("/assets/*", "/islands/*", "/brand/*", "/team/*", "/services/*")),
+      .../* @__PURE__ */ hashed("/assets/*", "/islands/*", "/brand/*", "/team/*", "/services/*"),
       // The site card and each page's own card (drawn at build time) are fetched by other sites' link previews.
       "/og-image.png": sharedImage,
       "/og/*": sharedImage,
@@ -354,7 +442,9 @@ export const txasm = {
   optIns: {
     cloudflareWebAnalytics: /* @__PURE__ */ beacon("app/lib/security-headers.ts"),
     passkey,
-    coep: /* @__PURE__ */ coepStaged("submission, review, the abstract book's PDF.js viewer and the admin sit behind a sign-in"),
+    coep: /* @__PURE__ */ coepStaged(
+      "submission, review, the abstract book's PDF.js viewer and the admin sit behind a sign-in",
+    ),
     integrityPolicy: integrityStaged,
     trustedTypes: typesStaged,
     denyUnlisted: unlistedStaged,
@@ -380,7 +470,12 @@ export const carrel = {
   deviations: { C3: beaconNotStrict },
   assets: {
     skipWorker: /* @__PURE__ */ staticPages(["/fonts/*"], "www/wrangler.jsonc"),
-    policy: { noForms: true, sources: { img: ["data:"] }, styleAttributesInline: true, extraDirectives: ["manifest-src 'self'"] },
+    policy: {
+      noForms: true,
+      sources: { img: ["data:"] },
+      styleAttributesInline: true,
+      extraDirectives: ["manifest-src 'self'"],
+    },
     paths: { "/*": { "Cache-Control": "public, max-age=300, must-revalidate" } },
   },
 };
@@ -391,8 +486,14 @@ export const carrelDesk = {
   id: "carrel-desk",
   origin: "https://desk.dustinedwards.info",
   optIns: {
-    strictDynamic: { value: true, reason: "The nonced entry scripts load the route chunks (workers/security-headers.ts appPolicy)." },
-    coep: /* @__PURE__ */ coepStaged("the editor frames each draft's preview, the site's own markup under a sandbox policy, which COEP would refuse unless it carries it too"),
+    strictDynamic: {
+      value: true,
+      reason:
+        "The nonced entry scripts load the route chunks (workers/security-headers.ts appPolicy).",
+    },
+    coep: /* @__PURE__ */ coepStaged(
+      "the editor frames each draft's preview, the site's own markup under a sandbox policy, which COEP would refuse unless it carries it too",
+    ),
     integrityPolicy: integrityStaged,
     trustedTypes: typesStaged,
     denyUnlisted: unlistedStaged,
@@ -408,13 +509,24 @@ export const capsidPortal = {
   id: "capsid-portal",
   origin: "https://portal.dustinedwards.info",
   optIns: {
-    denyUnlisted: { value: true, reason: "The dashboard loads only its own scripts, styles and data: images (src/dashboard-csp.ts)." },
+    denyUnlisted: {
+      value: true,
+      reason:
+        "The dashboard loads only its own scripts, styles and data: images (src/dashboard-csp.ts).",
+    },
     coep: /* @__PURE__ */ coepStaged("every Portal page sits behind Access"),
-    integrityPolicy: { value: "report-only", reason: "The build's tags carry integrity (subresourceIntegrity, ./sri, dashboard/vite.config.ts), but each view is a chunk loaded with import(), which only an import map could give integrity; Report-Only while the reports name them." },
+    integrityPolicy: {
+      value: "report-only",
+      reason:
+        "The build's tags carry integrity (subresourceIntegrity, ./sri, dashboard/vite.config.ts), but each view is a chunk loaded with import(), which only an import map could give integrity; Report-Only while the reports name them.",
+    },
     trustedTypes: typesStaged,
   },
   deviations: {
-    C3: { reason: "The dashboard is a Vite build served as files under script-src 'self' (src/dashboard-csp.ts): no nonce or hash for 'strict-dynamic' to start from." },
+    C3: {
+      reason:
+        "The dashboard is a Vite build served as files under script-src 'self' (src/dashboard-csp.ts): no nonce or hash for 'strict-dynamic' to start from.",
+    },
   },
   // All of the Portal is behind Access for SaaS.
   signIn: { admin: ["/"] },
@@ -423,11 +535,21 @@ export const capsidPortal = {
 // src/security-headers.ts: its only page is the /authorize consent dialog MCP clients open. Its policy (DEFAULT_CSP and
 // the dialog's) is the door's: default-src 'none' and require-trusted-types-for 'script'.
 /** @type {SiteEntry} */
-export const capsidMcp = { id: "capsid-mcp", origin: "https://mcp.dustinedwards.info", headers: popupSignIn, optIns: doorOptIns };
+export const capsidMcp = {
+  id: "capsid-mcp",
+  origin: "https://mcp.dustinedwards.info",
+  headers: popupSignIn,
+  optIns: doorOptIns,
+};
 
 // workers/security-headers.ts: Carrel's AI door.
 /** @type {SiteEntry} */
-export const carrelMcp = { id: "carrel-mcp", origin: "https://carrel-mcp.dustinedwards.info", headers: popupSignIn, optIns: doorOptIns };
+export const carrelMcp = {
+  id: "carrel-mcp",
+  origin: "https://carrel-mcp.dustinedwards.info",
+  headers: popupSignIn,
+  optIns: doorOptIns,
+};
 
 // explorer/src/security-headers.mjs, explorer/wrangler-config.mjs: every file is answered by the asset server.
 /** @type {SiteEntry} */
@@ -443,7 +565,10 @@ export const capsid = {
   },
   deviations: { C3: beaconNotStrict },
   assets: {
-    skipWorker: /* @__PURE__ */ staticPages(["/*"], "explorer/wrangler-config.mjs: the Worker answers only paths with no file"),
+    skipWorker: /* @__PURE__ */ staticPages(
+      ["/*"],
+      "explorer/wrangler-config.mjs: the Worker answers only paths with no file",
+    ),
     policy: {},
     reportOrigin: "https://mcp.dustinedwards.info",
     // File names are not hashed (explorer/build.mjs writes /assets/explorer.js and the rest by hand), so five minutes, as its siblings.
@@ -458,7 +583,11 @@ export const enarratio = {
   origin: "https://enarratio.dustinedwards.info",
   optIns: {
     cloudflareWebAnalytics: /* @__PURE__ */ beacon("scripts/security-headers.ts"),
-    denyUnlisted: { value: true, reason: "The gallery loads its own files, data: images and the beacon, and reports to cloudflareinsights.com." },
+    denyUnlisted: {
+      value: true,
+      reason:
+        "The gallery loads its own files, data: images and the beacon, and reports to cloudflareinsights.com.",
+    },
     coep: coepCredentialless,
     integrityPolicy: integrityStagedStatic,
     trustedTypes: typesStagedStatic,
@@ -474,19 +603,37 @@ export const enarratio = {
 
 // mcp/src/door.ts: Foxhound's admin AI door.
 /** @type {SiteEntry} */
-export const foxhoundMcp = { id: "foxhound-mcp", origin: "https://admin-mcp.foxhoundapp.com", headers: popupSignIn, optIns: doorOptIns };
+export const foxhoundMcp = {
+  id: "foxhound-mcp",
+  origin: "https://admin-mcp.foxhoundapp.com",
+  headers: popupSignIn,
+  optIns: doorOptIns,
+};
 
 // dustinedwards-info mcp/src/index.ts: the site's admin MCP.
 /** @type {SiteEntry} */
-export const dustinedwardsMcp = { id: "dustinedwards-mcp", origin: "https://admin-mcp.dustinedwards.info", headers: popupSignIn, optIns: doorOptIns };
+export const dustinedwardsMcp = {
+  id: "dustinedwards-mcp",
+  origin: "https://admin-mcp.dustinedwards.info",
+  headers: popupSignIn,
+  optIns: doorOptIns,
+};
 
 // foxing mcp/src/index.ts: Foxing's admin MCP, the standard exactly.
 /** @type {SiteEntry} */
-export const foxingMcp = { id: "foxing-mcp", origin: "https://admin-mcp.foxing.app", optIns: doorOptIns };
+export const foxingMcp = {
+  id: "foxing-mcp",
+  origin: "https://admin-mcp.foxing.app",
+  optIns: doorOptIns,
+};
 
 // germomics mcp/src/index.ts: Germomics' admin MCP, the standard exactly.
 /** @type {SiteEntry} */
-export const germomicsMcp = { id: "germomics-mcp", origin: "https://admin-mcp.germomics.com", optIns: doorOptIns };
+export const germomicsMcp = {
+  id: "germomics-mcp",
+  origin: "https://admin-mcp.germomics.com",
+  optIns: doorOptIns,
+};
 
 // scripts/security-headers.ts, wrangler.jsonc
 /** @type {SiteEntry} */
@@ -496,23 +643,44 @@ export const capsomer = {
   headers: {
     "Permissions-Policy": {
       value: /* @__PURE__ */ permissionsAllowingSelf("clipboard-write"),
-      reason: "The states pages show the detail panel's and media library's Copy buttons working (navigator.clipboard.writeText).",
+      reason:
+        "The states pages show the detail panel's and media library's Copy buttons working (navigator.clipboard.writeText).",
     },
-    "X-Frame-Options": { value: "sameorigin", reason: "The site frames its own states pages and specimens (site/main.tsx, site/specimen.ts)." },
+    "X-Frame-Options": {
+      value: "sameorigin",
+      reason:
+        "The site frames its own states pages and specimens (site/main.tsx, site/specimen.ts).",
+    },
   },
   optIns: {
     cloudflareWebAnalytics: /* @__PURE__ */ beacon("scripts/security-headers.ts"),
-    framedBySameOrigin: { value: true, reason: "The site frames its own states pages and specimens; no other origin may." },
+    framedBySameOrigin: {
+      value: true,
+      reason: "The site frames its own states pages and specimens; no other origin may.",
+    },
     embeds: /* @__PURE__ */ embeds("the prose-blocks specimen"),
-    coep: /* @__PURE__ */ coepEmbeds("the site frames its own states pages and specimens, each of which must carry it too"),
-    integrityPolicy: { value: "report-only", reason: "The build's tags carry integrity (subresourceIntegrity, ./sri, site/vite.config.ts), but the admin and some states pages load chunks with import(), which only an import map could give integrity; Report-Only while the reports name them." },
+    coep: /* @__PURE__ */ coepEmbeds(
+      "the site frames its own states pages and specimens, each of which must carry it too",
+    ),
+    integrityPolicy: {
+      value: "report-only",
+      reason:
+        "The build's tags carry integrity (subresourceIntegrity, ./sri, site/vite.config.ts), but the admin and some states pages load chunks with import(), which only an import map could give integrity; Report-Only while the reports name them.",
+    },
     trustedTypes: typesStagedStatic,
     denyUnlisted: unlistedStaged,
   },
   deviations: { C3: beaconNotStrict },
   assets: {
     skipWorker: /* @__PURE__ */ staticPages(["/assets/*"], "wrangler.jsonc"),
-    policy: { sources: { img: ["data:"], connect: ["https://raw.githubusercontent.com/DrDustinEdwards/capsomer/results/results.json"] } },
+    policy: {
+      sources: {
+        img: ["data:"],
+        connect: [
+          "https://raw.githubusercontent.com/DrDustinEdwards/capsomer/results/results.json",
+        ],
+      },
+    },
     paths: /* @__PURE__ */ hashed("/assets/*"),
   },
 };
@@ -524,7 +692,11 @@ export const prelum = {
   origin: "https://prelum.dustinedwards.info",
   optIns: {
     cloudflareWebAnalytics: /* @__PURE__ */ beacon("specimen/headers.mjs"),
-    denyUnlisted: { value: true, reason: "A static site that loads nothing beyond what its policy names, the post players in frame-src among them: default-src 'none'." },
+    denyUnlisted: {
+      value: true,
+      reason:
+        "A static site that loads nothing beyond what its policy names, the post players in frame-src among them: default-src 'none'.",
+    },
     embeds: /* @__PURE__ */ embeds("the specimen's embed section"),
     coep: /* @__PURE__ */ coepEmbeds("the specimen shows every element a post can hold"),
     integrityPolicy: integrityStagedStatic,
@@ -532,16 +704,29 @@ export const prelum = {
   },
   deviations: { C3: beaconNotStrict },
   assets: {
-    skipWorker: /* @__PURE__ */ staticPages(["/fonts/*", "/katex/*", "/images/*", "/diagrams/*"], "wrangler.jsonc"),
+    skipWorker: /* @__PURE__ */ staticPages(
+      ["/fonts/*", "/katex/*", "/images/*", "/diagrams/*"],
+      "wrangler.jsonc",
+    ),
     // media: the specimen's clip and tone, its own files (default-src 'none' refused them).
-    policy: { noForms: true, sources: { img: ["data:"], media: ["'self'"] }, styleAttributesInline: true, extraDirectives: ["manifest-src 'self'"] },
+    policy: {
+      noForms: true,
+      sources: { img: ["data:"], media: ["'self'"] },
+      styleAttributesInline: true,
+      extraDirectives: ["manifest-src 'self'"],
+    },
     paths: {
       "/*": { "Cache-Control": "public, max-age=300, must-revalidate" },
       "/elements.json": { "Access-Control-Allow-Origin": "*" },
       // A Mermaid drawing styles itself with an inline <style>, which the page policy refuses when the SVG is opened on its own.
       "/diagrams/*": {
         "Content-Security-Policy": /* @__PURE__ */ buildPolicy([
-          "default-src 'none'", "style-src 'unsafe-inline'", "connect-src 'self'", "frame-ancestors 'none'", `report-uri ${CSP_REPORT_PATH}`, `report-to ${CSP_REPORT_GROUP}`,
+          "default-src 'none'",
+          "style-src 'unsafe-inline'",
+          "connect-src 'self'",
+          "frame-ancestors 'none'",
+          `report-uri ${CSP_REPORT_PATH}`,
+          `report-to ${CSP_REPORT_GROUP}`,
         ]),
       },
     },
@@ -550,8 +735,26 @@ export const prelum = {
 
 /** @type {readonly SiteEntry[]} */
 export const SITES = /* @__PURE__ */ Object.freeze([
-  dustinedwardsInfo, foxhound, foxing, germomics, julieedwardsInfo, bsw, txasm, carrel, carrelDesk, capsidPortal, capsidMcp, carrelMcp, capsid, enarratio,
-  foxhoundMcp, dustinedwardsMcp, foxingMcp, germomicsMcp, capsomer, prelum,
+  dustinedwardsInfo,
+  foxhound,
+  foxing,
+  germomics,
+  julieedwardsInfo,
+  bsw,
+  txasm,
+  carrel,
+  carrelDesk,
+  capsidPortal,
+  capsidMcp,
+  carrelMcp,
+  capsid,
+  enarratio,
+  foxhoundMcp,
+  dustinedwardsMcp,
+  foxingMcp,
+  germomicsMcp,
+  capsomer,
+  prelum,
 ]);
 
 /**

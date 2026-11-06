@@ -20,7 +20,11 @@ export type SecurityNoticeKind = (typeof SECURITY_NOTICE_KINDS)[number];
 /** How recent a sign-in must be for a risky change: 600 seconds (Better Auth's session.freshAge, and ./sign-in's own check). */
 export const FRESH_SECONDS: 600;
 /** Whether a session was made within `freshSeconds` (default FRESH_SECONDS). */
-export function sessionIsFresh(session: { createdAt: Date | string | number }, freshSeconds?: number, now?: number): boolean;
+export function sessionIsFresh(
+  session: { createdAt: Date | string | number },
+  freshSeconds?: number,
+  now?: number,
+): boolean;
 /** The refusal for want of a recent sign-in, in Better Auth's shape: 403, `body.code` "SESSION_NOT_FRESH". */
 export class SessionNotFresh extends Error {
   status: "FORBIDDEN";
@@ -31,24 +35,45 @@ export class SessionNotFresh extends Error {
  * The asker's session when it was made in the last FRESH_SECONDS, null when nobody is signed in; throws SessionNotFresh
  * (logged as `authz_fail`) when older. For a site's own risky routes: export and delete account.
  */
-export function requireFreshSession<S extends { session: { createdAt: Date | string }; user: { id: string } }>(
+export function requireFreshSession<
+  S extends { session: { createdAt: Date | string }; user: { id: string } },
+>(
   auth: { api: { getSession(o: SessionLookup): Promise<S | null> } },
   request: Request,
 ): Promise<S | null>;
 
 /** The D1 calls the event table needs. */
 export type D1Like = {
-  prepare(sql: string): { bind(...values: unknown[]): { run(): Promise<unknown>; all(): Promise<{ results: Record<string, unknown>[] }> } };
+  prepare(sql: string): {
+    bind(...values: unknown[]): {
+      run(): Promise<unknown>;
+      all(): Promise<{ results: Record<string, unknown>[] }>;
+    };
+  };
 };
 /** The migration for `auth_events`: one row per auth event, no address, token or code. */
 export const AUTH_EVENTS_SQL: string;
 /** Writes one event's row; a failed write is logged (`auth_event_write_failed`) and never throws. */
 export function recordAuthEvent(
   db: D1Like,
-  row: { event: string; fields: Record<string, unknown>; userAgent?: string | null; request?: Request | null; at?: number; deviceId?: string | null },
+  row: {
+    event: string;
+    fields: Record<string, unknown>;
+    userAgent?: string | null;
+    request?: Request | null;
+    at?: number;
+    deviceId?: string | null;
+  },
 ): Promise<void>;
 export type SecurityHistoryEntry = {
-  kind: "sign-in" | "passkey-added" | "passkey-removed" | "sign-in-linked" | "sign-in-unlinked" | "email-changed" | "recovery";
+  kind:
+    | "sign-in"
+    | "passkey-added"
+    | "passkey-removed"
+    | "sign-in-linked"
+    | "sign-in-unlinked"
+    | "email-changed"
+    | "recovery";
   /** The way in for a sign-in ("link", "code", "passkey", "google", "apple"), the provider for a link or unlink. */
   via: string | null;
   at: Date;
@@ -56,7 +81,11 @@ export type SecurityHistoryEntry = {
   location: string | null;
 };
 /** A person's sign-ins, passkey, sign-in method and email changes and recoveries, newest first (default 50). */
-export function securityHistory(db: D1Like, userId: string, limit?: number): Promise<SecurityHistoryEntry[]>;
+export function securityHistory(
+  db: D1Like,
+  userId: string,
+  limit?: number,
+): Promise<SecurityHistoryEntry[]>;
 /** The devices (deviceName) a person has signed in from, from their history. */
 export function signedInDevices(db: D1Like, userId: string): Promise<(string | null)[]>;
 /** The device ids a person has signed in from, from their history (`sessionDetails`, AUTH_EVENTS_DEVICE_SQL). */
@@ -66,7 +95,10 @@ export function hadPasskey(db: D1Like, userId: string): Promise<boolean>;
 /** Whether a sign-in's device is new: the person has signed in before, never from this device. */
 export function isNewDevice(device: string | null, seen: (string | null)[]): boolean;
 /** isNewDevice by device id where the person's sessions or history carry any, else by device name. */
-export function isNewSignInDevice(device: { id: string | null; name: string | null }, seen: { ids: (string | null)[]; names: (string | null)[] }): boolean;
+export function isNewSignInDevice(
+  device: { id: string | null; name: string | null },
+  seen: { ids: (string | null)[]; names: (string | null)[] },
+): boolean;
 
 /** A session's last activity is written at most once in this many seconds: 300. */
 export const SESSION_TOUCH_SECONDS: 300;
@@ -87,19 +119,31 @@ export interface SessionLookup {
 export function sessionLookup(request: Request): SessionLookup;
 /** What to write to a session on use (updatedAt, and the place when known), or null: at most every 5 minutes. */
 export function sessionTouch(
-  session: { updatedAt?: Date | string | null; createdAt?: Date | string | null; location?: unknown },
+  session: {
+    updatedAt?: Date | string | null;
+    createdAt?: Date | string | null;
+    location?: unknown;
+  },
   place: string | null,
   now?: number,
 ): { updatedAt: Date; location?: string } | null;
 /** Failed sign-ins and sign-in mails since `sinceMs`. */
-export function authEventCounts(db: D1Like, sinceMs: number): Promise<{ failures: number; mails: number }>;
+export function authEventCounts(
+  db: D1Like,
+  sinceMs: number,
+): Promise<{ failures: number; mails: number }>;
 /** Deletes rows with no user after 30 days and every row after a year: a daily job. */
 export function pruneAuthEvents(db: D1Like, now?: number): Promise<void>;
 
 /** "Safari on iPhone", "Chrome on Windows", one of the two alone, or null. */
 export function deviceName(userAgent: string | null | undefined): string | null;
 /** The city, region and country in `request.cf` as words, or null. */
-export function coarseLocation(request: (Request & { cf?: { city?: unknown; region?: unknown; country?: unknown } }) | null | undefined): string | null;
+export function coarseLocation(
+  request:
+    | (Request & { cf?: { city?: unknown; region?: unknown; country?: unknown } })
+    | null
+    | undefined,
+): string | null;
 
 export type SessionRow = {
   id: string;
@@ -118,7 +162,10 @@ export type AccountSession = {
   location: string | null;
 };
 /** Better Auth's listSessions rows for a page: current first, then most recently active. No token: end one by id. */
-export function sessionRows(sessions: SessionRow[], currentToken: string | null | undefined): AccountSession[];
+export function sessionRows(
+  sessions: SessionRow[],
+  currentToken: string | null | undefined,
+): AccountSession[];
 
 export type SessionsAuth = {
   api: {
@@ -128,21 +175,47 @@ export type SessionsAuth = {
   };
 };
 /** The asker's sessions list, or null when Better Auth wants a fresh sign-in first (SESSION_NOT_FRESH). */
-export function accountSessions(auth: SessionsAuth, request: Request): Promise<AccountSession[] | null>;
+export function accountSessions(
+  auth: SessionsAuth,
+  request: Request,
+): Promise<AccountSession[] | null>;
 /** Ends one of the asker's own sessions by id, server-side; false when the id is not theirs. */
-export function revokeSessionById(auth: SessionsAuth, request: Request, id: string): Promise<boolean>;
+export function revokeSessionById(
+  auth: SessionsAuth,
+  request: Request,
+  id: string,
+): Promise<boolean>;
 
 /** The passkey's provider from its AAGUID ("Apple Passwords", "Google Password Manager", "YubiKey 5 Series", ...), else null. */
-export function knownProvider(aaguid: string | null | undefined, userAgent?: string | null): string | null;
+export function knownProvider(
+  aaguid: string | null | undefined,
+  userAgent?: string | null,
+): string | null;
 /** knownProvider, else "Passkey". */
-export function passkeyProvider(aaguid: string | null | undefined, userAgent?: string | null): string;
+export function passkeyProvider(
+  aaguid: string | null | undefined,
+  userAgent?: string | null,
+): string;
 /** The passkey's name, else its provider's, else "Passkey". */
 export function passkeyLabel(passkey: { name?: string | null; aaguid?: string | null }): string;
 
 /** A row of Better Auth's `listPasskeys`. */
-export type PasskeyRow = { id: string; name?: string | null; aaguid?: string | null; credentialID?: string | null; createdAt?: Date | string | null };
+export type PasskeyRow = {
+  id: string;
+  name?: string | null;
+  aaguid?: string | null;
+  credentialID?: string | null;
+  createdAt?: Date | string | null;
+};
 /** One passkey as the account page lists it; `credentialId` (public, base64url) is for the Signal API. */
-export type AccountPasskey = { id: string; credentialId: string | null; name: string; provider: string; createdAt: Date | null; lastUsedAt: Date | null };
+export type AccountPasskey = {
+  id: string;
+  credentialId: string | null;
+  name: string;
+  provider: string;
+  createdAt: Date | null;
+  lastUsedAt: Date | null;
+};
 /** The passkeys as a page lists them, oldest first, with `lastUsed` from passkeyLastUsed. */
 export function passkeyRows(passkeys: PasskeyRow[], lastUsed?: Map<string, Date>): AccountPasskey[];
 /** When each of a person's passkeys last signed them in, by passkey id, from `auth_events` (the last year). */
@@ -166,9 +239,18 @@ export const PASSKEY_OFFER_DAYS: 30;
 /** The `auth_events` event of a "Not now" on the passkey offer. */
 export const PASSKEY_OFFER_DISMISSED: "passkey_offer_dismissed";
 /** Records a "Not now" on the passkey offer for the person; never throws. */
-export function dismissPasskeyOffer(db: D1Like, userId: string, options?: { request?: Request | null; at?: number }): Promise<void>;
+export function dismissPasskeyOffer(
+  db: D1Like,
+  userId: string,
+  options?: { request?: Request | null; at?: number },
+): Promise<void>;
 /** Whether to offer a passkey after another sign-in: none yet, and no "Not now" in the last PASSKEY_OFFER_DAYS. */
-export function shouldOfferPasskey(db: D1Like, userId: string, passkeys: unknown[] | number, now?: number): Promise<boolean>;
+export function shouldOfferPasskey(
+  db: D1Like,
+  userId: string,
+  passkeys: unknown[] | number,
+  now?: number,
+): Promise<boolean>;
 
 /** How a Better Auth endpoint ended, from its after hook's `ctx.context.returned`. */
 export function outcome(returned: unknown): { ok: boolean; code?: string };
@@ -194,7 +276,12 @@ export function authEvent(facts: EndpointFacts): AuthEvent | null;
 /** Writes the event's line with the address hashed (`email_key`), never in clear; with `db`, its `auth_events` row too. */
 export function logAuthEvent(
   event: Pick<AuthEvent, "event" | "fields" | "level" | "email">,
-  where?: { db?: D1Like | null; userAgent?: string | null; request?: Request | null; deviceId?: string | null },
+  where?: {
+    db?: D1Like | null;
+    userAgent?: string | null;
+    request?: Request | null;
+    deviceId?: string | null;
+  },
 ): Promise<void>;
 
 /** "Google", "Apple", else the provider id. */

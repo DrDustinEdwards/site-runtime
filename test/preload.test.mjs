@@ -10,7 +10,13 @@ test("a font gets crossorigin in both the links and the header, and a bad href i
     { href: "/logo.webp", as: "image" },
     { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
   ]);
-  assert.deepEqual(links[0], { rel: "preload", href: "/fonts/a.woff2", as: "font", type: "font/woff2", crossOrigin: "anonymous" });
+  assert.deepEqual(links[0], {
+    rel: "preload",
+    href: "/fonts/a.woff2",
+    as: "font",
+    type: "font/woff2",
+    crossOrigin: "anonymous",
+  });
   assert.equal(
     header,
     '</fonts/a.woff2>; rel=preload; as=font; type="font/woff2"; crossorigin=anonymous, </logo.webp>; rel=preload; as=image, <https://fonts.gstatic.com>; rel=preconnect; crossorigin=anonymous',

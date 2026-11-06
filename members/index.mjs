@@ -33,7 +33,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Lower-cased and trimmed, the form every comparison and every stored row uses. @param {string} email */
 export function normalizeEmail(email) {
-  if (typeof email !== "string" || !email.includes("@")) throw new TypeError(`not an email: ${email}`);
+  if (typeof email !== "string" || !email.includes("@"))
+    throw new TypeError(`not an email: ${email}`);
   return email.trim().toLowerCase();
 }
 
@@ -44,31 +45,50 @@ export function normalizeEmail(email) {
  * @returns {Catalog}
  */
 export function defineTitles({ permissions, titles }) {
-  if (!Array.isArray(permissions) || !Array.isArray(titles)) throw new TypeError("permissions and titles must be arrays");
+  if (!Array.isArray(permissions) || !Array.isArray(titles))
+    throw new TypeError("permissions and titles must be arrays");
   const all = [...new Set([...permissions, MANAGE_MEMBERS])];
-  for (const p of all) if (typeof p !== "string" || !ID.test(p)) throw new TypeError(`permission ids are snake_case, got ${p}`);
+  for (const p of all)
+    if (typeof p !== "string" || !ID.test(p))
+      throw new TypeError(`permission ids are snake_case, got ${p}`);
   const known = new Set(all);
   /** @type {Map<string, Title>} */
   const map = new Map([
-    [PRIMARY_OWNER, { id: PRIMARY_OWNER, label: "Primary Owner", layer: 0, permissions: all, expires: false }],
+    [
+      PRIMARY_OWNER,
+      { id: PRIMARY_OWNER, label: "Primary Owner", layer: 0, permissions: all, expires: false },
+    ],
     [OWNER, { id: OWNER, label: "Owner", layer: 1, permissions: all, expires: false }],
   ]);
   for (const t of titles) {
-    if (typeof t?.id !== "string" || !ID.test(t.id)) throw new TypeError(`title ids are snake_case, got ${t?.id}`);
+    if (typeof t?.id !== "string" || !ID.test(t.id))
+      throw new TypeError(`title ids are snake_case, got ${t?.id}`);
     if (map.has(t.id)) throw new TypeError(`title ${t.id} is defined twice or is reserved`);
-    if (t.layer !== 2 && t.layer !== 3) throw new TypeError(`title ${t.id}: an app's own titles sit on layer 2 or 3, got ${t.layer}`);
-    if (typeof t.label !== "string" || !t.label.trim()) throw new TypeError(`title ${t.id} needs a label`);
-    if (typeof t.expires !== "boolean") throw new TypeError(`title ${t.id}: say whether it expires`);
-    if (!Array.isArray(t.permissions)) throw new TypeError(`title ${t.id}: permissions must be an array`);
-    for (const p of t.permissions) if (!known.has(p)) throw new TypeError(`title ${t.id} names unknown permission ${p}`);
-    map.set(t.id, { id: t.id, label: t.label, layer: t.layer, permissions: [...new Set(t.permissions)], expires: t.expires });
+    if (t.layer !== 2 && t.layer !== 3)
+      throw new TypeError(`title ${t.id}: an app's own titles sit on layer 2 or 3, got ${t.layer}`);
+    if (typeof t.label !== "string" || !t.label.trim())
+      throw new TypeError(`title ${t.id} needs a label`);
+    if (typeof t.expires !== "boolean")
+      throw new TypeError(`title ${t.id}: say whether it expires`);
+    if (!Array.isArray(t.permissions))
+      throw new TypeError(`title ${t.id}: permissions must be an array`);
+    for (const p of t.permissions)
+      if (!known.has(p)) throw new TypeError(`title ${t.id} names unknown permission ${p}`);
+    map.set(t.id, {
+      id: t.id,
+      label: t.label,
+      layer: t.layer,
+      permissions: [...new Set(t.permissions)],
+      expires: t.expires,
+    });
   }
   return { permissions: all, titles: map };
 }
 
 /** @param {string} date */
 function dayStart(date) {
-  if (typeof date !== "string" || !DATE.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) throw new TypeError(`not a YYYY-MM-DD date: ${date}`);
+  if (typeof date !== "string" || !DATE.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`)))
+    throw new TypeError(`not a YYYY-MM-DD date: ${date}`);
   return Date.parse(`${date}T00:00:00Z`);
 }
 
@@ -79,7 +99,12 @@ export function isExpired(row, nowMs) {
 
 /** Whether the lead's "still on your team?" review is open for this row. @param {MemberRow} row @param {number} nowMs */
 export function reviewOpen(row, nowMs) {
-  return row.status === "active" && row.end_date !== null && !isExpired(row, nowMs) && nowMs >= dayStart(row.end_date) - REVIEW_DAYS * DAY_MS;
+  return (
+    row.status === "active" &&
+    row.end_date !== null &&
+    !isExpired(row, nowMs) &&
+    nowMs >= dayStart(row.end_date) - REVIEW_DAYS * DAY_MS
+  );
 }
 
 /**
@@ -94,8 +119,10 @@ export function reviewOpen(row, nowMs) {
 export function resolveActor(email, row, { catalog, primaryOwnerEmail, nowMs }) {
   const who = normalizeEmail(email);
   if (!primaryOwnerEmail) throw new TypeError("PRIMARY_OWNER_EMAIL is not set");
-  if (who === normalizeEmail(primaryOwnerEmail)) return actorFor(who, catalog.titles.get(PRIMARY_OWNER));
-  if (!row || normalizeEmail(row.email) !== who || row.status !== "active" || isExpired(row, nowMs)) return null;
+  if (who === normalizeEmail(primaryOwnerEmail))
+    return actorFor(who, catalog.titles.get(PRIMARY_OWNER));
+  if (!row || normalizeEmail(row.email) !== who || row.status !== "active" || isExpired(row, nowMs))
+    return null;
   const title = catalog.titles.get(row.title);
   if (!title || title.layer === 0) return null;
   return actorFor(who, title);
@@ -124,8 +151,11 @@ export function can(actor, permission) {
 export function defaultEndDate(title, termEnds, nowMs, after = null) {
   if (!title.expires) return null;
   const floor = Math.max(nowMs, after ? dayStart(after) + DAY_MS : nowMs);
-  const next = termEnds.filter((d) => dayStart(d) + DAY_MS > floor).sort((a, b) => dayStart(a) - dayStart(b))[0];
-  if (!next) throw new RangeError("no term end date after today: an Owner enters this year's dates first");
+  const next = termEnds
+    .filter((d) => dayStart(d) + DAY_MS > floor)
+    .sort((a, b) => dayStart(a) - dayStart(b))[0];
+  if (!next)
+    throw new RangeError("no term end date after today: an Owner enters this year's dates first");
   return next;
 }
 
@@ -148,9 +178,11 @@ export function checkChange(actor, change, { catalog, primaryOwnerEmail, termEnd
   const primary = normalizeEmail(primaryOwnerEmail);
 
   const email = change.kind === "add" ? change.email : change.target?.email;
-  if (typeof email !== "string") return refuse(change.kind === "add" ? "an email is required" : "the person's row is required");
+  if (typeof email !== "string")
+    return refuse(change.kind === "add" ? "an email is required" : "the person's row is required");
   const who = normalizeEmail(email);
-  if (who === primary) return refuse("the Primary Owner is set in deployment configuration, not here");
+  if (who === primary)
+    return refuse("the Primary Owner is set in deployment configuration, not here");
 
   if (change.kind !== "add") {
     const current = catalog.titles.get(/** @type {MemberRow} */ (change.target).title);
@@ -166,7 +198,12 @@ export function checkChange(actor, change, { catalog, primaryOwnerEmail, termEnd
     if (wider.length) return refuse(`you cannot grant what you do not hold: ${wider.join(", ")}`);
     if (change.kind === "change_title") {
       if (title.id === change.target?.title) return refuse("that is already their title");
-      if (typeof change.reason !== "string" || !change.reason.trim() || /[\r\n]/.test(change.reason)) return refuse("a one-line reason is required");
+      if (
+        typeof change.reason !== "string" ||
+        !change.reason.trim() ||
+        /[\r\n]/.test(change.reason)
+      )
+        return refuse("a one-line reason is required");
     }
     if (change.kind === "add") {
       const limit = defaultEndDate(title, termEnds, nowMs);
@@ -175,18 +212,23 @@ export function checkChange(actor, change, { catalog, primaryOwnerEmail, termEnd
       } else {
         if (typeof change.end_date !== "string") return refuse("an end date is required");
         const end = dayStart(change.end_date);
-        if (end > dayStart(limit)) return refuse(`the end date can be shortened, not lengthened past ${limit}`);
+        if (end > dayStart(limit))
+          return refuse(`the end date can be shortened, not lengthened past ${limit}`);
         if (end + DAY_MS <= nowMs) return refuse("the end date has already passed");
       }
     }
   }
 
   if (change.kind === "renew") {
-    const title = /** @type {Title} */ (catalog.titles.get(/** @type {MemberRow} */ (change.target).title));
+    const title = /** @type {Title} */ (
+      catalog.titles.get(/** @type {MemberRow} */ (change.target).title)
+    );
     if (!title.expires) return refuse(`${title.label} does not expire`);
-    if (change.target?.status === "removed") return refuse("a removed person is added again, not renewed");
+    if (change.target?.status === "removed")
+      return refuse("a removed person is added again, not renewed");
   }
-  if (change.kind === "remove" && change.target?.status === "removed") return refuse("already removed");
+  if (change.kind === "remove" && change.target?.status === "removed")
+    return refuse("already removed");
   return { ok: true };
 }
 

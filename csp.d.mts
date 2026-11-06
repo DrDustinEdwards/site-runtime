@@ -87,8 +87,8 @@ export function buildPolicy(directives: readonly string[]): string;
  * @returns {{ name: "Content-Security-Policy" | "Content-Security-Policy-Report-Only", value: string }}
  */
 export function buildContentSecurityPolicy(site: SitePolicy): {
-    name: "Content-Security-Policy" | "Content-Security-Policy-Report-Only";
-    value: string;
+  name: "Content-Security-Policy" | "Content-Security-Policy-Report-Only";
+  value: string;
 };
 /**
  * Cloudflare Web Analytics, automatic setup, written once for every site on a Cloudflare-proxied hostname. The edge
@@ -99,20 +99,20 @@ export function buildContentSecurityPolicy(site: SitePolicy): {
  * new beacon, and a pinned hash would block it within weeks.
  */
 export const CLOUDFLARE_WEB_ANALYTICS: Readonly<{
-    script: readonly string[];
+  script: readonly string[];
 }>;
 /**
  * The hosts (or schemes, such as `data:`) a site loads, per kind, beyond 'self'. A kind with nothing extra is
  * omitted. A source is written as a policy writes it: `https://cdn.example.com`, `data:`.
  */
 export type CspSources = {
-    script?: readonly string[];
-    style?: readonly string[];
-    img?: readonly string[];
-    font?: readonly string[];
-    connect?: readonly string[];
-    frame?: readonly string[];
-    media?: readonly string[];
+  script?: readonly string[];
+  style?: readonly string[];
+  img?: readonly string[];
+  font?: readonly string[];
+  connect?: readonly string[];
+  frame?: readonly string[];
+  media?: readonly string[];
 };
 /**
  * `scriptHashes` / `styleHashes`: `sha256-...` values (scriptHash), for responses that may not carry a nonce.
@@ -144,26 +144,26 @@ export type CspSources = {
  * (buildStagedPolicy).
  */
 export type SitePolicy = {
-    sources?: CspSources;
-    scriptHashes?: readonly string[];
-    styleHashes?: readonly string[];
-    nonce?: string;
-    nonceStyles?: boolean;
-    inlineScripts?: "unsafe-inline";
-    strictDynamic?: boolean;
-    styleAttributesInline?: boolean;
-    cloudflareWebAnalytics?: boolean;
-    reportUri?: string;
-    reportTo?: string;
-    reportOnly?: boolean;
-    framedBySameOrigin?: boolean;
-    embeds?: boolean;
-    baseUriSelf?: boolean;
-    denyUnlisted?: boolean;
-    noForms?: boolean;
-    formTargets?: readonly string[];
-    trustedTypes?: true | readonly string[];
-    extraDirectives?: readonly string[];
+  sources?: CspSources;
+  scriptHashes?: readonly string[];
+  styleHashes?: readonly string[];
+  nonce?: string;
+  nonceStyles?: boolean;
+  inlineScripts?: "unsafe-inline";
+  strictDynamic?: boolean;
+  styleAttributesInline?: boolean;
+  cloudflareWebAnalytics?: boolean;
+  reportUri?: string;
+  reportTo?: string;
+  reportOnly?: boolean;
+  framedBySameOrigin?: boolean;
+  embeds?: boolean;
+  baseUriSelf?: boolean;
+  denyUnlisted?: boolean;
+  noForms?: boolean;
+  formTargets?: readonly string[];
+  trustedTypes?: true | readonly string[];
+  extraDirectives?: readonly string[];
 };
 /**
  * The Reporting-Endpoints header value that defines a policy's `report-to` group: `csp-endpoint="https://example.com/csp-report"`.
@@ -183,14 +183,17 @@ export function reportingEndpoints(group: string, url: string | URL): string;
  */
 export function broadSource(source: string, directive?: string): string;
 /** The Report-Only companion for a staged rollout: the site's policy with `staged` added (Trusted Types first). */
-export function buildStagedPolicy(site: SitePolicy, staged: Partial<SitePolicy>): {
-    name: "Content-Security-Policy-Report-Only";
-    value: string;
+export function buildStagedPolicy(
+  site: SitePolicy,
+  staged: Partial<SitePolicy>,
+): {
+  name: "Content-Security-Policy-Report-Only";
+  value: string;
 };
 /** Integrity-Policy (or -Report-Only): `blocked-destinations=(script), endpoints=(<group>)`, the group CSP_REPORT_GROUP unless given. */
 export function integrityPolicy(options?: { endpoint?: string; reportOnly?: boolean }): {
-    name: "Integrity-Policy" | "Integrity-Policy-Report-Only";
-    value: string;
+  name: "Integrity-Policy" | "Integrity-Policy-Report-Only";
+  value: string;
 };
 /**
  * A stored HTML page with a fresh nonce in its policy header and on every <script>, <style> and <link> that carried the

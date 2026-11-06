@@ -6,12 +6,17 @@ import { crawlApp } from "../signed-in-crawl.mjs";
 // reads a text/plain or form body (R4) is an error, while a cross-origin load is a warning only.
 
 const ORIGIN = "https://portal.dustinedwards.info";
-const page = (/** @type {string} */ html) => new Response(html, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } });
+const page = (/** @type {string} */ html) =>
+  new Response(html, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } });
 
 test("PLANT: a sign-in redirect is an error; an action that is not 415 to a form body fails R4; a cross-origin script warns", async () => {
   const redirected = await crawlApp({
     origin: ORIGIN,
-    fetch: async () => new Response(null, { status: 302, headers: { Location: "https://team.cloudflareaccess.com/cdn-cgi/access/login" } }),
+    fetch: async () =>
+      new Response(null, {
+        status: 302,
+        headers: { Location: "https://team.cloudflareaccess.com/cdn-cgi/access/login" },
+      }),
     headers: {},
     pages: ["/"],
   });
@@ -24,8 +29,13 @@ test("PLANT: a sign-in redirect is an error; an action that is not 415 to a form
     origin: ORIGIN,
     fetch: async (request) => {
       methods.push(`${request.method} ${request.headers.get("Content-Type") ?? ""}`.trim());
-      if (request.method === "POST") return new Response("csrf", { status: request.headers.get("Content-Type") === "text/plain" ? 415 : 403 });
-      return page('<script src="https://cdn.example.com/x.js"></script><script src="/assets/app.js"></script>');
+      if (request.method === "POST")
+        return new Response("csrf", {
+          status: request.headers.get("Content-Type") === "text/plain" ? 415 : 403,
+        });
+      return page(
+        '<script src="https://cdn.example.com/x.js"></script><script src="/assets/app.js"></script>',
+      );
     },
     headers: {},
     pages: ["/"],
@@ -35,7 +45,19 @@ test("PLANT: a sign-in redirect is an error; an action that is not 415 to a form
   const r4 = result.findings.filter((f) => f.check === "R4");
   assert.equal(r4.length, 1);
   assert.match(r4[0]?.detail ?? "", /application\/x-www-form-urlencoded/);
-  assert.ok(result.findings.some((f) => f.check === "I3" && f.severity === "warning" && f.detail.includes("https://cdn.example.com")));
+  assert.ok(
+    result.findings.some(
+      (f) =>
+        f.check === "I3" &&
+        f.severity === "warning" &&
+        f.detail.includes("https://cdn.example.com"),
+    ),
+  );
   // The page, its first same-origin script, then the two probes: nothing else is sent.
-  assert.deepEqual(methods, ["GET", "GET", "POST text/plain", "POST application/x-www-form-urlencoded"]);
+  assert.deepEqual(methods, [
+    "GET",
+    "GET",
+    "POST text/plain",
+    "POST application/x-www-form-urlencoded",
+  ]);
 });

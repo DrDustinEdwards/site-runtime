@@ -6,18 +6,34 @@ import { logEvent, routeNamer, scrubFields, scrubText, scrubUrl, withRequestLog 
 
 test("emails, URL queries, Stripe keys, Drizzle parameters and route tokens are cut", () => {
   assert.equal(
-    scrubText("mail a.b+c@example.com via https://example.com/verify?token=abc#x key sk_live_123 and whsec_9"),
+    scrubText(
+      "mail a.b+c@example.com via https://example.com/verify?token=abc#x key sk_live_123 and whsec_9",
+    ),
     "mail [email] via https://example.com/verify key [key] and [key]",
   );
-  assert.equal(scrubText("Failed query: insert into t values (?)\nparams: x@example.com,Ann"), "Failed query: insert into t values (?)\nparams: [redacted]");
+  assert.equal(
+    scrubText("Failed query: insert into t values (?)\nparams: x@example.com,Ann"),
+    "Failed query: insert into t values (?)\nparams: [redacted]",
+  );
   const tokenPath = /\/(u|e\/[och])\/[^/?#\s'"]+/g;
   assert.equal(scrubUrl("/e/o/tok123?next=/me", { tokenPath }), "/e/o/[token]");
-  assert.equal(scrubText("GET /u/abc then /u/def", { tokenPath }), "GET /u/[token] then /u/[token]");
-  assert.deepEqual(scrubFields({ path: "/a?code=1", headers: { cookie: "s" }, nested: { email: "x@example.com" }, n: 3 }), {
-    path: "/a",
-    nested: { email: "[email]" },
-    n: 3,
-  });
+  assert.equal(
+    scrubText("GET /u/abc then /u/def", { tokenPath }),
+    "GET /u/[token] then /u/[token]",
+  );
+  assert.deepEqual(
+    scrubFields({
+      path: "/a?code=1",
+      headers: { cookie: "s" },
+      nested: { email: "x@example.com" },
+      n: 3,
+    }),
+    {
+      path: "/a",
+      nested: { email: "[email]" },
+      n: 3,
+    },
+  );
 });
 
 test("a line is one JSON object with the event first, and a field cannot rename it", () => {
@@ -54,10 +70,15 @@ test("routeNamer names the most specific React Router pattern, a .data fetch as 
 test("withRequestLog names the route, and a refused input also writes input_validation_fail", async (t) => {
   /** @type {Record<string, unknown>[]} */
   const lines = [];
-  for (const level of ["log", "warn", "error"]) t.mock.method(console, level, (/** @type {string} */ line) => lines.push(JSON.parse(line)));
-  const fetch = withRequestLog(async (request) => new Response(null, { status: new URL(request.url).pathname === "/form" ? 422 : 200 }), {
-    route: (request) => new URL(request.url).pathname,
-  });
+  for (const level of ["log", "warn", "error"])
+    t.mock.method(console, level, (/** @type {string} */ line) => lines.push(JSON.parse(line)));
+  const fetch = withRequestLog(
+    async (request) =>
+      new Response(null, { status: new URL(request.url).pathname === "/form" ? 422 : 200 }),
+    {
+      route: (request) => new URL(request.url).pathname,
+    },
+  );
   await fetch(new Request("https://example.com/form?email=a@example.com", { method: "POST" }));
   await fetch(new Request("https://example.com/ok"));
   assert.deepEqual(

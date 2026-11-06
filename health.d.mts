@@ -38,7 +38,10 @@ export function healthResponse(probe?: {
   checks?: HealthCheck[];
   backupTtlMs?: number;
   /** The cache holding the backup read; defaults to `caches.default`. */
-  cache?: { match(key: string): Promise<Response | undefined>; put(key: string, response: Response): Promise<void> };
+  cache?: {
+    match(key: string): Promise<Response | undefined>;
+    put(key: string, response: Response): Promise<void>;
+  };
   checkTimeoutMs?: number;
   now?: Date;
 }): Promise<Response>;
@@ -56,12 +59,27 @@ export function authSpikeCheck(
   limits?: { windowMinutes?: number; failures?: number; mails?: number; now?: () => number },
 ): HealthCheck;
 /** The Images binding answers `info` on a 1 x 1 GIF (reads the header, transforms nothing). Level warn. */
-export function imagesCheck(name: string, images: { info(stream: ReadableStream<Uint8Array>): Promise<unknown> }): HealthCheck;
+export function imagesCheck(
+  name: string,
+  images: { info(stream: ReadableStream<Uint8Array>): Promise<unknown> },
+): HealthCheck;
 /** A Durable Object namespace is bound and mints an id (`idFromName`); no object is woken. Level warn. */
-export function durableObjectCheck(name: string, namespace: { idFromName(name: string): unknown } | undefined): HealthCheck;
+export function durableObjectCheck(
+  name: string,
+  namespace: { idFromName(name: string): unknown } | undefined,
+): HealthCheck;
 /** A Queue producer binding is present; nothing is sent. Level warn. */
-export function queueCheck(name: string, queue: { send(message: unknown): Promise<unknown> } | undefined): HealthCheck;
+export function queueCheck(
+  name: string,
+  queue: { send(message: unknown): Promise<unknown> } | undefined,
+): HealthCheck;
 /** A Send Email binding (`send_email`) is present; nothing is sent. Level warn. */
-export function emailCheck(name: string, email: { send(message: unknown): Promise<unknown> } | undefined): HealthCheck;
+export function emailCheck(
+  name: string,
+  email: { send(message: unknown): Promise<unknown> } | undefined,
+): HealthCheck;
 /** The Workers AI binding is present; no model is run (every call is billed). Level warn. */
-export function aiCheck(name: string, ai: { run(...args: never[]): Promise<unknown> } | undefined): HealthCheck;
+export function aiCheck(
+  name: string,
+  ai: { run(...args: never[]): Promise<unknown> } | undefined,
+): HealthCheck;

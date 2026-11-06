@@ -6,7 +6,9 @@ import type { ServedSiteEntry } from "./sites.mjs";
 
 export interface StaticSiteEnv {
   readonly ASSETS: { fetch(request: Request): Promise<Response> };
-  readonly CSP_REPORT_RATE_LIMIT?: { limit(options: { key: string }): Promise<{ success: boolean }> };
+  readonly CSP_REPORT_RATE_LIMIT?: {
+    limit(options: { key: string }): Promise<{ success: boolean }>;
+  };
   /** The deployed commit, which devkit's worker-deploy sets with `sha-var: DEPLOY_SHA`; /health reports it. */
   readonly DEPLOY_SHA?: string;
 }
@@ -35,7 +37,12 @@ export interface StaticSiteOptions {
  * `_headers` text site-runtime-headers writes (the set, charset and CORP per type, a static site's page policy and
  * staged Report-Only policy, and the entry's path rules).
  */
-export function staticHeaders(entry: ServedSiteEntry, options?: { headers?: Readonly<Record<string, string>> }): { set: Record<string, string>; file: string };
+export function staticHeaders(
+  entry: ServedSiteEntry,
+  options?: { headers?: Readonly<Record<string, string>> },
+): { set: Record<string, string>; file: string };
 
 /** The fetch handler: canonical redirect, reports, /health, prefetch rules, then the asset with the page headers. */
-export function staticSite(options?: StaticSiteOptions): { fetch(request: Request, env: StaticSiteEnv): Promise<Response> };
+export function staticSite(options?: StaticSiteOptions): {
+  fetch(request: Request, env: StaticSiteEnv): Promise<Response>;
+};

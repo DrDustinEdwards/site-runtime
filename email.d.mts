@@ -28,7 +28,9 @@ export interface EmailBinding {
  * binding, sender or recipient, `header_line_break` for an address holding a line break, or `unknown`. `error` has
  * every secret and recipient cut out.
  */
-export type SendOutcome = { sent: true; messageId: string | null } | { sent: false; code: string; error: string };
+export type SendOutcome =
+  | { sent: true; messageId: string | null }
+  | { sent: false; code: string; error: string };
 
 /**
  * Send one mail through the binding. Never throws. An address with a line break is refused, a subject's line breaks

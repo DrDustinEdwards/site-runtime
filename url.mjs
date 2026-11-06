@@ -37,7 +37,9 @@ export function canonicalRedirect(request, { host, except = [], https = true } =
   const scheme = https && !local && url.protocol === "http:" ? "https:" : url.protocol;
   const hostname = host && url.hostname === `www.${host}` ? host : url.hostname;
   let path = url.pathname;
-  const kept = except.some((entry) => (entry.endsWith("*") ? path.startsWith(entry.slice(0, -1)) : path === entry));
+  const kept = except.some((entry) =>
+    entry.endsWith("*") ? path.startsWith(entry.slice(0, -1)) : path === entry,
+  );
   if (path !== "/" && path.endsWith("/") && !kept) path = path.replace(/\/+$/, "") || "/";
   if (scheme === url.protocol && hostname === url.hostname && path === url.pathname) return null;
   // Rebuilt from the origin, so a leading "//" stays a path: new URL keeps the host whatever the path holds.
@@ -45,7 +47,10 @@ export function canonicalRedirect(request, { host, except = [], https = true } =
   target.pathname = path.replace(/^\/+/, "/");
   target.search = url.search;
   const status = request.method === "GET" || request.method === "HEAD" ? 301 : 308;
-  return new Response(null, { status, headers: { Location: target.href, "Cache-Control": "private, no-store" } });
+  return new Response(null, {
+    status,
+    headers: { Location: target.href, "Cache-Control": "private, no-store" },
+  });
 }
 
 /**
@@ -75,9 +80,16 @@ const GONE_TEXT = "This page is gone. It was taken down on purpose and is not co
  * @param {{ body?: BodyInit | null, contentType?: string }} [options]
  * @returns {Response | null}
  */
-export function goneResponse(request, gone, { body = GONE_TEXT, contentType = "text/plain; charset=utf-8" } = {}) {
+export function goneResponse(
+  request,
+  gone,
+  { body = GONE_TEXT, contentType = "text/plain; charset=utf-8" } = {},
+) {
   if (!pathListed(new URL(request.url).pathname, gone)) return null;
-  return new Response(request.method === "HEAD" ? null : body, { status: 410, headers: { "Content-Type": contentType } });
+  return new Response(request.method === "HEAD" ? null : body, {
+    status: 410,
+    headers: { "Content-Type": contentType },
+  });
 }
 
 /** A rename chain longer than this is a loop. */
@@ -95,19 +107,26 @@ const MAX_RENAMES = 10;
  * @returns {Promise<Response | null>}
  */
 export async function renameRedirect(request, { prefix, renames }) {
-  if (!prefix.startsWith("/") || !prefix.endsWith("/")) throw new Error(`renameRedirect: prefix starts and ends with "/", not ${JSON.stringify(prefix)}`);
+  if (!prefix.startsWith("/") || !prefix.endsWith("/"))
+    throw new Error(
+      `renameRedirect: prefix starts and ends with "/", not ${JSON.stringify(prefix)}`,
+    );
   const url = new URL(request.url);
   if (!url.pathname.startsWith(prefix)) return null;
   const rest = url.pathname.slice(prefix.length);
   const cut = rest.indexOf("/");
   const slug = cut === -1 ? rest : rest.slice(0, cut);
   const suffix = cut === -1 ? "" : rest.slice(cut);
-  const lookup = typeof renames === "function" ? renames : (/** @type {string} */ s) => (Object.hasOwn(renames, s) ? renames[s] : null);
+  const lookup =
+    typeof renames === "function"
+      ? renames
+      : (/** @type {string} */ s) => (Object.hasOwn(renames, s) ? renames[s] : null);
   let to = slug;
   for (let hops = 0; ; hops++) {
     const next = slug === "" ? null : await lookup(to);
     if (!next || next === to) break;
-    if (hops === MAX_RENAMES) throw new Error(`renameRedirect: the renames from ${JSON.stringify(slug)} loop`);
+    if (hops === MAX_RENAMES)
+      throw new Error(`renameRedirect: the renames from ${JSON.stringify(slug)} loop`);
     to = next;
   }
   if (to === slug) return null;
@@ -115,5 +134,8 @@ export async function renameRedirect(request, { prefix, renames }) {
   target.pathname = `${prefix}${encodeURIComponent(to)}${suffix}`;
   target.search = url.search;
   const status = request.method === "GET" || request.method === "HEAD" ? 301 : 308;
-  return new Response(null, { status, headers: { Location: target.href, "Cache-Control": "private, no-store" } });
+  return new Response(null, {
+    status,
+    headers: { Location: target.href, "Cache-Control": "private, no-store" },
+  });
 }

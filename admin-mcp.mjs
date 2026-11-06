@@ -26,7 +26,13 @@ import { agentPrincipal, agentScopes } from "./agent-keys.mjs";
 import { auditLogCheck, exportAuditLog, recordAudit } from "./audit-log.mjs";
 import { durableObjectCheck, healthResponse, kvCheck, r2Check } from "./health.mjs";
 import { logEvent, withRequestLog } from "./log.mjs";
-import { DCR_CALLBACKS, isAdminUser, loginHandler, registrationLimited, registrationRefusal } from "./mcp-login.mjs";
+import {
+  DCR_CALLBACKS,
+  isAdminUser,
+  loginHandler,
+  registrationLimited,
+  registrationRefusal,
+} from "./mcp-login.mjs";
 import {
   audienceRefusal,
   callerName,
@@ -80,10 +86,20 @@ export function adminMcpWorker({
   /** @param {E} env @param {import("./mcp-server.d.mts").McpCaller} caller @param {number} retryAfter @param {string} [clientId] */
   async function rateLimited(env, caller, retryAfter, clientId) {
     // A burst is a row in the tool-call log beside the calls and sign-ins (checklist L2), naming the caller, never a credential.
-    await recordAudit(env, { callId: crypto.randomUUID(), phase: "rate-limited", caller: callerName(caller), server: auditServer, ...(clientId ? { clientId } : {}) });
-    return refuse(`Rate limited. ${name} allows ${MCP_PER_MINUTE} requests per 60 seconds. ${server.site}'s API applies its own limit as well.`, 429, {
-      "retry-after": String(retryAfter),
+    await recordAudit(env, {
+      callId: crypto.randomUUID(),
+      phase: "rate-limited",
+      caller: callerName(caller),
+      server: auditServer,
+      ...(clientId ? { clientId } : {}),
     });
+    return refuse(
+      `Rate limited. ${name} allows ${MCP_PER_MINUTE} requests per 60 seconds. ${server.site}'s API applies its own limit as well.`,
+      429,
+      {
+        "retry-after": String(retryAfter),
+      },
+    );
   }
 
   /**
@@ -93,9 +109,14 @@ export function adminMcpWorker({
   const apiHandler = {
     /** @param {Request} request @param {E} env @param {ExecutionContext} ctx */
     async fetch(request, env, ctx) {
-      const { props, auth } = /** @type {ExecutionContext & { props?: Record<string, unknown>, auth?: import("./admin-mcp.d.mts").AdminMcpAuth }} */ (ctx);
+      const { props, auth } =
+        /** @type {ExecutionContext & { props?: Record<string, unknown>, auth?: import("./admin-mcp.d.mts").AdminMcpAuth }} */ (
+          ctx
+        );
       // RFC 8707, rule 12.2: a token not issued for this server is refused, even if a provider set up for another resource handed one over.
-      const wrongAudience = audienceRefusal(auth, `${adminMcpOrigin(env)}${ADMIN_MCP_ROUTE}`, [scopes.read]);
+      const wrongAudience = audienceRefusal(auth, `${adminMcpOrigin(env)}${ADMIN_MCP_ROUTE}`, [
+        scopes.read,
+      ]);
       if (wrongAudience) return wrongAudience;
       const email = typeof props?.email === "string" ? props.email : "";
       if (!email || !(await admit(env, { ...props, email }))) {
@@ -103,7 +124,8 @@ export function adminMcpWorker({
         return refuse(`Forbidden. This grant does not belong to an administrator of ${name}.`, 403);
       }
       // A grant with no scope list is refused, not read as read-only (Grok audit 2026-10-21, FX-16).
-      if (!Array.isArray(auth?.scope)) return refuse("This grant carries no scope. Sign in again.", 403);
+      if (!Array.isArray(auth?.scope))
+        return refuse("This grant carries no scope. Sign in again.", 403);
       /** @type {import("./admin-mcp.d.mts").AdminMcpCaller} */
       const caller = { kind: "admin", props: { ...props, email }, scopes: auth.scope, auth };
       // Keyed by the verified email, the thing worth limiting. Fails closed when the binding is missing.
@@ -117,19 +139,45 @@ export function adminMcpWorker({
   /** @param {E} env @returns {import("./health.d.mts").HealthCheck[]} */
   function healthChecks(env) {
     /** @param {string} check @param {unknown} binding @param {(b: any) => import("./health.d.mts").HealthCheck} make */
-    const bound = (check, binding, make) => (binding ? make(binding) : { name: check, run: async () => ({ ok: false, detail: "binding missing" }) });
-    const siteBinding = /** @type {{ fetch?: (request: Request) => Promise<Response> } | undefined} */ (/** @type {Record<string, unknown>} */ (env)[api.binding]);
+    const bound = (check, binding, make) =>
+      binding
+        ? make(binding)
+        : { name: check, run: async () => ({ ok: false, detail: "binding missing" }) };
+    const siteBinding =
+      /** @type {{ fetch?: (request: Request) => Promise<Response> } | undefined} */ (
+        /** @type {Record<string, unknown>} */ (env)[api.binding]
+      );
     /** @type {import("./health.d.mts").HealthCheck[]} */
     const list = [
       // Fail: without OAUTH_KV no token is checked, without the site binding no tool reaches the API, without the limiter
       // every /mcp call is a 429 (it fails closed) and without the log every tool call is refused. The site binding is
       // checked by presence: a request over it would be an API call. The Durable Object checks mint an id and wake nothing.
       { ...bound("oauth-kv", env.OAUTH_KV, (b) => kvCheck("oauth-kv", b)), level: "fail" },
-      { name: api.name, level: "fail", run: async () => typeof siteBinding?.fetch === "function" || { ok: false, detail: "binding missing" } },
-      { ...durableObjectCheck("mcp-rate-limit", /** @type {{ idFromName(name: string): unknown } | undefined} */ (env.MCP_RATE_LIMIT)), level: "fail" },
-      { ...durableObjectCheck("tool-call-log-binding", /** @type {{ idFromName(name: string): unknown } | undefined} */ (env.TOOL_CALL_LOG)), level: "fail" },
+      {
+        name: api.name,
+        level: "fail",
+        run: async () =>
+          typeof siteBinding?.fetch === "function" || { ok: false, detail: "binding missing" },
+      },
+      {
+        ...durableObjectCheck(
+          "mcp-rate-limit",
+          /** @type {{ idFromName(name: string): unknown } | undefined} */ (env.MCP_RATE_LIMIT),
+        ),
+        level: "fail",
+      },
+      {
+        ...durableObjectCheck(
+          "tool-call-log-binding",
+          /** @type {{ idFromName(name: string): unknown } | undefined} */ (env.TOOL_CALL_LOG),
+        ),
+        level: "fail",
+      },
       // The log's copies only, so a bucket that fails to answer warns. One `head` of a fixed key, never a list.
-      { ...bound("audit-bucket", env.AUDIT_BUCKET, (b) => r2Check("audit-bucket", b)), level: "warn" },
+      {
+        ...bound("audit-bucket", env.AUDIT_BUCKET, (b) => r2Check("audit-bucket", b)),
+        level: "warn",
+      },
     ];
     // Every server: a real request over the binding, so a site that is down shows here, not only a binding that is
     // missing. `.invalid` (RFC 6761) names no real host: the site answers it without its API (a redirect to its canonical
@@ -140,9 +188,13 @@ export function adminMcpWorker({
         name: `${api.name}-reach`,
         level: "warn",
         run: async () => {
-          const answer = await fetcher(new Request(`https://${api.name}.invalid/`, { redirect: "manual" }));
+          const answer = await fetcher(
+            new Request(`https://${api.name}.invalid/`, { redirect: "manual" }),
+          );
           await answer.body?.cancel();
-          return answer.status < 500 || { ok: false, detail: `${api.name} answered ${answer.status}` };
+          return (
+            answer.status < 500 || { ok: false, detail: `${api.name} answered ${answer.status}` }
+          );
         },
       });
     }
@@ -157,7 +209,11 @@ export function adminMcpWorker({
     // Every sign-in, admitted or refused, is a row in the tool-call log.
     audit: auditServer,
     // CI's deploy (devkit's worker-deploy.yml) passes DEPLOY_SHA and waits for /health to report it.
-    health: (env) => healthResponse({ sha: env.DEPLOY_SHA, checks: healthChecks(/** @type {E} */ (/** @type {unknown} */ (env))) }),
+    health: (env) =>
+      healthResponse({
+        sha: env.DEPLOY_SHA,
+        checks: healthChecks(/** @type {E} */ (/** @type {unknown} */ (env))),
+      }),
   });
 
   /** @type {Map<string, { fetch(request: Request, env: E, ctx: ExecutionContext): Promise<Response> }>} */
@@ -183,7 +239,11 @@ export function adminMcpWorker({
         tokenEndpoint: "/token",
         // AUDIENCE BINDING (rule 12.2, RFC 8707): every grant and token is pinned to exactly this server's /mcp. Nothing is
         // passed through: the API leg uses the server's own bearer, never the client's token.
-        resourceMetadata: { resource: `${origin}${ADMIN_MCP_ROUTE}`, authorization_servers: [origin], resource_name: name },
+        resourceMetadata: {
+          resource: `${origin}${ADMIN_MCP_ROUTE}`,
+          authorization_servers: [origin],
+          resource_name: name,
+        },
         // Every scope in the protected resource metadata and the 401's challenge (checklist A1, RFC 9728); least scope
         // first is still decided at consent (the write box) and per tool (the 403 step-up).
         requiredScopes: all,
@@ -194,7 +254,9 @@ export function adminMcpWorker({
         // they support CIMD, at the latest when the specification removes it.
         clientIdMetadataDocumentEnabled: true,
         clientRegistrationEndpoint: "/register",
-        clientRegistrationCallback: (/** @type {{ clientMetadata: Record<string, unknown> }} */ { clientMetadata }) => {
+        clientRegistrationCallback: (
+          /** @type {{ clientMetadata: Record<string, unknown> }} */ { clientMetadata },
+        ) => {
           const why = registrationRefusal(allowed, clientMetadata);
           if (!why) return undefined;
           logEvent("registration_refused", { why }, { level: "warn" });
@@ -203,13 +265,19 @@ export function adminMcpWorker({
       });
       providers.set(key, /** @type {any} */ (provider));
     }
-    return /** @type {{ fetch(request: Request, env: E, ctx: ExecutionContext): Promise<Response> }} */ (provider);
+    return /** @type {{ fetch(request: Request, env: E, ctx: ExecutionContext): Promise<Response> }} */ (
+      provider
+    );
   }
 
   /** @param {Request} request @param {E} env @param {ExecutionContext} ctx @returns {Promise<Response>} */
   async function route(request, env, ctx) {
     const origin = adminMcpOrigin(env);
-    if (!origin) return refuse(`${name} is not configured: PUBLIC_ORIGIN is unset. Not configured means not open.`, 503);
+    if (!origin)
+      return refuse(
+        `${name} is not configured: PUBLIC_ORIGIN is unset. Not configured means not open.`,
+        503,
+      );
     const own = routes ? await routes(request, env, ctx) : null;
     if (own) return own;
     const url = new URL(request.url);
@@ -218,19 +286,31 @@ export function adminMcpWorker({
       const foreign = mcpOriginRefusal(request, ADMIN_MCP_ORIGINS);
       if (foreign) return foreign;
       // A rebound name pointing here is refused too (area 11, P10). On Workers the URL's host is the Host the client sent.
-      if (url.hostname !== new URL(origin).hostname) return refuse("Forbidden. This is not a host this server answers on.", 403);
+      if (url.hostname !== new URL(origin).hostname)
+        return refuse("Forbidden. This is not a host this server answers on.", 403);
       // THE LIST-ONLY TEST KEY (Dustin 2026-11-01): MCP_PROBE_KEY lets the daily live check connect and list tools, and
       // nothing else. Before the provider, which answers 401 to any token it did not mint. No key, or none set, is null.
-      const probed = await probeDoor(request, env, { server, limiter: env.MCP_RATE_LIMIT, serve: (req, caller) => serve(req, env, ctx, caller) });
+      const probed = await probeDoor(request, env, {
+        server,
+        limiter: env.MCP_RATE_LIMIT,
+        serve: (req, caller) => serve(req, env, ctx, caller),
+      });
       if (probed) return probed;
       if (agentKeys) {
         // Ruling 37: an agent that cannot finish OAuth has a named key (./agent-keys). Tried, never required: no
         // AGENT_KEY_* secret, or a key matching none, is null and goes on to the provider. The principal comes from the
         // secret's name, never the request, and has its own limit, so an agent cannot rate limit the owner out.
-        const principal = await agentPrincipal(/** @type {Record<string, unknown>} */ (env), request.headers.get("authorization"));
+        const principal = await agentPrincipal(
+          /** @type {Record<string, unknown>} */ (env),
+          request.headers.get("authorization"),
+        );
         if (principal) {
           logEvent("agent_key_accepted", { principal, method: request.method });
-          const caller = /** @type {const} */ ({ kind: "agent", principal, scopes: agentScopes(env, principal, scopes) });
+          const caller = /** @type {const} */ ({
+            kind: "agent",
+            principal,
+            scopes: agentScopes(env, principal, scopes),
+          });
           const limit = await checkRateLimit(env.MCP_RATE_LIMIT, `agent:${principal}`);
           if (!limit.allowed) return rateLimited(env, caller, limit.retryAfter);
           return serve(request, env, ctx, caller);
@@ -250,21 +330,35 @@ export function adminMcpWorker({
       try {
         return await route(request, env, /** @type {ExecutionContext} */ (ctx));
       } catch (error) {
-        logEvent("unhandled_error", { detail: error instanceof Error ? error.message : String(error) }, { level: "error" });
+        logEvent(
+          "unhandled_error",
+          { detail: error instanceof Error ? error.message : String(error) },
+          { level: "error" },
+        );
         return refuse("Internal error. The request was not completed.", 500);
       }
     },
     {
       site,
       securityTxt,
-      allowReport: async (request, env) => (await checkRateLimit(env.MCP_RATE_LIMIT, `csp-report:${request.headers.get("CF-Connecting-IP") ?? "unknown"}`)).allowed,
+      allowReport: async (request, env) =>
+        (
+          await checkRateLimit(
+            env.MCP_RATE_LIMIT,
+            `csp-report:${request.headers.get("CF-Connecting-IP") ?? "unknown"}`,
+          )
+        ).allowed,
     },
   );
 
   return {
     // One `request` line per request (./log: path, status, ms and the deployed commit; never a query).
     fetch: withRequestLog(
-      /** @param {Request} request @param {E} env @param {ExecutionContext} ctx */ (request, env, ctx) => door(request, env, ctx),
+      /** @param {Request} request @param {E} env @param {ExecutionContext} ctx */ (
+        request,
+        env,
+        ctx,
+      ) => door(request, env, ctx),
       { sha: (env) => env.DEPLOY_SHA },
     ),
     /**
@@ -273,7 +367,8 @@ export function adminMcpWorker({
      * @param {unknown} _controller @param {E} env
      */
     async scheduled(_controller, env) {
-      if (!env.AUDIT_BUCKET) throw new Error("AUDIT_BUCKET is not bound; the tool-call log is not copied");
+      if (!env.AUDIT_BUCKET)
+        throw new Error("AUDIT_BUCKET is not bound; the tool-call log is not copied");
       const done = await exportAuditLog(env, env.AUDIT_BUCKET);
       logEvent("tool_call_log_exported", { exported: done.exported, pruned: done.pruned });
     },

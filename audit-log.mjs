@@ -57,7 +57,19 @@ const RECENT_MAX = 100;
 // The columns added after the table first shipped, each nullable, so an existing log migrates in place.
 const ADDED = ["server", "version", "client_id", "correlation_id", "hash"];
 // The values a row's hash covers, in this order.
-const HASHED = ["at", "call_id", "phase", "caller", "tool", "args", "result", "server", "version", "client_id", "correlation_id"];
+const HASHED = [
+  "at",
+  "call_id",
+  "phase",
+  "caller",
+  "tool",
+  "args",
+  "result",
+  "server",
+  "version",
+  "client_id",
+  "correlation_id",
+];
 
 /** The Durable Object class a Worker exports (as ToolCallLog) and binds as TOOL_CALL_LOG. */
 export class ToolCallLog {
@@ -73,10 +85,18 @@ export class ToolCallLog {
         "seq INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, call_id TEXT NOT NULL, " +
         "phase TEXT NOT NULL, caller TEXT NOT NULL, tool TEXT NOT NULL, args TEXT NOT NULL, result TEXT)",
     );
-    const have = new Set(this.sql.exec("PRAGMA table_info(calls)").toArray().map((column) => column.name));
-    for (const name of ADDED) if (!have.has(name)) this.sql.exec(`ALTER TABLE calls ADD COLUMN ${name} TEXT`);
+    const have = new Set(
+      this.sql
+        .exec("PRAGMA table_info(calls)")
+        .toArray()
+        .map((column) => column.name),
+    );
+    for (const name of ADDED)
+      if (!have.has(name)) this.sql.exec(`ALTER TABLE calls ADD COLUMN ${name} TEXT`);
     // How far the copy has got: the last copied row's seq and hash, and when.
-    this.sql.exec("CREATE TABLE IF NOT EXISTS export_state (id INTEGER PRIMARY KEY CHECK (id = 1), seq INTEGER NOT NULL, hash TEXT, at TEXT NOT NULL)");
+    this.sql.exec(
+      "CREATE TABLE IF NOT EXISTS export_state (id INTEGER PRIMARY KEY CHECK (id = 1), seq INTEGER NOT NULL, hash TEXT, at TEXT NOT NULL)",
+    );
     // Appends run one at a time: each reads the hash the one before it wrote.
     /** @type {Promise<unknown>} */
     this.tail = Promise.resolve();
@@ -88,12 +108,21 @@ export class ToolCallLog {
     if (request.method === "GET" && path === "/stats") return Response.json(this.stats());
     if (request.method === "GET" && path === "/recent") {
       const query = new URL(request.url).searchParams;
-      return Response.json({ rows: this.recent(Number(query.get("before")) || 0, Number(query.get("limit")) || RECENT_PAGE) });
+      return Response.json({
+        rows: this.recent(
+          Number(query.get("before")) || 0,
+          Number(query.get("limit")) || RECENT_PAGE,
+        ),
+      });
     }
     if (request.method !== "POST") return new Response("append only", { status: 405 });
-    if (path === "/export") return Response.json(this.unexported(Number((await request.json()).limit) || EXPORT_BATCH));
+    if (path === "/export")
+      return Response.json(this.unexported(Number((await request.json()).limit) || EXPORT_BATCH));
     if (path === "/exported") {
-      const { seq, hash, keepDays } = /** @type {{ seq: number, hash: string | null, keepDays?: number }} */ (await request.json());
+      const { seq, hash, keepDays } =
+        /** @type {{ seq: number, hash: string | null, keepDays?: number }} */ (
+          await request.json()
+        );
       return Response.json(this.markExported(seq, hash, keepDays ?? AUDIT_KEEP_DAYS));
     }
     const row = /** @type {import("./audit-log.d.mts").AuditRow} */ (await request.json());
@@ -109,7 +138,13 @@ export class ToolCallLog {
    */
   unexported(limit) {
     const mark = this.sql.exec("SELECT seq, hash FROM export_state WHERE id = 1").toArray()[0];
-    const rows = this.sql.exec("SELECT * FROM calls WHERE seq > ? ORDER BY seq LIMIT ?", Number(mark?.seq ?? 0), Math.min(Math.max(1, limit), EXPORT_BATCH)).toArray();
+    const rows = this.sql
+      .exec(
+        "SELECT * FROM calls WHERE seq > ? ORDER BY seq LIMIT ?",
+        Number(mark?.seq ?? 0),
+        Math.min(Math.max(1, limit), EXPORT_BATCH),
+      )
+      .toArray();
     return { previous: mark?.hash ?? null, rows };
   }
 
@@ -122,14 +157,27 @@ export class ToolCallLog {
    */
   markExported(seq, hash, keepDays) {
     const at = new Date();
-    const mark = Number(this.sql.exec("SELECT seq FROM export_state WHERE id = 1").toArray()[0]?.seq ?? 0);
+    const mark = Number(
+      this.sql.exec("SELECT seq FROM export_state WHERE id = 1").toArray()[0]?.seq ?? 0,
+    );
     if (Number.isInteger(seq) && seq > mark) {
-      this.sql.exec("INSERT INTO export_state (id, seq, hash, at) VALUES (1, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET seq = excluded.seq, hash = excluded.hash, at = excluded.at", seq, hash, at.toISOString());
+      this.sql.exec(
+        "INSERT INTO export_state (id, seq, hash, at) VALUES (1, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET seq = excluded.seq, hash = excluded.hash, at = excluded.at",
+        seq,
+        hash,
+        at.toISOString(),
+      );
     }
     const through = Math.max(mark, Number.isInteger(seq) ? seq : 0);
     const cutoff = new Date(at.getTime() - Math.max(1, keepDays) * 86_400_000).toISOString();
     // The newest row stays whatever its age: the next append chains to it.
-    const pruned = this.sql.exec("DELETE FROM calls WHERE seq <= ? AND at < ? AND seq < (SELECT max(seq) FROM calls) RETURNING seq", through, cutoff).toArray().length;
+    const pruned = this.sql
+      .exec(
+        "DELETE FROM calls WHERE seq <= ? AND at < ? AND seq < (SELECT max(seq) FROM calls) RETURNING seq",
+        through,
+        cutoff,
+      )
+      .toArray().length;
     return { through, pruned };
   }
 
@@ -140,9 +188,16 @@ export class ToolCallLog {
    */
   recent(before, limit) {
     const n = Math.min(Math.max(1, Math.floor(limit)), RECENT_MAX);
-    const columns = "seq, at, call_id, phase, caller, tool, args, result, server, version, client_id, correlation_id";
+    const columns =
+      "seq, at, call_id, phase, caller, tool, args, result, server, version, client_id, correlation_id";
     return before > 0
-      ? this.sql.exec(`SELECT ${columns} FROM calls WHERE seq < ? ORDER BY seq DESC LIMIT ?`, Math.floor(before), n).toArray()
+      ? this.sql
+          .exec(
+            `SELECT ${columns} FROM calls WHERE seq < ? ORDER BY seq DESC LIMIT ?`,
+            Math.floor(before),
+            n,
+          )
+          .toArray()
       : this.sql.exec(`SELECT ${columns} FROM calls ORDER BY seq DESC LIMIT ?`, n).toArray();
   }
 
@@ -153,11 +208,15 @@ export class ToolCallLog {
   stats() {
     const now = Date.now();
     const iso = (/** @type {number} */ ms) => new Date(now - ms).toISOString();
-    const one = (/** @type {string} */ query, /** @type {unknown[]} */ ...params) => this.sql.exec(query, ...params).toArray()[0] ?? {};
+    const one = (/** @type {string} */ query, /** @type {unknown[]} */ ...params) =>
+      this.sql.exec(query, ...params).toArray()[0] ?? {};
     const mark = Number(one("SELECT seq FROM export_state WHERE id = 1").seq ?? 0);
     const waiting = one("SELECT count(*) AS n, min(at) AS oldest FROM calls WHERE seq > ?", mark);
     return {
-      lastHour: Number(one("SELECT count(*) AS n FROM calls WHERE phase = 'started' AND at >= ?", iso(3_600_000)).n ?? 0),
+      lastHour: Number(
+        one("SELECT count(*) AS n FROM calls WHERE phase = 'started' AND at >= ?", iso(3_600_000))
+          .n ?? 0,
+      ),
       orphans: Number(
         one(
           "SELECT count(*) AS n FROM calls s WHERE s.phase = 'started' AND s.at < ? AND s.at >= ? " +
@@ -173,7 +232,8 @@ export class ToolCallLog {
 
   /** @param {import("./audit-log.d.mts").AuditRow} row */
   async append(row) {
-    const field = (/** @type {unknown} */ value) => (value === undefined || value === null ? null : String(value).slice(0, FIELD_CHARS));
+    const field = (/** @type {unknown} */ value) =>
+      value === undefined || value === null ? null : String(value).slice(0, FIELD_CHARS);
     /** @type {Record<string, string | null>} */
     const values = {
       at: new Date().toISOString(),
@@ -205,9 +265,17 @@ export class ToolCallLog {
  * @param {string | null} key
  */
 async function rowHash(previous, row, key) {
-  const text = new TextEncoder().encode(`${previous ?? ""}\n${JSON.stringify(HASHED.map((name) => row[name] ?? null))}`);
+  const text = new TextEncoder().encode(
+    `${previous ?? ""}\n${JSON.stringify(HASHED.map((name) => row[name] ?? null))}`,
+  );
   if (!key) return sha256Hex(text);
-  const hmac = await crypto.subtle.importKey("raw", new TextEncoder().encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const hmac = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(key),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
   return toHex(await crypto.subtle.sign("HMAC", hmac, text));
 }
 
@@ -227,7 +295,8 @@ export async function verifyAuditChain(rows, key, anchor = null) {
   let hashed = 0;
   for (const row of rows) {
     if (row.hash == null && previous === null) continue;
-    if (row.hash !== (await rowHash(previous, row, key || null))) return { ok: false, seq: row.seq };
+    if (row.hash !== (await rowHash(previous, row, key || null)))
+      return { ok: false, seq: row.seq };
     previous = /** @type {string} */ (row.hash);
     hashed++;
   }
@@ -240,7 +309,9 @@ export async function verifyAuditChain(rows, key, anchor = null) {
  * @param {Record<string, unknown>} [meta]
  */
 export function correlationId(meta) {
-  const match = /^[0-9a-f]{2}-([0-9a-f]{32})-[0-9a-f]{16}-[0-9a-f]{2}$/.exec(String(meta?.traceparent ?? ""));
+  const match = /^[0-9a-f]{2}-([0-9a-f]{32})-[0-9a-f]{16}-[0-9a-f]{2}$/.exec(
+    String(meta?.traceparent ?? ""),
+  );
   if (match && !/^0+$/.test(match[1])) return match[1];
   return toHex(crypto.getRandomValues(new Uint8Array(16)));
 }
@@ -253,7 +324,10 @@ export async function loggedArgs(args) {
   /** @type {Record<string, unknown>} */
   const out = {};
   for (const [key, value] of Object.entries(args)) {
-    out[key] = typeof value === "string" && value.length > LONG_STRING ? { chars: value.length, sha256: (await sha256Hex(value)).slice(0, 16) } : value;
+    out[key] =
+      typeof value === "string" && value.length > LONG_STRING
+        ? { chars: value.length, sha256: (await sha256Hex(value)).slice(0, 16) }
+        : value;
   }
   return out;
 }
@@ -287,10 +361,18 @@ function logStub(env) {
  * @param {{ prefix?: string, keepDays?: number }} [options]
  * @returns {Promise<{ exported: number, objects: string[], pruned: number }>}
  */
-export async function exportAuditLog(env, bucket, { prefix = "tool-calls/", keepDays = AUDIT_KEEP_DAYS } = {}) {
+export async function exportAuditLog(
+  env,
+  bucket,
+  { prefix = "tool-calls/", keepDays = AUDIT_KEEP_DAYS } = {},
+) {
   const stub = logStub(env);
   const call = async (/** @type {string} */ path, /** @type {unknown} */ body) => {
-    const response = await stub.fetch(`https://tool-call-log.invalid${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const response = await stub.fetch(`https://tool-call-log.invalid${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
     if (!response.ok) throw new Error(`the tool-call log answered ${response.status} to ${path}`);
     return /** @type {any} */ (await response.json());
   };
@@ -304,13 +386,17 @@ export async function exportAuditLog(env, bucket, { prefix = "tool-calls/", keep
     const last = rows.at(-1);
     if (!last) break;
     const key = `${prefix}${pad(rows[0].seq)}-${pad(last.seq)}.json`;
-    await bucket.put(key, JSON.stringify({ previous, rows }), { httpMetadata: { contentType: "application/json" } });
+    await bucket.put(key, JSON.stringify({ previous, rows }), {
+      httpMetadata: { contentType: "application/json" },
+    });
     objects.push(key);
     exported += rows.length;
-    pruned += (await call("/exported", { seq: last.seq, hash: last.hash ?? null, keepDays })).pruned;
+    pruned += (await call("/exported", { seq: last.seq, hash: last.hash ?? null, keepDays }))
+      .pruned;
     if (rows.length < EXPORT_BATCH) break;
   }
-  if (objects.length === 0) pruned += (await call("/exported", { seq: 0, hash: null, keepDays })).pruned;
+  if (objects.length === 0)
+    pruned += (await call("/exported", { seq: 0, hash: null, keepDays })).pruned;
   return { exported, objects, pruned };
 }
 
@@ -330,10 +416,17 @@ export function auditLogCheck(env, { spikePerHour = 600 } = {}) {
     run: async () => {
       const response = await logStub(env).fetch("https://tool-call-log.invalid/stats");
       if (!response.ok) return { ok: false, detail: `the log answered ${response.status}` };
-      const s = /** @type {{ lastHour: number, orphans: number, unexported: number, oldestUnexported: string | null }} */ (await response.json());
-      const late = s.oldestUnexported !== null && Date.now() - Date.parse(s.oldestUnexported) > EXPORT_LATE_DAYS * 86_400_000;
+      const s =
+        /** @type {{ lastHour: number, orphans: number, unexported: number, oldestUnexported: string | null }} */ (
+          await response.json()
+        );
+      const late =
+        s.oldestUnexported !== null &&
+        Date.now() - Date.parse(s.oldestUnexported) > EXPORT_LATE_DAYS * 86_400_000;
       const wrong = [
-        s.orphans > 0 ? `${s.orphans} call(s) with no finished row after ${ORPHAN_MINUTES} minutes` : "",
+        s.orphans > 0
+          ? `${s.orphans} call(s) with no finished row after ${ORPHAN_MINUTES} minutes`
+          : "",
         s.lastHour > spikePerHour ? `${s.lastHour} calls in the last hour` : "",
         late ? `${s.unexported} row(s) not copied for over ${EXPORT_LATE_DAYS} days` : "",
       ].filter(Boolean);
@@ -365,6 +458,15 @@ export async function appendAudit(env, row) {
  */
 export async function recordAudit(env, row) {
   await appendAudit(env, row).catch((cause) =>
-    console.error(JSON.stringify({ audit: "tool-call-log-write-failed", phase: row.phase, callId: row.callId, caller: row.caller, tool: row.tool, error: String(cause) })),
+    console.error(
+      JSON.stringify({
+        audit: "tool-call-log-write-failed",
+        phase: row.phase,
+        callId: row.callId,
+        caller: row.caller,
+        tool: row.tool,
+        error: String(cause),
+      }),
+    ),
   );
 }

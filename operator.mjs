@@ -51,12 +51,20 @@ function json(body, status = 200, headers = {}) {
  */
 async function bearerRefusal(request, configured) {
   if (!configured || configured.length < MIN_TOKEN_LENGTH) {
-    return json({ ok: false, error: "The operator API is not configured on this deployment." }, 503);
+    return json(
+      { ok: false, error: "The operator API is not configured on this deployment." },
+      503,
+    );
   }
-  const presented = /^Bearer\s+(.+)$/i.exec((request.headers.get("authorization") ?? "").trim())?.[1] ?? "";
+  const presented =
+    /^Bearer\s+(.+)$/i.exec((request.headers.get("authorization") ?? "").trim())?.[1] ?? "";
   // Refused on length before the hash, which an anonymous caller could otherwise ask for in any size.
   if (presented.length > configured.length * 2 || !(await safeEqual(presented, configured))) {
-    logEvent(OWASP_EVENTS.signInFailure, { ...requestFields(request), via: "operator-bearer" }, { level: "warn" });
+    logEvent(
+      OWASP_EVENTS.signInFailure,
+      { ...requestFields(request), via: "operator-bearer" },
+      { level: "warn" },
+    );
     return json({ ok: false, error: "Invalid or missing bearer token." }, 401);
   }
   return null;
@@ -78,12 +86,24 @@ export async function operatorResponse(request, options) {
   const refused = await bearerRefusal(request, options.token);
   if (refused) return refused;
   if (request.method === "GET") {
-    return json({ ok: true, data: { tools: names.map((name) => ({ name, description: tools[name]?.description ?? "" })) } });
+    return json({
+      ok: true,
+      data: { tools: names.map((name) => ({ name, description: tools[name]?.description ?? "" })) },
+    });
   }
 
-  const verdict = await limit(options.limiter, options.limitKey ?? "operator", options.rules ?? OPERATOR_RULES, { onUnavailable: "refuse" });
+  const verdict = await limit(
+    options.limiter,
+    options.limitKey ?? "operator",
+    options.rules ?? OPERATOR_RULES,
+    { onUnavailable: "refuse" },
+  );
   if (mustStop(verdict, "refuse")) {
-    logEvent(OWASP_EVENTS.rateLimitExceeded, { ...requestFields(request, { status: 429 }), via: "operator" }, { level: "warn" });
+    logEvent(
+      OWASP_EVENTS.rateLimitExceeded,
+      { ...requestFields(request, { status: 429 }), via: "operator" },
+      { level: "warn" },
+    );
     return limitedResponse(verdict);
   }
 
@@ -91,21 +111,36 @@ export async function operatorResponse(request, options) {
   let body = null;
   try {
     const text = await readCapped(request, OPERATOR_BODY_MAX);
-    if (text === null) return json({ ok: false, error: `The body is over ${OPERATOR_BODY_MAX} bytes.` }, 413);
+    if (text === null)
+      return json({ ok: false, error: `The body is over ${OPERATOR_BODY_MAX} bytes.` }, 413);
     body = JSON.parse(text);
   } catch {
     body = null;
   }
-  const { tool, args } = /** @type {{ tool?: unknown, args?: unknown }} */ (body && typeof body === "object" ? body : {});
+  const { tool, args } = /** @type {{ tool?: unknown, args?: unknown }} */ (
+    body && typeof body === "object" ? body : {}
+  );
   if (typeof tool !== "string" || !Object.hasOwn(tools, tool)) {
     return json({ ok: false, error: `Unknown tool. Available: ${names.join(", ")}.` }, 400);
   }
-  const plainArgs = args && typeof args === "object" && !Array.isArray(args) ? /** @type {Record<string, unknown>} */ (args) : {};
+  const plainArgs =
+    args && typeof args === "object" && !Array.isArray(args)
+      ? /** @type {Record<string, unknown>} */ (args)
+      : {};
   try {
-    const data = await /** @type {import("./operator.d.mts").OperatorTool} */ (tools[tool]).run(plainArgs);
+    const data = await /** @type {import("./operator.d.mts").OperatorTool} */ (tools[tool]).run(
+      plainArgs,
+    );
     return json({ ok: true, data: data ?? null });
   } catch (error) {
-    logEvent("operator_tool_failed", { ...requestFields(request), tool, error }, { level: "error" });
-    return json({ ok: false, error: error instanceof Error ? error.message : "The tool failed." }, 500);
+    logEvent(
+      "operator_tool_failed",
+      { ...requestFields(request), tool, error },
+      { level: "error" },
+    );
+    return json(
+      { ok: false, error: error instanceof Error ? error.message : "The tool failed." },
+      500,
+    );
   }
 }

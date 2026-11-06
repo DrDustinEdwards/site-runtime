@@ -33,13 +33,31 @@ const UNTIL_FLOOR_SECONDS = 60;
  * next scheduled post on a page that lists posts): it stays fresh no later than that, and no less than a minute.
  * @param {{ tags?: string[], freshSeconds?: number, staleSeconds?: number, until?: Date | null, now?: Date }} [options]
  */
-export function publicPageHeaders({ tags = [PAGES_CACHE_TAG], freshSeconds = 86_400, staleSeconds = 604_800, until = null, now = new Date() } = {}) {
-  if (!Number.isInteger(freshSeconds) || freshSeconds < 0 || !Number.isInteger(staleSeconds) || staleSeconds < 0) {
+export function publicPageHeaders({
+  tags = [PAGES_CACHE_TAG],
+  freshSeconds = 86_400,
+  staleSeconds = 604_800,
+  until = null,
+  now = new Date(),
+} = {}) {
+  if (
+    !Number.isInteger(freshSeconds) ||
+    freshSeconds < 0 ||
+    !Number.isInteger(staleSeconds) ||
+    staleSeconds < 0
+  ) {
     throw new Error("publicPageHeaders: freshSeconds and staleSeconds are whole seconds.");
   }
-  if (until) freshSeconds = Math.min(freshSeconds, Math.max(UNTIL_FLOOR_SECONDS, Math.ceil((until.getTime() - now.getTime()) / 1000)));
+  if (until)
+    freshSeconds = Math.min(
+      freshSeconds,
+      Math.max(UNTIL_FLOOR_SECONDS, Math.ceil((until.getTime() - now.getTime()) / 1000)),
+    );
   for (const tag of tags) {
-    if (!/^[\x21-\x2b\x2d-\x7e]+$/.test(tag)) throw new Error(`publicPageHeaders: tag "${tag}" holds a comma, a space or a non-ASCII character.`);
+    if (!/^[\x21-\x2b\x2d-\x7e]+$/.test(tag))
+      throw new Error(
+        `publicPageHeaders: tag "${tag}" holds a comma, a space or a non-ASCII character.`,
+      );
   }
   return {
     "Cache-Control": SHARED_CACHE_CONTROL,
@@ -54,11 +72,31 @@ export function publicPageHeaders({ tags = [PAGES_CACHE_TAG], freshSeconds = 86_
  * Renderer still gets the full URL. `utm_` is a prefix.
  */
 export const TRACKING_PARAMS = [
-  "utm_", "gclid", "gbraid", "wbraid", "dclid", "gad_source", "fbclid", "msclkid", "twclid", "ttclid", "li_fat_id",
-  "igshid", "yclid", "mc_cid", "mc_eid", "_ga", "_gl", "_hsenc", "_hsmi", "mkt_tok", "srsltid",
+  "utm_",
+  "gclid",
+  "gbraid",
+  "wbraid",
+  "dclid",
+  "gad_source",
+  "fbclid",
+  "msclkid",
+  "twclid",
+  "ttclid",
+  "li_fat_id",
+  "igshid",
+  "yclid",
+  "mc_cid",
+  "mc_eid",
+  "_ga",
+  "_gl",
+  "_hsenc",
+  "_hsmi",
+  "mkt_tok",
+  "srsltid",
 ];
 
-const tracking = (/** @type {string} */ name) => TRACKING_PARAMS.some((t) => (t.endsWith("_") ? name.startsWith(t) : name === t));
+const tracking = (/** @type {string} */ name) =>
+  TRACKING_PARAMS.some((t) => (t.endsWith("_") ? name.startsWith(t) : name === t));
 
 /**
  * The Renderer's cache key: the path, then the query without `TRACKING_PARAMS`, sorted so `?a&b` and `?b&a` share one
@@ -104,7 +142,8 @@ export function settleCacheHeaders(response, request, { publicCookies = [] } = {
     request?.method === "HEAD" ||
     Boolean(request && !cookieNames(request).every((name) => publicCookies.includes(name)));
   const apply = (/** @type {Headers} */ headers) => {
-    if (!headers.has("Cache-Control") || response.status !== 200 || personal) headers.set("Cache-Control", UNCACHED);
+    if (!headers.has("Cache-Control") || response.status !== 200 || personal)
+      headers.set("Cache-Control", UNCACHED);
     if (headers.get("Cache-Control") !== SHARED_CACHE_CONTROL) {
       headers.delete(EDGE_CACHE_HEADER);
       headers.delete("Cache-Tag");
@@ -118,7 +157,11 @@ export function settleCacheHeaders(response, request, { publicCookies = [] } = {
   } catch {
     const headers = new Headers(response.headers);
     apply(headers);
-    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
   }
 }
 
@@ -143,10 +186,15 @@ export function forRenderer(request) {
  */
 export function forReader(response, request, { publicCookies = [] } = {}) {
   if (request.method === "HEAD" && response.body) {
-    response = new Response(null, { status: response.status, statusText: response.statusText, headers: response.headers });
+    response = new Response(null, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
   }
   if (response.headers.get("Cache-Control") !== SHARED_CACHE_CONTROL) return response;
-  if (!cookieNames(request).every((name) => publicCookies.includes(name))) return privateRender(response);
+  if (!cookieNames(request).every((name) => publicCookies.includes(name)))
+    return privateRender(response);
   return notModified(response, request) ?? response;
 }
 
@@ -157,12 +205,17 @@ export function forReader(response, request, { publicCookies = [] } = {}) {
  * @param {Request} request
  */
 function notModified(response, request) {
-  if (response.status !== 200 || (request.method !== "GET" && request.method !== "HEAD")) return null;
+  if (response.status !== 200 || (request.method !== "GET" && request.method !== "HEAD"))
+    return null;
   const etag = response.headers.get("ETag");
   const ifNoneMatch = request.headers.get("If-None-Match");
   const weak = (/** @type {string} */ tag) => tag.trim().replace(/^W\//, "");
   let fresh = false;
-  if (ifNoneMatch) fresh = !!etag && (ifNoneMatch.trim() === "*" || ifNoneMatch.split(",").some((tag) => weak(tag) === weak(etag)));
+  if (ifNoneMatch)
+    fresh =
+      !!etag &&
+      (ifNoneMatch.trim() === "*" ||
+        ifNoneMatch.split(",").some((tag) => weak(tag) === weak(etag)));
   else {
     const since = Date.parse(request.headers.get("If-Modified-Since") ?? "");
     const modified = Date.parse(response.headers.get("Last-Modified") ?? "");
@@ -186,7 +239,11 @@ export function privateRender(response) {
   headers.set("Cache-Control", UNCACHED);
   headers.delete(EDGE_CACHE_HEADER);
   headers.delete("Cache-Tag");
-  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 /**
@@ -226,7 +283,8 @@ export function withPurgePages(Base) {
   };
 }
 
-const isWrite = (/** @type {Request} */ request) => request.method !== "GET" && request.method !== "HEAD";
+const isWrite = (/** @type {Request} */ request) =>
+  request.method !== "GET" && request.method !== "HEAD";
 
 /**
  * In the gateway, after it answers a write: an accepted one (below 400) asks the Renderer to purge, in `waitUntil`, so
@@ -237,7 +295,8 @@ const isWrite = (/** @type {Request} */ request) => request.method !== "GET" && 
  * @param {string} why
  */
 export function purgeAfterWrite(request, response, ctx, why) {
-  if (isWrite(request) && response.status < 400) ctx.waitUntil(ctx.exports.Renderer.purgePages(why));
+  if (isWrite(request) && response.status < 400)
+    ctx.waitUntil(ctx.exports.Renderer.purgePages(why));
 }
 
 /**
@@ -252,7 +311,8 @@ export async function purgeViaRenderer(why, log = console.error) {
   try {
     const { exports } = await import(/* @vite-ignore */ "cloudflare:workers");
     // The Renderer is the site's own export, which only the site's generated types know.
-    const loopback = /** @type {{ Renderer: { purgePages(why: string): Promise<boolean | null> } }} */ (exports);
+    const loopback =
+      /** @type {{ Renderer: { purgePages(why: string): Promise<boolean | null> } }} */ (exports);
     return await loopback.Renderer.purgePages(why);
   } catch (error) {
     log(JSON.stringify({ alert: "cache-purge-unreachable", why, detail: String(error) }));

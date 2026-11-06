@@ -8,7 +8,13 @@
 
 import { untrusted } from "./anthropic.mjs";
 import { appendAudit, correlationId, loggedArgs, loggedResult, recordAudit } from "./audit-log.mjs";
-import { CSP_REPORT_GROUP, CSP_REPORT_PATH, buildPolicy, reportingEndpoints, scriptHash } from "./csp.mjs";
+import {
+  CSP_REPORT_GROUP,
+  CSP_REPORT_PATH,
+  buildPolicy,
+  reportingEndpoints,
+  scriptHash,
+} from "./csp.mjs";
 import { receiveCspReport } from "./csp-report.mjs";
 import { isProbeKey, PROBE_PRINCIPAL, probeCaller } from "./agent-keys.mjs";
 import { readCappedBytes } from "./body.mjs";
@@ -48,8 +54,14 @@ import { securityTxtResponse } from "./security-txt.mjs";
  * @param {{ factory: unknown, options: Record<string, unknown>, createMcpHandler: Function, isLegacyRequest?: (request: Request) => Promise<boolean> | boolean }} sdk
  * @returns {Promise<Response>}
  */
-export async function routeMcpEra(request, env, ctx, { factory, options, createMcpHandler, isLegacyRequest }) {
-  const legacy = isLegacyRequest && (await isLegacyRequest(request.clone())) ? "stateless" : "reject";
+export async function routeMcpEra(
+  request,
+  env,
+  ctx,
+  { factory, options, createMcpHandler, isLegacyRequest },
+) {
+  const legacy =
+    isLegacyRequest && (await isLegacyRequest(request.clone())) ? "stateless" : "reject";
   return createMcpHandler(factory, { ...options, legacy })(request, env, ctx);
 }
 
@@ -84,31 +96,61 @@ let consentHash;
  * }} options `site`: the door's registry entry, whose declared deviations (a popup sign-in's COOP) the set keeps
  * @returns {(request: Request, env: Env, ctx: unknown) => Promise<Response>}
  */
-export function withMcpHeaders(handler, { site, securityTxt, reportPath = CSP_REPORT_PATH, allowReport }) {
+export function withMcpHeaders(
+  handler,
+  { site, securityTxt, reportPath = CSP_REPORT_PATH, allowReport },
+) {
   const set = { ...buildSecurityHeaders({ site }), "X-Robots-Tag": "noindex, nofollow" };
   const sinks = [`report-uri ${reportPath}`, `report-to ${REPORT_GROUP}`];
   // No page here runs a script, so Trusted Types costs nothing and shuts every sink.
   const types = "require-trusted-types-for 'script'";
-  const nonHtml = buildPolicy(["default-src 'none'", "base-uri 'none'", "form-action 'none'", "frame-ancestors 'none'", types, ...sinks]);
+  const nonHtml = buildPolicy([
+    "default-src 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
+    "frame-ancestors 'none'",
+    types,
+    ...sinks,
+  ]);
   return async (request, env, ctx) => {
     const url = new URL(request.url);
     const response =
-      url.pathname === "/.well-known/security.txt" && (request.method === "GET" || request.method === "HEAD")
+      url.pathname === "/.well-known/security.txt" &&
+      (request.method === "GET" || request.method === "HEAD")
         ? securityTxtResponse({ origin: url.origin, ...securityTxt })
         : url.pathname === reportPath
-          ? await receiveCspReport(request, allowReport ? { allow: (r) => allowReport(r, env) } : {})
+          ? await receiveCspReport(
+              request,
+              allowReport ? { allow: (r) => allowReport(r, env) } : {},
+            )
           : await handler(request, env, ctx);
     const out = applyHeaderSet(response, set);
     if (out === response) return response;
     const { headers } = out;
-    if (!/(^|,)\s*no-store\s*(,|$)/i.test(headers.get("Cache-Control") ?? "")) headers.set("Cache-Control", "no-store");
+    if (!/(^|,)\s*no-store\s*(,|$)/i.test(headers.get("Cache-Control") ?? ""))
+      headers.set("Cache-Control", "no-store");
     if (/^\s*text\/html/i.test(headers.get("Content-Type") ?? "")) {
-      consentHash ??= Promise.all([scriptHash(CONSENT_STYLE), scriptHash(OWNER_STYLE)]).then((hashes) => hashes.map((hash) => `'${hash}'`).join(" "));
-      headers.set("Content-Security-Policy", buildPolicy(["default-src 'none'", `style-src ${await consentHash}`, "base-uri 'none'", "frame-ancestors 'none'", types, ...sinks]));
+      consentHash ??= Promise.all([scriptHash(CONSENT_STYLE), scriptHash(OWNER_STYLE)]).then(
+        (hashes) => hashes.map((hash) => `'${hash}'`).join(" "),
+      );
+      headers.set(
+        "Content-Security-Policy",
+        buildPolicy([
+          "default-src 'none'",
+          `style-src ${await consentHash}`,
+          "base-uri 'none'",
+          "frame-ancestors 'none'",
+          types,
+          ...sinks,
+        ]),
+      );
     } else {
       headers.set("Content-Security-Policy", nonHtml);
     }
-    headers.set("Reporting-Endpoints", reportingEndpoints(REPORT_GROUP, new URL(reportPath, url.origin)));
+    headers.set(
+      "Reporting-Endpoints",
+      reportingEndpoints(REPORT_GROUP, new URL(reportPath, url.origin)),
+    );
     return out;
   };
 }
@@ -150,37 +192,63 @@ export class ApiLegError extends Error {
  * @returns {Promise<{ status: number, ok: boolean, body: unknown }>}
  */
 export async function callApi(env, leg, path, init = {}) {
-  const unconfigured = (/** @type {string} */ what) => new ApiLegError(`The MCP server is not configured: ${what}. Not configured means not open.`, "unconfigured");
+  const unconfigured = (/** @type {string} */ what) =>
+    new ApiLegError(
+      `The MCP server is not configured: ${what}. Not configured means not open.`,
+      "unconfigured",
+    );
   const fetcher = /** @type {{ fetch?: unknown } | undefined} */ (env[leg.binding]);
-  if (!fetcher || typeof fetcher.fetch !== "function") throw unconfigured(`the ${leg.binding} service binding is missing`);
+  if (!fetcher || typeof fetcher.fetch !== "function")
+    throw unconfigured(`the ${leg.binding} service binding is missing`);
   if (!env.SITE_ORIGIN) throw unconfigured("SITE_ORIGIN is unset");
   const token = env[leg.token];
-  if (!init.anonymous && (typeof token !== "string" || token.length < 32)) throw unconfigured(`${leg.token} is unset or shorter than 32 characters`);
-  for (const name of leg.require ?? []) if (typeof env[name] !== "string" || !String(env[name]).trim()) throw unconfigured(`${name} is unset`);
+  if (!init.anonymous && (typeof token !== "string" || token.length < 32))
+    throw unconfigured(`${leg.token} is unset or shorter than 32 characters`);
+  for (const name of leg.require ?? [])
+    if (typeof env[name] !== "string" || !String(env[name]).trim())
+      throw unconfigured(`${name} is unset`);
 
-  const headers = new Headers({ accept: "application/json", "user-agent": leg.userAgent, ...init.headers });
+  const headers = new Headers({
+    accept: "application/json",
+    "user-agent": leg.userAgent,
+    ...init.headers,
+  });
   if (!init.anonymous) headers.set("authorization", `Bearer ${token}`);
   if (init.json !== undefined) headers.set("content-type", "application/json");
-  const canceled = () => new ApiLegError(`The client closed the call, so nothing more was sent to ${leg.api}.`, "canceled");
+  const canceled = () =>
+    new ApiLegError(
+      `The client closed the call, so nothing more was sent to ${leg.api}.`,
+      "canceled",
+    );
   if (init.signal?.aborted) throw canceled();
   /** @type {Response} */
   let response;
   try {
-    response = await /** @type {{ fetch: (url: string, init: RequestInit) => Promise<Response> }} */ (fetcher).fetch(new URL(path, String(env.SITE_ORIGIN)).toString(), {
-      method: init.method ?? (init.json === undefined ? "GET" : "POST"),
-      headers,
-      body: init.json === undefined ? undefined : JSON.stringify(init.json),
-      signal: init.signal,
-    });
+    response =
+      await /** @type {{ fetch: (url: string, init: RequestInit) => Promise<Response> }} */ (
+        fetcher
+      ).fetch(new URL(path, String(env.SITE_ORIGIN)).toString(), {
+        method: init.method ?? (init.json === undefined ? "GET" : "POST"),
+        headers,
+        body: init.json === undefined ? undefined : JSON.stringify(init.json),
+        signal: init.signal,
+      });
   } catch (cause) {
     if (init.signal?.aborted) throw canceled();
-    throw new ApiLegError(`${leg.api} could not be reached: ${cause instanceof Error ? cause.message : String(cause)}`, "unreachable");
+    throw new ApiLegError(
+      `${leg.api} could not be reached: ${cause instanceof Error ? cause.message : String(cause)}`,
+      "unreachable",
+    );
   }
   const raw = await response.text();
   try {
     return { status: response.status, ok: response.ok, body: raw ? JSON.parse(raw) : null };
   } catch {
-    throw new ApiLegError(`${leg.api} returned status ${response.status} with a body that is not JSON.`, "malformed", response.status);
+    throw new ApiLegError(
+      `${leg.api} returned status ${response.status} with a body that is not JSON.`,
+      "malformed",
+      response.status,
+    );
   }
 }
 
@@ -203,9 +271,20 @@ export const MCP_PER_MINUTE = 30;
  * @returns {Promise<{ allowed: boolean, retryAfter: number }>}
  */
 export async function checkRateLimit(namespace, identity, perMinute) {
-  const ceiling = perMinute !== undefined && Number.isInteger(perMinute) && perMinute >= 1 && perMinute < MCP_PER_MINUTE ? perMinute : MCP_PER_MINUTE;
-  const verdict = await limit(namespace, identity, [{ limit: ceiling, windowSeconds: 60 }], { onUnavailable: "refuse" });
-  return { allowed: verdict.status === "ok", retryAfter: verdict.status === "unavailable" ? 60 : verdict.retryAfterSeconds };
+  const ceiling =
+    perMinute !== undefined &&
+    Number.isInteger(perMinute) &&
+    perMinute >= 1 &&
+    perMinute < MCP_PER_MINUTE
+      ? perMinute
+      : MCP_PER_MINUTE;
+  const verdict = await limit(namespace, identity, [{ limit: ceiling, windowSeconds: 60 }], {
+    onUnavailable: "refuse",
+  });
+  return {
+    allowed: verdict.status === "ok",
+    retryAfter: verdict.status === "unavailable" ? 60 : verdict.retryAfterSeconds,
+  };
 }
 
 /**
@@ -217,7 +296,12 @@ export async function checkRateLimit(namespace, identity, perMinute) {
 export function refuse(body, status, headers = {}) {
   return new Response(body, {
     status,
-    headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex, nofollow", ...headers },
+    headers: {
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": "no-store",
+      "x-robots-tag": "noindex, nofollow",
+      ...headers,
+    },
   });
 }
 
@@ -246,7 +330,11 @@ export function unauthorized({ resource, scope, error, description }) {
   if (description) header += `, error_description="${description.replace(/["\\]/g, "")}"`;
   return new Response(error ? JSON.stringify({ error, error_description: description }) : null, {
     status: 401,
-    headers: { "content-type": "application/json", "cache-control": "no-store", "www-authenticate": header },
+    headers: {
+      "content-type": "application/json",
+      "cache-control": "no-store",
+      "www-authenticate": header,
+    },
   });
 }
 
@@ -261,8 +349,19 @@ export function unauthorized({ resource, scope, error, description }) {
  */
 export function audienceRefusal(auth, resource, scope) {
   if (auth?.audience === resource) return null;
-  console.warn(JSON.stringify({ door: "refused", reason: "audience", audience: typeof auth?.audience === "string" ? auth.audience : null }));
-  return unauthorized({ resource, scope, error: "invalid_token", description: "This token was not issued for this server." });
+  console.warn(
+    JSON.stringify({
+      door: "refused",
+      reason: "audience",
+      audience: typeof auth?.audience === "string" ? auth.audience : null,
+    }),
+  );
+  return unauthorized({
+    resource,
+    scope,
+    error: "invalid_token",
+    description: "This token was not issued for this server.",
+  });
 }
 
 /**
@@ -275,7 +374,8 @@ export function audienceRefusal(auth, resource, scope) {
  */
 export function mcpOriginRefusal(request, allowed = [], headers) {
   const origin = request.headers.get("Origin");
-  if (originVerdict(origin, request.url).ok || (origin !== null && allowed.includes(origin))) return null;
+  if (originVerdict(origin, request.url).ok || (origin !== null && allowed.includes(origin)))
+    return null;
   return originRefusal(headers);
 }
 
@@ -350,15 +450,20 @@ export function toolsForGrant(tools, held, scopes) {
  * @returns {string | null}
  */
 export function authorizeCall(env, caller, scope, { site, scopes }) {
-  if (scope !== scopes.read && scope !== scopes.write) return "Refused: this tool declares no scope, so it does not run. This is a fault in the server, not the connection.";
-  if (!caller) return "Refused: no caller identity reached this tool call. Connect again through the OAuth flow.";
-  if (caller.kind === "probe") return `Refused: this is the list-only test key for ${site}. It can list tools and never runs one.`;
+  if (scope !== scopes.read && scope !== scopes.write)
+    return "Refused: this tool declares no scope, so it does not run. This is a fault in the server, not the connection.";
+  if (!caller)
+    return "Refused: no caller identity reached this tool call. Connect again through the OAuth flow.";
+  if (caller.kind === "probe")
+    return `Refused: this is the list-only test key for ${site}. It can list tools and never runs one.`;
   if (caller.kind === "admin" && !isAdminUser(env, caller.props)) {
     return `Refused: this grant does not belong to the administrator of ${site}, so it owns none of the records this tool names.`;
   }
-  if (caller.kind === "agent" && !/^[a-z0-9][a-z0-9_-]*$/.test(caller.principal)) return "Refused: the agent principal is malformed.";
+  if (caller.kind === "agent" && !/^[a-z0-9][a-z0-9_-]*$/.test(caller.principal))
+    return "Refused: the agent principal is malformed.";
   if (caller.scopes.includes(scope)) return null;
-  if (scope !== scopes.write) return "Refused: this connection holds no read scope. Reconnect through the OAuth flow.";
+  if (scope !== scopes.write)
+    return "Refused: this connection holds no read scope. Reconnect through the OAuth flow.";
   return caller.kind === "agent"
     ? `Refused: this agent key holds read access only (${scopes.read}), and this tool changes ${site}. Add the agent's name to AGENT_WRITE.`
     : `Refused: this connection holds read access only (${scopes.read}), and this tool changes ${site}. Reconnect and tick "Allow changes" on the consent page.`;
@@ -380,7 +485,10 @@ export function toolScopeChallenge(env, server, tool) {
     const args = /** @type {Record<string, unknown>} */ (request.params?.arguments ?? {});
     const scope = toolScope(tool, args, server.scopes);
     if (!authInfo || scope === null || authInfo.scopes.includes(scope)) return undefined;
-    const needed = scope === server.scopes.write ? [server.scopes.read, server.scopes.write] : [server.scopes.read];
+    const needed =
+      scope === server.scopes.write
+        ? [server.scopes.read, server.scopes.write]
+        : [server.scopes.read];
     const props = /** @type {{ email?: unknown } | undefined} */ (authInfo.extra?.props);
     await recordAudit(env, {
       callId: crypto.randomUUID(),
@@ -391,9 +499,14 @@ export function toolScopeChallenge(env, server, tool) {
       result: { isError: true, text: `needs ${needed.join(" ")}` },
       server: { name: server.name, version: server.version },
       clientId: authInfo.clientId,
-      correlationId: correlationId(/** @type {Record<string, unknown> | undefined} */ (request.params?._meta)),
+      correlationId: correlationId(
+        /** @type {Record<string, unknown> | undefined} */ (request.params?._meta),
+      ),
     });
-    return { scopes: needed, errorDescription: `This tool needs ${needed.join(" ")}. Allow changes when you reconnect.` };
+    return {
+      scopes: needed,
+      errorDescription: `This tool needs ${needed.join(" ")}. Allow changes when you reconnect.`,
+    };
   };
 }
 
@@ -417,9 +530,17 @@ export function toolScopeChallenge(env, server, tool) {
  * @returns {Promise<O | { isError: true, content: Array<{ type: "text", text: string }> }>}
  */
 export async function invokeTool(env, server, { caller, tool, args, meta, signal, run }) {
-  const failed = (/** @type {string} */ text) => ({ isError: /** @type {const} */ (true), content: [{ type: /** @type {const} */ ("text"), text }] });
+  const failed = (/** @type {string} */ text) => ({
+    isError: /** @type {const} */ (true),
+    content: [{ type: /** @type {const} */ ("text"), text }],
+  });
   const refused = authorizeCall(env, caller, toolScope(tool, args, server.scopes), server);
-  const clientId = caller?.kind === "admin" ? caller.props.clientId : caller?.kind === "person" ? caller.clientId : undefined;
+  const clientId =
+    caller?.kind === "admin"
+      ? caller.props.clientId
+      : caller?.kind === "person"
+        ? caller.clientId
+        : undefined;
   /** @type {Omit<import("./audit-log.d.mts").AuditRow, "phase">} */
   const row = {
     callId: crypto.randomUUID(),
@@ -445,8 +566,14 @@ export async function invokeTool(env, server, { caller, tool, args, meta, signal
     );
   }
   if (signal?.aborted) {
-    const output = failed(`Canceled: the client closed the call before the tool ran. Nothing was sent to ${server.site}.`);
-    await recordAudit(env, { ...row, phase: "finished", result: { ...loggedResult(output), canceled: true } });
+    const output = failed(
+      `Canceled: the client closed the call before the tool ran. Nothing was sent to ${server.site}.`,
+    );
+    await recordAudit(env, {
+      ...row,
+      phase: "finished",
+      result: { ...loggedResult(output), canceled: true },
+    });
     return output;
   }
   /** @type {O} */
@@ -456,10 +583,18 @@ export async function invokeTool(env, server, { caller, tool, args, meta, signal
   } catch (error) {
     // A handler that throws still ends its call in the log; the error goes on to the SDK, which answers it.
     const text = `threw: ${error instanceof Error ? error.message : String(error)}`.slice(0, 1000);
-    await recordAudit(env, { ...row, phase: "finished", result: { isError: true, text, ...(signal?.aborted ? { canceled: true } : {}) } });
+    await recordAudit(env, {
+      ...row,
+      phase: "finished",
+      result: { isError: true, text, ...(signal?.aborted ? { canceled: true } : {}) },
+    });
     throw error;
   }
-  await recordAudit(env, { ...row, phase: "finished", result: { ...loggedResult(output), ...(signal?.aborted ? { canceled: true } : {}) } });
+  await recordAudit(env, {
+    ...row,
+    phase: "finished",
+    result: { ...loggedResult(output), ...(signal?.aborted ? { canceled: true } : {}) },
+  });
   return output;
 }
 
@@ -492,21 +627,38 @@ export function registerTools(mcp, tools, { env, server, caller, icons, config, 
   // authorizeCall refuses it whatever it calls.
   const listed =
     caller?.kind === "probe"
-      ? tools.filter((tool) => typeof tool.scope !== "function" && toolScope(tool, {}, server.scopes) === server.scopes.read)
+      ? tools.filter(
+          (tool) =>
+            typeof tool.scope !== "function" &&
+            toolScope(tool, {}, server.scopes) === server.scopes.read,
+        )
       : toolsForGrant(tools, caller?.scopes ?? [], server.scopes);
   const configOf = config ?? ((/** @type {any} */ tool) => tool.config);
-  const runOf = run ?? ((/** @type {any} */ tool, /** @type {Record<string, unknown>} */ args, /** @type {AbortSignal | undefined} */ signal) => tool.handler(env, args, signal));
+  const runOf =
+    run ??
+    ((
+      /** @type {any} */ tool,
+      /** @type {Record<string, unknown>} */ args,
+      /** @type {AbortSignal | undefined} */ signal,
+    ) => tool.handler(env, args, signal));
   for (const tool of listed) {
     const own = configOf(tool);
-    mcp.registerTool(tool.name, { ...own, ...(icons && !own.icons ? { icons } : {}), scopeChallenge: toolScopeChallenge(env, server, tool) }, (args, ctx) =>
-      invokeTool(env, server, {
-        caller,
-        tool,
-        args: args ?? {},
-        meta: ctx?.mcpReq?._meta,
-        signal: ctx?.mcpReq?.signal,
-        run: (signal) => runOf(tool, args ?? {}, signal),
-      }),
+    mcp.registerTool(
+      tool.name,
+      {
+        ...own,
+        ...(icons && !own.icons ? { icons } : {}),
+        scopeChallenge: toolScopeChallenge(env, server, tool),
+      },
+      (args, ctx) =>
+        invokeTool(env, server, {
+          caller,
+          tool,
+          args: args ?? {},
+          meta: ctx?.mcpReq?._meta,
+          signal: ctx?.mcpReq?.signal,
+          run: (signal) => runOf(tool, args ?? {}, signal),
+        }),
     );
   }
   return listed;
@@ -560,15 +712,24 @@ const PROBE_BODY_MAX = 64 * 1024;
  * @returns {Promise<{ request: Request, refusal?: undefined } | { refusal: Response, request?: undefined }>}
  */
 export async function probeRefusal(env, server, request) {
-  const refusal = (/** @type {unknown} */ id, /** @type {number} */ status, /** @type {number} */ code, /** @type {string} */ message) => ({
-    refusal: new Response(JSON.stringify({ jsonrpc: "2.0", id: id ?? null, error: { code, message } }), {
-      status,
-      headers: { "content-type": "application/json", "cache-control": "no-store" },
-    }),
+  const refusal = (
+    /** @type {unknown} */ id,
+    /** @type {number} */ status,
+    /** @type {number} */ code,
+    /** @type {string} */ message,
+  ) => ({
+    refusal: new Response(
+      JSON.stringify({ jsonrpc: "2.0", id: id ?? null, error: { code, message } }),
+      {
+        status,
+        headers: { "content-type": "application/json", "cache-control": "no-store" },
+      },
+    ),
   });
   if (request.method !== "POST") return { request };
   const bytes = await readCappedBytes(request, PROBE_BODY_MAX);
-  if (bytes === null) return refusal(null, 403, -32600, "Refused: the list-only test key's request is too large.");
+  if (bytes === null)
+    return refusal(null, 403, -32600, "Refused: the list-only test key's request is too large.");
   const text = new TextDecoder().decode(bytes);
   const served = new Request(request, { method: "POST", body: text });
   /** @type {unknown} */
@@ -579,11 +740,14 @@ export async function probeRefusal(env, server, request) {
     return { request: served };
   }
   const messages = (Array.isArray(body) ? body : [body]).filter((m) => m && typeof m === "object");
-  const refused = messages.filter((m) => !PROBE_METHODS.has(String(/** @type {{ method?: unknown }} */ (m).method ?? "")));
+  const refused = messages.filter(
+    (m) => !PROBE_METHODS.has(String(/** @type {{ method?: unknown }} */ (m).method ?? "")),
+  );
   if (!refused.length) return { request: served };
   const words = `Refused: this is the list-only test key for ${server.site}. It can list tools and never runs one.`;
   for (const message of refused) {
-    const { method, params } = /** @type {{ method?: unknown, params?: { _meta?: Record<string, unknown> } }} */ (message);
+    const { method, params } =
+      /** @type {{ method?: unknown, params?: { _meta?: Record<string, unknown> } }} */ (message);
     await recordAudit(env, {
       callId: crypto.randomUUID(),
       phase: "refused",
@@ -596,7 +760,9 @@ export async function probeRefusal(env, server, request) {
   }
   const first = /** @type {{ id?: unknown }} */ (refused[0]);
   // A request is answered as the method a server does not have (SEP-2575: 404 and -32601); a notification has no id.
-  return first.id === undefined ? refusal(null, 403, -32600, words) : refusal(first.id, 404, -32601, `Method not found. ${words}`);
+  return first.id === undefined
+    ? refusal(null, 403, -32600, words)
+    : refusal(first.id, 404, -32601, `Method not found. ${words}`);
 }
 
 /**
@@ -610,11 +776,26 @@ export async function probeRefusal(env, server, request) {
  * @returns {Promise<Response | null>}
  */
 export async function probeDoor(request, env, { server, limiter, serve }) {
-  if (!(await isProbeKey(/** @type {Record<string, unknown>} */ (env), request.headers.get("authorization")))) return null;
+  if (
+    !(await isProbeKey(
+      /** @type {Record<string, unknown>} */ (env),
+      request.headers.get("authorization"),
+    ))
+  )
+    return null;
   const limit = await checkRateLimit(limiter, `probe:${PROBE_PRINCIPAL}`);
   if (!limit.allowed) {
-    await recordAudit(env, { callId: crypto.randomUUID(), phase: "rate-limited", caller: `probe:${PROBE_PRINCIPAL}`, server: { name: server.name, version: server.version } });
-    return refuse(`Rate limited. ${server.site}'s MCP allows ${MCP_PER_MINUTE} requests a minute.`, 429, { "retry-after": String(limit.retryAfter) });
+    await recordAudit(env, {
+      callId: crypto.randomUUID(),
+      phase: "rate-limited",
+      caller: `probe:${PROBE_PRINCIPAL}`,
+      server: { name: server.name, version: server.version },
+    });
+    return refuse(
+      `Rate limited. ${server.site}'s MCP allows ${MCP_PER_MINUTE} requests a minute.`,
+      429,
+      { "retry-after": String(limit.retryAfter) },
+    );
   }
   const checked = await probeRefusal(env, server, request);
   return checked.refusal ?? serve(checked.request, probeCaller());
@@ -639,8 +820,15 @@ export const OUTSIDE_DATA_NOTICE =
  */
 export function outsideResult(label, value) {
   const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
-  const content = [{ type: /** @type {const} */ ("text"), text: `${OUTSIDE_DATA_NOTICE}\n\n${untrusted(label, text)}` }];
-  return typeof value === "string" ? { content } : { content, structuredContent: { notice: OUTSIDE_DATA_NOTICE, ...value } };
+  const content = [
+    {
+      type: /** @type {const} */ ("text"),
+      text: `${OUTSIDE_DATA_NOTICE}\n\n${untrusted(label, text)}`,
+    },
+  ];
+  return typeof value === "string"
+    ? { content }
+    : { content, structuredContent: { notice: OUTSIDE_DATA_NOTICE, ...value } };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -667,8 +855,13 @@ export function toolListProblems(tools) {
   const seen = new Set();
   for (const tool of tools) {
     const name = String(tool?.name ?? "");
-    const add = (/** @type {string} */ item, /** @type {string} */ detail, severity = /** @type {"error" | "warning"} */ ("error")) => out.push({ item, tool: name, severity, detail });
-    if (!TOOL_NAME.test(name)) add("T1", `the name ${JSON.stringify(name)} is not [A-Za-z0-9_.-]{1,128}`);
+    const add = (
+      /** @type {string} */ item,
+      /** @type {string} */ detail,
+      severity = /** @type {"error" | "warning"} */ ("error"),
+    ) => out.push({ item, tool: name, severity, detail });
+    if (!TOOL_NAME.test(name))
+      add("T1", `the name ${JSON.stringify(name)} is not [A-Za-z0-9_.-]{1,128}`);
     if (seen.has(name)) add("T1", "the name is listed twice");
     seen.add(name);
     if (!String(tool.title ?? tool.annotations?.title ?? "").trim()) add("T1", "has no title");
@@ -679,12 +872,18 @@ export function toolListProblems(tools) {
     const input = tool.inputSchema;
     if (input?.type !== "object") add("T4", "its inputSchema is not of type object");
     else {
-      if (input.$schema !== undefined && input.$schema !== DIALECT) add("T4", `its inputSchema declares ${input.$schema}, not JSON Schema 2020-12`);
+      if (input.$schema !== undefined && input.$schema !== DIALECT)
+        add("T4", `its inputSchema declares ${input.$schema}, not JSON Schema 2020-12`);
       schemaProblems(input, "inputSchema", add);
     }
     const icons = Array.isArray(tool.icons) ? tool.icons : [];
     if (icons.length === 0) add("T9", "has no icon");
-    for (const icon of icons) if (!/^(?:https:\/\/|data:image\/)/.test(String(icon?.src ?? ""))) add("T9", `its icon ${JSON.stringify(String(icon?.src ?? "")).slice(0, 80)} is neither https nor a data:image URI`);
+    for (const icon of icons)
+      if (!/^(?:https:\/\/|data:image\/)/.test(String(icon?.src ?? "")))
+        add(
+          "T9",
+          `its icon ${JSON.stringify(String(icon?.src ?? "")).slice(0, 80)} is neither https nor a data:image URI`,
+        );
   }
   return out;
 }
@@ -697,16 +896,30 @@ export function toolListProblems(tools) {
  */
 function schemaProblems(schema, at, add) {
   if (!schema || typeof schema !== "object") return;
-  if (typeof schema.$ref === "string" && !schema.$ref.startsWith("#")) add("T4", `${at} has a $ref that is not local: ${schema.$ref.slice(0, 80)}`);
+  if (typeof schema.$ref === "string" && !schema.$ref.startsWith("#"))
+    add("T4", `${at} has a $ref that is not local: ${schema.$ref.slice(0, 80)}`);
   const types = [schema.type].flat();
-  if ((types.includes("object") || schema.properties) && schema.additionalProperties !== false) add("T4", `${at} does not set additionalProperties: false`);
-  if (types.includes("string") && schema.pattern === undefined && schema.enum === undefined && schema.const === undefined && schema.format === undefined) {
+  if ((types.includes("object") || schema.properties) && schema.additionalProperties !== false)
+    add("T4", `${at} does not set additionalProperties: false`);
+  if (
+    types.includes("string") &&
+    schema.pattern === undefined &&
+    schema.enum === undefined &&
+    schema.const === undefined &&
+    schema.format === undefined
+  ) {
     add("T4", `${at} is a string with no pattern, enum, const or format`, "warning");
   }
-  for (const [key, child] of Object.entries(schema.properties ?? {})) schemaProblems(child, `${at}.${key}`, add);
-  for (const key of ["items", "additionalItems", "not"]) if (schema[key] && typeof schema[key] === "object") schemaProblems(schema[key], `${at}[]`, add);
-  for (const key of ["anyOf", "oneOf", "allOf", "prefixItems"]) for (const [i, child] of (Array.isArray(schema[key]) ? schema[key] : []).entries()) schemaProblems(child, `${at}.${key}[${i}]`, add);
-  for (const key of ["$defs", "definitions"]) for (const [name, child] of Object.entries(schema[key] ?? {})) schemaProblems(child, `${at}.${key}.${name}`, add);
+  for (const [key, child] of Object.entries(schema.properties ?? {}))
+    schemaProblems(child, `${at}.${key}`, add);
+  for (const key of ["items", "additionalItems", "not"])
+    if (schema[key] && typeof schema[key] === "object") schemaProblems(schema[key], `${at}[]`, add);
+  for (const key of ["anyOf", "oneOf", "allOf", "prefixItems"])
+    for (const [i, child] of (Array.isArray(schema[key]) ? schema[key] : []).entries())
+      schemaProblems(child, `${at}.${key}[${i}]`, add);
+  for (const key of ["$defs", "definitions"])
+    for (const [name, child] of Object.entries(schema[key] ?? {}))
+      schemaProblems(child, `${at}.${key}.${name}`, add);
 }
 
 /** JSON with every object's keys sorted, so equal values print alike. @param {unknown} value @returns {string} */
@@ -731,7 +944,11 @@ function canonical(value) {
  * @returns {Promise<string>}
  */
 export async function toolListHash(tools) {
-  const plain = tools.map(({ _meta, ...tool }) => tool).sort((a, b) => (String(a.name) < String(b.name) ? -1 : String(a.name) > String(b.name) ? 1 : 0));
+  const plain = tools
+    .map(({ _meta, ...tool }) => tool)
+    .sort((a, b) =>
+      String(a.name) < String(b.name) ? -1 : String(a.name) > String(b.name) ? 1 : 0,
+    );
   return sha256Hex(canonical(plain));
 }
 
@@ -740,7 +957,14 @@ export async function toolListHash(tools) {
 // cacheable results of 2026-era requests; without it they go out as `ttlMs: 0`, private.
 // ---------------------------------------------------------------------------------------------------------------------
 
-const CACHEABLE = /** @type {const} */ (["tools/list", "prompts/list", "resources/list", "resources/templates/list", "resources/read", "server/discover"]);
+const CACHEABLE = /** @type {const} */ ([
+  "tools/list",
+  "prompts/list",
+  "resources/list",
+  "resources/templates/list",
+  "resources/read",
+  "server/discover",
+]);
 
 /**
  * The `cacheHints` option: every cacheable result lives `ttlMs`, private to the requesting client unless named in
@@ -750,5 +974,10 @@ const CACHEABLE = /** @type {const} */ (["tools/list", "prompts/list", "resource
  * @param {{ ttlMs?: number, shared?: ReadonlyArray<typeof CACHEABLE[number]> }} [options]
  */
 export function mcpCacheHints({ ttlMs = 60_000, shared = [] } = {}) {
-  return Object.fromEntries(CACHEABLE.map((method) => [method, { ttlMs, cacheScope: shared.includes(method) ? "public" : "private" }]));
+  return Object.fromEntries(
+    CACHEABLE.map((method) => [
+      method,
+      { ttlMs, cacheScope: shared.includes(method) ? "public" : "private" },
+    ]),
+  );
 }

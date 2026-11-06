@@ -54,8 +54,8 @@ export function purgeExpired(sql: Sql, nowMs: number): number | null;
  * that spans one is not atomic.
  */
 export type Rule = {
-    limit: number;
-    windowSeconds: number;
+  limit: number;
+  windowSeconds: number;
 };
 /**
  * The counting, apart from the Durable Object so a test can run it on any SQLite. Fixed windows aligned
@@ -64,9 +64,12 @@ export type Rule = {
  * that spans one is not atomic.
  */
 export type Sql = {
-    exec: (query: string, ...bindings: unknown[]) => {
-        toArray: () => Record<string, unknown>[];
-    };
+  exec: (
+    query: string,
+    ...bindings: unknown[]
+  ) => {
+    toArray: () => Record<string, unknown>[];
+  };
 };
 /**
  * The counting, apart from the Durable Object so a test can run it on any SQLite. Fixed windows aligned
@@ -75,9 +78,9 @@ export type Sql = {
  * that spans one is not atomic.
  */
 export type Hit = {
-    ok: boolean;
-    used: number;
-    limit: number;
-    retryAfterSeconds: number;
-    window: number;
+  ok: boolean;
+  used: number;
+  limit: number;
+  retryAfterSeconds: number;
+  window: number;
 };

@@ -2,12 +2,35 @@
 
 export type Severity = "critical" | "high" | "medium" | "low";
 /** `sign` is the section of Wikipedia's "Signs of AI writing" the issue maps to (a value of `SIGNS`); null for the caller's phrases. */
-export type ProseIssue = { check: string; message: string; excerpt: string | null; line: number | null; severity: Severity; sign: string | null };
-export type PatternRule = { check: string; sign: string; severity: Severity; re: RegExp; say: string };
+export type ProseIssue = {
+  check: string;
+  message: string;
+  excerpt: string | null;
+  line: number | null;
+  severity: Severity;
+  sign: string | null;
+};
+export type PatternRule = {
+  check: string;
+  sign: string;
+  severity: Severity;
+  re: RegExp;
+  say: string;
+};
 
 /** The Wikipedia sections the checks map to, by short name. */
 export declare const SIGNS: Record<
-  "significance" | "promotional" | "vocabulary" | "parallelism" | "three" | "collaborative" | "placeholder" | "markup" | "cutoff" | "refusal" | "dash",
+  | "significance"
+  | "promotional"
+  | "vocabulary"
+  | "parallelism"
+  | "three"
+  | "collaborative"
+  | "placeholder"
+  | "markup"
+  | "cutoff"
+  | "refusal"
+  | "dash",
   string
 >;
 export declare const NOT_JUST: RegExp[];
@@ -27,11 +50,23 @@ export declare const WRITING_RULES: string;
  */
 export function checkProse(
   text: string,
-  options?: { phrases?: string[]; allow?: string[]; dashes?: "flag" | "allow"; firstLine?: number; model?: string },
+  options?: {
+    phrases?: string[];
+    allow?: string[];
+    dashes?: "flag" | "allow";
+    firstLine?: number;
+    model?: string;
+  },
 ): ProseIssue[];
 
 /** `usual` is the 90th percentile of the author's own chunks' distance from their mean (absent on older stored profiles). */
-export type Profile = { mean: Record<string, number>; spread: Record<string, number>; chunks: number; words: number; usual?: number };
+export type Profile = {
+  mean: Record<string, number>;
+  spread: Record<string, number>;
+  chunks: number;
+  words: number;
+  usual?: number;
+};
 export type FeatureReading = { name: string; value: number; mean: number; z: number };
 export type VoiceReading = { distance: number; furthest: FeatureReading[] };
 
@@ -68,6 +103,9 @@ export function slopScan(
   options?: { firstLine?: number; sources?: string[] },
 ): { findings: SlopFinding[]; instruction: string | null; spread: Spread | null };
 /** Edit the listed spans in place and nothing else; null with no findings. For a caller that adds findings of its own. */
-export function instructionFor(findings: { excerpt: string; line: number | null; say: string }[], spread: Spread | null): string | null;
+export function instructionFor(
+  findings: { excerpt: string; line: number | null; say: string }[],
+  spread: Spread | null,
+): string | null;
 /** At most `count` (default 6) excerpts, one per passage, holding one long and one short sentence of the author's. */
 export function voiceExcerpts(passages: string[], count?: number): string[];

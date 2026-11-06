@@ -51,12 +51,18 @@ export async function writeIntegrity(dir, { base = "/" } = {}) {
       const tag = match[0];
       const isScript = match[1]?.toLowerCase() === "script";
       const url = attribute(tag, isScript ? "src" : "href");
-      const eligible = url && !/\sintegrity\s*=/i.test(tag) && (isScript || /^modulepreload$/i.test(attribute(tag, "rel") ?? ""));
+      const eligible =
+        url &&
+        !/\sintegrity\s*=/i.test(tag) &&
+        (isScript || /^modulepreload$/i.test(attribute(tag, "rel") ?? ""));
       const file = eligible ? localFile(url, pagePath, base, root) : null;
       const hash = file ? await hashOf(file) : null;
       if (!hash) continue;
       const cors = /\scrossorigin(\s*=|[\s>/])/i.test(tag) ? "" : ' crossorigin="anonymous"';
-      const marked = tag.replace(/\s*\/?>$/, (end) => ` integrity="${hash}"${cors}${end.trim() === "/>" ? " />" : ">"}`);
+      const marked = tag.replace(
+        /\s*\/?>$/,
+        (end) => ` integrity="${hash}"${cors}${end.trim() === "/>" ? " />" : ">"}`,
+      );
       count += 1;
       if (isScript && /^module$/i.test(attribute(tag, "type") ?? "") && file) {
         const tagEnd = html.indexOf("</script>", (match.index ?? 0) + tag.length);
@@ -70,11 +76,18 @@ export async function writeIntegrity(dir, { base = "/" } = {}) {
             const depHash = await hashOf(dep);
             if (!depHash) continue;
             const href = `${base.replace(/\/?$/, "/")}${relative(root, dep).split(sep).join("/")}`;
-            links.push(`<link rel="modulepreload" href="${href}" integrity="${depHash}" crossorigin="anonymous">`);
+            links.push(
+              `<link rel="modulepreload" href="${href}" integrity="${depHash}" crossorigin="anonymous">`,
+            );
             count += 1;
           }
           // The preloads go after the script's closing tag.
-          parts.push(html.slice(at, match.index), marked, html.slice((match.index ?? 0) + tag.length, tagEnd + 9), links.map((l) => `\n${l}`).join(""));
+          parts.push(
+            html.slice(at, match.index),
+            marked,
+            html.slice((match.index ?? 0) + tag.length, tagEnd + 9),
+            links.map((l) => `\n${l}`).join(""),
+          );
           at = tagEnd + 9;
           continue;
         }
@@ -128,13 +141,17 @@ function preloadsOf(html, pagePath, base, root) {
   const files = new Set();
   for (const [tag] of html.matchAll(/<link\b[^>]*>/gi)) {
     const href = attribute(tag, "href");
-    const file = href && /^modulepreload$/i.test(attribute(tag, "rel") ?? "") ? localFile(href, pagePath, base, root) : null;
+    const file =
+      href && /^modulepreload$/i.test(attribute(tag, "rel") ?? "")
+        ? localFile(href, pagePath, base, root)
+        : null;
     if (file) files.add(file);
   }
   return files;
 }
 
-const STATIC_IMPORT = /(?:^|[;\s}])(?:import|export)\s*(?:[\w$*{}\s,]*?\s*from\s*)?["']((?:\.{1,2}\/|\/)[^"']+)["']/g;
+const STATIC_IMPORT =
+  /(?:^|[;\s}])(?:import|export)\s*(?:[\w$*{}\s,]*?\s*from\s*)?["']((?:\.{1,2}\/|\/)[^"']+)["']/g;
 
 /**
  * Every local module `entry` reaches through static imports, transitively, in order of discovery, `entry` excluded.
@@ -173,4 +190,3 @@ function htmlFiles(dir) {
     return entry.name.endsWith(".html") ? [path] : [];
   });
 }
-

@@ -9,8 +9,14 @@ const pair = /** @type {CryptoKeyPair} */ (
 );
 const der = Buffer.from(await crypto.subtle.exportKey("pkcs8", pair.privateKey)).toString("base64");
 const pem = `-----BEGIN PRIVATE KEY-----\n${der.match(/.{1,64}/g)?.join("\n")}\n-----END PRIVATE KEY-----`;
-const env = { APPLE_CLIENT_ID: "com.example.web", APPLE_TEAM_ID: "TEAM123456", APPLE_KEY_ID: "KEY1234567", APPLE_PRIVATE_KEY: pem };
-const decode = (/** @type {string} */ part) => JSON.parse(Buffer.from(part, "base64url").toString());
+const env = {
+  APPLE_CLIENT_ID: "com.example.web",
+  APPLE_TEAM_ID: "TEAM123456",
+  APPLE_KEY_ID: "KEY1234567",
+  APPLE_PRIVATE_KEY: pem,
+};
+const decode = (/** @type {string} */ part) =>
+  JSON.parse(Buffer.from(part, "base64url").toString());
 
 test("PLANT: an ES256 JWT for Apple's audience, signed by the key, valid for 30 days", async () => {
   const jwt = /** @type {string} */ (await appleClientSecret(env, 1_000_000));

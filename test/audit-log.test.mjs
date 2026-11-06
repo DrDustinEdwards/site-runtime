@@ -5,7 +5,13 @@ import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
-import { ToolCallLog, auditLogCheck, exportAuditLog, loggedArgs, verifyAuditChain } from "../audit-log.mjs";
+import {
+  ToolCallLog,
+  auditLogCheck,
+  exportAuditLog,
+  loggedArgs,
+  verifyAuditChain,
+} from "../audit-log.mjs";
 
 function storage() {
   const db = new DatabaseSync(":memory:");
@@ -20,7 +26,12 @@ function storage() {
 }
 
 const append = (/** @type {ToolCallLog} */ log, /** @type {Record<string, unknown>} */ row) =>
-  log.fetch(new Request("https://tool-call-log.invalid/append", { method: "POST", body: JSON.stringify(row) }));
+  log.fetch(
+    new Request("https://tool-call-log.invalid/append", {
+      method: "POST",
+      body: JSON.stringify(row),
+    }),
+  );
 
 test("PLANT: concurrent appends form one chain over a migrated table, and an edited row breaks it", async () => {
   const { db, state } = storage();
@@ -28,15 +39,27 @@ test("PLANT: concurrent appends form one chain over a migrated table, and an edi
     "CREATE TABLE calls (seq INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, call_id TEXT NOT NULL, " +
       "phase TEXT NOT NULL, caller TEXT NOT NULL, tool TEXT NOT NULL, args TEXT NOT NULL, result TEXT)",
   );
-  db.exec("INSERT INTO calls (at, call_id, phase, caller, tool, args) VALUES ('2026-10-01T00:00:00.000Z', 'old', 'started', 'access:a@example.com', 't', '{}')");
+  db.exec(
+    "INSERT INTO calls (at, call_id, phase, caller, tool, args) VALUES ('2026-10-01T00:00:00.000Z', 'old', 'started', 'access:a@example.com', 't', '{}')",
+  );
   const log = new ToolCallLog(state);
   new ToolCallLog(state); // a second start finds the columns already there
 
-  const row = { caller: "access:a@example.com", tool: "sample_tool", server: { name: "sample-mcp", version: "1.0.0" }, clientId: "https://client.example.com/meta" };
+  const row = {
+    caller: "access:a@example.com",
+    tool: "sample_tool",
+    server: { name: "sample-mcp", version: "1.0.0" },
+    clientId: "https://client.example.com/meta",
+  };
   const answers = await Promise.all(
-    ["started", "finished", "refused"].map((phase, i) => append(log, { ...row, callId: `c${i}`, phase, args: { note: "line one\r\nline two" } })),
+    ["started", "finished", "refused"].map((phase, i) =>
+      append(log, { ...row, callId: `c${i}`, phase, args: { note: "line one\r\nline two" } }),
+    ),
   );
-  assert.deepEqual(answers.map((r) => r.status), [204, 204, 204]);
+  assert.deepEqual(
+    answers.map((r) => r.status),
+    [204, 204, 204],
+  );
 
   const rows = db.prepare("SELECT * FROM calls ORDER BY seq").all();
   assert.equal(rows.length, 4);
@@ -46,14 +69,27 @@ test("PLANT: concurrent appends form one chain over a migrated table, and an edi
   assert.deepEqual(await verifyAuditChain(rows), { ok: true, hashed: 3 });
 
   db.exec("UPDATE calls SET args = '{}' WHERE seq = 3");
-  assert.deepEqual(await verifyAuditChain(db.prepare("SELECT * FROM calls ORDER BY seq").all()), { ok: false, seq: 3 });
-  assert.equal((await log.fetch(new Request("https://tool-call-log.invalid/", { method: "GET" }))).status, 405);
+  assert.deepEqual(await verifyAuditChain(db.prepare("SELECT * FROM calls ORDER BY seq").all()), {
+    ok: false,
+    seq: 3,
+  });
+  assert.equal(
+    (await log.fetch(new Request("https://tool-call-log.invalid/", { method: "GET" }))).status,
+    405,
+  );
 });
 
 test("PLANT: with the key bound, an editor who recomputes the chain without the secret is caught", async () => {
   const { db, state } = storage();
   const log = new ToolCallLog(state, { AUDIT_CHAIN_KEY: "sample-secret" });
-  for (const callId of ["k1", "k2"]) await append(log, { caller: "access:a@example.com", tool: "sample_tool", phase: "started", callId, args: {} });
+  for (const callId of ["k1", "k2"])
+    await append(log, {
+      caller: "access:a@example.com",
+      tool: "sample_tool",
+      phase: "started",
+      callId,
+      args: {},
+    });
   const rows = () => db.prepare("SELECT * FROM calls ORDER BY seq").all();
   assert.deepEqual(await verifyAuditChain(rows(), "sample-secret"), { ok: true, hashed: 2 });
 
@@ -61,8 +97,22 @@ test("PLANT: with the key bound, an editor who recomputes the chain without the 
   db.exec("UPDATE calls SET args = '{\"forged\":true}' WHERE seq = 1");
   let previous = "";
   for (const r of rows()) {
-    const fields = ["at", "call_id", "phase", "caller", "tool", "args", "result", "server", "version", "client_id", "correlation_id"];
-    previous = createHash("sha256").update(`${previous}\n${JSON.stringify(fields.map((f) => r[f] ?? null))}`).digest("hex");
+    const fields = [
+      "at",
+      "call_id",
+      "phase",
+      "caller",
+      "tool",
+      "args",
+      "result",
+      "server",
+      "version",
+      "client_id",
+      "correlation_id",
+    ];
+    previous = createHash("sha256")
+      .update(`${previous}\n${JSON.stringify(fields.map((f) => r[f] ?? null))}`)
+      .digest("hex");
     db.prepare("UPDATE calls SET hash = ? WHERE seq = ?").run(previous, r.seq);
   }
   assert.deepEqual(await verifyAuditChain(rows()), { ok: true, hashed: 2 }); // what plain SHA-256 cannot catch
@@ -72,31 +122,72 @@ test("PLANT: with the key bound, an editor who recomputes the chain without the 
 test("PLANT: the copy lands in R2 and checks on its own; only copied rows past retention go; a late finished row alerts", async () => {
   const { db, state } = storage();
   const log = new ToolCallLog(state);
-  const env = { TOOL_CALL_LOG: { idFromName: () => "id", get: () => ({ fetch: (url, init) => log.fetch(new Request(url, init)) }) } };
-  for (const callId of ["e1", "e2", "e3"]) await append(log, { caller: "agent:sample", tool: "t", phase: "started", callId, args: {} });
-  await append(log, { caller: "agent:sample", tool: "t", phase: "finished", callId: "e1", args: {} });
+  const env = {
+    TOOL_CALL_LOG: {
+      idFromName: () => "id",
+      get: () => ({ fetch: (url, init) => log.fetch(new Request(url, init)) }),
+    },
+  };
+  for (const callId of ["e1", "e2", "e3"])
+    await append(log, { caller: "agent:sample", tool: "t", phase: "started", callId, args: {} });
+  await append(log, {
+    caller: "agent:sample",
+    tool: "t",
+    phase: "finished",
+    callId: "e1",
+    args: {},
+  });
   // e2 started an hour ago and never finished; e1's and e3's rows are long past retention.
-  db.prepare("UPDATE calls SET at = ? WHERE call_id = 'e2'").run(new Date(Date.now() - 3_600_000).toISOString());
+  db.prepare("UPDATE calls SET at = ? WHERE call_id = 'e2'").run(
+    new Date(Date.now() - 3_600_000).toISOString(),
+  );
   db.exec("UPDATE calls SET at = '2020-01-01T00:00:00.000Z' WHERE call_id IN ('e1', 'e3')");
   const check = auditLogCheck(env);
-  assert.equal((await check.run()).detail, "1 call(s) with no finished row after 15 minutes; 4 row(s) not copied for over 2 days");
+  assert.equal(
+    (await check.run()).detail,
+    "1 call(s) with no finished row after 15 minutes; 4 row(s) not copied for over 2 days",
+  );
 
   // Rows never copied are never deleted, however old.
-  const mark = await log.fetch(new Request("https://tool-call-log.invalid/exported", { method: "POST", body: JSON.stringify({ seq: 0, hash: null }) }));
+  const mark = await log.fetch(
+    new Request("https://tool-call-log.invalid/exported", {
+      method: "POST",
+      body: JSON.stringify({ seq: 0, hash: null }),
+    }),
+  );
   assert.equal((await mark.json()).pruned, 0);
 
   const bucket = new Map();
   const r2 = { put: async (key, value) => void bucket.set(key, JSON.parse(value)) };
   const first = await exportAuditLog(env, r2, { keepDays: 30 });
   // e1's started row and e3 go; e2 is recent, and e1's finished row is the newest, which the next append chains to.
-  assert.deepEqual(first, { exported: 4, objects: ["tool-calls/000000000001-000000000004.json"], pruned: 2 });
-  assert.deepEqual(db.prepare("SELECT seq FROM calls").all().map((r) => r.seq), [2, 4]);
+  assert.deepEqual(first, {
+    exported: 4,
+    objects: ["tool-calls/000000000001-000000000004.json"],
+    pruned: 2,
+  });
+  assert.deepEqual(
+    db
+      .prepare("SELECT seq FROM calls")
+      .all()
+      .map((r) => r.seq),
+    [2, 4],
+  );
 
   // The next copy chains on from the last, and checks only with the hash before it.
-  await append(log, { caller: "agent:sample", tool: "t", phase: "refused", callId: "e4", args: {} });
+  await append(log, {
+    caller: "agent:sample",
+    tool: "t",
+    phase: "refused",
+    callId: "e4",
+    args: {},
+  });
   await exportAuditLog(env, r2);
   const copy = bucket.get("tool-calls/000000000005-000000000005.json");
-  assert.deepEqual(await verifyAuditChain(copy.rows, undefined, copy.previous), { ok: true, hashed: 1 });
+  assert.deepEqual(await verifyAuditChain(copy.rows, undefined, copy.previous), {
+    ok: true,
+    hashed: 1,
+  });
   assert.deepEqual(await verifyAuditChain(copy.rows), { ok: false, seq: 5 });
 });
 

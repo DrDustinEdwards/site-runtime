@@ -7,24 +7,52 @@ test("a stale backup warns at 200 with ok true; a database that throws fails at 
   let reads = 0;
   /** @type {Map<string, Response>} */
   const kept = new Map();
-  const cache = { match: async (/** @type {string} */ k) => kept.get(k)?.clone(), put: async (/** @type {string} */ k, /** @type {Response} */ r) => void kept.set(k, r) };
-  const backup = async () => (reads++, { last_ok: "2026-10-24T00:00:00Z", warning: "backup older than 26 hours" });
+  const cache = {
+    match: async (/** @type {string} */ k) => kept.get(k)?.clone(),
+    put: async (/** @type {string} */ k, /** @type {Response} */ r) => void kept.set(k, r),
+  };
+  const backup = async () => (
+    reads++,
+    { last_ok: "2026-10-24T00:00:00Z", warning: "backup older than 26 hours" }
+  );
   const at = (/** @type {number} */ ms) => new Date(Date.UTC(2026, 9, 25) + ms);
-  const first = await healthResponse({ ping: async () => 1, backup, sha: "abc123", now: at(0), cache });
+  const first = await healthResponse({
+    ping: async () => 1,
+    backup,
+    sha: "abc123",
+    now: at(0),
+    cache,
+  });
   assert.equal(first.status, 200);
   assert.equal(first.headers.get("Content-Type"), "application/health+json; charset=utf-8");
-  assert.deepEqual({ ...(await first.json()), backup: undefined }, {
-    status: "warn",
-    ok: true,
-    db: "up",
-    backup: undefined,
-    sha: "abc123",
-    time: at(0).toISOString(),
-    checks: [{ name: "db", status: "pass" }, { name: "backup", status: "warn", detail: "backup older than 26 hours" }],
+  assert.deepEqual(
+    { ...(await first.json()), backup: undefined },
+    {
+      status: "warn",
+      ok: true,
+      db: "up",
+      backup: undefined,
+      sha: "abc123",
+      time: at(0).toISOString(),
+      checks: [
+        { name: "db", status: "pass" },
+        { name: "backup", status: "warn", detail: "backup older than 26 hours" },
+      ],
+    },
+  );
+  const down = await healthResponse({
+    ping: async () => {
+      throw new Error("D1");
+    },
+    backup,
+    now: at(60_000),
+    cache,
   });
-  const down = await healthResponse({ ping: async () => { throw new Error("D1"); }, backup, now: at(60_000), cache });
   assert.equal(down.status, 503);
-  assert.deepEqual((({ status, ok }) => ({ status, ok }))(await down.json()), { status: "fail", ok: false });
+  assert.deepEqual((({ status, ok }) => ({ status, ok }))(await down.json()), {
+    status: "fail",
+    ok: false,
+  });
   assert.equal(reads, 1);
   assert.equal(reads, 1);
   await healthResponse({ ping: async () => 1, backup, now: at(5 * 60_000), backupTtlMs: 0, cache });
@@ -49,7 +77,18 @@ test("a check that hangs fails at the timeout; a warn check never makes it 503, 
   ]);
   // An alert stays a warning (ok, 200: no rollback) and is named for the watcher to mail on.
   assert.deepEqual([body.ok, body.alerts], [true, ["auth-spike"]]);
-  const failed = await healthResponse({ checks: [{ name: "r2", run: async () => { throw new Error("no access for a@example.com"); } }] });
+  const failed = await healthResponse({
+    checks: [
+      {
+        name: "r2",
+        run: async () => {
+          throw new Error("no access for a@example.com");
+        },
+      },
+    ],
+  });
   assert.equal(failed.status, 503);
-  assert.deepEqual((await failed.json()).checks, [{ name: "r2", status: "fail", detail: "no access for [email]" }]);
+  assert.deepEqual((await failed.json()).checks, [
+    { name: "r2", status: "fail", detail: "no access for [email]" },
+  ]);
 });

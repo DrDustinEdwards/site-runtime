@@ -4,7 +4,21 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, test } from "node:test";
 
-import { ACCESS_COOKIE, ACCESS_JWT_HEADER, ACCESS_LOGOUT_PATH, ADMIN_SEEN_COOKIE, BACKGROUND_HEADER, REFETCH_COOLDOWN_MS, accessAdmin, adminIdle, accessIssuer, accessKeys, accessToken, adminEmails, verifyAccessRequest } from "../access.mjs";
+import {
+  ACCESS_COOKIE,
+  ACCESS_JWT_HEADER,
+  ACCESS_LOGOUT_PATH,
+  ADMIN_SEEN_COOKIE,
+  BACKGROUND_HEADER,
+  REFETCH_COOLDOWN_MS,
+  accessAdmin,
+  adminIdle,
+  accessIssuer,
+  accessKeys,
+  accessToken,
+  adminEmails,
+  verifyAccessRequest,
+} from "../access.mjs";
 import { base64url } from "../encoding.mjs";
 import { encode, other, pair, publicJwk, keys, sign } from "./jwt.mjs";
 
@@ -15,8 +29,14 @@ const AUD = "aud-tag-1";
 const now = Math.floor(Date.now() / 1000);
 /** Access's request token: aud is an array of application tags; a person has an email, a service token a common_name. */
 /** @param {Record<string, unknown>} [over] */
-const claims = (over = {}) => ({ iss: ISSUER, aud: [AUD], exp: now + 300, iat: now, email: "admin@example.com", ...over });
-
+const claims = (over = {}) => ({
+  iss: ISSUER,
+  aud: [AUD],
+  exp: now + 300,
+  iat: now,
+  email: "admin@example.com",
+  ...over,
+});
 
 /** @param {Record<string, string>} headers */
 const request = (headers = {}) => new Request("https://example.com/admin", { headers });
@@ -24,13 +44,30 @@ const config = { teamDomain: TEAM, audience: AUD, keys };
 
 describe("accessIssuer", () => {
   test("is https://<team domain> with no trailing slash, whichever way the domain is kept", () => {
-    for (const domain of [TEAM, `${TEAM}/`, `https://${TEAM}`, `https://${TEAM}//`, `  ${TEAM} `, "Sample.CloudflareAccess.com"]) {
+    for (const domain of [
+      TEAM,
+      `${TEAM}/`,
+      `https://${TEAM}`,
+      `https://${TEAM}//`,
+      `  ${TEAM} `,
+      "Sample.CloudflareAccess.com",
+    ]) {
       assert.equal(accessIssuer(domain), ISSUER);
     }
   });
 
   test("a missing domain, one that is not a bare host, or one off cloudflareaccess.com is null", () => {
-    for (const domain of [undefined, "", "  ", "https://", `${TEAM}/cdn-cgi`, `http://${TEAM}`, "team domain", "attacker.example", "sample.cloudflareaccess.com.attacker.example"]) {
+    for (const domain of [
+      undefined,
+      "",
+      "  ",
+      "https://",
+      `${TEAM}/cdn-cgi`,
+      `http://${TEAM}`,
+      "team domain",
+      "attacker.example",
+      "sample.cloudflareaccess.com.attacker.example",
+    ]) {
       assert.equal(accessIssuer(domain), null);
     }
   });
@@ -41,40 +78,77 @@ describe("accessToken", () => {
   test("reads the header, and the cookie only when asked", () => {
     assert.equal(accessToken(request({ [ACCESS_JWT_HEADER]: token })), token);
     assert.equal(accessToken(request({ cookie: `a=1; ${ACCESS_COOKIE}=${token}; b=2` })), null);
-    assert.equal(accessToken(request({ cookie: `a=1; ${ACCESS_COOKIE}=${token}; b=2` }), { cookie: true }), token);
+    assert.equal(
+      accessToken(request({ cookie: `a=1; ${ACCESS_COOKIE}=${token}; b=2` }), { cookie: true }),
+      token,
+    );
   });
 
   test("the header wins over the cookie, and an empty cookie or one with a longer name is no token", () => {
-    assert.equal(accessToken(request({ [ACCESS_JWT_HEADER]: "header", cookie: `${ACCESS_COOKIE}=cookie` }), { cookie: true }), "header");
+    assert.equal(
+      accessToken(request({ [ACCESS_JWT_HEADER]: "header", cookie: `${ACCESS_COOKIE}=cookie` }), {
+        cookie: true,
+      }),
+      "header",
+    );
     assert.equal(accessToken(request({ cookie: `${ACCESS_COOKIE}=` }), { cookie: true }), null);
-    assert.equal(accessToken(request({ cookie: `X${ACCESS_COOKIE}=${token}` }), { cookie: true }), null);
+    assert.equal(
+      accessToken(request({ cookie: `X${ACCESS_COOKIE}=${token}` }), { cookie: true }),
+      null,
+    );
   });
 });
 
 describe("verifyAccessRequest", () => {
   test("returns the claims of a token Access signed for this application", async () => {
-    const verdict = await verifyAccessRequest(request({ [ACCESS_JWT_HEADER]: await sign(claims()) }), config);
+    const verdict = await verifyAccessRequest(
+      request({ [ACCESS_JWT_HEADER]: await sign(claims()) }),
+      config,
+    );
     assert.equal(verdict.ok && verdict.claims.email, "admin@example.com");
-    const service = await verifyAccessRequest(request({ [ACCESS_JWT_HEADER]: await sign(claims({ email: undefined, common_name: "svc.access" })) }), config);
+    const service = await verifyAccessRequest(
+      request({
+        [ACCESS_JWT_HEADER]: await sign(claims({ email: undefined, common_name: "svc.access" })),
+      }),
+      config,
+    );
     assert.equal(service.ok && service.claims.common_name, "svc.access");
-    const single = await verifyAccessRequest(request({ [ACCESS_JWT_HEADER]: await sign(claims({ aud: AUD })) }), config);
+    const single = await verifyAccessRequest(
+      request({ [ACCESS_JWT_HEADER]: await sign(claims({ aud: AUD })) }),
+      config,
+    );
     assert.equal(single.ok, true);
   });
 
   test("reads the CF_Authorization cookie only when the caller asks", async () => {
     const cookie = `${ACCESS_COOKIE}=${await sign(claims())}`;
-    assert.deepEqual(await verifyAccessRequest(request({ cookie }), config), { ok: false, reason: "no-token" });
-    assert.equal((await verifyAccessRequest(request({ cookie }), { ...config, cookie: true })).ok, true);
+    assert.deepEqual(await verifyAccessRequest(request({ cookie }), config), {
+      ok: false,
+      reason: "no-token",
+    });
+    assert.equal(
+      (await verifyAccessRequest(request({ cookie }), { ...config, cookie: true })).ok,
+      true,
+    );
   });
 
   test("PLANT: a missing setting keeps the door shut", async () => {
     const req = request({ [ACCESS_JWT_HEADER]: await sign(claims()) });
-    assert.deepEqual(await verifyAccessRequest(req, { ...config, teamDomain: undefined }), { ok: false, reason: "not-configured" });
-    assert.deepEqual(await verifyAccessRequest(req, { ...config, audience: " " }), { ok: false, reason: "not-configured" });
+    assert.deepEqual(await verifyAccessRequest(req, { ...config, teamDomain: undefined }), {
+      ok: false,
+      reason: "not-configured",
+    });
+    assert.deepEqual(await verifyAccessRequest(req, { ...config, audience: " " }), {
+      ok: false,
+      reason: "not-configured",
+    });
   });
 
   test("no token is no-token", async () => {
-    assert.deepEqual(await verifyAccessRequest(request(), config), { ok: false, reason: "no-token" });
+    assert.deepEqual(await verifyAccessRequest(request(), config), {
+      ok: false,
+      reason: "no-token",
+    });
   });
 
   test("PLANT: each fault in the token is refused with its reason", async () => {
@@ -96,12 +170,22 @@ describe("verifyAccessRequest", () => {
       [`${encode({ alg: "RS256", kid: "k1" })}.${encode([1])}.x`, "malformed"],
     ];
     for (const [token, reason] of cases) {
-      assert.deepEqual(await verifyAccessRequest(request({ [ACCESS_JWT_HEADER]: token }), config), { ok: false, reason }, reason);
+      assert.deepEqual(
+        await verifyAccessRequest(request({ [ACCESS_JWT_HEADER]: token }), config),
+        { ok: false, reason },
+        reason,
+      );
     }
   });
 
   test("allows 60 seconds of clock skew either way, and no more", async () => {
-    const at = async (/** @type {Record<string, unknown>} */ over) => (await verifyAccessRequest(request({ [ACCESS_JWT_HEADER]: await sign(claims(over)) }), config)).ok;
+    const at = async (/** @type {Record<string, unknown>} */ over) =>
+      (
+        await verifyAccessRequest(
+          request({ [ACCESS_JWT_HEADER]: await sign(claims(over)) }),
+          config,
+        )
+      ).ok;
     assert.equal(await at({ exp: now - 30 }), true);
     assert.equal(await at({ nbf: now + 30 }), true);
     assert.equal(await at({ exp: now - 90 }), false);
@@ -110,7 +194,10 @@ describe("verifyAccessRequest", () => {
 
   test("`now` sets the clock, in milliseconds", async () => {
     const req = request({ [ACCESS_JWT_HEADER]: await sign(claims()) });
-    assert.deepEqual(await verifyAccessRequest(req, { ...config, now: (now + 600) * 1000 }), { ok: false, reason: "expired" });
+    assert.deepEqual(await verifyAccessRequest(req, { ...config, now: (now + 600) * 1000 }), {
+      ok: false,
+      reason: "expired",
+    });
   });
 });
 
@@ -149,7 +236,10 @@ describe("accessKeys", () => {
   test("verifies a request end to end through the fetched keys", async () => {
     const domain = freshTeam();
     const token = await sign(claims({ iss: `https://${domain}` }));
-    const verdict = await verifyAccessRequest(request({ [ACCESS_JWT_HEADER]: token }), { teamDomain: domain, audience: AUD });
+    const verdict = await verifyAccessRequest(request({ [ACCESS_JWT_HEADER]: token }), {
+      teamDomain: domain,
+      audience: AUD,
+    });
     assert.equal(verdict.ok, true);
   });
 
@@ -158,11 +248,20 @@ describe("accessKeys", () => {
     const token = await sign(claims({ iss: `https://${domain}` }));
     const req = () => request({ [ACCESS_JWT_HEADER]: token });
     certs = () => new Response("down", { status: 503 });
-    await assert.rejects(verifyAccessRequest(req(), { teamDomain: domain, audience: AUD }), /answered 503/);
+    await assert.rejects(
+      verifyAccessRequest(req(), { teamDomain: domain, audience: AUD }),
+      /answered 503/,
+    );
     certs = () => new Response("<html>");
-    await assert.rejects(verifyAccessRequest(req(), { teamDomain: domain, audience: AUD }), /not a key set/);
+    await assert.rejects(
+      verifyAccessRequest(req(), { teamDomain: domain, audience: AUD }),
+      /not a key set/,
+    );
     certs = () => Promise.reject(new TypeError("fetch failed"));
-    await assert.rejects(verifyAccessRequest(req(), { teamDomain: domain, audience: AUD }), /fetch failed/);
+    await assert.rejects(
+      verifyAccessRequest(req(), { teamDomain: domain, audience: AUD }),
+      /fetch failed/,
+    );
   });
 
   test("PLANT: within the cooldown a forged kid does not refetch, however many tokens name it", async () => {
@@ -191,23 +290,54 @@ describe("accessKeys", () => {
 });
 
 describe("accessAdmin", () => {
-  const env = { ACCESS_TEAM_DOMAIN: TEAM, ACCESS_AUD: AUD, ADMIN_EMAIL: " Admin@Example.com, second@example.com" };
+  const env = {
+    ACCESS_TEAM_DOMAIN: TEAM,
+    ACCESS_AUD: AUD,
+    ADMIN_EMAIL: " Admin@Example.com, second@example.com",
+  };
   test("passes a listed email in any case, and nobody else", async () => {
     const token = await sign(claims({ email: "ADMIN@example.com" }));
-    assert.deepEqual(await accessAdmin(request({ [ACCESS_JWT_HEADER]: token }), env, { keys }), { email: "admin@example.com" });
-    assert.equal(await accessAdmin(request({ cookie: `${ACCESS_COOKIE}=${token}` }), env, { keys, admins: ["someone@example.com"] }), null);
-    assert.equal(await accessAdmin(request({ [ACCESS_JWT_HEADER]: token }), { ...env, ADMIN_EMAIL: "" }, { keys }), null);
-    assert.deepEqual(adminEmails({ ADMIN_EMAILS: "A@example.com,,b@example.com ", ADMIN_EMAIL: "c@example.com" }), ["a@example.com", "b@example.com"]);
+    assert.deepEqual(await accessAdmin(request({ [ACCESS_JWT_HEADER]: token }), env, { keys }), {
+      email: "admin@example.com",
+    });
+    assert.equal(
+      await accessAdmin(request({ cookie: `${ACCESS_COOKIE}=${token}` }), env, {
+        keys,
+        admins: ["someone@example.com"],
+      }),
+      null,
+    );
+    assert.equal(
+      await accessAdmin(
+        request({ [ACCESS_JWT_HEADER]: token }),
+        { ...env, ADMIN_EMAIL: "" },
+        { keys },
+      ),
+      null,
+    );
+    assert.deepEqual(
+      adminEmails({ ADMIN_EMAILS: "A@example.com,,b@example.com ", ADMIN_EMAIL: "c@example.com" }),
+      ["a@example.com", "b@example.com"],
+    );
   });
 
   test("PLANT: the development bypass opens localhost only, and keys that cannot be fetched refuse", async () => {
     const bypass = { ...env, ACCESS_DEV_BYPASS: "1" };
-    assert.deepEqual(await accessAdmin(new Request("http://localhost:5173/admin"), bypass), { email: "admin@example.com" });
-    assert.equal(await accessAdmin(new Request("https://example.com/admin"), bypass, { keys }), null);
+    assert.deepEqual(await accessAdmin(new Request("http://localhost:5173/admin"), bypass), {
+      email: "admin@example.com",
+    });
+    assert.equal(
+      await accessAdmin(new Request("https://example.com/admin"), bypass, { keys }),
+      null,
+    );
     const logged = console.error;
     console.error = () => {};
-    const down = async () => { throw new Error("certs unreachable"); };
-    const verdict = await accessAdmin(request({ [ACCESS_JWT_HEADER]: await sign(claims()) }), env, { keys: down });
+    const down = async () => {
+      throw new Error("certs unreachable");
+    };
+    const verdict = await accessAdmin(request({ [ACCESS_JWT_HEADER]: await sign(claims()) }), env, {
+      keys: down,
+    });
     console.error = logged;
     assert.equal(verdict, null);
   });
@@ -218,28 +348,53 @@ test("PLANT: an admin idle past the hour is sent to Access's logout; the seen co
   const secret = "server-only-test-secret-of-32-chars";
   const at = (cookie) => new Request("https://example.com/admin", { headers: { cookie } });
   // No key, or a short one, with a session to time: it throws, so a Worker missing ADMIN_IDLE_SECRET fails closed.
-  await assert.rejects(adminIdle(at(`${ACCESS_COOKIE}=${token}`), /** @type {any} */ ({ now: now * 1000 })), TypeError);
-  await assert.rejects(adminIdle(at(`${ACCESS_COOKIE}=${token}`), { now: now * 1000, secret: "short" }), TypeError);
+  await assert.rejects(
+    adminIdle(at(`${ACCESS_COOKIE}=${token}`), /** @type {any} */ ({ now: now * 1000 })),
+    TypeError,
+  );
+  await assert.rejects(
+    adminIdle(at(`${ACCESS_COOKIE}=${token}`), { now: now * 1000, secret: "short" }),
+    TypeError,
+  );
   const log = console.log;
   console.log = () => {};
   const stale = await adminIdle(at(`${ACCESS_COOKIE}=${token}`), { now: now * 1000, secret });
   console.log = log;
   assert.equal(stale.idle && stale.response.headers.get("location"), ACCESS_LOGOUT_PATH);
   // A request 30 minutes ago, recorded for this token, keeps the session; its cookie does nothing for another token.
-  const earlier = await adminIdle(at(`${ACCESS_COOKIE}=${await sign(claims({ iat: now - 3600 }))}`), { now: (now - 1800) * 1000, secret });
-  const fresh = await adminIdle(at(`${ACCESS_COOKIE}=${token}`), { now: (now - 1800) * 1000, secret });
+  const earlier = await adminIdle(
+    at(`${ACCESS_COOKIE}=${await sign(claims({ iat: now - 3600 }))}`),
+    { now: (now - 1800) * 1000, secret },
+  );
+  const fresh = await adminIdle(at(`${ACCESS_COOKIE}=${token}`), {
+    now: (now - 1800) * 1000,
+    secret,
+  });
   const seen = /** @type {{ cookie: string }} */ (fresh).cookie.split(";")[0];
-  assert.equal((await adminIdle(at(`${ACCESS_COOKIE}=${token}; ${seen}`), { now: now * 1000, secret })).idle, false);
+  assert.equal(
+    (await adminIdle(at(`${ACCESS_COOKIE}=${token}; ${seen}`), { now: now * 1000, secret })).idle,
+    false,
+  );
   console.log = () => {};
-  const copied = await adminIdle(at(`${ACCESS_COOKIE}=${token}; ${/** @type {{ cookie: string }} */ (earlier).cookie.split(";")[0]}`), { now: now * 1000, secret });
+  const copied = await adminIdle(
+    at(
+      `${ACCESS_COOKIE}=${token}; ${/** @type {{ cookie: string }} */ (earlier).cookie.split(";")[0]}`,
+    ),
+    { now: now * 1000, secret },
+  );
   console.log = log;
   assert.equal(copied.idle, true);
   // The token's holder signs "now" with what the token shows (sub and iat): without the server's secret it is ignored.
   const raw = new TextEncoder().encode(`${claims().sub}.${now - 5400}`);
-  const key = await crypto.subtle.importKey("raw", raw, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const key = await crypto.subtle.importKey("raw", raw, { name: "HMAC", hash: "SHA-256" }, false, [
+    "sign",
+  ]);
   const forged = `${ADMIN_SEEN_COOKIE}=${now}.${base64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(String(now)))))}`;
   console.log = () => {};
-  assert.equal((await adminIdle(at(`${ACCESS_COOKIE}=${token}; ${forged}`), { now: now * 1000, secret })).idle, true);
+  assert.equal(
+    (await adminIdle(at(`${ACCESS_COOKIE}=${token}; ${forged}`), { now: now * 1000, secret })).idle,
+    true,
+  );
   console.log = log;
   assert.ok(seen.startsWith(`${ADMIN_SEEN_COOKIE}=`));
 });
@@ -247,9 +402,13 @@ test("PLANT: an admin idle past the hour is sent to Access's logout; the seen co
 test("PLANT: a background request is timed but does not keep the admin awake; a host's own session is timed like a token", async () => {
   const token = await sign(claims({ iat: now - 1800 }));
   const secret = "server-only-test-secret-of-32-chars";
-  const poll = new Request("https://example.com/admin/feed", { headers: { cookie: `${ACCESS_COOKIE}=${token}`, [BACKGROUND_HEADER]: "1" } });
+  const poll = new Request("https://example.com/admin/feed", {
+    headers: { cookie: `${ACCESS_COOKIE}=${token}`, [BACKGROUND_HEADER]: "1" },
+  });
   assert.deepEqual(await adminIdle(poll, { now: now * 1000, secret }), { idle: false });
-  const prefetch = new Request("https://example.com/admin", { headers: { cookie: `${ACCESS_COOKIE}=${token}`, "sec-purpose": "prefetch;prerender" } });
+  const prefetch = new Request("https://example.com/admin", {
+    headers: { cookie: `${ACCESS_COOKIE}=${token}`, "sec-purpose": "prefetch;prerender" },
+  });
   assert.deepEqual(await adminIdle(prefetch, { now: now * 1000, secret }), { idle: false });
   // No Access token: the session the host hands in is what is timed, and its seen cookie is good for it alone.
   const session = { id: "opaque-1", signedInAt: (now - 5400) * 1000 };
@@ -259,10 +418,19 @@ test("PLANT: a background request is timed but does not keep the admin awake; a 
   assert.equal((await adminIdle(bare(seen), { session, now: now * 1000, secret })).idle, false);
   const log = console.log;
   console.log = () => {};
-  const other = await adminIdle(bare(seen), { session: { ...session, id: "opaque-2" }, now: now * 1000, secret });
+  const other = await adminIdle(bare(seen), {
+    session: { ...session, id: "opaque-2" },
+    now: now * 1000,
+    secret,
+  });
   console.log = log;
   assert.equal(other.idle, true);
   // A second Access app's check keeps its own cookie, so this one's is left alone.
-  const lab = await adminIdle(bare(), { session, now: (now - 1800) * 1000, cookieName: "__Host-lab-seen", secret });
+  const lab = await adminIdle(bare(), {
+    session,
+    now: (now - 1800) * 1000,
+    cookieName: "__Host-lab-seen",
+    secret,
+  });
   assert.ok(/** @type {{ cookie: string }} */ (lab).cookie.startsWith("__Host-lab-seen="));
 });

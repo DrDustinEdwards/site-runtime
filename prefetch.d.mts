@@ -24,4 +24,7 @@ export function speculationRules(options?: SpeculationOptions): Record<string, u
 /** The rules as application/speculationrules+json, cached a day; with `request`, encoded as it accepts (br, else gzip). */
 export function speculationRulesResponse(options?: SpeculationOptions, request?: Request): Response;
 /** The header every page response carries. */
-export const SPECULATION_RULES_HEADER: { readonly name: "Speculation-Rules"; readonly value: string };
+export const SPECULATION_RULES_HEADER: {
+  readonly name: "Speculation-Rules";
+  readonly value: string;
+};
