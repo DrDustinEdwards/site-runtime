@@ -4,7 +4,7 @@ The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-
 (the root export and `./headers`, `./csp`, `./csp-report`, `./check`, `./owasp`), the rate limiter (`./rate-limit`,
 `./rate-limit/durable-object`), the members model (`./members`), the Access for SaaS sign-in (`./access-login`), the MCP
 servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-log`), server scaffold (`./mcp-server`), the admin MCP Worker built from them (`./admin-mcp`) and named agent keys (`./agent-keys`), the Access request-token check
-(`./access`), the check that an Access application lets in exactly the site's admins (`./access-drift`, `site-runtime-access-drift`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images and their edits (`./image`), link prefetch (`./prefetch`), preloads and Early Hints (`./preload`), the Worker in front of a static site (`./static-site`), the edge page cache (`./edge-cache`), the Server-Timing header (`./server-timing`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), the signed token behind emailed links (`./signed-token`), where a site's Anthropic calls go
+(`./access`), the check that an Access application lets in exactly the site's admins (`./access-drift`, `site-runtime-access-drift`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the one mail send (`./email`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images and their edits (`./image`), link prefetch (`./prefetch`), preloads and Early Hints (`./preload`), the Worker in front of a static site (`./static-site`), the edge page cache (`./edge-cache`), the Server-Timing header (`./server-timing`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), the signed token behind emailed links (`./signed-token`), where a site's Anthropic calls go
 (`./ai-gateway`), starting a Claude Code routine (`./routine`), the check on AI-written prose with the measure of an author's voice (`./prose`), the one sign-in every site
 offers (`./sign-in`, `./sign-in-client`, `./apple-secret`), the Cloudflare Turnstile widget and its server check (`./turnstile`), the same-origin check for
 resource routes (`./origin`), the trailing-slash redirect, the gone list and the slug-rename redirect (`./url`), one structured log line and its scrubbers (`./log`), the 404 counter
@@ -1482,6 +1482,29 @@ async scheduled(controller, env, ctx) {
   `stale`, `never succeeded` or `never ran`, for a site that mails its own alert from it (Foxhound's stale-cron email).
 
 **Tests.** `test/cron.test.mjs` (on an in-memory SQLite with `CRON_SQL`) and `test/health.test.mjs`.
+
+## Sending mail
+
+`./email` is the one call that hands a mail to Cloudflare Email Service's `send_email` binding
+([Workers API](https://developers.cloudflare.com/email-service/api/send-emails/workers-api/)): a site's sign-in mail, its
+notices and the owner's alerts.
+
+```js
+import { sendEmail } from "@dustinedwards/site-runtime/email";
+const outcome = await sendEmail(env.EMAIL, { from: { email: env.EMAIL_FROM, name: "Example Co" }, to, ...rendered }, { secrets: [url, code] });
+if (!outcome.sent) throw new Error(`Email not sent (${outcome.code}).`);
+```
+
+- It never throws. `{ sent: true, messageId }`, or `{ sent: false, code, error }`: `code` is the binding's own
+  (`E_SENDER_NOT_VERIFIED`, `E_RATE_LIMIT_EXCEEDED`, ...), `not_configured` for a missing binding, sender or recipient,
+  `header_line_break`, or `unknown`.
+- A from, to or reply-to holding a line break is refused before the binding is called, since it would start a header of
+  the sender's choosing; a subject's line breaks fold to one space, and a display name loses its quotes.
+- Each of `secrets` and every recipient is cut out of `error`, so a provider that echoes the message cannot put a sign-in
+  link in a log or a database row. `redact(text, secrets)` is the same cut for an error from elsewhere.
+- A failure writes one `email_send_failed` line (`./log`) with the code and the cut error, never the body.
+
+The `emailCheck` in `./health` checks the binding is present without sending.
 
 ## A constant-time secret compare
 
