@@ -2155,8 +2155,9 @@ export default adminMcpWorker({
   allowing only `DCR_CALLBACKS` and `DCR_REDIRECT_URIS` exactly, after `registrationLimited`. `/authorize`, `/callback`,
   `/owner` and `/health` are `loginHandler`'s.
 - `/health`: `oauth-kv`, the site binding (`api.name`, by presence), `mcp-rate-limit` and `tool-call-log-binding` fail;
-  `audit-bucket` warns; `api.reach`, a URL the site answers without its API, adds a warn-level request; `checks(env)`
-  adds the server's own; then `auditLogCheck`.
+  `audit-bucket` warns; `<api.name>-reach`, a request over the binding to `https://<api.name>.invalid/` that the site
+  answers without its API, warns when the answer is a 5xx, so every server shows a site that is down; `checks(env)` adds
+  a binding only that server has (dustinedwards-info's `probe-kv`); then `auditLogCheck`.
 - `scheduled` copies the tool-call log to `AUDIT_BUCKET` and prunes it (`exportAuditLog`), and throws without the bucket.
 - `routes(request, env, ctx)` answers a server's own paths first (dustinedwards-info's `/probe`); null goes on.
 
