@@ -59,8 +59,9 @@ export type SiteEntry = {
 };
 /** Admin pages (a path on the site, or a URL on another host) and MCP server URLs the live sign-in check must find gated. */
 export type SignInProbes = { admin?: readonly string[]; mcp?: readonly string[] };
-/** The checklist items no family site can meet, by id, with why; the live check reports each as a notice. */
-export const FAMILY_DEVIATIONS: Readonly<Record<string, string>>;
+// FAMILY_DEVIATIONS (the items no family site can meet) is not declared here: `./sites` is sites-values.mjs, which
+// holds no reasons, so an import of it would type-check and then fail. sites.mjs keeps it for update-sites-values.mjs,
+// which writes it into sites-deviations.mjs, and only the check reads it from there.
 export { PASSKEY_OVERRIDES, permissionsAllowingSelf } from "./headers.mjs";
 /** One export per entry, so a Worker bundles only its own. */
 export const dustinedwardsInfo: SiteEntry, foxhound: SiteEntry, foxing: SiteEntry, germomics: SiteEntry, julieedwardsInfo: SiteEntry,

@@ -142,8 +142,13 @@ test("limited answers 429 with the time left, never a success code", async () =>
   assert.equal(response.headers.get("Retry-After"), "45");
 });
 
-test("ipKey shares one anon bucket only without the header, and says so", () => {
+test("ipKey shares one anon bucket only without the header, and says so; an IPv6 /64 is one bucket", () => {
+  const key = (ip) => ipKey("ask", new Request("https://x.test/", { headers: { "CF-Connecting-IP": ip } })).key;
   assert.deepEqual(ipKey("ask", new Request("https://x.test/", { headers: { "CF-Connecting-IP": "9.9.9.9" } })), { key: "ask:9.9.9.9", anonymous: false });
+  assert.equal(key("2001:db8:0:1::1"), "ask:2001-db8-0-1/64");
+  assert.equal(key("2001:0DB8:0000:0001:ffff:1:2:3"), "ask:2001-db8-0-1/64");
+  assert.equal(key("2001:db8::1"), "ask:2001-db8-0-0/64");
+  assert.equal(key("::ffff:192.0.2.1"), "ask:192.0.2.1");
   assert.deepEqual(ipKey("ask", new Request("https://x.test/")), { key: "ask:anon", anonymous: true });
 });
 

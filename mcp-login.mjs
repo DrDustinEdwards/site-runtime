@@ -26,6 +26,7 @@ import { readCapped } from "./body.mjs";
 import { healthResponse } from "./health.mjs";
 import { escapeHtml as escape } from "./html.mjs";
 import { ownerPage } from "./owner-page.mjs";
+import { ipKey } from "./rate-limit/limit.mjs";
 
 /** @typedef {import("./mcp-login.d.mts").LoginEnv} LoginEnv */
 /** @typedef {import("@cloudflare/workers-oauth-provider").AuthRequest} AuthRequest */
@@ -385,9 +386,10 @@ export function registrationRefusal(configured, clientMetadata) {
  * @returns {Promise<Response | null>}
  */
 export async function registrationLimited(request, kv, now = Date.now()) {
-  const address = request.headers.get("CF-Connecting-IP") ?? "unknown";
+  // One address is an IPv4 address or an IPv6 /64 (ipKey), so a host cannot register from each address it holds.
+  const address = ipKey("dcr-rate:addr", request).key;
   const keys = [
-    { key: `dcr-rate:addr:${address}:${Math.floor(now / 3_600_000)}`, limit: 5, ttl: 3_700 },
+    { key: `${address}:${Math.floor(now / 3_600_000)}`, limit: 5, ttl: 3_700 },
     { key: `dcr-rate:all:${Math.floor(now / 86_400_000)}`, limit: 30, ttl: 86_500 },
   ];
   const counts = await Promise.all(keys.map(async (k) => Number((await kv.get(k.key)) ?? 0)));

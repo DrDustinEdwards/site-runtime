@@ -4,7 +4,7 @@
  * (bin/site-runtime-security.mjs) all read it, so a site cannot build one set and be graded against another.
  *
  * Change this file, then run `node update-sites-values.mjs`: the package serves it as sites-values.mjs (the values, what
- * a Worker bundles) and sites-reasons.mjs (the reasons and deviations, which only the check reads).
+ * a Worker bundles) and sites-deviations.mjs (the reasons and deviations, which only the check reads).
  *
  * An entry is filled from the site's own code (the file is named beside it), with the reason that code gives. A
  * deviation an audit marked as a gap is left out on purpose, so the check keeps failing it until the site is fixed:

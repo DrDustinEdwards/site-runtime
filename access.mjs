@@ -29,6 +29,9 @@ import { logEvent } from "./log.mjs";
 export const ACCESS_JWT_HEADER = "cf-access-jwt-assertion";
 export const ACCESS_COOKIE = "CF_Authorization";
 
+/** How long a key fetch may take before it fails, so a slow Access endpoint cannot hold a request open. */
+const KEYS_TIMEOUT_MS = 5_000;
+
 /** How long an unknown kid waits before it may refetch the keys again, so a forged kid cannot hammer the endpoint. */
 export const REFETCH_COOLDOWN_MS = 30_000;
 
@@ -56,7 +59,8 @@ const cachedKeys = new Map();
 
 /**
  * The team's signing keys at https://<team domain>/cdn-cgi/access/certs, cached per isolate. A kid not in the cache
- * refetches, at most once per REFETCH_COOLDOWN_MS. A failed fetch, an error status or a body with no key list THROWS.
+ * refetches, at most once per REFETCH_COOLDOWN_MS. A failed or timed-out fetch (KEYS_TIMEOUT_MS), an error status or a
+ * body with no key list THROWS.
  * @param {string} teamDomain
  * @returns {KeySource}
  */
@@ -67,7 +71,7 @@ export function accessKeys(teamDomain) {
   return async (kid, fresh) => {
     let entry = cachedKeys.get(url);
     if (!entry || (fresh && Date.now() - entry.fetchedAt >= REFETCH_COOLDOWN_MS)) {
-      const response = await fetch(url, { headers: { Accept: "application/json" } });
+      const response = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(KEYS_TIMEOUT_MS) });
       if (!response.ok) throw new Error(`the Access keys at ${url} answered ${response.status}`);
       const body = /** @type {{ keys?: unknown }} */ (await response.json().catch(() => ({})));
       if (!Array.isArray(body.keys)) throw new Error(`the Access keys at ${url} are not a key set`);
@@ -219,17 +223,28 @@ function tokenClaims(token) {
   }
 }
 
+/** Whether the missing-secret warning has been logged in this isolate. */
+let warnedUnkeyed = false;
+
 /**
- * HMAC-SHA-256 of the time, keyed by the Access session (the token's `sub` and `iat`, which stay the same if Access
- * signs the token again), so a stale cookie or one copied from another session is ignored.
+ * HMAC-SHA-256 of the session (the token's `sub` and `iat`, which stay the same if Access signs the token again) and
+ * the time, so a stale cookie or one copied from another session is ignored. The key is `secret`, which only the
+ * server holds: `sub` and `iat` are in the token the admin's browser carries, so a cookie keyed by them alone could be
+ * written by whoever holds the token, with any time, and never go idle. Without `secret` it falls back to that, and
+ * logs `admin_idle_unkeyed` once per isolate, so a site that has not set one yet keeps working and is told.
  * @param {Record<string, unknown>} claims
  * @param {string} time
+ * @param {string | undefined} secret
  */
-async function seenMac(claims, time) {
+async function seenMac(claims, time, secret) {
   const enc = new TextEncoder();
-  const secret = enc.encode(`${claims.sub}.${claims.iat}`);
-  const key = await crypto.subtle.importKey("raw", secret, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  return base64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(time))));
+  if (!secret && !warnedUnkeyed) {
+    warnedUnkeyed = true;
+    logEvent("admin_idle_unkeyed", {}, { level: "warn" });
+  }
+  const session = `${claims.sub}.${claims.iat}`;
+  const key = await crypto.subtle.importKey("raw", enc.encode(secret || session), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return base64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(secret ? `${session}.${time}` : time))));
 }
 
 /** The request header a page sets on its polling fetches, so they are timed but do not count as activity. */
@@ -253,12 +268,13 @@ function isBackground(request) {
  * redirect to Access's logout; otherwise `{ idle: false, cookie }`, the Set-Cookie that records this request, for the
  * site to append to its response. A background request (isBackground) is checked but records nothing, so a page left
  * polling does not keep its admin signed in. A site with two Access apps (each its own token) gives each its own
- * `cookieName` (a `__Host-` name), so moving between them does not read the other's cookie as no request.
+ * `cookieName` (a `__Host-` name), so moving between them does not read the other's cookie as no request. `secret`
+ * (a server-only value, such as a Worker secret) keys the cookie's signature (seenMac).
  * @param {Request} request
- * @param {{ idleSeconds?: number, now?: number, session?: { id: string, signedInAt: number } | null, cookieName?: string }} [options] `now` in epoch milliseconds
+ * @param {{ idleSeconds?: number, now?: number, session?: { id: string, signedInAt: number } | null, cookieName?: string, secret?: string }} [options] `now` in epoch milliseconds
  * @returns {Promise<{ idle: true, response: Response } | { idle: false, cookie?: string }>}
  */
-export async function adminIdle(request, { idleSeconds = ADMIN_IDLE_SECONDS, now = Date.now(), session, cookieName = ADMIN_SEEN_COOKIE } = {}) {
+export async function adminIdle(request, { idleSeconds = ADMIN_IDLE_SECONDS, now = Date.now(), session, cookieName = ADMIN_SEEN_COOKIE, secret } = {}) {
   /** @type {Record<string, unknown>} */
   let claims;
   if (session) {
@@ -271,7 +287,7 @@ export async function adminIdle(request, { idleSeconds = ADMIN_IDLE_SECONDS, now
   const seconds = Math.floor(now / 1000);
   const [time, mac] = (cookieValue(request, cookieName) ?? "").split(".");
   const iat = typeof claims.iat === "number" ? claims.iat : null;
-  const seen = time && mac && (await safeEqual(mac, await seenMac(claims, time))) ? Number(time) : iat;
+  const seen = time && mac && (await safeEqual(mac, await seenMac(claims, time, secret))) ? Number(time) : iat;
   if (seen === null || seconds - seen > idleSeconds) {
     logEvent("admin_idle_logout", { idleSeconds });
     return {
@@ -287,7 +303,7 @@ export async function adminIdle(request, { idleSeconds = ADMIN_IDLE_SECONDS, now
     };
   }
   if (isBackground(request)) return { idle: false };
-  const value = `${seconds}.${await seenMac(claims, String(seconds))}`;
+  const value = `${seconds}.${await seenMac(claims, String(seconds), secret)}`;
   return { idle: false, cookie: `${cookieName}=${value}; Path=/; Max-Age=${idleSeconds}; Secure; HttpOnly; SameSite=Lax` };
 }
 
@@ -297,13 +313,13 @@ export async function adminIdle(request, { idleSeconds = ADMIN_IDLE_SECONDS, now
  * straight to `handle`.
  * @param {Request} request
  * @param {() => Promise<Response>} handle
- * @param {{ prefixes?: readonly string[], idleSeconds?: number, session?: { id: string, signedInAt: number } | null, cookieName?: string }} [options]
+ * @param {{ prefixes?: readonly string[], idleSeconds?: number, session?: { id: string, signedInAt: number } | null, cookieName?: string, secret?: string }} [options]
  * @returns {Promise<Response>}
  */
-export async function withAdminIdle(request, handle, { prefixes = ["/admin"], idleSeconds, session, cookieName } = {}) {
+export async function withAdminIdle(request, handle, { prefixes = ["/admin"], idleSeconds, session, cookieName, secret } = {}) {
   const { pathname } = new URL(request.url);
   if (!prefixes.some((prefix) => prefix === "/" || pathname === prefix || pathname.startsWith(`${prefix}/`))) return handle();
-  const gate = await adminIdle(request, { idleSeconds, session, cookieName });
+  const gate = await adminIdle(request, { idleSeconds, session, cookieName, secret });
   if (gate.idle) return gate.response;
   const response = await handle();
   // A WebSocket upgrade (101) goes back untouched: copying it would drop its socket.

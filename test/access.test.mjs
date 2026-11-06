@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, test } from "node:test";
 
 import { ACCESS_COOKIE, ACCESS_JWT_HEADER, ACCESS_LOGOUT_PATH, ADMIN_SEEN_COOKIE, BACKGROUND_HEADER, REFETCH_COOLDOWN_MS, accessAdmin, adminIdle, accessIssuer, accessKeys, accessToken, adminEmails, verifyAccessRequest } from "../access.mjs";
+import { base64url } from "../encoding.mjs";
 import { encode, other, pair, publicJwk, keys, sign } from "./jwt.mjs";
 
 const TEAM = "sample.cloudflareaccess.com";
@@ -212,23 +213,31 @@ describe("accessAdmin", () => {
   });
 });
 
-test("PLANT: an admin idle past the hour is sent to Access's logout; the seen cookie counts only for its own token", async () => {
+test("PLANT: an admin idle past the hour is sent to Access's logout; the seen cookie counts only for its own token and only when the server signed it", async () => {
   const token = await sign(claims({ iat: now - 5400 }));
+  const secret = "server-only-test-secret";
   const at = (cookie) => new Request("https://example.com/admin", { headers: { cookie } });
   const log = console.log;
   console.log = () => {};
-  const stale = await adminIdle(at(`${ACCESS_COOKIE}=${token}`), { now: now * 1000 });
+  const stale = await adminIdle(at(`${ACCESS_COOKIE}=${token}`), { now: now * 1000, secret });
   console.log = log;
   assert.equal(stale.idle && stale.response.headers.get("location"), ACCESS_LOGOUT_PATH);
   // A request 30 minutes ago, recorded for this token, keeps the session; its cookie does nothing for another token.
-  const earlier = await adminIdle(at(`${ACCESS_COOKIE}=${await sign(claims({ iat: now - 3600 }))}`), { now: (now - 1800) * 1000 });
-  const fresh = await adminIdle(at(`${ACCESS_COOKIE}=${token}`), { now: (now - 1800) * 1000 });
+  const earlier = await adminIdle(at(`${ACCESS_COOKIE}=${await sign(claims({ iat: now - 3600 }))}`), { now: (now - 1800) * 1000, secret });
+  const fresh = await adminIdle(at(`${ACCESS_COOKIE}=${token}`), { now: (now - 1800) * 1000, secret });
   const seen = /** @type {{ cookie: string }} */ (fresh).cookie.split(";")[0];
-  assert.equal((await adminIdle(at(`${ACCESS_COOKIE}=${token}; ${seen}`), { now: now * 1000 })).idle, false);
+  assert.equal((await adminIdle(at(`${ACCESS_COOKIE}=${token}; ${seen}`), { now: now * 1000, secret })).idle, false);
   console.log = () => {};
-  const copied = await adminIdle(at(`${ACCESS_COOKIE}=${token}; ${/** @type {{ cookie: string }} */ (earlier).cookie.split(";")[0]}`), { now: now * 1000 });
+  const copied = await adminIdle(at(`${ACCESS_COOKIE}=${token}; ${/** @type {{ cookie: string }} */ (earlier).cookie.split(";")[0]}`), { now: now * 1000, secret });
   console.log = log;
   assert.equal(copied.idle, true);
+  // The token's holder signs "now" with what the token shows (sub and iat): without the server's secret it is ignored.
+  const raw = new TextEncoder().encode(`${claims().sub}.${now - 5400}`);
+  const key = await crypto.subtle.importKey("raw", raw, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const forged = `${ADMIN_SEEN_COOKIE}=${now}.${base64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(String(now)))))}`;
+  console.log = () => {};
+  assert.equal((await adminIdle(at(`${ACCESS_COOKIE}=${token}; ${forged}`), { now: now * 1000, secret })).idle, true);
+  console.log = log;
   assert.ok(seen.startsWith(`${ADMIN_SEEN_COOKIE}=`));
 });
 

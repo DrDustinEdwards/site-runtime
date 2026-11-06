@@ -67,11 +67,13 @@ export type IdleSession = { id: string; signedInAt: number };
  * without a request, else the Set-Cookie that records this one (none when the request carries no Access token and no
  * `session` is given, or is a background request: `X-Background: 1` or `Sec-Purpose: prefetch`). `session.signedInAt`
  * and `now` are epoch milliseconds. `cookieName` (default ADMIN_SEEN_COOKIE, a `__Host-` name) gives each Access app
- * on one site its own seen cookie.
+ * on one site its own seen cookie. `secret`, a server-only value (a Worker secret), keys the cookie's signature, so
+ * whoever holds the Access token cannot write a seen cookie of their own; without it the cookie is keyed by the
+ * token's `sub` and `iat` alone and `admin_idle_unkeyed` is logged once per isolate.
  */
 export function adminIdle(
   request: Request,
-  options?: { idleSeconds?: number; now?: number; session?: IdleSession | null; cookieName?: string },
+  options?: { idleSeconds?: number; now?: number; session?: IdleSession | null; cookieName?: string; secret?: string },
 ): Promise<{ idle: true; response: Response } | { idle: false; cookie?: string }>;
 /**
  * `adminIdle` around a site's handler: on a path under `prefixes` (default `/admin`; `/` for a site that is all admin),
@@ -80,5 +82,5 @@ export function adminIdle(
 export function withAdminIdle(
   request: Request,
   handle: () => Promise<Response>,
-  options?: { prefixes?: readonly string[]; idleSeconds?: number; session?: IdleSession | null; cookieName?: string },
+  options?: { prefixes?: readonly string[]; idleSeconds?: number; session?: IdleSession | null; cookieName?: string; secret?: string },
 ): Promise<Response>;

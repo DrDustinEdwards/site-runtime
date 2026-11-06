@@ -32,8 +32,9 @@ export function mustStop(verdict: Verdict, onUnavailable: "allow" | "refuse"): b
  */
 export function limitedResponse(verdict: Verdict): Response;
 /**
- * A key for a request: `prefix:ip`. Without a client IP header the request shares one `prefix:anon`
- * bucket and `anonymous` is true, so a site can see it happened.
+ * A key for a request: `prefix:ip`, an IPv6 address by its /64 (`prefix:2001-db8-0-1/64`), since one host is
+ * handed a whole /64. Without a client IP header the request shares one `prefix:anon` bucket and `anonymous` is
+ * true, so a site can see it happened.
  * @param {string} prefix
  * @param {Request} request
  */
