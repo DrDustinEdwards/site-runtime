@@ -48,7 +48,10 @@ function text(body, status = 200, headers) {
   return new Response(body, { status, headers: out });
 }
 
-const LOCAL_REDIRECT_WARNING = ["This sends access to an app on your computer.", "Continue only if you just started signing in from it."];
+const LOCAL_REDIRECT_WARNING = [
+  "This sends access to an app on your computer.",
+  "Continue only if you just started signing in from it.",
+];
 
 /**
  * What a consent page says about where a client's redirect URI sends the access: its host (for a private-use scheme
@@ -154,7 +157,9 @@ export function loginHandler({
 }) {
   const serverName = escape(name);
   // The owner page (A15, L9) shares the sign-in and the admission check, and its sign-in comes back to /callback.
-  const ownerRoutes = owner ? ownerPage({ name, admit, server: audit, ...(typeof owner === "object" ? owner : {}) }) : null;
+  const ownerRoutes = owner
+    ? ownerPage({ name, admit, server: audit, ...(typeof owner === "object" ? owner : {}) })
+    : null;
 
   /**
    * One sign-in row, when the server keeps the log. A sign-in changes nothing, so a failed write is only reported.
@@ -221,18 +226,25 @@ ${target.local ? `<p><strong>${LOCAL_REDIRECT_WARNING[0]}</strong> ${LOCAL_REDIR
     // A consent page another site can frame can be clickjacked into an approval.
     consent.headers.set("content-security-policy", "frame-ancestors 'none'");
     consent.headers.set("x-frame-options", "DENY");
-    return new Response(consentPage(client, authRequest, consent.handle), { headers: consent.headers });
+    return new Response(consentPage(client, authRequest, consent.handle), {
+      headers: consent.headers,
+    });
   }
 
   /** @param {Request} request @param {E} env */
   async function authorizePost(request, env) {
     const saas = accessSaas(env);
     if (!saas) return text(NOT_CONFIGURED, 503);
-    if (!(request.headers.get("content-type") ?? "").toLowerCase().startsWith("application/x-www-form-urlencoded")) {
+    if (
+      !(request.headers.get("content-type") ?? "")
+        .toLowerCase()
+        .startsWith("application/x-www-form-urlencoded")
+    ) {
       return text("The consent form is posted as application/x-www-form-urlencoded.", 415);
     }
     const body = await readCapped(request, CONSENT_FORM_MAX_BYTES);
-    if (body === null) return text(`The consent form is larger than ${CONSENT_FORM_MAX_BYTES} bytes.`, 413);
+    if (body === null)
+      return text(`The consent form is larger than ${CONSENT_FORM_MAX_BYTES} bytes.`, 413);
     const oauth = env.OAUTH_PROVIDER;
     const form = new URLSearchParams(body);
     const handle = String(form.get("handle") ?? "");
@@ -243,8 +255,18 @@ ${target.local ? `<p><strong>${LOCAL_REDIRECT_WARNING[0]}</strong> ${LOCAL_REDIR
     const scope = form.get("allow_write") === "1" ? [scopes.read, scopes.write] : [scopes.read];
     const approved = await oauth.approveConsent(request, handle, { scope });
     const signIn = newSignIn();
-    const { state, headers } = await oauth.beginUpstream({ ...approved.request, scope }, { data: signIn, headers: approved.headers });
-    return redirect(await authorizationUrl(saas, { redirectUri: `${origin(request, env)}/callback`, state, ...signIn }), headers);
+    const { state, headers } = await oauth.beginUpstream(
+      { ...approved.request, scope },
+      { data: signIn, headers: approved.headers },
+    );
+    return redirect(
+      await authorizationUrl(saas, {
+        redirectUri: `${origin(request, env)}/callback`,
+        state,
+        ...signIn,
+      }),
+      headers,
+    );
   }
 
   /** @param {Request} request @param {E} env */
@@ -255,9 +277,15 @@ ${target.local ? `<p><strong>${LOCAL_REDIRECT_WARNING[0]}</strong> ${LOCAL_REDIR
     const { request: original, data, headers } = await oauth.finishUpstream(request);
     const { verifier, nonce } = /** @type {{ verifier: string, nonce: string }} */ (data);
     const code = new URL(request.url).searchParams.get("code");
-    if (!code) return redirectError(original, "Sign-in with Cloudflare Access did not complete.", headers);
+    if (!code)
+      return redirectError(original, "Sign-in with Cloudflare Access did not complete.", headers);
 
-    const signedIn = await finishSignIn(saas, { code, redirectUri: `${origin(request, env)}/callback`, verifier, nonce });
+    const signedIn = await finishSignIn(saas, {
+      code,
+      redirectUri: `${origin(request, env)}/callback`,
+      verifier,
+      nonce,
+    });
     if (!signedIn.ok) {
       console.warn(JSON.stringify({ door: "refused", reason: signedIn.reason }));
       await signInRow(env, original, "unknown", signedIn.reason, false);
@@ -272,17 +300,34 @@ ${target.local ? `<p><strong>${LOCAL_REDIRECT_WARNING[0]}</strong> ${LOCAL_REDIR
     // An object admits and travels with the grant: a server's own id for the person, read again on every request.
     const extra = typeof admitted === "object" ? admitted : {};
 
-    const granted = original.scope.includes(scopes.write) ? [scopes.read, scopes.write] : [scopes.read];
-    const client = clientLabel(await oauth.lookupClient(original.clientId).catch(() => null), original.clientId);
+    const granted = original.scope.includes(scopes.write)
+      ? [scopes.read, scopes.write]
+      : [scopes.read];
+    const client = clientLabel(
+      await oauth.lookupClient(original.clientId).catch(() => null),
+      original.clientId,
+    );
     const { redirectTo } = await oauth.completeAuthorization({
       request: original,
       userId: signedIn.email.toLowerCase(),
       metadata: { email: signedIn.email, client },
       scope: granted,
-      props: { ...extra, email: signedIn.email, scopes: granted, client, clientId: original.clientId },
+      props: {
+        ...extra,
+        email: signedIn.email,
+        scopes: granted,
+        client,
+        clientId: original.clientId,
+      },
       revokeExistingGrants,
     });
-    await signInRow(env, original, `access:${signedIn.email}`, `granted ${granted.join(" ")}`, true);
+    await signInRow(
+      env,
+      original,
+      `access:${signedIn.email}`,
+      `granted ${granted.join(" ")}`,
+      true,
+    );
     return redirect(redirectTo, headers);
   }
 
@@ -292,10 +337,14 @@ ${target.local ? `<p><strong>${LOCAL_REDIRECT_WARNING[0]}</strong> ${LOCAL_REDIR
       const { pathname } = new URL(request.url);
       try {
         if (pathname === "/health") return await health(env);
-        if (pathname === "/authorize" && request.method === "GET") return await authorizeGet(request, env);
-        if (pathname === "/authorize" && request.method === "POST") return await authorizePost(request, env);
+        if (pathname === "/authorize" && request.method === "GET")
+          return await authorizeGet(request, env);
+        if (pathname === "/authorize" && request.method === "POST")
+          return await authorizePost(request, env);
         if (pathname === "/callback" && request.method === "GET") {
-          return ownerRoutes?.isOwnerCallback(request) ? await ownerRoutes.callback(request, env) : await callback(request, env);
+          return ownerRoutes?.isOwnerCallback(request)
+            ? await ownerRoutes.callback(request, env)
+            : await callback(request, env);
         }
         const owned = await ownerRoutes?.fetch(request, env);
         if (owned) return owned;
@@ -303,8 +352,15 @@ ${target.local ? `<p><strong>${LOCAL_REDIRECT_WARNING[0]}</strong> ${LOCAL_REDIR
       } catch (error) {
         // Redirect only to a validated client; render the rest.
         if (error instanceof Error && error.name === "AuthorizationError") {
-          const failure = /** @type {Error & { code: string, description: string, redirectUri?: string, state?: string, issuer?: string }} */ (error);
-          if (!failure.redirectUri) return text(`${failure.description} Start the sign-in again from your MCP client.`, 400);
+          const failure =
+            /** @type {Error & { code: string, description: string, redirectUri?: string, state?: string, issuer?: string }} */ (
+              error
+            );
+          if (!failure.redirectUri)
+            return text(
+              `${failure.description} Start the sign-in again from your MCP client.`,
+              400,
+            );
           const url = new URL(failure.redirectUri);
           url.searchParams.set("error", failure.code);
           url.searchParams.set("error_description", failure.description);
@@ -313,7 +369,10 @@ ${target.local ? `<p><strong>${LOCAL_REDIRECT_WARNING[0]}</strong> ${LOCAL_REDIR
           return redirect(url.href);
         }
         if (error instanceof Error && error.name === "CimdFetchError") {
-          return text("This client could not be verified: its client metadata document could not be fetched.", 400);
+          return text(
+            "This client could not be verified: its client metadata document could not be fetched.",
+            400,
+          );
         }
         throw error;
       }
@@ -366,12 +425,15 @@ export function allowedRedirects(configured) {
  */
 export function registrationRefusal(configured, clientMetadata) {
   const allowed = allowedRedirects(configured);
-  if (allowed.length === 0) return "Dynamic client registration is closed on this server: no redirect URI is allowlisted.";
+  if (allowed.length === 0)
+    return "Dynamic client registration is closed on this server: no redirect URI is allowlisted.";
   const asked = clientMetadata.redirect_uris;
-  if (!Array.isArray(asked) || asked.length === 0) return "A registration must name at least one redirect URI.";
+  if (!Array.isArray(asked) || asked.length === 0)
+    return "A registration must name at least one redirect URI.";
   if (asked.length > 5) return "A registration may name at most five redirect URIs.";
   for (const uri of asked) {
-    if (typeof uri !== "string" || !allowed.includes(uri)) return `The redirect URI ${JSON.stringify(uri)} is not allowlisted on this server.`;
+    if (typeof uri !== "string" || !allowed.includes(uri))
+      return `The redirect URI ${JSON.stringify(uri)} is not allowlisted on this server.`;
   }
   return null;
 }
@@ -395,11 +457,23 @@ export async function registrationLimited(request, kv, now = Date.now()) {
   const counts = await Promise.all(keys.map(async (k) => Number((await kv.get(k.key)) ?? 0)));
   if (keys.some((k, i) => counts[i] >= k.limit)) {
     console.warn(JSON.stringify({ door: "registration-limited", address }));
-    return new Response(JSON.stringify({ error: "temporarily_unavailable", error_description: "Too many registrations. Try again later." }), {
-      status: 429,
-      headers: { "content-type": "application/json", "cache-control": "no-store", "retry-after": "3600" },
-    });
+    return new Response(
+      JSON.stringify({
+        error: "temporarily_unavailable",
+        error_description: "Too many registrations. Try again later.",
+      }),
+      {
+        status: 429,
+        headers: {
+          "content-type": "application/json",
+          "cache-control": "no-store",
+          "retry-after": "3600",
+        },
+      },
+    );
   }
-  await Promise.all(keys.map((k, i) => kv.put(k.key, String(counts[i] + 1), { expirationTtl: k.ttl })));
+  await Promise.all(
+    keys.map((k, i) => kv.put(k.key, String(counts[i] + 1), { expirationTtl: k.ttl })),
+  );
   return null;
 }

@@ -85,7 +85,8 @@ export function scrubFields(fields, options) {
  * @returns {unknown}
  */
 function scrubValue(key, value, options, depth) {
-  if (typeof value === "string") return /url|path/i.test(key) ? scrubUrl(value, options) : scrubText(value, options);
+  if (typeof value === "string")
+    return /url|path/i.test(key) ? scrubUrl(value, options) : scrubText(value, options);
   if (value instanceof Error) return scrubText(`${value.name}: ${value.message}`, options);
   if (depth > 4 || value === null || typeof value !== "object") return value;
   if (Array.isArray(value)) return value.map((item) => scrubValue(key, item, options, depth + 1));
@@ -153,11 +154,20 @@ export function withRequestLog(handler, { sha, route, inputValidation = true, ..
     } finally {
       const named = route?.(request);
       const fields = {
-        ...requestFields(request, { sha: typeof sha === "function" ? sha(...rest) : sha, status, ...scrub }),
+        ...requestFields(request, {
+          sha: typeof sha === "function" ? sha(...rest) : sha,
+          status,
+          ...scrub,
+        }),
         ...(named ? { route: named } : {}),
       };
-      logEvent("request", { ...fields, ms: Date.now() - started }, { level: status >= 500 ? "error" : status >= 400 ? "warn" : "log", ...scrub });
-      if (inputValidation && (status === 400 || status === 422)) logEvent("input_validation_fail", fields, { level: "warn", ...scrub });
+      logEvent(
+        "request",
+        { ...fields, ms: Date.now() - started },
+        { level: status >= 500 ? "error" : status >= 400 ? "warn" : "log", ...scrub },
+      );
+      if (inputValidation && (status === 400 || status === 422))
+        logEvent("input_validation_fail", fields, { level: "warn", ...scrub });
     }
   };
 }
@@ -186,11 +196,17 @@ export function routeNamer(routes) {
           if (part === "*") return "(?:/.*)?";
           const optional = part.endsWith("?");
           const bare = optional ? part.slice(0, -1) : part;
-          const one = bare.startsWith(":") ? "/[^/]+" : `/${bare.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`;
+          const one = bare.startsWith(":")
+            ? "/[^/]+"
+            : `/${bare.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`;
           return optional ? `(?:${one})?` : one;
         })
         .join("");
-      const score = parts.reduce((sum, part) => sum + (part === "*" ? -2 : part.startsWith(":") ? 3 : part.endsWith("?") ? 1 : 10), 0);
+      const score = parts.reduce(
+        (sum, part) =>
+          sum + (part === "*" ? -2 : part.startsWith(":") ? 3 : part.endsWith("?") ? 1 : 10),
+        0,
+      );
       return { name: `/${pattern}`, test: new RegExp(`^${source}/?$`, "i"), score };
     })
     .sort((a, b) => b.score - a.score);

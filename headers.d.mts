@@ -16,9 +16,9 @@ import type { ServedSiteEntry } from "./sites.mjs";
  * Integrity-Policy, or its Report-Only form.
  */
 export function buildSecurityHeaders(options?: {
-    site?: ServedSiteEntry;
-    overrides?: Readonly<Record<string, HeaderOverride>>;
-    coep?: Coep;
+  site?: ServedSiteEntry;
+  overrides?: Readonly<Record<string, HeaderOverride>>;
+  coep?: Coep;
 }): Record<string, string>;
 /** Cross-Origin-Embedder-Policy: `credentialless` or `require-corp`, Report-Only when asked. */
 export type Coep = { value: "credentialless" | "require-corp"; reportOnly?: boolean };
@@ -26,7 +26,11 @@ export type Coep = { value: "credentialless" | "require-corp"; reportOnly?: bool
  * A Set-Cookie value: `__Host-<name>=<value>; Path=/; Secure; HttpOnly; SameSite=Lax`, with Max-Age when given. A name
  * with a prefix already, or a name or value a cookie cannot carry, is refused.
  */
-export function hostCookie(name: string, value: string, options?: { maxAge?: number; sameSite?: "Lax" | "Strict"; httpOnly?: boolean }): string;
+export function hostCookie(
+  name: string,
+  value: string,
+  options?: { maxAge?: number; sameSite?: "Lax" | "Strict"; httpOnly?: boolean },
+): string;
 /** What an uploaded file is served with: nosniff and `sandbox; default-src 'none'; style-src 'unsafe-inline'`. */
 export const UPLOAD_HEADERS: Readonly<Record<string, string>>;
 /**
@@ -34,9 +38,13 @@ export const UPLOAD_HEADERS: Readonly<Record<string, string>>;
  * included). A WebSocket upgrade (101, or a Response with its `webSocket`) comes back as it is. `overwrite: false` keeps
  * any value a route already chose. A text or XML Content-Type with no charset gains `charset=utf-8`.
  */
-export function applyHeaderSet<T extends Headers | Response>(target: T, set?: Readonly<Record<string, string>>, options?: {
+export function applyHeaderSet<T extends Headers | Response>(
+  target: T,
+  set?: Readonly<Record<string, string>>,
+  options?: {
     overwrite?: boolean;
-}): T;
+  },
+): T;
 /**
  * The OSHP recommendations this package does not put in the standard set, and why. Each would break a normal site if
  * sent on every response, or is not one value for every site.
@@ -69,8 +77,8 @@ export function corpFor(contentType: string | null | undefined): "cross-origin" 
  * required, so a deviation is a decision someone wrote down and not an accident.
  */
 export type HeaderOverride = {
-    value: string | null;
-    reason: string;
+  value: string | null;
+  reason: string;
 };
 
 /**
@@ -82,5 +90,9 @@ export type HeaderOverride = {
  */
 export function headersFile(
   set: Readonly<Record<string, string>>,
-  options?: { paths?: Readonly<Record<string, Readonly<Record<string, string>>>>; comment?: string | readonly string[]; charset?: boolean },
+  options?: {
+    paths?: Readonly<Record<string, Readonly<Record<string, string>>>>;
+    comment?: string | readonly string[];
+    charset?: boolean;
+  },
 ): string;

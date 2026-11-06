@@ -40,7 +40,11 @@ export interface CronJob {
  * cron_job_failed and recording each in `cron_runs`; a failed record write is logged and the job still runs. Throws one
  * Error naming the failed jobs after the last one.
  */
-export function runJobs(db: D1Like | (() => D1Like), jobs: CronJob[], options?: { now?: () => number; timeoutMs?: number }): Promise<void>;
+export function runJobs(
+  db: D1Like | (() => D1Like),
+  jobs: CronJob[],
+  options?: { now?: () => number; timeoutMs?: number },
+): Promise<void>;
 
 /** Why a job in `cron_runs` is not well, with its last success (epoch ms) or null. */
 export interface CronFinding {
@@ -52,7 +56,12 @@ export interface CronFinding {
 /** The jobs cronCheck would name, as data, for a site that mails its own alert. Same options as cronCheck. */
 export function cronFindings(
   db: D1Like | (() => D1Like),
-  options?: { graceMinutes?: number; jobs?: Array<{ name: string; everyMinutes: number }>; deployedAt?: Date; now?: Date },
+  options?: {
+    graceMinutes?: number;
+    jobs?: Array<{ name: string; everyMinutes: number }>;
+    deployedAt?: Date;
+    now?: Date;
+  },
 ): Promise<CronFinding[]>;
 
 /**
@@ -63,5 +72,10 @@ export function cronFindings(
  */
 export function cronCheck(
   db: D1Like | (() => D1Like),
-  options?: { graceMinutes?: number; jobs?: Array<{ name: string; everyMinutes: number }>; deployedAt?: Date; now?: Date },
+  options?: {
+    graceMinutes?: number;
+    jobs?: Array<{ name: string; everyMinutes: number }>;
+    deployedAt?: Date;
+    now?: Date;
+  },
 ): { name: "cron"; level: "warn"; run: () => Promise<true | { ok: false; detail: string }> };

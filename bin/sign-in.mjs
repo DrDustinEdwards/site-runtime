@@ -14,7 +14,8 @@ import { parseArgs } from "node:util";
 
 import { signInFindings } from "../sign-in-live.mjs";
 
-const usage = "usage: site-runtime-sign-in --origin https://example.com [--from https://preview.example]";
+const usage =
+  "usage: site-runtime-sign-in --origin https://example.com [--from https://preview.example]";
 let values;
 try {
   ({ values } = parseArgs({ options: { origin: { type: "string" }, from: { type: "string" } } }));
@@ -35,7 +36,10 @@ try {
   process.exit(2);
 }
 const { findings, found } = result;
-for (const finding of findings) console.log(`::${finding.severity} title=${finding.item}::${finding.url} ${finding.detail}`);
+for (const finding of findings)
+  console.log(`::${finding.severity} title=${finding.item}::${finding.url} ${finding.detail}`);
 const errors = findings.filter((finding) => finding.severity === "error").length;
-console.log(`site-runtime-sign-in: ${values.from ?? values.origin}: ${found.length ? found.join(", ") : "no sign-in, admin or MCP"}; ${errors} errors, ${findings.length - errors} warnings.`);
+console.log(
+  `site-runtime-sign-in: ${values.from ?? values.origin}: ${found.length ? found.join(", ") : "no sign-in, admin or MCP"}; ${errors} errors, ${findings.length - errors} warnings.`,
+);
 process.exit(errors > 0 ? 1 : 0);

@@ -13,14 +13,26 @@ export function accessKeys(teamDomain: string): KeySource;
 /** The header token, else (with `cookie`) the CF_Authorization cookie, else null. */
 export function accessToken(request: Request, options?: { cookie?: boolean }): string | null;
 /** The claims of a token for this application, or why it is refused. `now` in epoch milliseconds. */
-export function verifyAccessToken(token: string, keys: KeySource, expect: { issuer: string; audience: string; now?: number }): Promise<JwtVerdict>;
+export function verifyAccessToken(
+  token: string,
+  keys: KeySource,
+  expect: { issuer: string; audience: string; now?: number },
+): Promise<JwtVerdict>;
 
 export type AccessRefusal = "not-configured" | "no-token" | JwtRefusal;
-export type AccessVerdict = { ok: true; claims: Record<string, unknown> } | { ok: false; reason: AccessRefusal };
+export type AccessVerdict =
+  | { ok: true; claims: Record<string, unknown> }
+  | { ok: false; reason: AccessRefusal };
 /** One Access application's verdict on a request. Throws when the keys cannot be fetched. */
 export function verifyAccessRequest(
   request: Request,
-  options: { teamDomain: string | undefined; audience: string | undefined; cookie?: boolean; keys?: KeySource; now?: number },
+  options: {
+    teamDomain: string | undefined;
+    audience: string | undefined;
+    cookie?: boolean;
+    keys?: KeySource;
+    now?: number;
+  },
 ): Promise<AccessVerdict>;
 
 /** The Access settings a site's Env declares for `accessAdmin`. */
@@ -50,7 +62,10 @@ export function accessAdmin(
 export function accessSignInUrl(request: Request, options?: { path?: string }): string;
 
 /** `next` when it is under `prefix` (default "/admin") and not the Access `path` (default "/admin/access"), else `prefix`. */
-export function safeAdminNext(next: string | null | undefined, options?: { prefix?: string; path?: string }): string;
+export function safeAdminNext(
+  next: string | null | undefined,
+  options?: { prefix?: string; path?: string },
+): string;
 
 /** An admin's Access session ends after this long without a request: 3600 seconds. */
 export const ADMIN_IDLE_SECONDS: number;
@@ -73,7 +88,13 @@ export type IdleSession = { id: string; signedInAt: number };
  */
 export function adminIdle(
   request: Request,
-  options: { idleSeconds?: number; now?: number; session?: IdleSession | null; cookieName?: string; secret: string },
+  options: {
+    idleSeconds?: number;
+    now?: number;
+    session?: IdleSession | null;
+    cookieName?: string;
+    secret: string;
+  },
 ): Promise<{ idle: true; response: Response } | { idle: false; cookie?: string }>;
 /**
  * `adminIdle` around a site's handler: on a path under `prefixes` (default `/admin`; `/` for a site that is all admin),
@@ -82,5 +103,11 @@ export function adminIdle(
 export function withAdminIdle(
   request: Request,
   handle: () => Promise<Response>,
-  options: { prefixes?: readonly string[]; idleSeconds?: number; session?: IdleSession | null; cookieName?: string; secret: string },
+  options: {
+    prefixes?: readonly string[];
+    idleSeconds?: number;
+    session?: IdleSession | null;
+    cookieName?: string;
+    secret: string;
+  },
 ): Promise<Response>;

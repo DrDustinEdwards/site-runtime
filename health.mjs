@@ -60,7 +60,12 @@ async function keptBackup(read, ttlMs, cache) {
   try {
     await cache.put(
       BACKUP_CACHE_KEY,
-      new Response(JSON.stringify(value), { headers: { "Content-Type": "application/json", "Cache-Control": `public, max-age=${Math.floor(ttlMs / 1000)}` } })
+      new Response(JSON.stringify(value), {
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": `public, max-age=${Math.floor(ttlMs / 1000)}`,
+        },
+      }),
     );
   } catch {
     // A failed write costs one more read.
@@ -77,7 +82,16 @@ async function keptBackup(read, ttlMs, cache) {
  * @param {{ ping?: () => Promise<unknown>, backup?: () => Promise<unknown>, sha?: string, checks?: HealthCheck[], backupTtlMs?: number, checkTimeoutMs?: number, now?: Date, cache?: { match(key: string): Promise<Response | undefined>, put(key: string, response: Response): Promise<void> } }} probe
  * @returns {Promise<Response>}
  */
-export async function healthResponse({ ping, backup, sha, checks = [], backupTtlMs = DEFAULT_BACKUP_TTL_MS, checkTimeoutMs = 3000, now = new Date(), cache = /** @type {any} */ (globalThis).caches?.default } = {}) {
+export async function healthResponse({
+  ping,
+  backup,
+  sha,
+  checks = [],
+  backupTtlMs = DEFAULT_BACKUP_TTL_MS,
+  checkTimeoutMs = 3000,
+  now = new Date(),
+  cache = /** @type {any} */ (globalThis).caches?.default,
+} = {}) {
   /** @type {unknown} */
   let backupStatus;
   /** @type {HealthCheck[]} */
@@ -89,14 +103,22 @@ export async function healthResponse({ ping, backup, sha, checks = [], backupTtl
       level: "warn",
       run: async () => {
         backupStatus = await keptBackup(backup, backupTtlMs, cache);
-        const warning = backupStatus && typeof backupStatus === "object" && "warning" in backupStatus && backupStatus.warning;
+        const warning =
+          backupStatus &&
+          typeof backupStatus === "object" &&
+          "warning" in backupStatus &&
+          backupStatus.warning;
         return warning ? { ok: false, detail: String(warning) } : true;
       },
     });
   }
   all.push(...checks);
   const results = await Promise.all(all.map((check) => runCheck(check, checkTimeoutMs)));
-  const status = results.some((r) => r.status === "fail") ? "fail" : results.some((r) => r.status === "warn") ? "warn" : "pass";
+  const status = results.some((r) => r.status === "fail")
+    ? "fail"
+    : results.some((r) => r.status === "warn")
+      ? "warn"
+      : "pass";
   const db = ping ? { db: results[0]?.status === "pass" ? "up" : "down" } : {};
   const alerts = results.filter((r) => r.alert).map((r) => r.name);
   const body = {
@@ -111,7 +133,11 @@ export async function healthResponse({ ping, backup, sha, checks = [], backupTtl
   };
   return new Response(JSON.stringify(body), {
     status: status === "fail" ? 503 : 200,
-    headers: { "Content-Type": "application/health+json; charset=utf-8", "Cache-Control": "no-store", "X-Robots-Tag": "noindex" },
+    headers: {
+      "Content-Type": "application/health+json; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Robots-Tag": "noindex",
+    },
   });
 }
 
@@ -146,8 +172,18 @@ async function runCheck({ name, level = "fail", alert = false, run }, timeoutMs)
   }
   if (!failed) return { name, status: "pass" };
   const cut = detail === undefined ? undefined : scrubText(detail).slice(0, CHECK_DETAIL_MAX);
-  if (level === "fail" || alert) logEvent(alert ? "health_alert" : "health_check_failed", { check: name, detail: cut }, { level: "error" });
-  return { name, status: level, ...(cut ? { detail: cut } : {}), ...(alert ? { alert: /** @type {const} */ (true) } : {}) };
+  if (level === "fail" || alert)
+    logEvent(
+      alert ? "health_alert" : "health_check_failed",
+      { check: name, detail: cut },
+      { level: "error" },
+    );
+  return {
+    name,
+    status: level,
+    ...(cut ? { detail: cut } : {}),
+    ...(alert ? { alert: /** @type {const} */ (true) } : {}),
+  };
 }
 
 /**
@@ -179,7 +215,10 @@ export function kvCheck(name, kv) {
  * @param {{ windowMinutes?: number, failures?: number, mails?: number, now?: () => number }} [limits]
  * @returns {HealthCheck}
  */
-export function authSpikeCheck(db, { windowMinutes = 60, failures = 50, mails = 50, now = Date.now } = {}) {
+export function authSpikeCheck(
+  db,
+  { windowMinutes = 60, failures = 50, mails = 50, now = Date.now } = {},
+) {
   return {
     name: "auth-spike",
     level: "warn",
@@ -190,13 +229,18 @@ export function authSpikeCheck(db, { windowMinutes = 60, failures = 50, mails = 
         counts.failures > failures ? `${counts.failures} failed sign-ins` : "",
         counts.mails > mails ? `${counts.mails} sign-in mails` : "",
       ].filter(Boolean);
-      return over.length ? { ok: false, detail: `${over.join(" and ")} in ${windowMinutes} minutes` } : true;
+      return over.length
+        ? { ok: false, detail: `${over.join(" and ")} in ${windowMinutes} minutes` }
+        : true;
     },
   };
 }
 
 // The smallest GIF (1 x 1, transparent): what imagesCheck asks the Images binding to read.
-const PROBE_GIF = /* @__PURE__ */ Uint8Array.from(atob("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"), (c) => c.charCodeAt(0));
+const PROBE_GIF = /* @__PURE__ */ Uint8Array.from(
+  atob("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"),
+  (c) => c.charCodeAt(0),
+);
 
 /**
  * A check that the Images binding answers: `info` on a 1 x 1 GIF, which reads the image's header and transforms
@@ -206,7 +250,11 @@ const PROBE_GIF = /* @__PURE__ */ Uint8Array.from(atob("R0lGODlhAQABAIAAAAAAAP//
  * @returns {HealthCheck}
  */
 export function imagesCheck(name, images) {
-  return { name, level: "warn", run: async () => (await images.info(new Blob([PROBE_GIF]).stream()), true) };
+  return {
+    name,
+    level: "warn",
+    run: async () => (await images.info(new Blob([PROBE_GIF]).stream()), true),
+  };
 }
 
 /**
@@ -220,7 +268,10 @@ export function durableObjectCheck(name, namespace) {
   return {
     name,
     level: "warn",
-    run: async () => (typeof namespace?.idFromName === "function" ? (namespace.idFromName(PROBE_KEY), true) : { ok: false, detail: "binding missing" }),
+    run: async () =>
+      typeof namespace?.idFromName === "function"
+        ? (namespace.idFromName(PROBE_KEY), true)
+        : { ok: false, detail: "binding missing" },
   };
 }
 
@@ -257,5 +308,9 @@ export function emailCheck(name, email) {
 
 /** @param {string} name @param {boolean} present @returns {HealthCheck} */
 function bindingCheck(name, present) {
-  return { name, level: "warn", run: async () => (present ? true : { ok: false, detail: "binding missing" }) };
+  return {
+    name,
+    level: "warn",
+    run: async () => (present ? true : { ok: false, detail: "binding missing" }),
+  };
 }

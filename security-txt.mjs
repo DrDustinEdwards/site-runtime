@@ -41,7 +41,10 @@ export function securityTxt({ origin, contact, expires, policy, languages = "en"
 export function securityTxtResponse(fields, headers) {
   const merged = new Headers({ "Cache-Control": "public, max-age=3600" });
   for (const [name, value] of new Headers(headers)) {
-    if (name === "content-type") throw new Error("security.txt is always text/plain; charset=utf-8 (RFC 9116 section 3): pass no Content-Type");
+    if (name === "content-type")
+      throw new Error(
+        "security.txt is always text/plain; charset=utf-8 (RFC 9116 section 3): pass no Content-Type",
+      );
     merged.set(name, value);
   }
   merged.set("Content-Type", "text/plain; charset=utf-8");

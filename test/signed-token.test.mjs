@@ -20,16 +20,25 @@ test("PLANT: a changed payload, signature or key is refused", async () => {
   assert.equal(await readSignedToken([NEW], forged), null);
   assert.equal(await readSignedToken([NEW], `${payload}.${signature?.slice(0, -2)}AA`), null);
   assert.equal(await readSignedToken([OLD], token), null);
-  for (const bad of ["", ".", "abc", ".abc", "abc.", "!!.!!"]) assert.equal(await readSignedToken([NEW], bad), null, bad);
+  for (const bad of ["", ".", "abc", ".abc", "abc.", "!!.!!"])
+    assert.equal(await readSignedToken([NEW], bad), null, bad);
 });
 
 test("PLANT: a rotation signs with the first key and still reads links signed with the old one", async () => {
   const before = await signToken([undefined, OLD], { n: 1 });
   const after = await signToken([NEW, OLD], { n: 2 });
-  assert.equal(await readSignedToken([OLD], after), null, "the new link is signed with the new key");
+  assert.equal(
+    await readSignedToken([OLD], after),
+    null,
+    "the new link is signed with the new key",
+  );
   assert.deepEqual(await readSignedToken([NEW, OLD], before), { n: 1 });
   assert.deepEqual(await readSignedToken([NEW, OLD], after), { n: 2 });
-  assert.equal(await readSignedToken([NEW], before), null, "dropping the old key retires its links");
+  assert.equal(
+    await readSignedToken([NEW], before),
+    null,
+    "dropping the old key retires its links",
+  );
 });
 
 test("a payload that is not a JSON object reads as null; no key at all throws", async () => {

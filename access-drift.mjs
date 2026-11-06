@@ -63,11 +63,18 @@ export function parseAdminList(text) {
 export async function accessAllowed({ accountId, appName, token, fetch: get = globalThis.fetch }) {
   /** @param {string} path @returns {Promise<{ result: any, result_info?: { page?: number, total_pages?: number } }>} */
   const call = async (path) => {
-    const response = await get(`${API}/accounts/${accountId}${path}`, { headers: { authorization: `Bearer ${token}` } });
+    const response = await get(`${API}/accounts/${accountId}${path}`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
     const body = /** @type {any} */ (await response.json().catch(() => ({})));
     if (!response.ok || body.success === false) {
-      const why = (body.errors ?? []).map((/** @type {{ message?: string }} */ e) => e.message).filter(Boolean).join("; ");
-      throw new Error(`Cloudflare API ${path.split("?")[0]}: ${response.status}${why ? ` ${why}` : ""}`);
+      const why = (body.errors ?? [])
+        .map((/** @type {{ message?: string }} */ e) => e.message)
+        .filter(Boolean)
+        .join("; ");
+      throw new Error(
+        `Cloudflare API ${path.split("?")[0]}: ${response.status}${why ? ` ${why}` : ""}`,
+      );
     }
     return body;
   };
@@ -82,7 +89,10 @@ export async function accessAllowed({ accountId, appName, token, fetch: get = gl
   };
 
   const apps = (await all("/access/apps")).filter((app) => app.name === appName);
-  if (apps.length !== 1) throw new Error(`${apps.length === 0 ? "no" : "more than one"} Access application named "${appName}"`);
+  if (apps.length !== 1)
+    throw new Error(
+      `${apps.length === 0 ? "no" : "more than one"} Access application named "${appName}"`,
+    );
   const policies = await all(`/access/apps/${apps[0].id}/policies`);
 
   /** @type {Set<string>} */
@@ -96,7 +106,13 @@ export async function accessAllowed({ accountId, appName, token, fetch: get = gl
 
   /** The addresses on a Zero Trust list. @param {string} id */
   const list = (id) => {
-    if (!lists.has(id)) lists.set(id, all(`/gateway/lists/${id}/items`).then((items) => new Set(items.map((item) => normal(String(item.value))))));
+    if (!lists.has(id))
+      lists.set(
+        id,
+        all(`/gateway/lists/${id}/items`).then(
+          (items) => new Set(items.map((item) => normal(String(item.value)))),
+        ),
+      );
     return /** @type {Promise<Set<string>>} */ (lists.get(id));
   };
   /**
@@ -111,7 +127,8 @@ export async function accessAllowed({ accountId, appName, token, fetch: get = gl
     const wide = [];
     for (const rule of include ?? []) {
       if (rule.email?.email) inside.add(normal(rule.email.email));
-      else if (rule.email_list?.id) for (const email of await list(rule.email_list.id)) inside.add(email);
+      else if (rule.email_list?.id)
+        for (const email of await list(rule.email_list.id)) inside.add(email);
       else if (rule.group?.id) {
         const found = await group(rule.group.id, seen);
         for (const email of found.emails) inside.add(email);
@@ -120,8 +137,10 @@ export async function accessAllowed({ accountId, appName, token, fetch: get = gl
     }
     for (const rule of exclude ?? []) {
       if (rule.email?.email) inside.delete(normal(rule.email.email));
-      else if (rule.email_list?.id) for (const email of await list(rule.email_list.id)) inside.delete(email);
-      else if (rule.group?.id) for (const email of (await group(rule.group.id, seen)).emails) inside.delete(email);
+      else if (rule.email_list?.id)
+        for (const email of await list(rule.email_list.id)) inside.delete(email);
+      else if (rule.group?.id)
+        for (const email of (await group(rule.group.id, seen)).emails) inside.delete(email);
     }
     return { emails: inside, open: wide };
   };
@@ -131,7 +150,9 @@ export async function accessAllowed({ accountId, appName, token, fetch: get = gl
     if (!groups.has(id)) {
       groups.set(
         id,
-        call(`/access/groups/${id}`).then(({ result }) => resolve(result.include, result.exclude, `group "${result.name ?? id}"`, [...seen, id])),
+        call(`/access/groups/${id}`).then(({ result }) =>
+          resolve(result.include, result.exclude, `group "${result.name ?? id}"`, [...seen, id]),
+        ),
       );
     }
     return /** @type {Promise<{ emails: Set<string>, open: string[] }>} */ (groups.get(id));
@@ -205,18 +226,30 @@ export async function adminListResponse(request, env, { admins, clientId, keys, 
   if (request.method !== "GET") return refuse("method");
   let verdict;
   try {
-    verdict = await verifyAccessRequest(request, { teamDomain: env.ACCESS_TEAM_DOMAIN, audience: env.ACCESS_AUD, keys, now });
+    verdict = await verifyAccessRequest(request, {
+      teamDomain: env.ACCESS_TEAM_DOMAIN,
+      audience: env.ACCESS_AUD,
+      keys,
+      now,
+    });
   } catch (error) {
     logEvent("access_keys_unreachable", { error }, { level: "error" });
     return new Response("Unavailable", { status: 503, headers });
   }
   if (!verdict.ok) return refuse(verdict.reason);
   const name = verdict.claims.common_name;
-  if (typeof name !== "string" || !name || verdict.claims.email) return refuse("not-a-service-token");
+  if (typeof name !== "string" || !name || verdict.claims.email)
+    return refuse("not-a-service-token");
   if (clientId && name !== clientId) return refuse("other-service-token");
   const salt = base64url(crypto.getRandomValues(new Uint8Array(16)));
-  const hashes = (await Promise.all([...new Set(admins.map(normal).filter(Boolean))].map((email) => adminHash(salt, email)))).sort();
-  return new Response(JSON.stringify({ salt, hashes }), { headers: { ...headers, "Content-Type": "application/json" } });
+  const hashes = (
+    await Promise.all(
+      [...new Set(admins.map(normal).filter(Boolean))].map((email) => adminHash(salt, email)),
+    )
+  ).sort();
+  return new Response(JSON.stringify({ salt, hashes }), {
+    headers: { ...headers, "Content-Type": "application/json" },
+  });
 }
 
 /**
@@ -227,15 +260,30 @@ export async function adminListResponse(request, env, { admins, clientId, keys, 
  * @param {{ clientId: string, clientSecret: string, fetch?: typeof fetch }} options
  * @returns {Promise<{ salt: string, hashes: string[] }>}
  */
-export async function fetchAdminList(url, { clientId, clientSecret, fetch: get = globalThis.fetch }) {
+export async function fetchAdminList(
+  url,
+  { clientId, clientSecret, fetch: get = globalThis.fetch },
+) {
   const response = await get(url, {
-    headers: { "CF-Access-Client-Id": clientId, "CF-Access-Client-Secret": clientSecret, Accept: "application/json" },
+    headers: {
+      "CF-Access-Client-Id": clientId,
+      "CF-Access-Client-Secret": clientSecret,
+      Accept: "application/json",
+    },
     redirect: "manual",
   });
-  if (response.status >= 300 && response.status < 400) throw new Error(`${url} redirected (${response.status}): Access did not take the service token`);
+  if (response.status >= 300 && response.status < 400)
+    throw new Error(
+      `${url} redirected (${response.status}): Access did not take the service token`,
+    );
   if (!response.ok) throw new Error(`${url} answered ${response.status}`);
   const body = /** @type {any} */ (await response.json().catch(() => null));
-  if (!body || typeof body.salt !== "string" || !Array.isArray(body.hashes) || !body.hashes.every((/** @type {unknown} */ h) => typeof h === "string")) {
+  if (
+    !body ||
+    typeof body.salt !== "string" ||
+    !Array.isArray(body.hashes) ||
+    !body.hashes.every((/** @type {unknown} */ h) => typeof h === "string")
+  ) {
     throw new Error(`${url} did not answer with a hashed admin list`);
   }
   return { salt: body.salt, hashes: body.hashes };
@@ -258,5 +306,10 @@ export async function accessDriftHashed(allowed, { salt, hashes }) {
     if (app.has(hash)) matched.add(hash);
     else onlyInAccess.push(email);
   }
-  return { onlyInAccess: onlyInAccess.sort(), onlyInAppCount: app.size - matched.size, admins: app.size, open: [...allowed.open] };
+  return {
+    onlyInAccess: onlyInAccess.sort(),
+    onlyInAppCount: app.size - matched.size,
+    admins: app.size,
+    open: [...allowed.open],
+  };
 }

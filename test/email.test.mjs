@@ -19,17 +19,29 @@ function binding(/** @type {unknown} */ error) {
   };
 }
 
-const mail = { from: { email: "hello@example.com", name: 'Example "Co"' }, to: "alex@example.com", subject: "Spring\r\nupdate", text: "Hi" };
+const mail = {
+  from: { email: "hello@example.com", name: 'Example "Co"' },
+  to: "alex@example.com",
+  subject: "Spring\r\nupdate",
+  text: "Hi",
+};
 
 test("a send hands the binding a cleaned message and returns its id", async () => {
   const b = binding(null);
   assert.deepEqual(await sendEmail(b, mail), { sent: true, messageId: "msg-1" });
-  assert.deepEqual(b.sent[0], { ...mail, from: { email: "hello@example.com", name: "Example Co" }, subject: "Spring update" });
+  assert.deepEqual(b.sent[0], {
+    ...mail,
+    from: { email: "hello@example.com", name: "Example Co" },
+    subject: "Spring update",
+  });
 });
 
 test("an address with a line break is refused before the binding is called", async () => {
   const b = binding(null);
-  for (const bad of [{ to: "alex@example.com\r\nBcc: sam@example.com" }, { replyTo: "a@example.com\nBcc: x@example.com" }]) {
+  for (const bad of [
+    { to: "alex@example.com\r\nBcc: sam@example.com" },
+    { replyTo: "a@example.com\nBcc: x@example.com" },
+  ]) {
     const outcome = await sendEmail(b, { ...mail, ...bad });
     assert.equal(outcome.sent ? "" : outcome.code, "header_line_break");
   }
@@ -37,7 +49,11 @@ test("an address with a line break is refused before the binding is called", asy
 });
 
 test("a missing binding, sender or recipient is not_configured", async () => {
-  for (const [b, m] of [[undefined, mail], [binding(null), { ...mail, from: " " }], [binding(null), { ...mail, to: [] }]]) {
+  for (const [b, m] of [
+    [undefined, mail],
+    [binding(null), { ...mail, from: " " }],
+    [binding(null), { ...mail, to: [] }],
+  ]) {
     const outcome = await sendEmail(/** @type {any} */ (b), /** @type {any} */ (m));
     assert.equal(outcome.sent ? "" : outcome.code, "not_configured");
   }
@@ -45,9 +61,19 @@ test("a missing binding, sender or recipient is not_configured", async () => {
 
 test("a refusal keeps the binding's code and cuts each secret and the recipient out of its message", async () => {
   const link = "https://example.com/sign-in?token=abc123";
-  const err = Object.assign(new Error(`rejected mail to alex@example.com with ${link} and code 482913`), { code: "E_DELIVERY_FAILED" });
+  const err = Object.assign(
+    new Error(`rejected mail to alex@example.com with ${link} and code 482913`),
+    { code: "E_DELIVERY_FAILED" },
+  );
   const outcome = await sendEmail(binding(err), mail, { secrets: [link, "482913"] });
-  assert.deepEqual(outcome, { sent: false, code: "E_DELIVERY_FAILED", error: "rejected mail to [redacted] with [redacted] and code [redacted]" });
-  const odd = await sendEmail(binding(Object.assign(new Error("x"), { code: "not a code\n" })), mail);
+  assert.deepEqual(outcome, {
+    sent: false,
+    code: "E_DELIVERY_FAILED",
+    error: "rejected mail to [redacted] with [redacted] and code [redacted]",
+  });
+  const odd = await sendEmail(
+    binding(Object.assign(new Error("x"), { code: "not a code\n" })),
+    mail,
+  );
   assert.equal(odd.sent ? "" : odd.code, "unknown");
 });

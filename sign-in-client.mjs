@@ -15,7 +15,9 @@ export const signInClientPlugins = () => [magicLinkClient(), emailOTPClient(), p
  * @param {Record<string, unknown>} options
  */
 async function signal(method, options) {
-  const api = /** @type {Record<string, unknown> | undefined} */ (/** @type {any} */ (globalThis).PublicKeyCredential);
+  const api = /** @type {Record<string, unknown> | undefined} */ (
+    /** @type {any} */ (globalThis).PublicKeyCredential
+  );
   const call = api?.[method];
   if (typeof call !== "function") return false;
   try {
@@ -30,7 +32,8 @@ async function signal(method, options) {
 const HANDLE_KEY = "site-runtime.passkey-user-handle:";
 
 /** The page's host: the relying party `./sign-in` sets. */
-const pageHost = () => /** @type {string | undefined} */ (/** @type {any} */ (globalThis).location?.hostname);
+const pageHost = () =>
+  /** @type {string | undefined} */ (/** @type {any} */ (globalThis).location?.hostname);
 
 /**
  * The user handle of the passkey that last signed in on this browser (`signInWithPasskey` keeps it), or null. It is
@@ -58,7 +61,11 @@ export function passkeyUserHandle(rpId = pageHost() ?? "") {
 export async function signalAllAcceptedCredentials({ rpId = pageHost(), userId, credentialIds }) {
   const handle = userId ?? passkeyUserHandle(rpId);
   if (!rpId || !handle) return false;
-  return signal("signalAllAcceptedCredentials", { rpId, userId: handle, allAcceptedCredentialIds: credentialIds });
+  return signal("signalAllAcceptedCredentials", {
+    rpId,
+    userId: handle,
+    allAcceptedCredentialIds: credentialIds,
+  });
 }
 
 /**
@@ -70,7 +77,12 @@ export async function signalAllAcceptedCredentials({ rpId = pageHost(), userId, 
 export async function signalCurrentUserDetails({ rpId = pageHost(), userId, name, displayName }) {
   const handle = userId ?? passkeyUserHandle(rpId);
   if (!rpId || !handle) return false;
-  return signal("signalCurrentUserDetails", { rpId, userId: handle, name, displayName: displayName || name });
+  return signal("signalCurrentUserDetails", {
+    rpId,
+    userId: handle,
+    name,
+    displayName: displayName || name,
+  });
 }
 
 /**
@@ -78,7 +90,13 @@ export async function signalCurrentUserDetails({ rpId = pageHost(), userId, name
  * handle (none passed, none kept) it does nothing; after a delete, signal the deleted one with signalUnknownCredential.
  * @param {{ rpId?: string, userId?: string | null, credentialIds: string[], name?: string, displayName?: string }} options
  */
-export async function signalPasskeys({ rpId = pageHost(), userId, credentialIds, name, displayName }) {
+export async function signalPasskeys({
+  rpId = pageHost(),
+  userId,
+  credentialIds,
+  name,
+  displayName,
+}) {
   const handle = userId ?? passkeyUserHandle(rpId);
   if (!rpId || !handle) return;
   await signalAllAcceptedCredentials({ rpId, userId: handle, credentialIds });
@@ -112,7 +130,8 @@ export async function signInWithPasskey(client, { rpId, ...options } = {}) {
   const credentialId = result?.webauthn?.response?.id;
   const host = rpId ?? pageHost();
   const code = /** @type {{ code?: unknown } | null | undefined} */ (result?.error)?.code;
-  if (code === "PASSKEY_NOT_FOUND" && credentialId && host) await signalUnknownCredential({ rpId: host, credentialId });
+  if (code === "PASSKEY_NOT_FOUND" && credentialId && host)
+    await signalUnknownCredential({ rpId: host, credentialId });
   const handle = result?.webauthn?.response?.response?.userHandle;
   if (!result?.error && host && typeof handle === "string" && handle) {
     try {

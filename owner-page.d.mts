@@ -48,10 +48,18 @@ export function listOwnerGrants(oauth: OAuthHelpers, userId: string): Promise<Gr
 export function revokeOwnerGrant(
   env: Partial<AuditEnv>,
   oauth: OAuthHelpers,
-  input: { userId: string; grantId: string; caller: string; server?: { name: string; version: string } },
+  input: {
+    userId: string;
+    grantId: string;
+    caller: string;
+    server?: { name: string; version: string };
+  },
 ): Promise<boolean>;
 /** One page of the tool-call log, newest first: `limit` rows (default 50, at most 100) before the row `before`. */
-export function readAuditLog(env: Partial<AuditEnv>, options?: { before?: number; limit?: number }): Promise<AuditLogRow[]>;
+export function readAuditLog(
+  env: Partial<AuditEnv>,
+  options?: { before?: number; limit?: number },
+): Promise<AuditLogRow[]>;
 
 /** The owner page's routes; `loginHandler` mounts them on every server it fronts. */
 export function ownerPage<E extends OwnerEnv>(options: {

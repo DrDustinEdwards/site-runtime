@@ -30,13 +30,25 @@ const MAX_NAME = 80;
  */
 export function accessSaas(env) {
   // The issuer's host is trusted with the client secret and to sign who signs in, so it must be an Access team host.
-  const host = env.ACCESS_TEAM_DOMAIN?.trim().replace(/^https:\/\//i, "").replace(/\/+$/, "");
-  const team = host && /^[a-z0-9-]+\.cloudflareaccess\.com$/i.test(host) ? `https://${host.toLowerCase()}` : null;
+  const host = env.ACCESS_TEAM_DOMAIN?.trim()
+    .replace(/^https:\/\//i, "")
+    .replace(/\/+$/, "");
+  const team =
+    host && /^[a-z0-9-]+\.cloudflareaccess\.com$/i.test(host)
+      ? `https://${host.toLowerCase()}`
+      : null;
   const clientId = env.ACCESS_SAAS_CLIENT_ID?.trim();
   const clientSecret = env.ACCESS_SAAS_CLIENT_SECRET?.trim();
   if (!team || !clientId || !clientSecret) return null;
   const issuer = `${team}/cdn-cgi/access/sso/oidc/${encodeURIComponent(clientId)}`;
-  return { clientId, clientSecret, issuer, authorizationUrl: `${issuer}/authorization`, tokenUrl: `${issuer}/token`, jwksUrl: `${issuer}/jwks` };
+  return {
+    clientId,
+    clientSecret,
+    issuer,
+    authorizationUrl: `${issuer}/authorization`,
+    tokenUrl: `${issuer}/token`,
+    jwksUrl: `${issuer}/jwks`,
+  };
 }
 
 /** @param {Uint8Array} bytes */
@@ -55,7 +67,10 @@ function fromBase64url(value) {
 
 /** A fresh PKCE verifier (43 characters, 256 random bits) and OIDC nonce for one sign-in. Keep both server-side. */
 export function newSignIn() {
-  return { verifier: base64url(crypto.getRandomValues(new Uint8Array(32))), nonce: crypto.randomUUID() };
+  return {
+    verifier: base64url(crypto.getRandomValues(new Uint8Array(32))),
+    nonce: crypto.randomUUID(),
+  };
 }
 
 /**
@@ -64,7 +79,9 @@ export function newSignIn() {
  * @param {{ redirectUri: string, state: string, verifier: string, nonce: string }} input
  */
 export async function authorizationUrl(saas, input) {
-  const challenge = base64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input.verifier))));
+  const challenge = base64url(
+    new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input.verifier))),
+  );
   const url = new URL(saas.authorizationUrl);
   url.searchParams.set("client_id", saas.clientId);
   url.searchParams.set("redirect_uri", input.redirectUri);
@@ -93,7 +110,10 @@ export function remoteKeys(jwksUrl) {
   return async (kid, fresh) => {
     let keys = fresh ? undefined : cachedKeys.get(jwksUrl);
     if (!keys) {
-      const response = await fetch(jwksUrl, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(KEYS_TIMEOUT_MS) });
+      const response = await fetch(jwksUrl, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(KEYS_TIMEOUT_MS),
+      });
       if (!response.ok) return undefined;
       const body = /** @type {{ keys?: Jwk[] }} */ (await response.json().catch(() => ({})));
       keys = Array.isArray(body.keys) ? body.keys : [];
@@ -130,7 +150,8 @@ export async function verifyJwt(token, keys, expect) {
     return { ok: false, reason: "malformed" };
   }
   if (typeof header !== "object" || header === null) return { ok: false, reason: "malformed" };
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return { ok: false, reason: "malformed" };
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
+    return { ok: false, reason: "malformed" };
   const payload = /** @type {Record<string, unknown>} */ (parsed);
   if (header.alg !== "RS256") return { ok: false, reason: "algorithm" };
   if (typeof header.kid !== "string") return { ok: false, reason: "unknown-key" };
@@ -138,8 +159,19 @@ export async function verifyJwt(token, keys, expect) {
   if (!jwk || jwk.kty !== "RSA") return { ok: false, reason: "unknown-key" };
   let valid = false;
   try {
-    const key = await crypto.subtle.importKey("jwk", { kty: jwk.kty, n: jwk.n, e: jwk.e }, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
-    valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, fromBase64url(parts[2]), new TextEncoder().encode(`${parts[0]}.${parts[1]}`));
+    const key = await crypto.subtle.importKey(
+      "jwk",
+      { kty: jwk.kty, n: jwk.n, e: jwk.e },
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      false,
+      ["verify"],
+    );
+    valid = await crypto.subtle.verify(
+      "RSASSA-PKCS1-v1_5",
+      key,
+      fromBase64url(parts[2]),
+      new TextEncoder().encode(`${parts[0]}.${parts[1]}`),
+    );
   } catch {
     return { ok: false, reason: "signature" };
   }
@@ -147,9 +179,15 @@ export async function verifyJwt(token, keys, expect) {
   const now = Math.floor((expect.now ?? Date.now()) / 1000);
   if (payload.iss !== expect.issuer) return { ok: false, reason: "issuer" };
   const aud = payload.aud;
-  if (!(aud === expect.audience || (Array.isArray(aud) && aud.includes(expect.audience)))) return { ok: false, reason: "audience" };
-  if (typeof payload.exp !== "number" || payload.exp + SKEW_SECONDS < now) return { ok: false, reason: "expired" };
-  if (payload.nbf !== undefined && (typeof payload.nbf !== "number" || payload.nbf - SKEW_SECONDS > now)) return { ok: false, reason: "not-yet-valid" };
+  if (!(aud === expect.audience || (Array.isArray(aud) && aud.includes(expect.audience))))
+    return { ok: false, reason: "audience" };
+  if (typeof payload.exp !== "number" || payload.exp + SKEW_SECONDS < now)
+    return { ok: false, reason: "expired" };
+  if (
+    payload.nbf !== undefined &&
+    (typeof payload.nbf !== "number" || payload.nbf - SKEW_SECONDS > now)
+  )
+    return { ok: false, reason: "not-yet-valid" };
   return { ok: true, claims: payload };
 }
 
@@ -195,7 +233,11 @@ export async function finishSignIn(saas, input, keys = remoteKeys(saas.jwksUrl))
   const tokens = /** @type {{ id_token?: unknown }} */ (await response.json().catch(() => ({})));
   if (typeof tokens.id_token !== "string") return { ok: false, reason: "no-id-token" };
 
-  const payload = await verifyIdToken(tokens.id_token, keys, { issuer: saas.issuer, audience: saas.clientId, now: input.now });
+  const payload = await verifyIdToken(tokens.id_token, keys, {
+    issuer: saas.issuer,
+    audience: saas.clientId,
+    now: input.now,
+  });
   if (!payload) return { ok: false, reason: "invalid-id-token" };
   if (payload.nonce !== input.nonce) return { ok: false, reason: "nonce-mismatch" };
   if (payload.email_verified === false) return { ok: false, reason: "email-not-verified" };

@@ -60,7 +60,12 @@ import { basename, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { parseArgs, stripVTControlCharacters } from "node:util";
 
-import { DEPRECATIONS_URL, MODEL_IDS, deprecationProblems, parseDeprecations } from "../anthropic.mjs";
+import {
+  DEPRECATIONS_URL,
+  MODEL_IDS,
+  deprecationProblems,
+  parseDeprecations,
+} from "../anthropic.mjs";
 import { MCP_PER_MINUTE, toolListHash, toolListProblems } from "../mcp-server.mjs";
 import { checkProse } from "../prose.mjs";
 
@@ -70,7 +75,12 @@ const DISCOVER = JSON.stringify({
   jsonrpc: "2.0",
   id: 1,
   method: "server/discover",
-  params: { _meta: { "io.modelcontextprotocol/protocolVersion": VERSION, "io.modelcontextprotocol/clientCapabilities": {} } },
+  params: {
+    _meta: {
+      "io.modelcontextprotocol/protocolVersion": VERSION,
+      "io.modelcontextprotocol/clientCapabilities": {},
+    },
+  },
 });
 const MCP_HEADERS = {
   "content-type": "application/json",
@@ -105,7 +115,12 @@ for (const entry of values["conformance-baseline"] ?? []) {
   if (!m) values.origin = undefined;
   else baselines.set(m[1], { passed: Number(m[2]), total: Number(m[3]) });
 }
-if (!values.origin || (values.kind !== undefined && !["worker", "site", "static"].includes(values.kind)) || (values.prose ?? []).some((p) => !p.startsWith("/")) || (values["grant-path"] !== undefined && !/^\/[A-Za-z0-9/._-]*$/.test(values["grant-path"]))) {
+if (
+  !values.origin ||
+  (values.kind !== undefined && !["worker", "site", "static"].includes(values.kind)) ||
+  (values.prose ?? []).some((p) => !p.startsWith("/")) ||
+  (values["grant-path"] !== undefined && !/^\/[A-Za-z0-9/._-]*$/.test(values["grant-path"]))
+) {
   console.error(
     "usage: site-runtime-ai-audit --origin https://example.com [--from https://preview.example] [--kind worker|site|static] [--grant-env NAME] [--grant-path /PATH] " +
       "[--tools-hash HEX] [--conformance-baseline scenario=passed/total ...] [--no-conformance] [--prose /path ...] [--prose-model ID] [--models]",
@@ -114,14 +129,20 @@ if (!values.origin || (values.kind !== undefined && !["worker", "site", "static"
 }
 const origin = values.origin.replace(/\/$/, "");
 const from = values.from?.replace(/\/$/, "");
-const grantEnv = values["grant-env"] ?? `MCP_TEST_GRANT_${new URL(origin).hostname.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
+const grantEnv =
+  values["grant-env"] ??
+  `MCP_TEST_GRANT_${new URL(origin).hostname.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
 
 /** @type {{ severity: "error" | "warning" | "unmeasured", item: string, url: string, detail: string }[]} */
 const findings = [];
 // "unmeasured": an item this run could not measure (no grant, a tool that could not run, a page that could not be read),
 // printed in devkit-live's form, `::notice title=<item>::<url> could not measure: <reason>`, never a pass or a failure.
-const report = (/** @type {"error" | "warning" | "unmeasured"} */ severity, /** @type {string} */ item, /** @type {string} */ url, /** @type {string} */ detail) =>
-  findings.push({ severity, item, url, detail });
+const report = (
+  /** @type {"error" | "warning" | "unmeasured"} */ severity,
+  /** @type {string} */ item,
+  /** @type {string} */ url,
+  /** @type {string} */ detail,
+) => findings.push({ severity, item, url, detail });
 
 /**
  * One request, never followed, with the 10 s timeout; an URL on --origin goes to --from when given. Returns the URL
@@ -136,10 +157,18 @@ async function get(url, init = {}) {
     // Headers, not a spread: init.headers may be a Headers object, whose entries a spread drops.
     const headers = new Headers(init.headers);
     if (!headers.has("user-agent")) headers.set("user-agent", "site-runtime-ai-audit");
-    const res = await fetch(requested, { redirect: "manual", signal: AbortSignal.timeout(TIMEOUT_MS), ...init, headers });
+    const res = await fetch(requested, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      ...init,
+      headers,
+    });
     return { url: requested, res, why: "" };
   } catch (error) {
-    const why = error instanceof Error && error.name === "TimeoutError" ? `no answer in ${TIMEOUT_MS / 1000} s` : `could not fetch (${error instanceof Error ? error.message : String(error)})`;
+    const why =
+      error instanceof Error && error.name === "TimeoutError"
+        ? `no answer in ${TIMEOUT_MS / 1000} s`
+        : `could not fetch (${error instanceof Error ? error.message : String(error)})`;
     return { url: requested, res: null, why };
   }
 }
@@ -159,7 +188,9 @@ async function jsonOf(/** @type {Response} */ res) {
 // ---------------------------------------------------------------------------------------------------------------------
 
 const prmProbes = await Promise.all(
-  ["/.well-known/oauth-protected-resource/mcp", "/.well-known/oauth-protected-resource"].map((path) => get(origin + path, { headers: { accept: "application/json" } })),
+  ["/.well-known/oauth-protected-resource/mcp", "/.well-known/oauth-protected-resource"].map(
+    (path) => get(origin + path, { headers: { accept: "application/json" } }),
+  ),
 );
 if (prmProbes.every((p) => !p.res)) {
   console.error(`site-runtime-ai-audit: ${from ?? origin} did not answer: ${prmProbes[0].why}`);
@@ -168,25 +199,48 @@ if (prmProbes.every((p) => !p.res)) {
 /** @type {{ url: string, prm: Record<string, any> }[]} */
 const prms = [];
 for (const probe of prmProbes) {
-  const prm = probe.res?.ok && /json/i.test(probe.res.headers.get("content-type") ?? "") ? await jsonOf(probe.res) : null;
+  const prm =
+    probe.res?.ok && /json/i.test(probe.res.headers.get("content-type") ?? "")
+      ? await jsonOf(probe.res)
+      : null;
   // A site may answer anything here (an SPA fallback's 200 page); only a worker, or an origin of unknown kind, must not.
   const mayBeAnything = values.kind === "site" || values.kind === "static";
   if (prm) prms.push({ url: probe.url, prm });
   else if (!mayBeAnything && !probe.res) report("error", "A1", probe.url, probe.why);
   else if (!mayBeAnything && probe.res && probe.res.status !== 404) {
-    report("error", "A1", probe.url, `answered ${probe.res.status} ${probe.res.headers.get("content-type") ?? "(no content-type)"}, neither 404 nor a JSON object`);
+    report(
+      "error",
+      "A1",
+      probe.url,
+      `answered ${probe.res.status} ${probe.res.headers.get("content-type") ?? "(no content-type)"}, neither 404 nor a JSON object`,
+    );
   }
   await probe.res?.body?.cancel().catch(() => {});
 }
-if (values.kind === "worker" && prms.length === 0 && findings.length === 0) report("error", "A1", prmProbes[0].url, "a worker (an MCP server) publishes no protected-resource metadata");
+if (values.kind === "worker" && prms.length === 0 && findings.length === 0)
+  report(
+    "error",
+    "A1",
+    prmProbes[0].url,
+    "a worker (an MCP server) publishes no protected-resource metadata",
+  );
 
 /** A value in a workflow command, escaped as GitHub requires, so it cannot end the line and start another command. */
-const commandValue = (/** @type {string} */ text) => text.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+const commandValue = (/** @type {string} */ text) =>
+  text.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
 
 // A check that throws must not take the findings with it: before this, a crash printed nothing, so the board read
 // "fail, 0 errors" with no cause (capsid-mcp, 2026-11-01). The stop is an error finding of its own, after the others.
 const stopped = (/** @type {unknown} */ error) => {
-  report("unmeasured", "audit", origin, `the audit stopped before it finished, so the rest was not measured: ${error instanceof Error ? (error.stack ?? error.message).split("\n").slice(0, 3).join(" | ") : String(error)}`.slice(0, 600));
+  report(
+    "unmeasured",
+    "audit",
+    origin,
+    `the audit stopped before it finished, so the rest was not measured: ${error instanceof Error ? (error.stack ?? error.message).split("\n").slice(0, 3).join(" | ") : String(error)}`.slice(
+      0,
+      600,
+    ),
+  );
 };
 for (const event of ["unhandledRejection", "uncaughtException"]) {
   process.on(event, (error) => {
@@ -205,13 +259,18 @@ finish();
 
 function finish() {
   for (const f of findings) {
-    const line = f.severity === "unmeasured" ? `notice title=${f.item}::${commandValue(f.url)} could not measure: ${commandValue(f.detail)}` : `${f.severity} title=${f.item}::${commandValue(f.url)} ${commandValue(f.detail)}`;
+    const line =
+      f.severity === "unmeasured"
+        ? `notice title=${f.item}::${commandValue(f.url)} could not measure: ${commandValue(f.detail)}`
+        : `${f.severity} title=${f.item}::${commandValue(f.url)} ${commandValue(f.detail)}`;
     console.log(`::${line}`);
   }
   const errors = findings.filter((f) => f.severity === "error").length;
   const unmeasured = findings.filter((f) => f.severity === "unmeasured").length;
   const kind = prms.length > 0 ? "MCP server" : (values.kind ?? "origin");
-  console.log(`site-runtime-ai-audit: ${kind} ${origin}; ${errors} error(s), ${findings.length - errors - unmeasured} warning(s), ${unmeasured} not measured.`);
+  console.log(
+    `site-runtime-ai-audit: ${kind} ${origin}; ${errors} error(s), ${findings.length - errors - unmeasured} warning(s), ${unmeasured} not measured.`,
+  );
   process.exit(errors > 0 ? 1 : unmeasured > 0 ? 3 : 0);
 }
 
@@ -222,47 +281,93 @@ function finish() {
 async function auditMcp() {
   // A1, on each metadata document served.
   for (const { url, prm } of prms) {
-    if (typeof prm.resource !== "string" || !prm.resource) report("error", "A1", url, "has no resource");
-    else if (!prm.resource.startsWith(`${origin}/`) && prm.resource !== origin) report("error", "A1", url, `resource ${prm.resource} is not on ${origin}`);
-    if (!Array.isArray(prm.authorization_servers) || prm.authorization_servers.length === 0) report("error", "A1", url, "names no authorization_servers");
+    if (typeof prm.resource !== "string" || !prm.resource)
+      report("error", "A1", url, "has no resource");
+    else if (!prm.resource.startsWith(`${origin}/`) && prm.resource !== origin)
+      report("error", "A1", url, `resource ${prm.resource} is not on ${origin}`);
+    if (!Array.isArray(prm.authorization_servers) || prm.authorization_servers.length === 0)
+      report("error", "A1", url, "names no authorization_servers");
     const scopes = Array.isArray(prm.scopes_supported) ? prm.scopes_supported.map(String) : null;
     if (!scopes || scopes.length === 0) report("error", "A1", url, "has no scopes_supported");
     else {
-      if (!scopes.some((s) => /read/i.test(s))) report("error", "A1", url, `scopes_supported (${scopes.join(" ")}) lists no read scope`);
-      if (scopes.includes("offline_access")) report("error", "A1", url, "scopes_supported lists offline_access");
+      if (!scopes.some((s) => /read/i.test(s)))
+        report("error", "A1", url, `scopes_supported (${scopes.join(" ")}) lists no read scope`);
+      if (scopes.includes("offline_access"))
+        report("error", "A1", url, "scopes_supported lists offline_access");
       const broad = scopes.filter((s) => s.includes("*") || /^(all|admin|full)$/i.test(s));
-      if (broad.length > 0) report("error", "A1", url, `scopes_supported has a wildcard or omnibus scope: ${broad.join(" ")}`);
+      if (broad.length > 0)
+        report(
+          "error",
+          "A1",
+          url,
+          `scopes_supported has a wildcard or omnibus scope: ${broad.join(" ")}`,
+        );
     }
   }
   const prm = prms[0].prm;
-  const endpoint = typeof prm.resource === "string" && prm.resource.startsWith(`${origin}/`) ? prm.resource : `${origin}/mcp`;
+  const endpoint =
+    typeof prm.resource === "string" && prm.resource.startsWith(`${origin}/`)
+      ? prm.resource
+      : `${origin}/mcp`;
 
   // A2 and P5's session rule: a modern request with no token.
   const bare = await get(endpoint, { method: "POST", headers: MCP_HEADERS, body: DISCOVER });
   if (!bare.res) report("error", "A2", bare.url, `POST with no token: ${bare.why}`);
-  else if (bare.res.status !== 401) report("error", "A2", bare.url, `POST with no token answered ${bare.res.status}, not 401`);
+  else if (bare.res.status !== 401)
+    report("error", "A2", bare.url, `POST with no token answered ${bare.res.status}, not 401`);
   else {
     const challenge = bare.res.headers.get("www-authenticate") ?? "";
-    if (!/resource_metadata="?[^",\s]+/i.test(challenge)) report("error", "A2", bare.url, `the 401's WWW-Authenticate has no resource_metadata: "${challenge}"`);
-    if (!/\bscope="?[^",]+/i.test(challenge)) report("error", "A2", bare.url, `the 401's WWW-Authenticate has no scope: "${challenge}"`);
-    if (bare.res.headers.has("mcp-session-id")) report("warning", "P5", bare.url, "a modern request's answer carries Mcp-Session-Id");
+    if (!/resource_metadata="?[^",\s]+/i.test(challenge))
+      report(
+        "error",
+        "A2",
+        bare.url,
+        `the 401's WWW-Authenticate has no resource_metadata: "${challenge}"`,
+      );
+    if (!/\bscope="?[^",]+/i.test(challenge))
+      report("error", "A2", bare.url, `the 401's WWW-Authenticate has no scope: "${challenge}"`);
+    if (bare.res.headers.has("mcp-session-id"))
+      report("warning", "P5", bare.url, "a modern request's answer carries Mcp-Session-Id");
   }
 
   // P10: a foreign Origin, no token.
-  const foreign = await get(endpoint, { method: "POST", headers: { ...MCP_HEADERS, origin: "https://evil.example" }, body: DISCOVER });
-  if (!foreign.res) report("error", "P10", foreign.url, `POST with Origin https://evil.example: ${foreign.why}`);
-  else if (foreign.res.status === 401) report("warning", "P10", foreign.url, "Origin https://evil.example got 401, not 403: the token check runs before the Origin check");
-  else if (foreign.res.status !== 403) report("error", "P10", foreign.url, `Origin https://evil.example answered ${foreign.res.status}, not 403`);
+  const foreign = await get(endpoint, {
+    method: "POST",
+    headers: { ...MCP_HEADERS, origin: "https://evil.example" },
+    body: DISCOVER,
+  });
+  if (!foreign.res)
+    report("error", "P10", foreign.url, `POST with Origin https://evil.example: ${foreign.why}`);
+  else if (foreign.res.status === 401)
+    report(
+      "warning",
+      "P10",
+      foreign.url,
+      "Origin https://evil.example got 401, not 403: the token check runs before the Origin check",
+    );
+  else if (foreign.res.status !== 403)
+    report(
+      "error",
+      "P10",
+      foreign.url,
+      `Origin https://evil.example answered ${foreign.res.status}, not 403`,
+    );
 
   // P5: GET on the endpoint.
   const stream = await get(endpoint, { headers: { accept: "text/event-stream" } });
   if (!stream.res) report("error", "P5", stream.url, `GET: ${stream.why}`);
-  else if (stream.res.status === 200) report("warning", "P5", stream.url, "GET answered 200; the modern era answers 405");
-  else if (stream.res.status !== 405 && stream.res.status !== 401) report("error", "P5", stream.url, `GET answered ${stream.res.status}, not 405`);
+  else if (stream.res.status === 200)
+    report("warning", "P5", stream.url, "GET answered 200; the modern era answers 405");
+  else if (stream.res.status !== 405 && stream.res.status !== 401)
+    report("error", "P5", stream.url, `GET answered ${stream.res.status}, not 405`);
   await stream.res?.body?.cancel();
 
   // A4: the authorization server's metadata (RFC 8414 path insertion for an issuer with a path).
-  const issuer = String(Array.isArray(prm.authorization_servers) && prm.authorization_servers[0] ? prm.authorization_servers[0] : origin);
+  const issuer = String(
+    Array.isArray(prm.authorization_servers) && prm.authorization_servers[0]
+      ? prm.authorization_servers[0]
+      : origin,
+  );
   /** @type {Record<string, any> | null} */
   let as = null;
   let asUrl = "";
@@ -278,47 +383,105 @@ async function auditMcp() {
     asUrl = meta.url;
     if (!meta.res) report("error", "A4", meta.url, meta.why);
     else if (!meta.res.ok) report("error", "A4", meta.url, `answered ${meta.res.status}`);
-    else if (!(as = await jsonOf(meta.res))) report("error", "A4", meta.url, "is not a JSON object");
+    else if (!(as = await jsonOf(meta.res)))
+      report("error", "A4", meta.url, "is not a JSON object");
   }
   if (as) {
-    if (as.issuer !== issuer) report("error", "A4", asUrl, `issuer ${JSON.stringify(as.issuer)} is not exactly ${issuer}`);
-    const methods = Array.isArray(as.code_challenge_methods_supported) ? as.code_challenge_methods_supported : [];
-    if (!methods.includes("S256")) report("error", "A4", asUrl, "code_challenge_methods_supported does not list S256");
-    if (methods.includes("plain")) report("error", "A4", asUrl, "code_challenge_methods_supported lists plain");
-    if (as.client_id_metadata_document_supported !== true) report("error", "A4", asUrl, "client_id_metadata_document_supported is not true");
-    if (as.authorization_response_iss_parameter_supported !== true) report("error", "A4", asUrl, "authorization_response_iss_parameter_supported is not true");
+    if (as.issuer !== issuer)
+      report("error", "A4", asUrl, `issuer ${JSON.stringify(as.issuer)} is not exactly ${issuer}`);
+    const methods = Array.isArray(as.code_challenge_methods_supported)
+      ? as.code_challenge_methods_supported
+      : [];
+    if (!methods.includes("S256"))
+      report("error", "A4", asUrl, "code_challenge_methods_supported does not list S256");
+    if (methods.includes("plain"))
+      report("error", "A4", asUrl, "code_challenge_methods_supported lists plain");
+    if (as.client_id_metadata_document_supported !== true)
+      report("error", "A4", asUrl, "client_id_metadata_document_supported is not true");
+    if (as.authorization_response_iss_parameter_supported !== true)
+      report("error", "A4", asUrl, "authorization_response_iss_parameter_supported is not true");
   }
 
   // A8: whatever /authorize answers to garbage, it is never stored.
-  const authorize = new URL(typeof as?.authorization_endpoint === "string" ? as.authorization_endpoint : `${origin}/authorize`);
-  for (const [k, v] of Object.entries({ response_type: "code", client_id: "https://evil.example/client.json", redirect_uri: "https://evil.example/cb", state: "x", code_challenge: "x", code_challenge_method: "S256" })) {
+  const authorize = new URL(
+    typeof as?.authorization_endpoint === "string"
+      ? as.authorization_endpoint
+      : `${origin}/authorize`,
+  );
+  for (const [k, v] of Object.entries({
+    response_type: "code",
+    client_id: "https://evil.example/client.json",
+    redirect_uri: "https://evil.example/cb",
+    state: "x",
+    code_challenge: "x",
+    code_challenge_method: "S256",
+  })) {
     authorize.searchParams.set(k, v);
   }
   const consent = await get(authorize.href, { headers: { accept: "text/html" } });
   if (!consent.res) report("error", "A8", consent.url, consent.why);
   else if (!/no-store/i.test(consent.res.headers.get("cache-control") ?? "")) {
-    report("error", "A8", consent.url, `${consent.res.status} with Cache-Control ${JSON.stringify(consent.res.headers.get("cache-control") ?? "(none)")}, not no-store`);
+    report(
+      "error",
+      "A8",
+      consent.url,
+      `${consent.res.status} with Cache-Control ${JSON.stringify(consent.res.headers.get("cache-control") ?? "(none)")}, not no-store`,
+    );
   }
   await consent.res?.body?.cancel();
 
   // S8, and L8: the tool-call log's own check on /health.
-  const health = await get(`${origin}/health`, { headers: { accept: "application/health+json, application/json" } });
+  const health = await get(`${origin}/health`, {
+    headers: { accept: "application/health+json, application/json" },
+  });
   if (!health.res) report("error", "S8", health.url, health.why);
-  else if (health.res.status !== 200) report("error", "S8", health.url, `answered ${health.res.status}, not 200`);
+  else if (health.res.status !== 200)
+    report("error", "S8", health.url, `answered ${health.res.status}, not 200`);
   const checks = health.res?.ok ? (await jsonOf(health.res))?.checks : null;
-  const logCheck = Array.isArray(checks) ? checks.find((c) => c?.name === "tool-call-log") : undefined;
-  if (!logCheck) report("warning", "L8", health.url, "has no tool-call-log check (site-runtime/audit-log auditLogCheck), so a stopped or spiking log goes unseen");
-  else if (logCheck.status !== "pass") report("error", "L8", health.url, `tool-call-log is ${logCheck.status}: ${String(logCheck.detail ?? "").slice(0, 200)}`);
+  const logCheck = Array.isArray(checks)
+    ? checks.find((c) => c?.name === "tool-call-log")
+    : undefined;
+  if (!logCheck)
+    report(
+      "warning",
+      "L8",
+      health.url,
+      "has no tool-call-log check (site-runtime/audit-log auditLogCheck), so a stopped or spiking log goes unseen",
+    );
+  else if (logCheck.status !== "pass")
+    report(
+      "error",
+      "L8",
+      health.url,
+      `tool-call-log is ${logCheck.status}: ${String(logCheck.detail ?? "").slice(0, 200)}`,
+    );
   await health.res?.body?.cancel().catch(() => {});
 
   if (!values["no-conformance"]) {
     const scenario = "authorization-server-metadata-endpoint";
-    judgeConformance(scenario, asUrl || issuer, await runMcpConformance(["authorization", "--url", issuer, "--scenario", scenario, "--spec-version", VERSION]));
+    judgeConformance(
+      scenario,
+      asUrl || issuer,
+      await runMcpConformance([
+        "authorization",
+        "--url",
+        issuer,
+        "--scenario",
+        scenario,
+        "--spec-version",
+        VERSION,
+      ]),
+    );
   }
 
   const grant = process.env[grantEnv]?.trim();
   if (!grant) {
-    report("unmeasured", "T1", endpoint, `no test grant in ${grantEnv}: tools/list (T1-T4, T7, T9, T12), the conformance server scenarios and the rate-limit burst (S1) did not run`);
+    report(
+      "unmeasured",
+      "T1",
+      endpoint,
+      `no test grant in ${grantEnv}: tools/list (T1-T4, T7, T9, T12), the conformance server scenarios and the rate-limit burst (S1) did not run`,
+    );
     return;
   }
   const keyed = values["grant-path"] ? `${origin}${values["grant-path"]}` : endpoint;
@@ -329,7 +492,14 @@ async function auditMcp() {
     try {
       for (const scenario of SERVER_SCENARIOS) {
         await sleep(WINDOW_MS);
-        judgeConformance(scenario, keyed, await runMcpConformance(["server", "--url", proxy.url, "--scenario", scenario, "--spec-version", VERSION], capabilities));
+        judgeConformance(
+          scenario,
+          keyed,
+          await runMcpConformance(
+            ["server", "--url", proxy.url, "--scenario", scenario, "--spec-version", VERSION],
+            capabilities,
+          ),
+        );
       }
     } finally {
       proxy.close();
@@ -344,7 +514,10 @@ async function auditMcp() {
 // ---------------------------------------------------------------------------------------------------------------------
 
 /** A modern-era request's body: the method, its params, and the per-request envelope. */
-function envelope(/** @type {string} */ method, /** @type {Record<string, unknown>} */ params = {}) {
+function envelope(
+  /** @type {string} */ method,
+  /** @type {Record<string, unknown>} */ params = {},
+) {
   const meta = {
     "io.modelcontextprotocol/protocolVersion": VERSION,
     "io.modelcontextprotocol/clientInfo": { name: "site-runtime-ai-audit", version: "1" },
@@ -387,10 +560,19 @@ async function listTools(/** @type {string} */ endpoint, /** @type {string} */ g
     if (!r.res) return { url: r.url, tools: null, why: r.why };
     const rpc = r.res.ok ? await rpcOf(r.res) : (await r.res.body?.cancel().catch(() => {}), null);
     if (!Array.isArray(rpc?.result?.tools)) {
-      return { url: r.url, tools: null, why: r.res.ok ? `tools/list answered no tools${rpc?.error ? ` (${rpc.error.code})` : ""}` : `the test grant was answered ${r.res.status}` };
+      return {
+        url: r.url,
+        tools: null,
+        why: r.res.ok
+          ? `tools/list answered no tools${rpc?.error ? ` (${rpc.error.code})` : ""}`
+          : `the test grant was answered ${r.res.status}`,
+      };
     }
     tools.push(...rpc.result.tools);
-    cursor = typeof rpc.result.nextCursor === "string" && rpc.result.nextCursor ? rpc.result.nextCursor : undefined;
+    cursor =
+      typeof rpc.result.nextCursor === "string" && rpc.result.nextCursor
+        ? rpc.result.nextCursor
+        : undefined;
     if (!cursor) return { url: r.url, tools, why: "" };
   }
   return { url: endpoint, tools: null, why: "tools/list still had a next page after 20" };
@@ -398,7 +580,11 @@ async function listTools(/** @type {string} */ endpoint, /** @type {string} */ g
 
 /** The capabilities the server declares in server/discover to the grant, or null when it does not say. */
 async function declaredCapabilities(/** @type {string} */ endpoint, /** @type {string} */ grant) {
-  const r = await get(endpoint, { method: "POST", headers: { ...MCP_HEADERS, authorization: `Bearer ${grant}` }, body: envelope("server/discover") });
+  const r = await get(endpoint, {
+    method: "POST",
+    headers: { ...MCP_HEADERS, authorization: `Bearer ${grant}` },
+    body: envelope("server/discover"),
+  });
   if (!r.res?.ok) return (await r.res?.body?.cancel().catch(() => {}), null);
   const capabilities = (await rpcOf(r.res))?.result?.capabilities;
   return capabilities && typeof capabilities === "object" ? capabilities : null;
@@ -407,18 +593,44 @@ async function declaredCapabilities(/** @type {string} */ endpoint, /** @type {s
 async function auditTools(/** @type {string} */ endpoint, /** @type {string} */ grant) {
   const first = await listTools(endpoint, grant);
   if (!first.tools) return report("error", "T1", first.url, first.why);
-  for (const p of toolListProblems(first.tools)) report(p.severity, p.item, first.url, `${p.tool}: ${p.detail}`);
+  for (const p of toolListProblems(first.tools))
+    report(p.severity, p.item, first.url, `${p.tool}: ${p.detail}`);
 
   const second = await listTools(endpoint, grant);
-  const names = (/** @type {Record<string, any>[] | null} */ list) => (list ?? []).map((t) => String(t.name)).join(",");
-  if (names(second.tools) !== names(first.tools)) report("error", "T7", first.url, "two tools/list calls in a row listed different tools or a different order");
+  const names = (/** @type {Record<string, any>[] | null} */ list) =>
+    (list ?? []).map((t) => String(t.name)).join(",");
+  if (names(second.tools) !== names(first.tools))
+    report(
+      "error",
+      "T7",
+      first.url,
+      "two tools/list calls in a row listed different tools or a different order",
+    );
   const writes = first.tools.filter((t) => t.annotations?.readOnlyHint !== true).map((t) => t.name);
-  if (writes.length) report("error", "T7", first.url, `the read-only test grant lists tools that are not read-only: ${writes.slice(0, 10).join(", ")}`);
+  if (writes.length)
+    report(
+      "error",
+      "T7",
+      first.url,
+      `the read-only test grant lists tools that are not read-only: ${writes.slice(0, 10).join(", ")}`,
+    );
 
   const hash = await toolListHash(first.tools);
   const pinned = values["tools-hash"]?.trim().toLowerCase();
-  if (!pinned) report("warning", "T12", first.url, `no --tools-hash pinned; the test grant's list hashes to ${hash}`);
-  else if (pinned !== hash) report("error", "T12", first.url, `the tool list changed: it hashes to ${hash}, not the pinned ${pinned}; review the change, then pin the new hash`);
+  if (!pinned)
+    report(
+      "warning",
+      "T12",
+      first.url,
+      `no --tools-hash pinned; the test grant's list hashes to ${hash}`,
+    );
+  else if (pinned !== hash)
+    report(
+      "error",
+      "T12",
+      first.url,
+      `the tool list changed: it hashes to ${hash}, not the pinned ${pinned}; review the change, then pin the new hash`,
+    );
 }
 
 /** S1: a concurrent burst over the limit, as the test grant, gets at least one 429. */
@@ -426,14 +638,25 @@ async function burst(/** @type {string} */ endpoint, /** @type {string} */ grant
   const count = MCP_PER_MINUTE + 5;
   const answers = await Promise.all(
     Array.from({ length: count }, () =>
-      get(endpoint, { method: "POST", headers: { ...MCP_HEADERS, "mcp-method": "tools/list", authorization: `Bearer ${grant}` }, body: envelope("tools/list") }),
+      get(endpoint, {
+        method: "POST",
+        headers: { ...MCP_HEADERS, "mcp-method": "tools/list", authorization: `Bearer ${grant}` },
+        body: envelope("tools/list"),
+      }),
     ),
   );
   const statuses = answers.map((a) => a.res?.status ?? 0);
   await Promise.allSettled(answers.map(async (a) => a.res?.body?.cancel()));
   const limited = answers.filter((a) => a.res?.status === 429);
-  if (limited.length === 0) report("error", "S1", endpoint, `${count} concurrent requests by one caller, none refused (statuses ${[...new Set(statuses)].join(", ")})`);
-  else if (!limited.every((a) => a.res?.headers.has("retry-after"))) report("warning", "S1", endpoint, "a 429 without Retry-After");
+  if (limited.length === 0)
+    report(
+      "error",
+      "S1",
+      endpoint,
+      `${count} concurrent requests by one caller, none refused (statuses ${[...new Set(statuses)].join(", ")})`,
+    );
+  else if (!limited.every((a) => a.res?.headers.has("retry-after")))
+    report("warning", "S1", endpoint, "a 429 without Retry-After");
 }
 
 /**
@@ -442,13 +665,24 @@ async function burst(/** @type {string} */ endpoint, /** @type {string} */ grant
  * proxy, not a browser page.
  */
 async function grantProxy(/** @type {string} */ endpoint, /** @type {string} */ grant) {
-  const target = from && endpoint.startsWith(origin) ? from + endpoint.slice(origin.length) : endpoint;
+  const target =
+    from && endpoint.startsWith(origin) ? from + endpoint.slice(origin.length) : endpoint;
   /** @param {import("node:http").IncomingMessage} req @param {import("node:http").ServerResponse} res */
   const proxy = async (req, res) => {
     const headers = new Headers();
     for (const [name, value] of Object.entries(req.headers)) {
-      if (["host", "connection", "content-length", "authorization", "accept-encoding"].includes(name) || value === undefined) continue;
-      if (name === "origin" && /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(String(value))) continue;
+      if (
+        ["host", "connection", "content-length", "authorization", "accept-encoding"].includes(
+          name,
+        ) ||
+        value === undefined
+      )
+        continue;
+      if (
+        name === "origin" &&
+        /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(String(value))
+      )
+        continue;
       headers.set(name, Array.isArray(value) ? value.join(", ") : value);
     }
     headers.set("authorization", `Bearer ${grant}`);
@@ -462,11 +696,20 @@ async function grantProxy(/** @type {string} */ endpoint, /** @type {string} */ 
       /** @type {Buffer[]} */
       const chunks = [];
       for await (const chunk of req) chunks.push(chunk);
-      const answer = await fetch(target, { method: req.method, headers, body: chunks.length ? Buffer.concat(chunks) : undefined, redirect: "manual", signal: AbortSignal.any([upstream.signal, AbortSignal.timeout(TIMEOUT_MS)]) });
+      const answer = await fetch(target, {
+        method: req.method,
+        headers,
+        body: chunks.length ? Buffer.concat(chunks) : undefined,
+        redirect: "manual",
+        signal: AbortSignal.any([upstream.signal, AbortSignal.timeout(TIMEOUT_MS)]),
+      });
       /** @type {Record<string, string>} */
       const out = {};
       answer.headers.forEach((value, name) => {
-        if (!["content-encoding", "content-length", "transfer-encoding", "connection"].includes(name)) out[name] = value;
+        if (
+          !["content-encoding", "content-length", "transfer-encoding", "connection"].includes(name)
+        )
+          out[name] = value;
       });
       res.writeHead(answer.status, out);
       if (!answer.body) return void res.end();
@@ -504,12 +747,25 @@ function runMcpConformance(args, capabilities = null) {
   const dir = mkdtempSync(join(tmpdir(), "mcp-conformance-"));
   return new Promise((resolve) => {
     let out = "";
-    const child = spawn("npx", ["-y", CONFORMANCE, ...args, "--output-dir", dir], { env, stdio: ["ignore", "pipe", "pipe"], timeout: 300_000, shell: process.platform === "win32" });
+    const child = spawn("npx", ["-y", CONFORMANCE, ...args, "--output-dir", dir], {
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 300_000,
+      shell: process.platform === "win32",
+    });
     child.stdout.on("data", (d) => (out += d));
     child.stderr.on("data", (d) => (out += d));
-    child.on("error", (error) => resolve({ count: null, failed: [], skipped: [], why: `npx could not start (${error.message})` }));
+    child.on("error", (error) =>
+      resolve({
+        count: null,
+        failed: [],
+        skipped: [],
+        why: `npx could not start (${error.message})`,
+      }),
+    );
     child.on("close", () => {
-      const why = stripVTControlCharacters(out).trim().split("\n").at(-1)?.slice(0, 200) || "no output";
+      const why =
+        stripVTControlCharacters(out).trim().split("\n").at(-1)?.slice(0, 200) || "no output";
       resolve(readChecks(savedChecks(dir), why, capabilities));
       rmSync(dir, { recursive: true, force: true });
     });
@@ -519,7 +775,9 @@ function runMcpConformance(args, capabilities = null) {
 /** The checks.json the suite saved for its one scenario (in a timestamped folder under the output dir), or null. */
 function savedChecks(/** @type {string} */ dir) {
   try {
-    const file = readdirSync(dir, { recursive: true, encoding: "utf8" }).find((f) => basename(f) === "checks.json");
+    const file = readdirSync(dir, { recursive: true, encoding: "utf8" }).find(
+      (f) => basename(f) === "checks.json",
+    );
     return file ? JSON.parse(readFileSync(join(dir, file), "utf8")) : null;
   } catch {
     return null;
@@ -527,34 +785,92 @@ function savedChecks(/** @type {string} */ dir) {
 }
 
 /** The suite's saved checks as a count over the checks that apply, or why there are none. */
-function readChecks(/** @type {any} */ checks, /** @type {string} */ why, /** @type {Record<string, unknown> | null} */ capabilities) {
+function readChecks(
+  /** @type {any} */ checks,
+  /** @type {string} */ why,
+  /** @type {Record<string, unknown> | null} */ capabilities,
+) {
   if (!Array.isArray(checks)) return { count: null, failed: [], skipped: [], why };
-  const lists = { "prompts-list": "prompts", "resources-list": "resources", "resources-templates-list": "resources" };
+  const lists = {
+    "prompts-list": "prompts",
+    "resources-list": "resources",
+    "resources-templates-list": "resources",
+  };
   const notApplicable = (/** @type {any} */ c) => {
     if (c.details?.untestable === true) return true;
-    const list = /^sep-2549-(prompts-list|resources-list|resources-templates-list)-caching-hints$/.exec(String(c.id))?.[1];
-    return Boolean(list && c.details?.error?.code === -32601 && capabilities && !(/** @type {Record<string, string>} */ (lists)[list] in capabilities));
+    const list =
+      /^sep-2549-(prompts-list|resources-list|resources-templates-list)-caching-hints$/.exec(
+        String(c.id),
+      )?.[1];
+    return Boolean(
+      list &&
+      c.details?.error?.code === -32601 &&
+      capabilities &&
+      !(/** @type {Record<string, string>} */ (lists)[list] in capabilities),
+    );
   };
   const judged = checks.filter((c) => c?.status === "SUCCESS" || c?.status === "FAILURE");
-  const skipped = [...new Set(judged.filter((c) => c.status === "FAILURE" && notApplicable(c)).map((c) => String(c.id)))];
+  const skipped = [
+    ...new Set(
+      judged.filter((c) => c.status === "FAILURE" && notApplicable(c)).map((c) => String(c.id)),
+    ),
+  ];
   const applies = judged.filter((c) => !(c.status === "FAILURE" && notApplicable(c)));
-  const failed = [...new Set(applies.filter((c) => c.status === "FAILURE").map((c) => String(c.id)))];
-  return { count: { passed: applies.filter((c) => c.status === "SUCCESS").length, total: applies.length }, failed: failed.slice(0, 5), skipped, why: "" };
+  const failed = [
+    ...new Set(applies.filter((c) => c.status === "FAILURE").map((c) => String(c.id))),
+  ];
+  return {
+    count: { passed: applies.filter((c) => c.status === "SUCCESS").length, total: applies.length },
+    failed: failed.slice(0, 5),
+    skipped,
+    why: "",
+  };
 }
 
 /** One scenario's count against its baseline, devkit-conformance's way. */
-function judgeConformance(/** @type {string} */ scenario, /** @type {string} */ url, /** @type {any} */ run) {
-  const item = { "server-stateless": "P3", "http-header-validation": "P4", caching: "P7" }[scenario] ?? "A4";
-  if (!run.count) return report("unmeasured", item, url, `conformance ${scenario} could not run: ${run.why}`);
-  if (run.skipped.length) report("warning", item, url, `conformance ${scenario}: ${run.skipped.length} check(s) do not apply here and were left out (${run.skipped.join(", ")})`);
+function judgeConformance(
+  /** @type {string} */ scenario,
+  /** @type {string} */ url,
+  /** @type {any} */ run,
+) {
+  const item =
+    { "server-stateless": "P3", "http-header-validation": "P4", caching: "P7" }[scenario] ?? "A4";
+  if (!run.count)
+    return report("unmeasured", item, url, `conformance ${scenario} could not run: ${run.why}`);
+  if (run.skipped.length)
+    report(
+      "warning",
+      item,
+      url,
+      `conformance ${scenario}: ${run.skipped.length} check(s) do not apply here and were left out (${run.skipped.join(", ")})`,
+    );
   const { passed, total } = run.count;
   const failing = run.failed.length ? ` (failing: ${run.failed.join(", ")})` : "";
   const want = baselines.get(scenario);
   if (!want) {
-    if (passed < total) report("error", item, url, `conformance ${scenario} passed ${passed}/${total}${failing}`);
-  } else if (total !== want.total) report("warning", item, url, `conformance ${scenario} now has ${total} checks, baseline ${want.total}; re-baseline`);
-  else if (passed < want.passed) report("error", item, url, `conformance ${scenario} passed ${passed}/${total}, below its baseline ${want.passed}${failing}`);
-  else if (passed > want.passed) report("warning", item, url, `conformance ${scenario} passed ${passed}/${total}, above its baseline ${want.passed}; tighten it`);
+    if (passed < total)
+      report("error", item, url, `conformance ${scenario} passed ${passed}/${total}${failing}`);
+  } else if (total !== want.total)
+    report(
+      "warning",
+      item,
+      url,
+      `conformance ${scenario} now has ${total} checks, baseline ${want.total}; re-baseline`,
+    );
+  else if (passed < want.passed)
+    report(
+      "error",
+      item,
+      url,
+      `conformance ${scenario} passed ${passed}/${total}, below its baseline ${want.passed}${failing}`,
+    );
+  else if (passed > want.passed)
+    report(
+      "warning",
+      item,
+      url,
+      `conformance ${scenario} passed ${passed}/${total}, above its baseline ${want.passed}; tighten it`,
+    );
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -596,7 +912,12 @@ async function auditProse(/** @type {string[]} */ paths) {
     for (const issue of checkProse(textOf(await page.res.text()), { model, dashes: "allow" })) {
       if (issue.severity !== "high") continue;
       const leftover = ["leftover", "placeholder", "markup"].includes(issue.check);
-      report(leftover ? "error" : "warning", leftover ? "W3" : "W1", page.url, `${issue.message}`.slice(0, 200));
+      report(
+        leftover ? "error" : "warning",
+        leftover ? "W3" : "W1",
+        page.url,
+        `${issue.message}`.slice(0, 200),
+      );
     }
   }
 }
@@ -606,10 +927,20 @@ async function auditModels() {
   /** @type {string} */
   let page = "";
   try {
-    const res = await fetch(DEPRECATIONS_URL, { signal: AbortSignal.timeout(TIMEOUT_MS), headers: { "user-agent": "site-runtime-ai-audit" } });
+    const res = await fetch(DEPRECATIONS_URL, {
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      headers: { "user-agent": "site-runtime-ai-audit" },
+    });
     page = res.ok ? await res.text() : "";
   } catch {}
   const table = parseDeprecations(page);
-  if (Object.keys(table).length === 0) return report("unmeasured", "C8", DEPRECATIONS_URL, "could not read the model table, so the models were not checked today");
-  for (const problem of deprecationProblems(Object.values(MODEL_IDS), table)) report("error", "C8", DEPRECATIONS_URL, problem);
+  if (Object.keys(table).length === 0)
+    return report(
+      "unmeasured",
+      "C8",
+      DEPRECATIONS_URL,
+      "could not read the model table, so the models were not checked today",
+    );
+  for (const problem of deprecationProblems(Object.values(MODEL_IDS), table))
+    report("error", "C8", DEPRECATIONS_URL, problem);
 }

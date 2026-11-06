@@ -21,15 +21,23 @@ export function confirmLinkURL(verifyUrl: string, confirmPath: string, sentAt?: 
  * page, or 429). Not a POST: 405. No token: 400.
  */
 export function confirmSignInLink(
-  auth: { handler: (request: Request) => Promise<Response>; options: { basePath?: string; [option: string]: unknown } },
+  auth: {
+    handler: (request: Request) => Promise<Response>;
+    options: { basePath?: string; [option: string]: unknown };
+  },
   request: Request,
 ): Promise<Response>;
 
 export type SignInLinkProblem = "signed-in" | "used" | "expired" | "invalid" | "missing" | "failed";
 /** What went wrong with a sign-in link, from the confirm page's URL (`error`, `sent`, `token`), or null for the button. */
-export function signInLinkProblem(url: string | URL, options?: { signedIn?: boolean; now?: number }): SignInLinkProblem | null;
+export function signInLinkProblem(
+  url: string | URL,
+  options?: { signedIn?: boolean; now?: number },
+): SignInLinkProblem | null;
 /** The confirm page's words for each problem. */
-export const SIGN_IN_LINK_WORDS: Readonly<Record<SignInLinkProblem, Readonly<{ title: string; text: string }>>>;
+export const SIGN_IN_LINK_WORDS: Readonly<
+  Record<SignInLinkProblem, Readonly<{ title: string; text: string }>>
+>;
 
 /** The page an email-change link opens: Better Auth's link's origin, `confirmPath` (EMAIL_CONFIRM_PATH) and the token. */
 export function emailConfirmURL(verifyUrl: string, confirmPath?: string): string;
@@ -40,11 +48,23 @@ export function emailConfirmURL(verifyUrl: string, confirmPath?: string): string
  * No token: 400.
  */
 export function confirmEmailLink(
-  auth: { handler: (request: Request) => Promise<Response>; options: { basePath?: string; [option: string]: unknown } },
+  auth: {
+    handler: (request: Request) => Promise<Response>;
+    options: { basePath?: string; [option: string]: unknown };
+  },
   request: Request,
   options?: { callbackURL?: string },
 ): Promise<Response>;
 
-export type EmailLinkProblem = "expired" | "done" | "other-account" | "invalid" | "missing" | "failed";
+export type EmailLinkProblem =
+  | "expired"
+  | "done"
+  | "other-account"
+  | "invalid"
+  | "missing"
+  | "failed";
 /** What the email-change page shows, from its URL: `done` after a confirmation, `problem` after a refusal or with no token. */
-export function emailLinkResult(url: string | URL): { done: "approved" | "changed" | "verified" | null; problem: EmailLinkProblem | null };
+export function emailLinkResult(url: string | URL): {
+  done: "approved" | "changed" | "verified" | null;
+  problem: EmailLinkProblem | null;
+};

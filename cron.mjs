@@ -71,7 +71,10 @@ export async function runJobs(db, jobs, { now = Date.now, timeoutMs = CRON_TIMEO
   const write = async (sql, ...values) => {
     try {
       store ??= typeof db === "function" ? db() : db;
-      await store.prepare(sql).bind(...values).run();
+      await store
+        .prepare(sql)
+        .bind(...values)
+        .run();
     } catch (error) {
       logEvent("cron_run_write_failed", { name: values[0], error }, { level: "error" });
     }
@@ -135,25 +138,44 @@ export async function cronFindings(db, { graceMinutes, jobs, deployedAt, now } =
   const windowMs = (every) => (every + (graceMinutes ?? Math.max(10, every / 10))) * 60_000;
   const at = now?.getTime() ?? Date.now();
   const { results } = await (typeof db === "function" ? db() : db)
-    .prepare("SELECT name, every_minutes, first_started_at, last_ok_at, last_failed_at FROM cron_runs ORDER BY name")
+    .prepare(
+      "SELECT name, every_minutes, first_started_at, last_ok_at, last_failed_at FROM cron_runs ORDER BY name",
+    )
     .bind()
     .all();
-  const rows = new Map(/** @type {Array<Record<string, number | string | null>>} */ (results).map((row) => [String(row.name), row]));
-  const expected = jobs ?? [...rows.values()].map((row) => ({ name: String(row.name), everyMinutes: Number(row.every_minutes) }));
+  const rows = new Map(
+    /** @type {Array<Record<string, number | string | null>>} */ (results).map((row) => [
+      String(row.name),
+      row,
+    ]),
+  );
+  const expected =
+    jobs ??
+    [...rows.values()].map((row) => ({
+      name: String(row.name),
+      everyMinutes: Number(row.every_minutes),
+    }));
   /** @type {Array<{ name: string, reason: "failed" | "stale" | "never succeeded" | "never ran", lastOkAt: number | null }>} */
   const found = [];
   for (const { name, everyMinutes } of expected) {
     const limit = windowMs(everyMinutes);
     const row = rows.get(name);
     if (!row) {
-      if (deployedAt === undefined || at - deployedAt.getTime() > limit) found.push({ name, reason: "never ran", lastOkAt: null });
+      if (deployedAt === undefined || at - deployedAt.getTime() > limit)
+        found.push({ name, reason: "never ran", lastOkAt: null });
       continue;
     }
     const ok = row.last_ok_at === null ? null : Number(row.last_ok_at);
     const failedAt = row.last_failed_at === null ? null : Number(row.last_failed_at);
-    if (failedAt !== null && (ok === null || failedAt > ok)) found.push({ name, reason: "failed", lastOkAt: ok });
+    if (failedAt !== null && (ok === null || failedAt > ok))
+      found.push({ name, reason: "failed", lastOkAt: ok });
     else if (ok !== null && at - ok > limit) found.push({ name, reason: "stale", lastOkAt: ok });
-    else if (ok === null && row.first_started_at !== null && at - Number(row.first_started_at) > limit) found.push({ name, reason: "never succeeded", lastOkAt: null });
+    else if (
+      ok === null &&
+      row.first_started_at !== null &&
+      at - Number(row.first_started_at) > limit
+    )
+      found.push({ name, reason: "never succeeded", lastOkAt: null });
   }
   return found;
 }
@@ -174,7 +196,9 @@ export function cronCheck(db, options = {}) {
     level: "warn",
     run: async () => {
       const found = await cronFindings(db, options);
-      return found.length ? { ok: false, detail: found.map(({ name, reason }) => `${name} ${reason}`).join(", ") } : true;
+      return found.length
+        ? { ok: false, detail: found.map(({ name, reason }) => `${name} ${reason}`).join(", ") }
+        : true;
     },
   };
 }

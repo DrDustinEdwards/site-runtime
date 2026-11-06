@@ -21,7 +21,8 @@ import { OWASP_RECOMMENDED } from "./owasp-headers.mjs";
  * @type {Readonly<Record<string, string>>}
  */
 export const OWASP_SKIPPED = /* @__PURE__ */ Object.freeze({
-  "Cache-Control": "OSHP's `no-store, max-age=0` on every response makes nothing cacheable, edge caches included; a site sets caching per route.",
+  "Cache-Control":
+    "OSHP's `no-store, max-age=0` on every response makes nothing cacheable, edge caches included; a site sets caching per route.",
   "Clear-Site-Data":
     "On every response it wipes the reader's cookies, storage and cache at each page load, which logs everyone out of everything; OSHP's own suite tests it on the logout page only, so it is exported as LOGOUT_HEADERS for a site's logout response.",
   "Cross-Origin-Embedder-Policy":
@@ -36,7 +37,9 @@ export const OWASP_SKIPPED = /* @__PURE__ */ Object.freeze({
  * @type {Readonly<Record<string, string>>}
  */
 export const STANDARD_SECURITY_HEADERS = Object.freeze(
-  Object.fromEntries(Object.entries(OWASP_RECOMMENDED).filter(([name]) => !(name in OWASP_SKIPPED))),
+  Object.fromEntries(
+    Object.entries(OWASP_RECOMMENDED).filter(([name]) => !(name in OWASP_SKIPPED)),
+  ),
 );
 
 /**
@@ -44,7 +47,9 @@ export const STANDARD_SECURITY_HEADERS = Object.freeze(
  *
  * @type {Readonly<Record<string, string>>}
  */
-export const LOGOUT_HEADERS = /* @__PURE__ */ Object.freeze({ "Clear-Site-Data": OWASP_RECOMMENDED["Clear-Site-Data"] ?? "" });
+export const LOGOUT_HEADERS = /* @__PURE__ */ Object.freeze({
+  "Clear-Site-Data": OWASP_RECOMMENDED["Clear-Site-Data"] ?? "",
+});
 
 /**
  * OSHP's Permissions-Policy with each named feature allowed for the site's own pages, from the parsed list rather
@@ -53,7 +58,10 @@ export const LOGOUT_HEADERS = /* @__PURE__ */ Object.freeze({ "Clear-Site-Data":
  * @returns {string}
  */
 export function permissionsAllowingSelf(...features) {
-  const directives = (OWASP_RECOMMENDED["Permissions-Policy"] ?? "").split(",").map((d) => d.trim()).filter(Boolean);
+  const directives = (OWASP_RECOMMENDED["Permissions-Policy"] ?? "")
+    .split(",")
+    .map((d) => d.trim())
+    .filter(Boolean);
   const kept = directives.filter((d) => !features.includes(d.split("=")[0] ?? ""));
   return [...kept, ...features.map((f) => `${f}=(self)`)].join(", ");
 }
@@ -62,7 +70,8 @@ export function permissionsAllowingSelf(...features) {
 export const PASSKEY_OVERRIDES = /* @__PURE__ */ Object.freeze({
   "Permissions-Policy": Object.freeze({
     value: permissionsAllowingSelf("publickey-credentials-get"),
-    reason: "Passkey sign-in (./sign-in) calls navigator.credentials.get, which OSHP's publickey-credentials-get=() refuses; allowed for the site's own pages only.",
+    reason:
+      "Passkey sign-in (./sign-in) calls navigator.credentials.get, which OSHP's publickey-credentials-get=() refuses; allowed for the site's own pages only.",
   }),
 });
 
@@ -76,7 +85,9 @@ export const PASSKEY_OVERRIDES = /* @__PURE__ */ Object.freeze({
  * @returns {"cross-origin" | "same-origin"}
  */
 export function corpFor(contentType) {
-  return /^\s*(image\/|font\/|text\/css|(text|application)\/javascript|application\/(rss|atom)\+xml|application\/feed\+json)/i.test(contentType ?? "")
+  return /^\s*(image\/|font\/|text\/css|(text|application)\/javascript|application\/(rss|atom)\+xml|application\/feed\+json)/i.test(
+    contentType ?? "",
+  )
     ? "cross-origin"
     : "same-origin";
 }
@@ -95,8 +106,13 @@ export function corpFor(contentType) {
  */
 export function entryOverrides({ id, headers = {}, optIns = {} }) {
   const merged = { ...(optIns.passkey?.value ? PASSKEY_OVERRIDES : {}), ...headers };
-  if (optIns.passkey?.value && !/publickey-credentials-get=\(self\)/.test(merged["Permissions-Policy"]?.value ?? "")) {
-    throw new Error(`${id} opts into passkey but its Permissions-Policy refuses publickey-credentials-get`);
+  if (
+    optIns.passkey?.value &&
+    !/publickey-credentials-get=\(self\)/.test(merged["Permissions-Policy"]?.value ?? "")
+  ) {
+    throw new Error(
+      `${id} opts into passkey but its Permissions-Policy refuses publickey-credentials-get`,
+    );
   }
   return merged;
 }
@@ -123,17 +139,26 @@ export function entryOverrides({ id, headers = {}, optIns = {} }) {
  * @returns {Record<string, string>}
  */
 export function buildSecurityHeaders({ site, overrides, coep } = {}) {
-  if (site !== undefined && overrides !== undefined) throw new Error("pass site or overrides, not both: a site's deviations live in its registry entry");
-  if (typeof site === "string") throw new Error(`pass the registry entry, not its id: import { ... } from "@dustinedwards/site-runtime/sites" (${site})`);
+  if (site !== undefined && overrides !== undefined)
+    throw new Error(
+      "pass site or overrides, not both: a site's deviations live in its registry entry",
+    );
+  if (typeof site === "string")
+    throw new Error(
+      `pass the registry entry, not its id: import { ... } from "@dustinedwards/site-runtime/sites" (${site})`,
+    );
   overrides = site === undefined ? (overrides ?? {}) : entryOverrides(site);
   /** @type {Record<string, string>} */
   const set = { ...STANDARD_SECURITY_HEADERS };
   for (const [name, { value, reason }] of Object.entries(overrides)) {
     // A registry entry's reasons are kept out of a Worker's bundle (sites-deviations.mjs); the registry's own test holds them.
-    if (site === undefined && (typeof reason !== "string" || reason.trim().length < 12)) throw new Error(`the override of ${name} gives no reason`);
-    if (value === (STANDARD_SECURITY_HEADERS[name] ?? undefined)) throw new Error(`the override of ${name} says what the standard already says`);
+    if (site === undefined && (typeof reason !== "string" || reason.trim().length < 12))
+      throw new Error(`the override of ${name} gives no reason`);
+    if (value === (STANDARD_SECURITY_HEADERS[name] ?? undefined))
+      throw new Error(`the override of ${name} says what the standard already says`);
     if (value === null) {
-      if (!(name in set)) throw new Error(`the override of ${name} removes a header the standard does not send`);
+      if (!(name in set))
+        throw new Error(`the override of ${name} removes a header the standard does not send`);
       delete set[name];
     } else if (value.trim() === "") {
       throw new Error(`the override of ${name} is empty; use null to send none`);
@@ -145,16 +170,29 @@ export function buildSecurityHeaders({ site, overrides, coep } = {}) {
   // player because none sends one.
   if (site?.optIns?.embeds?.value) {
     set["Permissions-Policy"] = permissionsAllowingEmbeds(set["Permissions-Policy"] ?? "");
-    if (site.optIns.coep && !site.optIns.coep.reportOnly) throw new Error(`${site.id} embeds players, which send no Cross-Origin-Embedder-Policy, so an enforced coep refuses them; keep it reportOnly`);
+    if (site.optIns.coep && !site.optIns.coep.reportOnly)
+      throw new Error(
+        `${site.id} embeds players, which send no Cross-Origin-Embedder-Policy, so an enforced coep refuses them; keep it reportOnly`,
+      );
   }
   const embedder = coep ?? site?.optIns?.coep;
   if (embedder) {
-    if (embedder.value !== "credentialless" && embedder.value !== "require-corp") throw new Error(`coep is "credentialless" or "require-corp", not ${JSON.stringify(embedder.value)}`);
-    set[embedder.reportOnly ? "Cross-Origin-Embedder-Policy-Report-Only" : "Cross-Origin-Embedder-Policy"] = `${embedder.value}; report-to="${CSP_REPORT_GROUP}"`;
+    if (embedder.value !== "credentialless" && embedder.value !== "require-corp")
+      throw new Error(
+        `coep is "credentialless" or "require-corp", not ${JSON.stringify(embedder.value)}`,
+      );
+    set[
+      embedder.reportOnly
+        ? "Cross-Origin-Embedder-Policy-Report-Only"
+        : "Cross-Origin-Embedder-Policy"
+    ] = `${embedder.value}; report-to="${CSP_REPORT_GROUP}"`;
   }
   const integrity = site?.optIns?.integrityPolicy?.value;
   if (integrity) {
-    if (integrity !== "enforce" && integrity !== "report-only") throw new Error(`integrityPolicy is "enforce" or "report-only", not ${JSON.stringify(integrity)}`);
+    if (integrity !== "enforce" && integrity !== "report-only")
+      throw new Error(
+        `integrityPolicy is "enforce" or "report-only", not ${JSON.stringify(integrity)}`,
+      );
     const { name, value } = integrityPolicy({ reportOnly: integrity === "report-only" });
     set[name] = value;
   }
@@ -174,11 +212,22 @@ export function buildSecurityHeaders({ site, overrides, coep } = {}) {
  * @returns {string}
  */
 export function hostCookie(name, value, { maxAge, sameSite = "Lax", httpOnly = true } = {}) {
-  if (!/^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/.test(name) || /^__(host|secure)-/i.test(name)) throw new Error(`${JSON.stringify(name)} is not a cookie name (give it without its prefix)`);
-  if (!/^[\x21\x23-\x2B\x2D-\x3A\x3C-\x5B\x5D-\x7E]*$/.test(value)) throw new Error(`the value of cookie ${name} holds a character a cookie cannot carry`);
-  if (sameSite !== "Lax" && sameSite !== "Strict") throw new Error(`SameSite is Lax or Strict, not ${JSON.stringify(sameSite)}`);
-  if (maxAge !== undefined && !(Number.isInteger(maxAge) && maxAge >= 0)) throw new Error(`maxAge is whole seconds, got ${maxAge}`);
-  return [`__Host-${name}=${value}`, "Path=/", "Secure", ...(httpOnly ? ["HttpOnly"] : []), `SameSite=${sameSite}`, ...(maxAge === undefined ? [] : [`Max-Age=${maxAge}`])].join("; ");
+  if (!/^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/.test(name) || /^__(host|secure)-/i.test(name))
+    throw new Error(`${JSON.stringify(name)} is not a cookie name (give it without its prefix)`);
+  if (!/^[\x21\x23-\x2B\x2D-\x3A\x3C-\x5B\x5D-\x7E]*$/.test(value))
+    throw new Error(`the value of cookie ${name} holds a character a cookie cannot carry`);
+  if (sameSite !== "Lax" && sameSite !== "Strict")
+    throw new Error(`SameSite is Lax or Strict, not ${JSON.stringify(sameSite)}`);
+  if (maxAge !== undefined && !(Number.isInteger(maxAge) && maxAge >= 0))
+    throw new Error(`maxAge is whole seconds, got ${maxAge}`);
+  return [
+    `__Host-${name}=${value}`,
+    "Path=/",
+    "Secure",
+    ...(httpOnly ? ["HttpOnly"] : []),
+    `SameSite=${sameSite}`,
+    ...(maxAge === undefined ? [] : [`Max-Age=${maxAge}`]),
+  ].join("; ");
 }
 
 /**
@@ -212,17 +261,24 @@ export const UPLOAD_HEADERS = /* @__PURE__ */ Object.freeze({
  */
 export function applyHeaderSet(target, set = STANDARD_SECURITY_HEADERS, { overwrite = true } = {}) {
   if (target instanceof Response) {
-    if (target.status === 101 || /** @type {Response & { webSocket?: unknown }} */ (target).webSocket) return target;
+    if (
+      target.status === 101 ||
+      /** @type {Response & { webSocket?: unknown }} */ (target).webSocket
+    )
+      return target;
     const headers = new Headers(target.headers);
     applyHeaderSet(headers, set, { overwrite });
-    return /** @type {T} */ (new Response(target.body, { status: target.status, statusText: target.statusText, headers }));
+    return /** @type {T} */ (
+      new Response(target.body, { status: target.status, statusText: target.statusText, headers })
+    );
   }
   const headers = /** @type {Headers} */ (target);
   for (const [name, value] of Object.entries(set)) {
     if (overwrite || !headers.has(name)) headers.set(name, value);
   }
   const type = headers.get("Content-Type");
-  if (type && /^\s*(text\/|[^;]*[/+]xml\s*$)/i.test(type) && !/;/.test(type)) headers.set("Content-Type", `${type.trim()}; charset=utf-8`);
+  if (type && /^\s*(text\/|[^;]*[/+]xml\s*$)/i.test(type) && !/;/.test(type))
+    headers.set("Content-Type", `${type.trim()}; charset=utf-8`);
   return target;
 }
 
@@ -284,9 +340,13 @@ function splitLongValue(name, value) {
   /** @type {string[]} */
   const parts = [];
   for (const item of items) {
-    if (item.length > room) throw new Error(`header ${JSON.stringify(name)} has an item of ${item.length} characters, over the ${HEADERS_LINE_LIMIT}-character line limit of a _headers file`);
+    if (item.length > room)
+      throw new Error(
+        `header ${JSON.stringify(name)} has an item of ${item.length} characters, over the ${HEADERS_LINE_LIMIT}-character line limit of a _headers file`,
+      );
     const last = parts.length - 1;
-    if (last >= 0 && /** @type {string} */ (parts[last]).length + 2 + item.length <= room) parts[last] += `, ${item}`;
+    if (last >= 0 && /** @type {string} */ (parts[last]).length + 2 + item.length <= room)
+      parts[last] += `, ${item}`;
     else parts.push(item);
   }
   return parts;
@@ -309,13 +369,20 @@ function splitLongValue(name, value) {
  */
 export function headersFile(set, { paths = {}, comment = [], charset = false } = {}) {
   const line = (/** @type {string} */ name, /** @type {string} */ value) => {
-    if (/[\r\n:]/.test(name) || /[\r\n]/.test(value)) throw new Error(`header ${JSON.stringify(name)} cannot be written on one line`);
-    return splitLongValue(name, value).map((part) => `  ${name}: ${part}`).join("\n");
+    if (/[\r\n:]/.test(name) || /[\r\n]/.test(value))
+      throw new Error(`header ${JSON.stringify(name)} cannot be written on one line`);
+    return splitLongValue(name, value)
+      .map((part) => `  ${name}: ${part}`)
+      .join("\n");
   };
   const base = Object.entries(set).filter(([name]) => !POLICY_HEADERS.includes(name.toLowerCase()));
   const baseNames = new Set(base.map(([name]) => name.toLowerCase()));
-  const baseCorp = base.find(([name]) => name.toLowerCase() === "cross-origin-resource-policy")?.[1];
-  const notes = (typeof comment === "string" ? comment.split("\n") : comment).map((text) => (text ? `# ${text}` : "#"));
+  const baseCorp = base.find(
+    ([name]) => name.toLowerCase() === "cross-origin-resource-policy",
+  )?.[1];
+  const notes = (typeof comment === "string" ? comment.split("\n") : comment).map((text) =>
+    text ? `# ${text}` : "#",
+  );
   /** @type {Map<string, Record<string, string>>} */
   const rules = new Map();
   if (charset) {
@@ -327,18 +394,29 @@ export function headersFile(set, { paths = {}, comment = [], charset = false } =
       });
     }
     // A folder's index page is answered at `/` or a path ending in `/`, with no extension for a `/*.html` rule to match.
-    for (const pattern of ["/", "/*/"]) rules.set(pattern, { "Content-Type": "text/html; charset=utf-8" });
+    for (const pattern of ["/", "/*/"])
+      rules.set(pattern, { "Content-Type": "text/html; charset=utf-8" });
   }
-  for (const [pattern, headers] of Object.entries(paths)) rules.set(pattern, { ...rules.get(pattern), ...headers });
+  for (const [pattern, headers] of Object.entries(paths))
+    rules.set(pattern, { ...rules.get(pattern), ...headers });
   // A header a `/*` rule of `paths` adds (a static site's one page policy) is detached the same way on a path that sets its own.
   const starNames = new Set(Object.keys(paths["/*"] ?? {}).map((name) => name.toLowerCase()));
   const blocks = [["/*", ...base.map(([name, value]) => line(name, value))].join("\n")];
   for (const [pattern, headers] of rules) {
-    if (!pattern.startsWith("/") || /\s/.test(pattern)) throw new Error(`${JSON.stringify(pattern)} is not a path pattern`);
+    if (!pattern.startsWith("/") || /\s/.test(pattern))
+      throw new Error(`${JSON.stringify(pattern)} is not a path pattern`);
     const entries = Object.entries(headers);
     if (entries.length === 0) continue;
-    const detach = entries.filter(([name]) => baseNames.has(name.toLowerCase()) || (pattern !== "/*" && starNames.has(name.toLowerCase()))).map(([name]) => `  ! ${name}`);
-    blocks.push([pattern, ...detach, ...entries.map(([name, value]) => line(name, value))].join("\n"));
+    const detach = entries
+      .filter(
+        ([name]) =>
+          baseNames.has(name.toLowerCase()) ||
+          (pattern !== "/*" && starNames.has(name.toLowerCase())),
+      )
+      .map(([name]) => `  ! ${name}`);
+    blocks.push(
+      [pattern, ...detach, ...entries.map(([name, value]) => line(name, value))].join("\n"),
+    );
   }
   return `${notes.map((note) => `${note}\n`).join("")}${blocks.join("\n\n")}\n`;
 }

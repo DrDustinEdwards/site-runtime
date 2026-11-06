@@ -73,7 +73,9 @@ const dayOf = (at) => Math.floor(at / DAY_MS) * DAY_MS;
  * @returns {{ day: number, path: string, kind: "page" | "probe" }}
  */
 export function notFoundKey(url, now = new Date()) {
-  const page = url.pathname.endsWith("/_.data") ? url.pathname.slice(0, -"_.data".length) : url.pathname.replace(/\.data$/, "");
+  const page = url.pathname.endsWith("/_.data")
+    ? url.pathname.slice(0, -"_.data".length)
+    : url.pathname.replace(/\.data$/, "");
   const path = (page || "/").slice(0, NOT_FOUND_PATH_MAX);
   return { day: dayOf(now.getTime()), path, kind: NOT_FOUND_PROBE.test(path) ? "probe" : "page" };
 }
@@ -125,7 +127,14 @@ export function countNotFound(db, request, response, ctx) {
   const url = new URL(request.url);
   ctx.waitUntil(
     Promise.resolve()
-      .then(() => recordNotFound(typeof db === "function" ? db() : db, url, new Date(), request.headers.get("referer")))
+      .then(() =>
+        recordNotFound(
+          typeof db === "function" ? db() : db,
+          url,
+          new Date(),
+          request.headers.get("referer"),
+        ),
+      )
       .catch((error) => logEvent("not_found_count_failed", { error }, { level: "error" })),
   );
 }
@@ -137,7 +146,10 @@ export function countNotFound(db, request, response, ctx) {
  * @returns {Promise<void>}
  */
 export async function pruneNotFound(db, { days = 90, now = new Date() } = {}) {
-  await db.prepare("DELETE FROM page_404_daily WHERE day < ?1").bind(dayOf(now.getTime()) - (days - 1) * DAY_MS).run();
+  await db
+    .prepare("DELETE FROM page_404_daily WHERE day < ?1")
+    .bind(dayOf(now.getTime()) - (days - 1) * DAY_MS)
+    .run();
 }
 
 /**
@@ -148,7 +160,10 @@ export async function pruneNotFound(db, { days = 90, now = new Date() } = {}) {
  * @param {{ days?: number, limit?: number, includeProbes?: boolean, now?: Date }} [options]
  * @returns {Promise<Array<{ path: string, kind: "page" | "probe", hits: number, referrers: Array<{ host: string, hits: number }> }>>}
  */
-export async function notFoundReport(db, { days = 30, limit = 50, includeProbes = false, now = new Date() } = {}) {
+export async function notFoundReport(
+  db,
+  { days = 30, limit = 50, includeProbes = false, now = new Date() } = {},
+) {
   const since = dayOf(now.getTime()) - (days - 1) * DAY_MS;
   const { results } = await db
     .prepare(
@@ -159,7 +174,9 @@ WHERE day >= ?1 ${includeProbes ? "" : "AND kind = 'page' "}GROUP BY path, kind,
     .all();
   /** @type {Map<string, { path: string, kind: "page" | "probe", hits: number, referrers: Array<{ host: string, hits: number }> }>} */
   const byPath = new Map();
-  for (const row of /** @type {Array<{ path: string, kind: string, referrer_host: string, hits: number }>} */ (results)) {
+  for (const row of /** @type {Array<{ path: string, kind: string, referrer_host: string, hits: number }>} */ (
+    results
+  )) {
     const kind = row.kind === "probe" || NOT_FOUND_PROBE.test(row.path) ? "probe" : "page";
     if (kind === "probe" && !includeProbes) continue;
     const entry = byPath.get(row.path) ?? { path: row.path, kind, hits: 0, referrers: [] };
@@ -169,7 +186,9 @@ WHERE day >= ?1 ${includeProbes ? "" : "AND kind = 'page' "}GROUP BY path, kind,
     else entry.referrers.push({ host: row.referrer_host, hits: Number(row.hits) });
     byPath.set(row.path, entry);
   }
-  const report = [...byPath.values()].sort((a, b) => b.hits - a.hits || (a.path < b.path ? -1 : 1)).slice(0, limit);
+  const report = [...byPath.values()]
+    .sort((a, b) => b.hits - a.hits || (a.path < b.path ? -1 : 1))
+    .slice(0, limit);
   for (const entry of report) entry.referrers.sort((a, b) => b.hits - a.hits);
   return report;
 }

@@ -30,7 +30,12 @@ export const EMBED_FRAME_SOURCES = /* @__PURE__ */ Object.freeze([
  * The features a player asks for in its iframe's `allow` (Prelum's render/enhance): play on the click that loaded it,
  * protected audio (Spotify, Apple Podcasts, Amazon Music), full screen and picture-in-picture.
  */
-export const EMBED_FEATURES = /* @__PURE__ */ Object.freeze(["autoplay", "encrypted-media", "fullscreen", "picture-in-picture"]);
+export const EMBED_FEATURES = /* @__PURE__ */ Object.freeze([
+  "autoplay",
+  "encrypted-media",
+  "fullscreen",
+  "picture-in-picture",
+]);
 
 /**
  * `permissions` with each of EMBED_FEATURES allowed for the page and the players' origins (EMBED_FRAME_SOURCES),
@@ -45,6 +50,9 @@ export const EMBED_FEATURES = /* @__PURE__ */ Object.freeze(["autoplay", "encryp
  */
 export function permissionsAllowingEmbeds(permissions) {
   const allowList = `(self ${EMBED_FRAME_SOURCES.map((o) => JSON.stringify(o)).join(" ")})`;
-  const kept = permissions.split(",").map((d) => d.trim()).filter((d) => d && !EMBED_FEATURES.includes(d.split("=")[0] ?? ""));
+  const kept = permissions
+    .split(",")
+    .map((d) => d.trim())
+    .filter((d) => d && !EMBED_FEATURES.includes(d.split("=")[0] ?? ""));
   return [...kept, ...EMBED_FEATURES.map((f) => `${f}=${allowList}`)].join(", ");
 }

@@ -16,14 +16,23 @@ export type ModelEntry = Readonly<{
 }>;
 
 /** The models the family calls, from the model-deprecations page as read on MODELS_CHECKED. */
-export const MODELS: Readonly<Record<
-  "claude-sonnet-5" | "claude-opus-4-8" | "claude-haiku-4-5-20251001" | "claude-sonnet-4-20250514",
-  ModelEntry
->>;
+export const MODELS: Readonly<
+  Record<
+    | "claude-sonnet-5"
+    | "claude-opus-4-8"
+    | "claude-haiku-4-5-20251001"
+    | "claude-sonnet-4-20250514",
+    ModelEntry
+  >
+>;
 export const MODELS_CHECKED: string;
 
 /** The model for each kind of call (C8): name the role, never an id. Each is in MODELS. */
-export const MODEL_IDS: Readonly<{ fast: "claude-haiku-4-5-20251001"; standard: "claude-sonnet-5"; deep: "claude-opus-4-8" }>;
+export const MODEL_IDS: Readonly<{
+  fast: "claude-haiku-4-5-20251001";
+  standard: "claude-sonnet-5";
+  deep: "claude-opus-4-8";
+}>;
 /** The deprecations page as Markdown. */
 export const DEPRECATIONS_URL: string;
 /** The page's model table by id; empty when the page holds no such table. */
@@ -32,7 +41,11 @@ export function parseDeprecations(markdown: string): Record<string, Omit<ModelEn
  * What is wrong with calling `ids` by the page's `table`: unlisted, deprecated or retired, retiring within 60 days, or
  * MODELS disagreeing with the page. Empty when all is well.
  */
-export function deprecationProblems(ids: readonly string[], table: Record<string, { state: string; retires: string | null }>, now?: Date | number): string[];
+export function deprecationProblems(
+  ids: readonly string[],
+  table: Record<string, { state: string; retires: string | null }>,
+  now?: Date | number,
+): string[];
 
 /** "retired" past its retirement date, "retiring" within 60 days of it, "ok", or "unknown" for an id not in MODELS. */
 export function modelStatus(
@@ -133,7 +146,13 @@ export type CallRecord = Usage & {
   streamed: boolean;
 };
 
-type Common = { usage: Usage; attempts: number; pauses: number; requestId?: string | null; gatewayLogId?: string | null };
+type Common = {
+  usage: Usage;
+  attempts: number;
+  pauses: number;
+  requestId?: string | null;
+  gatewayLogId?: string | null;
+};
 
 export type MessageAnswer = Common & {
   ok: true;
@@ -170,7 +189,12 @@ export type MessageFailure = Common & {
 export type MessageResult = MessageAnswer | MessageFailure;
 
 /** One Messages call. Never throws for a failed call; throws for a request wrong in code (no key, no max_tokens, sampling parameters). */
-export function messages(env: AnthropicEnv, app: string, request: MessagesRequest, options?: CallOptions): Promise<MessageResult>;
+export function messages(
+  env: AnthropicEnv,
+  app: string,
+  request: MessagesRequest,
+  options?: CallOptions,
+): Promise<MessageResult>;
 
 /** A call whose answer is JSON matching `schema` (`output_config.format`), parsed into `value`; a reply that does not parse is `invalid_output`. */
 export function structured<T = unknown>(
@@ -190,4 +214,8 @@ export function stream(
   app: string,
   request: MessagesRequest,
   options?: CallOptions,
-): AsyncGenerator<{ type: "text"; delta: string } | { type: "done"; result: MessageResult }, void, unknown>;
+): AsyncGenerator<
+  { type: "text"; delta: string } | { type: "done"; result: MessageResult },
+  void,
+  unknown
+>;

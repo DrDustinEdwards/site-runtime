@@ -178,10 +178,16 @@ export const ALLOWLIST_BYPASSES = Object.freeze([
  * @returns {string | undefined} the listed URL, scheme-relative
  */
 export function allowlistBypass(source) {
-  if (source.startsWith("'") || !source.includes(".") || /^[a-z][a-z0-9+.-]*:$/i.test(source)) return undefined;
+  if (source.startsWith("'") || !source.includes(".") || /^[a-z][a-z0-9+.-]*:$/i.test(source))
+    return undefined;
   let url;
   try {
-    url = new URL(`https://${source.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").replace(":*", "").replace("*", "wildcard-placeholder")}`);
+    url = new URL(
+      `https://${source
+        .replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")
+        .replace(":*", "")
+        .replace("*", "wildcard-placeholder")}`,
+    );
   } catch {
     return undefined;
   }

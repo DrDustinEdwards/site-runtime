@@ -25,7 +25,8 @@
  *   it, so the job waits for the caller's next tick instead of being lost.
  */
 
-const FIRE_URL = /^https:\/\/api\.anthropic\.com\/v1\/claude_code\/routines\/(trig_[A-Za-z0-9_-]{8,64})\/fire$/;
+const FIRE_URL =
+  /^https:\/\/api\.anthropic\.com\/v1\/claude_code\/routines\/(trig_[A-Za-z0-9_-]{8,64})\/fire$/;
 const MAX_TEXT = 65_536;
 const TIMEOUT_MS = 15_000;
 const ANSWER_MAX_CHARS = 64 * 1024;
@@ -33,11 +34,20 @@ const ANSWER_MAX_CHARS = 64 * 1024;
 // What a session answer may name. The id's charset is wider than the documented example because a real answer failed
 // the strict one (capsid, job_a7d6f6009242).
 const SESSION_SEGMENT = /^session_[A-Za-z0-9_-]{8,128}$/;
-const SESSION_URL = /^https:\/\/(?:[a-z0-9-]+\.)*claude\.ai(?:\/[A-Za-z0-9_.-]+)*\/session_[A-Za-z0-9_-]{8,128}\/?$/;
+const SESSION_URL =
+  /^https:\/\/(?:[a-z0-9-]+\.)*claude\.ai(?:\/[A-Za-z0-9_.-]+)*\/session_[A-Za-z0-9_-]{8,128}\/?$/;
 
 // Error codes Node's fetch gives when no connection was made, so nothing reached Anthropic. Anything else (a timeout,
 // a reset, a Workers "Network connection lost") may have followed the request and is unknown.
-const NOT_SENT = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "EAI_NONAME", "ENETUNREACH", "EHOSTUNREACH", "UND_ERR_CONNECT_TIMEOUT"]);
+const NOT_SENT = new Set([
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EAI_NONAME",
+  "ENETUNREACH",
+  "EHOSTUNREACH",
+  "UND_ERR_CONNECT_TIMEOUT",
+]);
 
 /** @param {string | undefined} url */
 export function routineId(url) {
@@ -54,7 +64,11 @@ export function routineConfig(url, token) {
   const t = typeof token === "string" ? token.trim() : "";
   if (!u || !t) return { missing: "The routine's fire URL and token are not both set." };
   const id = routineId(u);
-  if (!id) return { missing: "The routine URL is not a /fire URL (https://api.anthropic.com/v1/claude_code/routines/trig_.../fire)." };
+  if (!id)
+    return {
+      missing:
+        "The routine URL is not a /fire URL (https://api.anthropic.com/v1/claude_code/routines/trig_.../fire).",
+    };
   return { url: u, token: t, routineId: id };
 }
 
@@ -80,16 +94,36 @@ export async function fireRoutine(config, text, fetcher = fetch) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const failure = /** @type {{ code?: unknown, cause?: { code?: unknown } } | null | undefined} */ (error);
+    const failure =
+      /** @type {{ code?: unknown, cause?: { code?: unknown } } | null | undefined} */ (error);
     const code = failure?.cause?.code ?? failure?.code;
-    if (typeof code === "string" && NOT_SENT.has(code)) return { ok: false, outcome: "unreachable", retry: true, error: `The routine could not be reached (${code}).` };
-    return { ok: false, outcome: "unknown", retry: false, error: `No answer from the routine (${message.slice(0, 200)}); a session may have started.` };
+    if (typeof code === "string" && NOT_SENT.has(code))
+      return {
+        ok: false,
+        outcome: "unreachable",
+        retry: true,
+        error: `The routine could not be reached (${code}).`,
+      };
+    return {
+      ok: false,
+      outcome: "unknown",
+      retry: false,
+      error: `No answer from the routine (${message.slice(0, 200)}); a session may have started.`,
+    };
   }
   if (res.ok) return readAnswer(res);
   const type = await errorType(res);
   const error = `${res.status}${type ? ` ${type}` : ""}`;
-  if (res.status === 429) return withRetryAfter({ ok: false, outcome: "rate_limited", retry: true, status: 429, error }, res);
-  if (res.status >= 500) return withRetryAfter({ ok: false, outcome: "unavailable", retry: true, status: res.status, error }, res);
+  if (res.status === 429)
+    return withRetryAfter(
+      { ok: false, outcome: "rate_limited", retry: true, status: 429, error },
+      res,
+    );
+  if (res.status >= 500)
+    return withRetryAfter(
+      { ok: false, outcome: "unavailable", retry: true, status: res.status, error },
+      res,
+    );
   return { ok: false, outcome: "refused", retry: false, status: res.status, error };
 }
 
@@ -105,16 +139,29 @@ async function readAnswer(res) {
   const answer = body !== null && typeof body === "object" && !Array.isArray(body) ? body : {};
   const session = answer.type === "routine_fire" ? readSession(answer) : null;
   if (session) return { ok: true, outcome: "started", status: res.status, ...session };
-  const keys = Object.keys(answer).slice(0, 10).map((k) => k.replace(/[^A-Za-z0-9_]/g, "?").slice(0, 40));
-  return { ok: false, outcome: "unknown", retry: false, status: res.status, error: `${res.status} but the answer names no session (keys: ${keys.join(", ") || "none"}); a session may have started.` };
+  const keys = Object.keys(answer)
+    .slice(0, 10)
+    .map((k) => k.replace(/[^A-Za-z0-9_]/g, "?").slice(0, 40));
+  return {
+    ok: false,
+    outcome: "unknown",
+    retry: false,
+    status: res.status,
+    error: `${res.status} but the answer names no session (keys: ${keys.join(", ") || "none"}); a session may have started.`,
+  };
 }
 
 // The id and the URL each stand alone: either one is enough, the other is derived, and when both read but disagree
 // the id is trusted.
 /** @param {Record<string, unknown>} answer */
 function readSession(answer) {
-  const named = (/** @type {string} */ url) => url.split("/").find((s) => SESSION_SEGMENT.test(s)) ?? null;
-  let id = typeof answer.claude_code_session_id === "string" && SESSION_SEGMENT.test(answer.claude_code_session_id) ? answer.claude_code_session_id : null;
+  const named = (/** @type {string} */ url) =>
+    url.split("/").find((s) => SESSION_SEGMENT.test(s)) ?? null;
+  let id =
+    typeof answer.claude_code_session_id === "string" &&
+    SESSION_SEGMENT.test(answer.claude_code_session_id)
+      ? answer.claude_code_session_id
+      : null;
   let url = readSessionUrl(answer.claude_code_session_url);
   if (id === null && url !== null) id = named(url);
   if (id === null) return null;
@@ -155,14 +202,16 @@ function withRetryAfter(result, res) {
   const raw = res.headers.get("Retry-After")?.trim() ?? "";
   let seconds = null;
   if (/^\d{1,9}$/.test(raw)) seconds = Number(raw);
-  else if (raw && Number.isFinite(Date.parse(raw))) seconds = Math.max(0, Math.ceil((Date.parse(raw) - Date.now()) / 1000));
+  else if (raw && Number.isFinite(Date.parse(raw)))
+    seconds = Math.max(0, Math.ceil((Date.parse(raw) - Date.now()) / 1000));
   return seconds === null ? result : { ...result, retryAfter: seconds };
 }
 
 // ---------- The duplicate guard
 
 /** The table `d1FireStore` keeps its records in, as a migration creates it. */
-export const ROUTINE_FIRES_SQL = "CREATE TABLE IF NOT EXISTS routine_fires (key TEXT PRIMARY KEY, value TEXT NOT NULL)";
+export const ROUTINE_FIRES_SQL =
+  "CREATE TABLE IF NOT EXISTS routine_fires (key TEXT PRIMARY KEY, value TEXT NOT NULL)";
 
 /**
  * `fireOnce`'s store on a D1 table (default `routine_fires`, ROUTINE_FIRES_SQL). `add` is one INSERT ... ON CONFLICT DO
@@ -171,15 +220,26 @@ export const ROUTINE_FIRES_SQL = "CREATE TABLE IF NOT EXISTS routine_fires (key 
  * @param {string} [table]
  */
 export function d1FireStore(db, table = "routine_fires") {
-  if (!/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(table)) throw new TypeError(`${table} is not a table name`);
-  const run = (/** @type {string} */ sql, /** @type {unknown[]} */ ...values) => db.prepare(sql).bind(...values);
+  if (!/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(table))
+    throw new TypeError(`${table} is not a table name`);
+  const run = (/** @type {string} */ sql, /** @type {unknown[]} */ ...values) =>
+    db.prepare(sql).bind(...values);
   return {
-    get: async (/** @type {string} */ key) => (await run(`SELECT value FROM ${table} WHERE key = ?1`, key).first())?.value ?? null,
+    get: async (/** @type {string} */ key) =>
+      (await run(`SELECT value FROM ${table} WHERE key = ?1`, key).first())?.value ?? null,
     put: (/** @type {string} */ key, /** @type {string} */ value) =>
-      run(`INSERT INTO ${table} (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, value).run(),
+      run(
+        `INSERT INTO ${table} (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+        key,
+        value,
+      ).run(),
     delete: (/** @type {string} */ key) => run(`DELETE FROM ${table} WHERE key = ?1`, key).run(),
     add: async (/** @type {string} */ key, /** @type {string} */ value) =>
-      (await run(`INSERT INTO ${table} (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO NOTHING RETURNING key`, key, value).first()) != null,
+      (await run(
+        `INSERT INTO ${table} (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO NOTHING RETURNING key`,
+        key,
+        value,
+      ).first()) != null,
   };
 }
 
@@ -206,21 +266,36 @@ const FIRING_STALE_MS = 10 * 60_000;
  */
 export async function fireOnce(store, jobKey, config, text, options = {}) {
   if (typeof store?.add !== "function") {
-    throw new TypeError("fireOnce needs a store with an atomic add (D1 or a Durable Object); KV's get then put lets two fires through");
+    throw new TypeError(
+      "fireOnce needs a store with an atomic add (D1 or a Durable Object); KV's get then put lets two fires through",
+    );
   }
   const { fetcher = fetch, force = false, refireAfterMs = Infinity, now = new Date() } = options;
   const key = `routine-fire:${jobKey}`;
-  const age = (/** @type {import("./routine.mjs").FireRecord} */ record) => now.getTime() - Date.parse(record.at);
+  const age = (/** @type {import("./routine.mjs").FireRecord} */ record) =>
+    now.getTime() - Date.parse(record.at);
   // A `failed` record is a sure non-start whose delete failed: it holds nothing.
-  const blocks = (/** @type {import("./routine.mjs").FireRecord} */ record) => record.state !== "failed" && !force && !(age(record) >= refireAfterMs);
+  const blocks = (/** @type {import("./routine.mjs").FireRecord} */ record) =>
+    record.state !== "failed" && !force && !(age(record) >= refireAfterMs);
   // Reserve before posting, so a second caller sees "firing" and stays out; `add` lets only one caller reserve.
   const reservation = JSON.stringify({ state: "firing", at: now.toISOString() });
   if (!(await store.add(key, reservation))) {
     let earlier = readRecord(await store.get(key));
     if (earlier !== null && blocks(earlier)) {
-      if (earlier.state === "firing" && !(age(earlier) < FIRING_STALE_MS)) earlier = { ...earlier, state: "unknown", error: "the fire never finished; a session may have started" };
+      if (earlier.state === "firing" && !(age(earlier) < FIRING_STALE_MS))
+        earlier = {
+          ...earlier,
+          state: "unknown",
+          error: "the fire never finished; a session may have started",
+        };
       const at = earlier.at ? ` at ${earlier.at}` : "";
-      return { ok: false, outcome: "already_fired", retry: false, record: earlier, error: `${jobKey} was already fired${at} (${earlier.state}${earlier.sessionUrl ? `, ${earlier.sessionUrl}` : ""}); each fire is a new session.` };
+      return {
+        ok: false,
+        outcome: "already_fired",
+        retry: false,
+        record: earlier,
+        error: `${jobKey} was already fired${at} (${earlier.state}${earlier.sessionUrl ? `, ${earlier.sessionUrl}` : ""}); each fire is a new session.`,
+      };
     }
     await store.put(key, reservation);
   }
@@ -228,9 +303,30 @@ export async function fireOnce(store, jobKey, config, text, options = {}) {
   // A fire that certainly started nothing frees the key (or, when the delete fails, marks it `failed`); a session, or a
   // fire that may have made one, holds it. A failed write still returns the session.
   try {
-    if (fired.ok) await store.put(key, JSON.stringify({ state: "fired", at: now.toISOString(), sessionId: fired.sessionId, sessionUrl: fired.sessionUrl }));
-    else if (fired.outcome === "unknown") await store.put(key, JSON.stringify({ state: "unknown", at: now.toISOString(), error: fired.error }));
-    else await store.delete(key).catch(() => store.put(key, JSON.stringify({ state: "failed", at: now.toISOString(), error: fired.error })));
+    if (fired.ok)
+      await store.put(
+        key,
+        JSON.stringify({
+          state: "fired",
+          at: now.toISOString(),
+          sessionId: fired.sessionId,
+          sessionUrl: fired.sessionUrl,
+        }),
+      );
+    else if (fired.outcome === "unknown")
+      await store.put(
+        key,
+        JSON.stringify({ state: "unknown", at: now.toISOString(), error: fired.error }),
+      );
+    else
+      await store
+        .delete(key)
+        .catch(() =>
+          store.put(
+            key,
+            JSON.stringify({ state: "failed", at: now.toISOString(), error: fired.error }),
+          ),
+        );
   } catch (error) {
     return { ...fired, unrecorded: error instanceof Error ? error.message : String(error) };
   }

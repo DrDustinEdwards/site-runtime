@@ -168,7 +168,9 @@ export const APP_CODE_RATE_LIMIT = Object.freeze({ window: 60, max: 3 });
 export const SESSION_SECONDS = 30 * 24 * 60 * 60;
 
 /** Sign-in mails per address: five an hour, Foxhound's limit (the link request, and the app's code request). */
-export const LINK_EMAIL_RULES = Object.freeze([Object.freeze({ limit: 5, windowSeconds: 60 * 60 })]);
+export const LINK_EMAIL_RULES = Object.freeze([
+  Object.freeze({ limit: 5, windowSeconds: 60 * 60 }),
+]);
 
 /**
  * Wrong sign-in codes per address, across links: three an hour (a code's own three tries) and ten a day. A new link
@@ -180,10 +182,14 @@ export const CODE_EMAIL_RULES = Object.freeze([
 ]);
 
 /** Failed passkey or social sign-ins per address: ten an hour. */
-export const SIGN_IN_FAILURE_RULES = Object.freeze([Object.freeze({ limit: 10, windowSeconds: 60 * 60 })]);
+export const SIGN_IN_FAILURE_RULES = Object.freeze([
+  Object.freeze({ limit: 10, windowSeconds: 60 * 60 }),
+]);
 
 /** Failed sign-ins per passkey (credential id): 100 in 30 days, NIST SP 800-63B-4's cap per authenticator. */
-export const PASSKEY_FAILURE_RULES = Object.freeze([Object.freeze({ limit: 100, windowSeconds: 30 * 24 * 60 * 60 })]);
+export const PASSKEY_FAILURE_RULES = Object.freeze([
+  Object.freeze({ limit: 100, windowSeconds: 30 * 24 * 60 * 60 }),
+]);
 
 /** The one value of `turnstile` that lets the link request through without keys, until the site has them. */
 export const TURNSTILE_OFF_UNTIL_KEYS = "off-until-keys";
@@ -256,9 +262,12 @@ export async function signInOptions(
     sessionDetails = false,
   },
 ) {
-  if (turnstile !== undefined && turnstile !== TURNSTILE_OFF_UNTIL_KEYS) throw new Error(`turnstile is "${TURNSTILE_OFF_UNTIL_KEYS}" or left out`);
-  if (appCode && typeof sendSignInCode !== "function") throw new Error("appCode: true needs sendSignInCode to mail the code");
-  if (!confirmPath.startsWith("/") || confirmPath.startsWith("//")) throw new Error("confirmPath is a path on the site");
+  if (turnstile !== undefined && turnstile !== TURNSTILE_OFF_UNTIL_KEYS)
+    throw new Error(`turnstile is "${TURNSTILE_OFF_UNTIL_KEYS}" or left out`);
+  if (appCode && typeof sendSignInCode !== "function")
+    throw new Error("appCode: true needs sendSignInCode to mail the code");
+  if (!confirmPath.startsWith("/") || confirmPath.startsWith("//"))
+    throw new Error("confirmPath is a path on the site");
   const url = new URL(env.BETTER_AUTH_URL);
   const otp = emailOTP({
     expiresIn: SIGN_IN_EXPIRES_IN_SECONDS,
@@ -267,7 +276,8 @@ export async function signInOptions(
     // Called only through APP_CODE_PATH, which is open only with appCode; otherwise the code goes out in the link's
     // mail below. Only a sign-in code is mailed: the other kinds belong to endpoints that stay off.
     sendVerificationOTP: async ({ email, otp: code, type }, ctx) => {
-      if (!appCode || !sendSignInCode) throw new Error("sign-in codes are sent only with the sign-in link");
+      if (!appCode || !sendSignInCode)
+        throw new Error("sign-in codes are sent only with the sign-in link");
       if (type === "sign-in") await sendSignInCode({ email, code }, ctx);
     },
   });
@@ -283,7 +293,10 @@ export async function signInOptions(
         // @ts-expect-error the endpoint context Better Auth hands a plugin's hook
         context,
       });
-      await sendMagicLink({ email: data.email, url: confirmLinkURL(data.url, confirmPath), token: data.token, code }, ctx);
+      await sendMagicLink(
+        { email: data.email, url: confirmLinkURL(data.url, confirmPath), token: data.token, code },
+        ctx,
+      );
     },
   });
   /** @type {import("better-auth").BetterAuthPlugin[]} */
@@ -298,7 +311,10 @@ export async function signInOptions(
       // A passkey the page did not name is stored with its provider's name, so a list never shows a blank.
       registration: {
         afterVerification: ({ ctx, verification }) => {
-          const name = knownProvider(verification.registrationInfo?.aaguid, ctx.headers?.get("user-agent"));
+          const name = knownProvider(
+            verification.registrationInfo?.aaguid,
+            ctx.headers?.get("user-agent"),
+          );
           return name ? { name } : undefined;
         },
       },
@@ -309,7 +325,11 @@ export async function signInOptions(
   if (sessionDetails) plugins.push(SESSION_TOUCH);
   if (turnstileSiteKey(env) && env.TURNSTILE_SECRET_KEY) {
     plugins.push(
-      captcha({ provider: "cloudflare-turnstile", secretKey: env.TURNSTILE_SECRET_KEY, endpoints: ["/sign-in/magic-link"] }),
+      captcha({
+        provider: "cloudflare-turnstile",
+        secretKey: env.TURNSTILE_SECRET_KEY,
+        endpoints: ["/sign-in/magic-link"],
+      }),
     );
   } else plugins.push(noTurnstile(turnstile === TURNSTILE_OFF_UNTIL_KEYS));
   plugins.push(emailLimit(emailLimiter));
@@ -319,18 +339,28 @@ export async function signInOptions(
   /** @type {Record<string, { clientId: string, clientSecret: string, mapProfileToUser: typeof mapProfileToUser }>} */
   const socialProviders = {};
   if (social && env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) {
-    socialProviders.google = { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET, mapProfileToUser };
+    socialProviders.google = {
+      clientId: env.GOOGLE_CLIENT_ID,
+      clientSecret: env.GOOGLE_CLIENT_SECRET,
+      mapProfileToUser,
+    };
   }
   const appleSecret = social ? await appleClientSecret(env) : null;
   if (appleSecret && env.APPLE_CLIENT_ID) {
-    socialProviders.apple = { clientId: env.APPLE_CLIENT_ID, clientSecret: appleSecret, mapProfileToUser };
+    socialProviders.apple = {
+      clientId: env.APPLE_CLIENT_ID,
+      clientSecret: appleSecret,
+      mapProfileToUser,
+    };
   }
 
   const noTokens = { before: async () => ({ data: { ...NO_OAUTH_TOKENS } }) };
   return {
     emailAndPassword: { enabled: false },
     plugins,
-    disabledPaths: appCode ? OTP_OFF_PATHS.filter((path) => path !== APP_CODE_PATH) : [...OTP_OFF_PATHS],
+    disabledPaths: appCode
+      ? OTP_OFF_PATHS.filter((path) => path !== APP_CODE_PATH)
+      : [...OTP_OFF_PATHS],
     socialProviders,
     account: { accountLinking: { enabled: true, disableImplicitLinking: true } },
     session: {
@@ -341,7 +371,11 @@ export async function signInOptions(
     },
     ...(social ? { databaseHooks: { account: { create: noTokens, update: noTokens } } } : {}),
     rateLimit: appCode
-      ? { enabled: true, storage: "database", customRules: { [APP_CODE_PATH]: { ...APP_CODE_RATE_LIMIT } } }
+      ? {
+          enabled: true,
+          storage: "database",
+          customRules: { [APP_CODE_PATH]: { ...APP_CODE_RATE_LIMIT } },
+        }
       : { enabled: true, storage: "database" },
     advanced: { ipAddress: { ipAddressHeaders: ["cf-connecting-ip"] } },
     // Apple returns to the site with a form POST from its own origin.
@@ -392,15 +426,17 @@ const SESSION_TOUCH = {
         /** @param {{ path?: string }} ctx */
         matcher: (ctx) => ctx.path === "/get-session",
         handler: createAuthMiddleware(async (ctx) => {
-          const session = /** @type {{ session?: { token?: string, updatedAt?: Date, createdAt?: Date, location?: unknown } } | null} */ (
-            ctx.context.returned
-          )?.session;
+          const session =
+            /** @type {{ session?: { token?: string, updatedAt?: Date, createdAt?: Date, location?: unknown } } | null} */ (
+              ctx.context.returned
+            )?.session;
           if (!session?.token) return;
           const update = sessionTouch(session, coarseLocation(/** @type {any} */ (ctx.request)));
           if (!update) return;
           const writing = ctx.context.internalAdapter.updateSession(session.token, update).then(
             () => undefined,
-            (/** @type {unknown} */ error) => logEvent("session_touch_failed", { error }, { level: "error" }),
+            (/** @type {unknown} */ error) =>
+              logEvent("session_touch_failed", { error }, { level: "error" }),
           );
           await ctx.context.runInBackgroundOrAwait(writing);
         }),
@@ -418,8 +454,13 @@ const SESSION_TOUCH = {
 async function deviceId(ctx) {
   if (!ctx?.context?.createAuthCookie || typeof ctx.setSignedCookie !== "function") return null;
   const cookie = ctx.context.createAuthCookie(DEVICE_COOKIE, { maxAge: DEVICE_COOKIE_SECONDS });
-  const brought = await Promise.resolve(ctx.getSignedCookie?.(cookie.name, ctx.context.secret)).catch(() => null);
-  const id = typeof brought === "string" && /^[\w-]{16,64}$/.test(brought) ? brought : base64url(crypto.getRandomValues(new Uint8Array(16)));
+  const brought = await Promise.resolve(
+    ctx.getSignedCookie?.(cookie.name, ctx.context.secret),
+  ).catch(() => null);
+  const id =
+    typeof brought === "string" && /^[\w-]{16,64}$/.test(brought)
+      ? brought
+      : base64url(crypto.getRandomValues(new Uint8Array(16)));
   await ctx.setSignedCookie(cookie.name, id, ctx.context.secret, cookie.attributes);
   return id;
 }
@@ -439,7 +480,11 @@ function noTurnstile(offUntilKeys) {
           matcher: (ctx) => ctx.path === "/sign-in/magic-link",
           handler: createAuthMiddleware(async () => {
             if (offUntilKeys) {
-              logEvent("turnstile_off_until_keys", { endpoint: "/sign-in/magic-link" }, { level: "warn" });
+              logEvent(
+                "turnstile_off_until_keys",
+                { endpoint: "/sign-in/magic-link" },
+                { level: "warn" },
+              );
               return;
             }
             logEvent("turnstile_not_set", { endpoint: "/sign-in/magic-link" }, { level: "error" });
@@ -485,10 +530,21 @@ function accountEvents(siteName, sendSecurityNotice, db, details) {
   const notify = async (ctx, kind, user, facts = {}) => {
     if (!sendSecurityNotice || !user?.email) return;
     const request = ctx?.request;
-    const detail = noticeDetail(kind, { siteName, request, userAgent: ctx?.headers?.get("user-agent"), ...facts });
-    const notice = { user: { id: user.id, email: user.email, name: user.name ?? null }, ...(request ? { request } : {}), detail };
+    const detail = noticeDetail(kind, {
+      siteName,
+      request,
+      userAgent: ctx?.headers?.get("user-agent"),
+      ...facts,
+    });
+    const notice = {
+      user: { id: user.id, email: user.email, name: user.name ?? null },
+      ...(request ? { request } : {}),
+      detail,
+    };
     const sending = sendNoticeSafely(sendSecurityNotice, kind, notice);
-    await (ctx?.context?.runInBackgroundOrAwait ? ctx.context.runInBackgroundOrAwait(sending) : sending);
+    await (ctx?.context?.runInBackgroundOrAwait
+      ? ctx.context.runInBackgroundOrAwait(sending)
+      : sending);
   };
   /**
    * The event's line, and its row with `eventsDb`.
@@ -500,7 +556,14 @@ function accountEvents(siteName, sendSecurityNotice, db, details) {
       db,
       request: ctx?.request,
       userAgent: ctx?.headers?.get("user-agent"),
-      ...(details ? { deviceId: ctx?.context?.newSession?.session?.deviceId ?? ctx?.context?.session?.session?.deviceId ?? null } : {}),
+      ...(details
+        ? {
+            deviceId:
+              ctx?.context?.newSession?.session?.deviceId ??
+              ctx?.context?.session?.session?.deviceId ??
+              null,
+          }
+        : {}),
     });
   /**
    * Ends every session of the user but `keep` (the one that made the change, when it is theirs).
@@ -517,7 +580,10 @@ function accountEvents(siteName, sendSecurityNotice, db, details) {
       .filter((/** @type {string} */ token) => token !== keep);
     if (tokens.length === 0) return;
     await adapter.deleteSessions(tokens);
-    await log({ event: OWASP_EVENTS.sessionExpired, fields: { reason, scope: "others", user_id: userId } }, ctx);
+    await log(
+      { event: OWASP_EVENTS.sessionExpired, fields: { reason, scope: "others", user_id: userId } },
+      ctx,
+    );
   };
   /**
    * What a new session is besides a sign-in: a recovery (link or code, no passkey left, one in the history), a new
@@ -530,7 +596,10 @@ function accountEvents(siteName, sendSecurityNotice, db, details) {
    */
   const signInKind = async (ctx, user, newSession, via) => {
     if (db && (via === "link" || via === "code")) {
-      const passkeys = await ctx.context.adapter.count({ model: "passkey", where: [{ field: "userId", value: user.id }] });
+      const passkeys = await ctx.context.adapter.count({
+        model: "passkey",
+        where: [{ field: "userId", value: user.id }],
+      });
       if (passkeys === 0 && (await hadPasskey(db, user.id))) return "recovery";
     }
     /** @type {{ token: string, userAgent?: string | null, deviceId?: string | null }[]} */
@@ -568,7 +637,13 @@ function accountEvents(siteName, sendSecurityNotice, db, details) {
                     // The place and device of the sign-in (`sessionDetails`); a failure leaves them blank, never the sign-in.
                     before: async (/** @type {any} */ session, /** @type {any} */ ctx) => {
                       try {
-                        return { data: { ...session, location: coarseLocation(ctx?.request), deviceId: await deviceId(ctx) } };
+                        return {
+                          data: {
+                            ...session,
+                            location: coarseLocation(ctx?.request),
+                            deviceId: await deviceId(ctx),
+                          },
+                        };
                       } catch (error) {
                         logEvent("auth_event_failed", { error }, { level: "error" });
                         return { data: session };
@@ -588,12 +663,22 @@ function accountEvents(siteName, sendSecurityNotice, db, details) {
                   /** @type {User | null | undefined} */
                   let user = null;
                   if (ctx.path === "/link-social") user = ctx.context?.session?.user;
-                  else if (ctx.path === "/callback/:id" && (await getOAuthState())?.link?.userId === account.userId) {
+                  else if (
+                    ctx.path === "/callback/:id" &&
+                    (await getOAuthState())?.link?.userId === account.userId
+                  ) {
                     user = await ctx.context?.internalAdapter.findUserById(account.userId);
                   }
                   if (!user || user.id !== account.userId) return;
                   await log(
-                    { event: OWASP_EVENTS.userUpdated, fields: { change: "sign_in_linked", via: account.providerId, user_id: user.id } },
+                    {
+                      event: OWASP_EVENTS.userUpdated,
+                      fields: {
+                        change: "sign_in_linked",
+                        via: account.providerId,
+                        user_id: user.id,
+                      },
+                    },
                     ctx,
                   );
                   await notify(ctx, "sign-in-linked", user, { provider: account.providerId });
@@ -605,10 +690,19 @@ function accountEvents(siteName, sendSecurityNotice, db, details) {
                 safely(async () => {
                   if (!account || ctx?.path !== "/unlink-account") return;
                   await log(
-                    { event: OWASP_EVENTS.userUpdated, fields: { change: "sign_in_unlinked", via: account.providerId, user_id: account.userId } },
+                    {
+                      event: OWASP_EVENTS.userUpdated,
+                      fields: {
+                        change: "sign_in_unlinked",
+                        via: account.providerId,
+                        user_id: account.userId,
+                      },
+                    },
                     ctx,
                   );
-                  await notify(ctx, "sign-in-unlinked", ctx.context?.session?.user, { provider: account.providerId });
+                  await notify(ctx, "sign-in-unlinked", ctx.context?.session?.user, {
+                    provider: account.providerId,
+                  });
                 }),
             },
           },
@@ -620,29 +714,58 @@ function accountEvents(siteName, sendSecurityNotice, db, details) {
                 safely(async () => {
                   if (typeof data?.email !== "string" || !ctx) return;
                   const old =
-                    ctx.context?.session?.user?.email ?? (ctx.path === "/verify-email" ? emailInToken(ctx.query?.token) : null);
+                    ctx.context?.session?.user?.email ??
+                    (ctx.path === "/verify-email" ? emailInToken(ctx.query?.token) : null);
                   if (typeof old === "string") replacedEmail.set(ctx, old);
                 }),
               after: (/** @type {any} */ user, /** @type {HookContext} */ ctx) =>
                 safely(async () => {
                   const old = ctx ? replacedEmail.get(ctx) : undefined;
-                  if (!old || !user?.email || old.toLowerCase() === String(user.email).toLowerCase()) return;
+                  if (
+                    !old ||
+                    !user?.email ||
+                    old.toLowerCase() === String(user.email).toLowerCase()
+                  )
+                    return;
                   if (ctx) replacedEmail.delete(ctx);
-                  await log({ event: OWASP_EVENTS.userUpdated, fields: { change: "email_changed", user_id: user.id } }, ctx);
+                  await log(
+                    {
+                      event: OWASP_EVENTS.userUpdated,
+                      fields: { change: "email_changed", user_id: user.id },
+                    },
+                    ctx,
+                  );
                   const facts = { oldEmail: old, newEmail: user.email };
                   await notify(ctx, "email-changed", user, facts);
-                  await notify(ctx, "email-changed", { ...user, email: old }, { ...facts, toOldAddress: true });
+                  await notify(
+                    ctx,
+                    "email-changed",
+                    { ...user, email: old },
+                    { ...facts, toOldAddress: true },
+                  );
                   const current = ctx?.context?.session;
-                  await endOtherSessions(ctx, user.id, current?.user?.id === user.id ? current.session?.token : undefined, "email_changed");
+                  await endOtherSessions(
+                    ctx,
+                    user.id,
+                    current?.user?.id === user.id ? current.session?.token : undefined,
+                    "email_changed",
+                  );
                 }),
             },
             delete: {
               after: (/** @type {any} */ user, /** @type {HookContext} */ ctx) =>
                 safely(async () => {
                   if (!user) return;
-                  await logAuthEvent({ event: OWASP_EVENTS.userDeleted, fields: { user_id: user.id } });
+                  await logAuthEvent({
+                    event: OWASP_EVENTS.userDeleted,
+                    fields: { user_id: user.id },
+                  });
                   // Their history goes with them; the log line above stays.
-                  if (db) await db.prepare("DELETE FROM auth_events WHERE user_id = ?1").bind(user.id).run();
+                  if (db)
+                    await db
+                      .prepare("DELETE FROM auth_events WHERE user_id = ?1")
+                      .bind(user.id)
+                      .run();
                   await notify(ctx, "account-deleted", user);
                 }),
             },
@@ -658,18 +781,26 @@ function accountEvents(siteName, sendSecurityNotice, db, details) {
           handler: createAuthMiddleware(async (ctx) => {
             const found = await getSessionFromCtx(ctx);
             const freshAge = ctx.context.sessionConfig?.freshAge ?? FRESH_SECONDS;
-            if (!found?.session || freshAge === 0 || sessionIsFresh(found.session, freshAge)) return;
+            if (!found?.session || freshAge === 0 || sessionIsFresh(found.session, freshAge))
+              return;
             await safely(() =>
               log(
                 {
                   event: OWASP_EVENTS.authorizationFailure,
-                  fields: { reason: "SESSION_NOT_FRESH", endpoint: ctx.path, user_id: found.user.id },
+                  fields: {
+                    reason: "SESSION_NOT_FRESH",
+                    endpoint: ctx.path,
+                    user_id: found.user.id,
+                  },
                   level: "warn",
                 },
                 ctx,
               ),
             );
-            throw new APIError("FORBIDDEN", { code: "SESSION_NOT_FRESH", message: "Session is not fresh" });
+            throw new APIError("FORBIDDEN", {
+              code: "SESSION_NOT_FRESH",
+              message: "Session is not fresh",
+            });
           }),
         },
       ],
@@ -692,11 +823,18 @@ function accountEvents(siteName, sendSecurityNotice, db, details) {
               });
               if (!event) return;
               // The passkey that signed in, by its row id, so the account page can say when each was last used.
-              if (event.event === OWASP_EVENTS.signInSuccess && event.fields.via === "passkey" && db) {
+              if (
+                event.event === OWASP_EVENTS.signInSuccess &&
+                event.fields.via === "passkey" &&
+                db
+              ) {
                 const credentialID = ctx.body?.response?.id;
                 const row =
                   typeof credentialID === "string"
-                    ? await ctx.context.adapter.findOne({ model: "passkey", where: [{ field: "credentialID", value: credentialID }] })
+                    ? await ctx.context.adapter.findOne({
+                        model: "passkey",
+                        where: [{ field: "credentialID", value: credentialID }],
+                      })
                     : null;
                 if (row?.id) event.fields.passkey_id = row.id;
               }
@@ -707,7 +845,13 @@ function accountEvents(siteName, sendSecurityNotice, db, details) {
               await log(event, ctx);
               if (event.notice) await notify(ctx, event.notice.kind, user, event.notice);
               if (kind === "recovery" && user && newSession) {
-                await log({ event: OWASP_EVENTS.userUpdated, fields: { change: "recovered", via: event.fields.via, user_id: user.id } }, ctx);
+                await log(
+                  {
+                    event: OWASP_EVENTS.userUpdated,
+                    fields: { change: "recovered", via: event.fields.via, user_id: user.id },
+                  },
+                  ctx,
+                );
                 await endOtherSessions(ctx, user.id, newSession.session.token, "recovered");
               }
               if (kind) await notify(ctx, kind, user);
@@ -747,12 +891,20 @@ const callbackAddress = new WeakMap();
 function providerAddress(namespace) {
   return async (/** @type {{ email?: unknown }} */ profile) => {
     const ctx = /** @type {any} */ (tryGetCurrentAuthEndpointContext());
-    const key = typeof profile?.email === "string" ? await emailKey("sign-in-fail", profile.email) : null;
+    const key =
+      typeof profile?.email === "string" ? await emailKey("sign-in-fail", profile.email) : null;
     if (!ctx?.context || !key || !namespace) return {};
     callbackAddress.set(ctx.context, key);
-    const verdict = await limit(namespace, key, [...SIGN_IN_FAILURE_RULES], { onUnavailable: "allow", peek: true });
+    const verdict = await limit(namespace, key, [...SIGN_IN_FAILURE_RULES], {
+      onUnavailable: "allow",
+      peek: true,
+    });
     if (!mustStop(verdict, "allow")) return {};
-    await logAuthEvent({ event: OWASP_EVENTS.rateLimitExceeded, fields: { endpoint: ctx.path, bucket: "sign-in-fail" }, level: "warn" });
+    await logAuthEvent({
+      event: OWASP_EVENTS.rateLimitExceeded,
+      fields: { endpoint: ctx.path, bucket: "sign-in-fail" },
+      level: "warn",
+    });
     const state = await getOAuthState().catch(() => null);
     const back = new URL(state?.errorURL || state?.callbackURL || "/", ctx.context.baseURL);
     back.searchParams.set("error", "EMAIL_RATE_LIMITED");
@@ -769,20 +921,34 @@ function providerAddress(namespace) {
  * @returns {Promise<{ address: string | null, passkey: string | null }>}
  */
 async function failureKeys(ctx) {
-  if (ctx.path === "/callback/:id") return { address: callbackAddress.get(ctx.context) ?? null, passkey: null };
+  if (ctx.path === "/callback/:id")
+    return { address: callbackAddress.get(ctx.context) ?? null, passkey: null };
   if (ctx.path === "/passkey/verify-authentication") {
     const id = ctx.body?.response?.id;
     if (typeof id !== "string" || !id) return { address: null, passkey: null };
-    const row = await ctx.context.adapter.findOne({ model: "passkey", where: [{ field: "credentialID", value: id }] });
+    const row = await ctx.context.adapter.findOne({
+      model: "passkey",
+      where: [{ field: "credentialID", value: id }],
+    });
     const user = row ? await ctx.context.internalAdapter.findUserById(row.userId) : null;
-    return { address: await emailKey("sign-in-fail", user?.email), passkey: await emailKey("passkey-fail", id) };
+    return {
+      address: await emailKey("sign-in-fail", user?.email),
+      passkey: await emailKey("passkey-fail", id),
+    };
   }
   const token = ctx.body?.idToken?.token;
-  return { address: typeof token === "string" ? await emailKey("sign-in-fail", emailInToken(token)) : null, passkey: null };
+  return {
+    address: typeof token === "string" ? await emailKey("sign-in-fail", emailInToken(token)) : null,
+    passkey: null,
+  };
 }
 
 /** The endpoints whose failures count against an address and a passkey. */
-const FAILURE_LIMITED = new Set(["/passkey/verify-authentication", "/sign-in/social", "/callback/:id"]);
+const FAILURE_LIMITED = new Set([
+  "/passkey/verify-authentication",
+  "/sign-in/social",
+  "/callback/:id",
+]);
 
 /**
  * The per-address limits as one plugin. Its before hooks run after the captcha plugin and Better Auth's per-IP limit
@@ -798,9 +964,17 @@ function emailLimit(namespace) {
    */
   const refuse = async (path, bucket, verdict, email) => {
     if (verdict.status === "unavailable") {
-      throw new APIError("SERVICE_UNAVAILABLE", { code: "RATE_LIMIT_UNAVAILABLE", message: "Use the link in the email, or try again in a minute." });
+      throw new APIError("SERVICE_UNAVAILABLE", {
+        code: "RATE_LIMIT_UNAVAILABLE",
+        message: "Use the link in the email, or try again in a minute.",
+      });
     }
-    await logAuthEvent({ event: OWASP_EVENTS.rateLimitExceeded, fields: { endpoint: path, bucket }, level: "warn", email });
+    await logAuthEvent({
+      event: OWASP_EVENTS.rateLimitExceeded,
+      fields: { endpoint: path, bucket },
+      level: "warn",
+      email,
+    });
     throw new APIError(
       "TOO_MANY_REQUESTS",
       { code: "EMAIL_RATE_LIMITED", message: "Too many tries for this address. Try again later." },
@@ -817,8 +991,11 @@ function emailLimit(namespace) {
           handler: createAuthMiddleware(async (ctx) => {
             const key = await emailKey("link-email", ctx.body?.email);
             if (!key) return;
-            const verdict = await limit(namespace, key, [...LINK_EMAIL_RULES], { onUnavailable: "allow" });
-            if (mustStop(verdict, "allow")) await refuse(ctx.path, "link-email", verdict, ctx.body?.email);
+            const verdict = await limit(namespace, key, [...LINK_EMAIL_RULES], {
+              onUnavailable: "allow",
+            });
+            if (mustStop(verdict, "allow"))
+              await refuse(ctx.path, "link-email", verdict, ctx.body?.email);
           }),
         },
         {
@@ -827,8 +1004,12 @@ function emailLimit(namespace) {
           handler: createAuthMiddleware(async (ctx) => {
             const key = await emailKey("code-email", ctx.body?.email);
             if (!key) return;
-            const verdict = await limit(namespace, key, [...CODE_EMAIL_RULES], { onUnavailable: "refuse", peek: true });
-            if (mustStop(verdict, "refuse")) await refuse(ctx.path, "code-email", verdict, ctx.body?.email);
+            const verdict = await limit(namespace, key, [...CODE_EMAIL_RULES], {
+              onUnavailable: "refuse",
+              peek: true,
+            });
+            if (mustStop(verdict, "refuse"))
+              await refuse(ctx.path, "code-email", verdict, ctx.body?.email);
           }),
         },
         {
@@ -841,7 +1022,10 @@ function emailLimit(namespace) {
               [keys.address, SIGN_IN_FAILURE_RULES, "sign-in-fail"],
             ])) {
               if (!key) continue;
-              const verdict = await limit(namespace, key, [...rules], { onUnavailable: "allow", peek: true });
+              const verdict = await limit(namespace, key, [...rules], {
+                onUnavailable: "allow",
+                peek: true,
+              });
               if (mustStop(verdict, "allow")) await refuse(ctx.path, bucket, verdict, undefined);
             }
           }),
@@ -850,18 +1034,27 @@ function emailLimit(namespace) {
       after: [
         {
           /** @param {{ path?: string }} ctx */
-          matcher: (ctx) => Boolean(namespace) && (ctx.path === SIGN_IN_CODE_PATH || FAILURE_LIMITED.has(ctx.path ?? "")),
+          matcher: (ctx) =>
+            Boolean(namespace) &&
+            (ctx.path === SIGN_IN_CODE_PATH || FAILURE_LIMITED.has(ctx.path ?? "")),
           handler: createAuthMiddleware(async (ctx) => {
             try {
               if (ctx.context.newSession || outcome(ctx.context.returned).ok) return;
               if (ctx.path === SIGN_IN_CODE_PATH) {
                 const key = await emailKey("code-email", ctx.body?.email);
-                if (key) await limit(namespace, key, [...CODE_EMAIL_RULES], { onUnavailable: "allow" });
+                if (key)
+                  await limit(namespace, key, [...CODE_EMAIL_RULES], { onUnavailable: "allow" });
                 return;
               }
               const keys = await failureKeys(ctx);
-              if (keys.passkey) await limit(namespace, keys.passkey, [...PASSKEY_FAILURE_RULES], { onUnavailable: "allow" });
-              if (keys.address) await limit(namespace, keys.address, [...SIGN_IN_FAILURE_RULES], { onUnavailable: "allow" });
+              if (keys.passkey)
+                await limit(namespace, keys.passkey, [...PASSKEY_FAILURE_RULES], {
+                  onUnavailable: "allow",
+                });
+              if (keys.address)
+                await limit(namespace, keys.address, [...SIGN_IN_FAILURE_RULES], {
+                  onUnavailable: "allow",
+                });
             } catch (error) {
               logEvent("auth_event_failed", { error }, { level: "error" });
             }
@@ -877,7 +1070,11 @@ function emailLimit(namespace) {
 export function signInMethods(env, { social = false } = {}) {
   return {
     google: social && Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
-    apple: social && Boolean(env.APPLE_CLIENT_ID && env.APPLE_TEAM_ID && env.APPLE_KEY_ID && env.APPLE_PRIVATE_KEY),
+    apple:
+      social &&
+      Boolean(
+        env.APPLE_CLIENT_ID && env.APPLE_TEAM_ID && env.APPLE_KEY_ID && env.APPLE_PRIVATE_KEY,
+      ),
     turnstileSiteKey: turnstileSiteKey(env),
   };
 }

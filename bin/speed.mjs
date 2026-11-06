@@ -28,10 +28,17 @@ import { parseArgs } from "node:util";
 import { speedFindings } from "../speed.mjs";
 
 const { values } = parseArgs({
-  options: { origin: { type: "string" }, from: { type: "string" }, "max-pages": { type: "string", default: "40" }, kind: { type: "string", default: "site" } },
+  options: {
+    origin: { type: "string" },
+    from: { type: "string" },
+    "max-pages": { type: "string", default: "40" },
+    kind: { type: "string", default: "site" },
+  },
 });
 if (!values.origin) {
-  console.error("usage: site-runtime-speed --origin https://example.com [--from https://preview.example] [--max-pages 40] [--kind site|static]");
+  console.error(
+    "usage: site-runtime-speed --origin https://example.com [--from https://preview.example] [--max-pages 40] [--kind site|static]",
+  );
   process.exit(2);
 }
 const origin = values.origin.replace(/\/$/, "");
@@ -39,7 +46,8 @@ const base = (values.from ?? values.origin).replace(/\/$/, "");
 const maxPages = Number(values["max-pages"]);
 // A current Chrome string for every request, the 103 probe too: Cloudflare sends Early Hints only to a browser, so what the
 // check sees is what a reader gets. The product name rides in a harmless extra header.
-const UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+const UA =
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
 const CHECK = "site-runtime-speed";
 const ENCODINGS = "zstd, br, gzip";
 const nonce = () => Math.random().toString(36).slice(2, 10);
@@ -55,13 +63,32 @@ const nonce = () => Math.random().toString(36).slice(2, 10);
 async function get(url, headers = {}) {
   const started = performance.now();
   try {
-    const response = await fetch(url, { redirect: "manual", headers: { "user-agent": UA, "x-check": CHECK, "accept-encoding": ENCODINGS, ...headers } });
+    const response = await fetch(url, {
+      redirect: "manual",
+      headers: { "user-agent": UA, "x-check": CHECK, "accept-encoding": ENCODINGS, ...headers },
+    });
     const ttfb = performance.now() - started;
-    const body = (response.headers.get("content-type") ?? "").includes("text/html") ? await response.text() : (await response.arrayBuffer(), "");
-    return { url, status: response.status, headers: Object.fromEntries(response.headers), ttfb, body };
+    const body = (response.headers.get("content-type") ?? "").includes("text/html")
+      ? await response.text()
+      : (await response.arrayBuffer(), "");
+    return {
+      url,
+      status: response.status,
+      headers: Object.fromEntries(response.headers),
+      ttfb,
+      body,
+    };
   } catch (error) {
-    const failure = /** @type {{ message?: string, cause?: { code?: string } } | null | undefined} */ (error);
-    return { url, status: 0, headers: {}, ttfb: 0, body: "", error: String(failure?.cause?.code ?? failure?.message ?? error) };
+    const failure =
+      /** @type {{ message?: string, cause?: { code?: string } } | null | undefined} */ (error);
+    return {
+      url,
+      status: 0,
+      headers: {},
+      ttfb: 0,
+      body: "",
+      error: String(failure?.cause?.code ?? failure?.message ?? error),
+    };
   }
 }
 
@@ -84,29 +111,69 @@ function proxyFor(/** @type {URL} */ u) {
   const proxy = process.env.HTTPS_PROXY || process.env.https_proxy;
   if (!proxy) return null;
   const host = u.hostname.toLowerCase();
-  const exempt = (process.env.NO_PROXY || process.env.no_proxy || "").split(",").map((entry) => entry.trim().toLowerCase().replace(/^\*?\./, "")).filter(Boolean);
-  if (exempt.some((entry) => entry === "*" || host === entry || host.endsWith(`.${entry}`))) return null;
+  const exempt = (process.env.NO_PROXY || process.env.no_proxy || "")
+    .split(",")
+    .map((entry) =>
+      entry
+        .trim()
+        .toLowerCase()
+        .replace(/^\*?\./, ""),
+    )
+    .filter(Boolean);
+  if (exempt.some((entry) => entry === "*" || host === entry || host.endsWith(`.${entry}`)))
+    return null;
   return new URL(proxy);
 }
 
 /** A TLS socket to the host offering only h2, through the proxy's CONNECT tunnel when there is one. */
 function h2Socket(/** @type {URL} */ u) {
-  return /** @type {Promise<import("node:tls").TLSSocket>} */ (new Promise((resolve, reject) => {
-    const secure = (/** @type {import("node:stream").Duplex | null} */ socket) => {
-      const tls = tlsConnect({ host: u.hostname, port: Number(u.port || 443), servername: u.hostname, ALPNProtocols: ["h2"], ...(socket ? { socket } : {}) });
-      tls.once("secureConnect", () => (tls.alpnProtocol === "h2" ? resolve(tls) : (tls.destroy(), reject(new Error(`the server chose ${tls.alpnProtocol || "no protocol"}, not h2`)))));
-      tls.once("error", reject);
-    };
-    const proxy = proxyFor(u);
-    if (!proxy) return secure(null);
-    const authority = `${u.hostname}:${u.port || 443}`;
-    const auth = proxy.username ? { "proxy-authorization": `Basic ${Buffer.from(`${decodeURIComponent(proxy.username)}:${decodeURIComponent(proxy.password)}`).toString("base64")}` } : {};
-    const tunnel = request({ host: proxy.hostname, port: Number(proxy.port || 80), method: "CONNECT", path: authority, headers: { host: authority, ...auth }, timeout: 15_000 });
-    tunnel.once("connect", (res, socket) => (res.statusCode === 200 ? secure(socket) : (socket.destroy(), reject(new Error(`the proxy answered ${res.statusCode} to CONNECT`)))));
-    tunnel.once("timeout", () => tunnel.destroy(new Error("the proxy did not answer CONNECT in 15 s")));
-    tunnel.once("error", reject);
-    tunnel.end();
-  }));
+  return /** @type {Promise<import("node:tls").TLSSocket>} */ (
+    new Promise((resolve, reject) => {
+      const secure = (/** @type {import("node:stream").Duplex | null} */ socket) => {
+        const tls = tlsConnect({
+          host: u.hostname,
+          port: Number(u.port || 443),
+          servername: u.hostname,
+          ALPNProtocols: ["h2"],
+          ...(socket ? { socket } : {}),
+        });
+        tls.once("secureConnect", () =>
+          tls.alpnProtocol === "h2"
+            ? resolve(tls)
+            : (tls.destroy(),
+              reject(new Error(`the server chose ${tls.alpnProtocol || "no protocol"}, not h2`))),
+        );
+        tls.once("error", reject);
+      };
+      const proxy = proxyFor(u);
+      if (!proxy) return secure(null);
+      const authority = `${u.hostname}:${u.port || 443}`;
+      const auth = proxy.username
+        ? {
+            "proxy-authorization": `Basic ${Buffer.from(`${decodeURIComponent(proxy.username)}:${decodeURIComponent(proxy.password)}`).toString("base64")}`,
+          }
+        : {};
+      const tunnel = request({
+        host: proxy.hostname,
+        port: Number(proxy.port || 80),
+        method: "CONNECT",
+        path: authority,
+        headers: { host: authority, ...auth },
+        timeout: 15_000,
+      });
+      tunnel.once("connect", (res, socket) =>
+        res.statusCode === 200
+          ? secure(socket)
+          : (socket.destroy(),
+            reject(new Error(`the proxy answered ${res.statusCode} to CONNECT`))),
+      );
+      tunnel.once("timeout", () =>
+        tunnel.destroy(new Error("the proxy did not answer CONNECT in 15 s")),
+      );
+      tunnel.once("error", reject);
+      tunnel.end();
+    })
+  );
 }
 
 /**
@@ -135,7 +202,12 @@ async function informational(url) {
     session.setTimeout(15_000, () => done({ error: "no HTTP/2 answer in 15 s" }));
     /** @type {number[]} */
     const seen = [];
-    const stream = session.request({ ":path": u.pathname + u.search, "user-agent": UA, "x-check": CHECK, "accept-encoding": ENCODINGS });
+    const stream = session.request({
+      ":path": u.pathname + u.search,
+      "user-agent": UA,
+      "x-check": CHECK,
+      "accept-encoding": ENCODINGS,
+    });
     stream.on("headers", (headers) => seen.push(Number(headers[":status"])));
     stream.on("response", () => {
       stream.resume();
@@ -161,7 +233,12 @@ async function earlyHints(url) {
 
 /** Every <loc> in the sitemap, following a sitemap index one level. */
 async function sitemapUrls() {
-  const locs = async (/** @type {string} */ url) => [...(await (await fetch(url, { headers: { "user-agent": UA, "x-check": CHECK } })).text()).matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)].map((m) => m[1]);
+  const locs = async (/** @type {string} */ url) =>
+    [
+      ...(
+        await (await fetch(url, { headers: { "user-agent": UA, "x-check": CHECK } })).text()
+      ).matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g),
+    ].map((m) => m[1]);
   try {
     const top = await locs(`${base}/sitemap.xml`);
     const nested = top.filter((loc) => /\.xml(\?|$)/.test(loc));
@@ -217,17 +294,31 @@ async function pagespeed(url) {
     const key = process.env.PSI_API_KEY ? `&key=${process.env.PSI_API_KEY}` : "";
     for (let attempt = 1; attempt <= PSI_TRIES; attempt++) {
       try {
-        const r = await fetch(`https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&strategy=${strategy}&category=performance${key}`);
+        const r = await fetch(
+          `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&strategy=${strategy}&category=performance${key}`,
+        );
         if (r.ok) {
           out[strategy] = await r.json();
           break;
         }
-        out[strategy] = { error: `PageSpeed Insights answered ${r.status}${attempt > 1 ? ` after ${attempt} tries` : ""}${r.status === 429 && !key ? " (no PSI_API_KEY, so Google's shared keyless quota)" : ""}` };
+        out[strategy] = {
+          error: `PageSpeed Insights answered ${r.status}${attempt > 1 ? ` after ${attempt} tries` : ""}${r.status === 429 && !key ? " (no PSI_API_KEY, so Google's shared keyless quota)" : ""}`,
+        };
         if (r.status !== 429 && r.status < 500) break;
         const after = Number(r.headers.get("retry-after"));
-        if (attempt < PSI_TRIES) await sleep(Math.min(60_000, Number.isFinite(after) && after > 0 ? after * 1000 : 2 ** attempt * 1000 + Math.random() * 1000));
+        if (attempt < PSI_TRIES)
+          await sleep(
+            Math.min(
+              60_000,
+              Number.isFinite(after) && after > 0
+                ? after * 1000
+                : 2 ** attempt * 1000 + Math.random() * 1000,
+            ),
+          );
       } catch (error) {
-        out[strategy] = { error: `PageSpeed Insights could not be reached: ${error instanceof Error ? error.message : String(error)}` };
+        out[strategy] = {
+          error: `PageSpeed Insights could not be reached: ${error instanceof Error ? error.message : String(error)}`,
+        };
         if (attempt < PSI_TRIES) await sleep(2 ** attempt * 1000);
       }
     }
@@ -251,10 +342,23 @@ const conditional = [];
 for (const page of second) {
   const { etag, "last-modified": lastModified } = page.headers;
   if (page.status === 200 && (etag || lastModified)) {
-    conditional.push(await get(page.url, { ...(etag ? { "if-none-match": etag } : {}), ...(lastModified ? { "if-modified-since": lastModified } : {}) }));
+    conditional.push(
+      await get(page.url, {
+        ...(etag ? { "if-none-match": etag } : {}),
+        ...(lastModified ? { "if-modified-since": lastModified } : {}),
+      }),
+    );
   }
 }
-const files = [...new Set([...home.body.matchAll(/(?:href|src)="(\/[^"?#]+\.(?:css|js|woff2|svg|png|webp|avif|jpg|ico))"/g)].map((m) => m[1]))]
+const files = [
+  ...new Set(
+    [
+      ...home.body.matchAll(
+        /(?:href|src)="(\/[^"?#]+\.(?:css|js|woff2|svg|png|webp|avif|jpg|ico))"/g,
+      ),
+    ].map((m) => m[1]),
+  ),
+]
   .slice(0, 12)
   .map((path) => `${base}${path}`);
 const fileResponses = [];
@@ -286,9 +390,18 @@ const observations = {
   campaign: await get(`${base}/?utm_source=speedcheck-${nonce()}`),
   redirects: {
     http: await hops(`http://${host}/`),
-    ...(deepPath ? { "http page": await hops(`http://${host}${deepPath}`), "http page, other slash": await hops(`http://${host}${otherSlash}`) } : {}),
-    ...(apex ? { www: await hops(`https://www.${host}/`), "http www": await hops(`http://www.${host}/`) } : {}),
-    ...(apex && deepPath ? { "http www page, other slash": await hops(`http://www.${host}${otherSlash}`) } : {}),
+    ...(deepPath
+      ? {
+          "http page": await hops(`http://${host}${deepPath}`),
+          "http page, other slash": await hops(`http://${host}${otherSlash}`),
+        }
+      : {}),
+    ...(apex
+      ? { www: await hops(`https://www.${host}/`), "http www": await hops(`http://www.${host}/`) }
+      : {}),
+    ...(apex && deepPath
+      ? { "http www page, other slash": await hops(`http://www.${host}${otherSlash}`) }
+      : {}),
     ...(deepPath ? { slash: await hops(`${base}${otherSlash}`) } : {}),
   },
   earlyHints: await earlyHints(`${base}/`),
@@ -297,9 +410,15 @@ const observations = {
 
 const findings = speedFindings(observations);
 for (const finding of findings) {
-  console.log(finding.severity === "unmeasured" ? `::notice title=${finding.item}::${finding.url} could not measure: ${finding.detail}` : `::${finding.severity} title=${finding.item}::${finding.url} ${finding.detail}`);
+  console.log(
+    finding.severity === "unmeasured"
+      ? `::notice title=${finding.item}::${finding.url} could not measure: ${finding.detail}`
+      : `::${finding.severity} title=${finding.item}::${finding.url} ${finding.detail}`,
+  );
 }
 const errors = findings.filter((finding) => finding.severity === "error").length;
 const unmeasured = findings.filter((finding) => finding.severity === "unmeasured").length;
-console.log(`site-runtime-speed: ${urls.length} pages on ${base}; ${errors} errors, ${findings.length - errors - unmeasured} warnings, ${unmeasured} not measured.`);
+console.log(
+  `site-runtime-speed: ${urls.length} pages on ${base}; ${errors} errors, ${findings.length - errors - unmeasured} warnings, ${unmeasured} not measured.`,
+);
 process.exit(errors > 0 ? 1 : unmeasured > 0 ? 3 : 0);

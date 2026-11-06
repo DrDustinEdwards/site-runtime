@@ -14,12 +14,16 @@ const TABLE_SQL =
 
 /** @param {Rule[]} rules */
 export function assertRules(rules) {
-  if (!Array.isArray(rules) || rules.length === 0) throw new TypeError("rules must be a non-empty array");
+  if (!Array.isArray(rules) || rules.length === 0)
+    throw new TypeError("rules must be a non-empty array");
   const seen = new Set();
   for (const rule of rules) {
-    if (!Number.isInteger(rule?.limit) || rule.limit < 1) throw new TypeError(`limit must be a positive integer, got ${rule?.limit}`);
-    if (!Number.isInteger(rule?.windowSeconds) || rule.windowSeconds < 1) throw new TypeError(`windowSeconds must be a positive integer, got ${rule?.windowSeconds}`);
-    if (seen.has(rule.windowSeconds)) throw new TypeError(`two rules share the ${rule.windowSeconds} second window`);
+    if (!Number.isInteger(rule?.limit) || rule.limit < 1)
+      throw new TypeError(`limit must be a positive integer, got ${rule?.limit}`);
+    if (!Number.isInteger(rule?.windowSeconds) || rule.windowSeconds < 1)
+      throw new TypeError(`windowSeconds must be a positive integer, got ${rule?.windowSeconds}`);
+    if (seen.has(rule.windowSeconds))
+      throw new TypeError(`two rules share the ${rule.windowSeconds} second window`);
     seen.add(rule.windowSeconds);
   }
 }
@@ -97,7 +101,12 @@ function windows(sql, rules, nowMs) {
   sql.exec(TABLE_SQL);
   return rules.map((rule) => {
     const windowIndex = Math.floor(nowMs / 1000 / rule.windowSeconds);
-    const row = sql.exec("SELECT window_index, count FROM rate_window WHERE window_seconds = ?", rule.windowSeconds).toArray()[0];
+    const row = sql
+      .exec(
+        "SELECT window_index, count FROM rate_window WHERE window_seconds = ?",
+        rule.windowSeconds,
+      )
+      .toArray()[0];
     const used = row && row.window_index === windowIndex ? row.count : 0;
     return { rule, windowIndex, used };
   });
@@ -113,7 +122,10 @@ function spentHit(state, nowMs) {
   const spent = state.filter((s) => s.used >= s.rule.limit);
   if (spent.length === 0) return null;
   const last = spent.reduce((a, b) =>
-    secondsLeft(a.windowIndex, a.rule.windowSeconds, nowMs) >= secondsLeft(b.windowIndex, b.rule.windowSeconds, nowMs) ? a : b,
+    secondsLeft(a.windowIndex, a.rule.windowSeconds, nowMs) >=
+    secondsLeft(b.windowIndex, b.rule.windowSeconds, nowMs)
+      ? a
+      : b,
   );
   return {
     ok: false,
@@ -130,7 +142,9 @@ function spentHit(state, nowMs) {
  * @param {number} nowMs
  */
 export function idleDeadline(rules, nowMs) {
-  return Math.max(...rules.map((r) => (Math.floor(nowMs / 1000 / r.windowSeconds) + 1) * r.windowSeconds * 1000));
+  return Math.max(
+    ...rules.map((r) => (Math.floor(nowMs / 1000 / r.windowSeconds) + 1) * r.windowSeconds * 1000),
+  );
 }
 
 /**
@@ -144,6 +158,8 @@ export function idleDeadline(rules, nowMs) {
 export function purgeExpired(sql, nowMs) {
   sql.exec(TABLE_SQL);
   sql.exec("DELETE FROM rate_window WHERE (window_index + 1) * window_seconds * 1000 <= ?", nowMs);
-  const rows = sql.exec("SELECT MAX((window_index + 1) * window_seconds * 1000) AS ends FROM rate_window").toArray();
+  const rows = sql
+    .exec("SELECT MAX((window_index + 1) * window_seconds * 1000) AS ends FROM rate_window")
+    .toArray();
   return rows[0]?.ends ?? null;
 }

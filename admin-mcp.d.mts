@@ -18,9 +18,12 @@ export const ADMIN_MCP_ORIGINS: readonly string[];
 export function adminMcpOrigin(env: { PUBLIC_ORIGIN?: string }): string;
 
 /** What the door reads from the Worker's env, besides the site binding the server names in `api.binding`. */
-export interface AdminMcpEnv extends Omit<LoginEnv, "OAUTH_PROVIDER" | "OAUTH_KV">, Partial<AuditEnv> {
+export interface AdminMcpEnv
+  extends Omit<LoginEnv, "OAUTH_PROVIDER" | "OAUTH_KV">, Partial<AuditEnv> {
   /** Grants and tokens for workers-oauth-provider, and the owner page's sessions. */
-  OAUTH_KV: LoginEnv["OAUTH_KV"] & { put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void> };
+  OAUTH_KV: LoginEnv["OAUTH_KV"] & {
+    put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
+  };
   /** The door's limiter (./rate-limit/durable-object's RateLimiter). Fails closed: without it every /mcp call is a 429. */
   MCP_RATE_LIMIT?: Parameters<typeof import("./mcp-server.d.mts").checkRateLimit>[0];
   /** The tool-call log's copies in R2, written by `scheduled`. */
@@ -52,7 +55,12 @@ export interface AdminMcpAuth {
 /** Who a request is, as the door established it. Never read from the request. */
 export type AdminMcpCaller =
   /** A person the provider's token names and `admit` let in again on this request, with the grant's scopes. */
-  | { kind: "admin"; props: { email: string } & Record<string, unknown>; scopes: readonly string[]; auth: AdminMcpAuth }
+  | {
+      kind: "admin";
+      props: { email: string } & Record<string, unknown>;
+      scopes: readonly string[];
+      auth: AdminMcpAuth;
+    }
   /** A named agent key (`agentKeys`), read, and write when AGENT_WRITE names it. */
   | { kind: "agent"; principal: string; scopes: readonly string[] }
   /** The list-only test key: listed what a read grant is, refused every call. */
@@ -72,18 +80,27 @@ export interface AdminMcpOptions<E extends AdminMcpEnv> {
   /** Serves one request whose caller the door has established: the server's MCP handler. */
   serve(request: Request, env: E, ctx: ExecutionContext, caller: AdminMcpCaller): Promise<Response>;
   /** The provider class, `@cloudflare/workers-oauth-provider`'s default export (1.2.4 or later), from the server's own dependency. */
-  OAuthProvider: new (options: OAuthProviderOptions<E>) => { fetch(request: Request, env: E, ctx: ExecutionContext): Promise<Response> };
+  OAuthProvider: new (options: OAuthProviderOptions<E>) => {
+    fetch(request: Request, env: E, ctx: ExecutionContext): Promise<Response>;
+  };
   /**
    * The service binding to the site: its env name (`binding`) and the name of its /health checks (`name`, and
    * `<name>-reach`, the warn-level request that shows the site is up).
    */
   api: { binding: string; name: string };
   /** Who is let in, at sign-in and again on every request. Default: isAdminUser (ADMIN_EMAIL). */
-  admit?(env: E, user: { email: string } & Record<string, unknown>): boolean | Record<string, unknown> | null | Promise<boolean | Record<string, unknown> | null>;
+  admit?(
+    env: E,
+    user: { email: string } & Record<string, unknown>,
+  ): boolean | Record<string, unknown> | null | Promise<boolean | Record<string, unknown> | null>;
   /** Named agent keys on /mcp (./agent-keys). Default false: an admin server lets in only its administrator and the test key. */
   agentKeys?: boolean;
   /** The server's own routes, tried first: a Response answers, null goes on. */
-  routes?(request: Request, env: E, ctx: ExecutionContext): Response | null | Promise<Response | null>;
+  routes?(
+    request: Request,
+    env: E,
+    ctx: ExecutionContext,
+  ): Response | null | Promise<Response | null>;
   /** More /health checks, for the server's own bindings. */
   checks?(env: E): HealthCheck[];
 }

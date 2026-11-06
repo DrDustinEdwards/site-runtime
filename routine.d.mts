@@ -6,15 +6,32 @@ export type RoutineConfig = { url: string; token: string; routineId: string };
 export function routineId(url: string | undefined): string | null;
 
 /** The fire URL and token, checked: both set and the URL a routine's /fire URL (so the token only goes to Anthropic). */
-export function routineConfig(url: string | undefined, token: string | undefined): RoutineConfig | { missing: string };
+export function routineConfig(
+  url: string | undefined,
+  token: string | undefined,
+): RoutineConfig | { missing: string };
 
 export type FireResult =
   /** A session started. `sessionUrl` is a claude.ai session URL; when the answer named only one of id or URL, the other is derived. */
   | { ok: true; outcome: "started"; status: number; sessionId: string; sessionUrl: string }
   /** The hourly limit (30 per routine, 100 per account). `retryAfter` is seconds, from Retry-After when it was sent. */
-  | { ok: false; outcome: "rate_limited"; retry: true; status: 429; retryAfter?: number; error: string }
+  | {
+      ok: false;
+      outcome: "rate_limited";
+      retry: true;
+      status: 429;
+      retryAfter?: number;
+      error: string;
+    }
   /** 500, 503 `overloaded_error` or another 5xx: try again later. */
-  | { ok: false; outcome: "unavailable"; retry: true; status: number; retryAfter?: number; error: string }
+  | {
+      ok: false;
+      outcome: "unavailable";
+      retry: true;
+      status: number;
+      retryAfter?: number;
+      error: string;
+    }
   /** No connection was made, so nothing reached Anthropic: safe to try again. */
   | { ok: false; outcome: "unreachable"; retry: true; error: string }
   /** 400, 401, 403, 404 or another 4xx: will not work until something changes (a paused routine, a revoked token, a deleted routine). */
@@ -29,13 +46,23 @@ export type FireResult =
  * Fire the routine once with `text` (cut to 65,536 characters). Never throws. `retry` is true only when a later fire
  * cannot duplicate a session; the endpoint has no idempotency key.
  */
-export function fireRoutine(config: RoutineConfig, text: string, fetcher?: typeof fetch): Promise<FireResult>;
+export function fireRoutine(
+  config: RoutineConfig,
+  text: string,
+  fetcher?: typeof fetch,
+): Promise<FireResult>;
 
 /**
  * What `fireOnce` keeps per job key, as JSON. `firing` is a fire in flight; one older than 10 minutes is reported as
  * `unknown` (its worker died mid-fire). `failed` is a sure non-start whose delete failed, and blocks nothing.
  */
-export type FireRecord = { state: "firing" | "fired" | "unknown" | "failed"; at: string; sessionId?: string; sessionUrl?: string; error?: string };
+export type FireRecord = {
+  state: "firing" | "fired" | "unknown" | "failed";
+  at: string;
+  sessionId?: string;
+  sessionUrl?: string;
+  error?: string;
+};
 
 /**
  * Where `fireOnce` keeps its records: a D1 table or a Durable Object, never KV (eventually consistent, so two fires can
@@ -50,7 +77,9 @@ export type FireStore = {
 };
 
 export type FireOnceResult =
-  | (FireResult & { /** The fire happened but its record could not be written: keep the session URL. */ unrecorded?: string })
+  | (FireResult & {
+      /** The fire happened but its record could not be written: keep the session URL. */ unrecorded?: string;
+    })
   /** Refused without firing: the key was fired before, or its fire is in flight or unknown. */
   | { ok: false; outcome: "already_fired"; retry: false; record: FireRecord; error: string };
 
@@ -72,6 +101,10 @@ export function fireOnce(
 export const ROUTINE_FIRES_SQL: string;
 /** `fireOnce`'s store on a D1 table (default `routine_fires`); `add` is an atomic INSERT ... ON CONFLICT DO NOTHING RETURNING. */
 export function d1FireStore(
-  db: { prepare(sql: string): { bind(...values: unknown[]): { first(): Promise<unknown>; run(): Promise<unknown> } } },
+  db: {
+    prepare(sql: string): {
+      bind(...values: unknown[]): { first(): Promise<unknown>; run(): Promise<unknown> };
+    };
+  },
   table?: string,
 ): FireStore;

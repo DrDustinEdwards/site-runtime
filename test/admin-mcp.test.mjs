@@ -9,7 +9,12 @@ import { germomicsMcp } from "../sites.mjs";
 
 const ORIGIN = "https://admin-mcp.example.com";
 const SCOPES = mcpScopes("sample");
-const SERVER = { site: "sample.example.com", scopes: SCOPES, name: "sample-admin-mcp", version: "1.0.0" };
+const SERVER = {
+  site: "sample.example.com",
+  scopes: SCOPES,
+  name: "sample-admin-mcp",
+  version: "1.0.0",
+};
 const KEY = "k".repeat(40);
 
 /** @type {Record<string, any>[]} */
@@ -26,7 +31,8 @@ class FakeProvider {
   }
   /** @param {Request} request @param {any} env @param {any} ctx */
   async fetch(request, env, ctx) {
-    if (new URL(request.url).pathname === "/mcp") return this.options.apiHandler.fetch(request, env, { ...ctx, ...token });
+    if (new URL(request.url).pathname === "/mcp")
+      return this.options.apiHandler.fetch(request, env, { ...ctx, ...token });
     return this.options.defaultHandler.fetch(request, { ...env, OAUTH_PROVIDER: {} }, ctx);
   }
 }
@@ -44,7 +50,10 @@ function setup(/** @type {Record<string, unknown>} */ options = {}) {
     about: "<p>Sample.</p>",
     OAuthProvider: /** @type {any} */ (FakeProvider),
     api: { binding: "SITE", name: "sample" },
-    serve: async (request, _env, _ctx, caller) => (served.push({ request, caller }), new Response("served")),
+    serve: async (request, _env, _ctx, caller) => (
+      served.push({ request, caller }),
+      new Response("served")
+    ),
     ...options,
   });
   const env = /** @type {any} */ ({
@@ -52,18 +61,35 @@ function setup(/** @type {Record<string, unknown>} */ options = {}) {
     ADMIN_EMAIL: "admin@example.com",
     OAUTH_KV: { get: async () => null, put: async () => {} },
     SITE: { fetch: async () => new Response(null, { status: 404 }) },
-    MCP_RATE_LIMIT: { idFromName: (/** @type {string} */ n) => n, get: () => ({ hit: async () => ({ ok: true, used: 1, limit: 30, retryAfterSeconds: 0 }) }) },
+    MCP_RATE_LIMIT: {
+      idFromName: (/** @type {string} */ n) => n,
+      get: () => ({ hit: async () => ({ ok: true, used: 1, limit: 30, retryAfterSeconds: 0 }) }),
+    },
     TOOL_CALL_LOG: {
       idFromName: () => "id",
-      get: () => ({ fetch: async (/** @type {string} */ _u, /** @type {RequestInit} */ init) => (rows.push(JSON.parse(String(init.body))), new Response(null, { status: 204 })) }),
+      get: () => ({
+        fetch: async (/** @type {string} */ _u, /** @type {RequestInit} */ init) =>
+          (rows.push(JSON.parse(String(init.body))), new Response(null, { status: 204 })),
+      }),
     },
   });
-  const call = (/** @type {string} */ path, /** @type {RequestInit} */ init = {}, /** @type {string} */ origin = ORIGIN) =>
-    worker.fetch(new Request(`${origin}${path}`, { method: "POST", ...init }), env, /** @type {any} */ ({ waitUntil() {} }));
+  const call = (
+    /** @type {string} */ path,
+    /** @type {RequestInit} */ init = {},
+    /** @type {string} */ origin = ORIGIN,
+  ) =>
+    worker.fetch(
+      new Request(`${origin}${path}`, { method: "POST", ...init }),
+      env,
+      /** @type {any} */ ({ waitUntil() {} }),
+    );
   return { worker, env, served, rows, call };
 }
 
-const ADMIN = { props: { email: "Admin@Example.com" }, auth: { token: "t", audience: `${ORIGIN}/mcp`, scope: [SCOPES.read], clientId: "c" } };
+const ADMIN = {
+  props: { email: "Admin@Example.com" },
+  auth: { token: "t", audience: `${ORIGIN}/mcp`, scope: [SCOPES.read], clientId: "c" },
+};
 
 test("PLANT DNS rebinding: a foreign Origin or another Host is refused before the token is read; claude.ai passes", async () => {
   token = ADMIN;
@@ -71,7 +97,10 @@ test("PLANT DNS rebinding: a foreign Origin or another Host is refused before th
   assert.equal((await call("/mcp", { headers: { Origin: "https://evil.example" } })).status, 403);
   assert.equal((await call("/mcp", {}, "https://rebound.example")).status, 403);
   assert.equal(served.length, 0);
-  assert.equal(await (await call("/mcp", { headers: { Origin: "https://claude.ai" } })).text(), "served");
+  assert.equal(
+    await (await call("/mcp", { headers: { Origin: "https://claude.ai" } })).text(),
+    "served",
+  );
 });
 
 test("PLANT 12.2 and 12.1: another resource's token and another person's grant reach nothing", async () => {
@@ -81,7 +110,11 @@ test("PLANT 12.2 and 12.1: another resource's token and another person's grant r
   token = { ...ADMIN, props: { email: "someone@example.com" } };
   assert.equal((await call("/mcp")).status, 403);
   token = { ...ADMIN, auth: { ...ADMIN.auth, scope: undefined } };
-  assert.equal((await call("/mcp")).status, 403, "a grant with no scope list is refused, not read as read-only");
+  assert.equal(
+    (await call("/mcp")).status,
+    403,
+    "a grant with no scope list is refused, not read as read-only",
+  );
   assert.equal(served.length, 0);
 });
 
@@ -89,7 +122,10 @@ test("the administrator is served with the grant's scopes, admit is asked again 
   token = ADMIN;
   /** @type {string[]} */
   const asked = [];
-  const { env, served, rows, call } = setup({ admit: async (/** @type {any} */ _env, /** @type {{ email: string }} */ user) => (asked.push(user.email), true) });
+  const { env, served, rows, call } = setup({
+    admit: async (/** @type {any} */ _env, /** @type {{ email: string }} */ user) =>
+      (asked.push(user.email), true),
+  });
   assert.equal(await (await call("/mcp")).text(), "served");
   assert.deepEqual(asked, ["Admin@Example.com"]);
   assert.equal(served[0].caller.kind, "admin");
@@ -108,12 +144,23 @@ test("PLANT agent keys: only a server that turns them on serves one, under the s
   const off = setup();
   off.env.AGENT_KEY_GROK = KEY;
   await off.call("/mcp", { headers: { Authorization: `Bearer ${KEY}` } }).catch(() => null);
-  assert.equal(off.served.length, 0, "an admin server without agentKeys sent a key to the provider");
+  assert.equal(
+    off.served.length,
+    0,
+    "an admin server without agentKeys sent a key to the provider",
+  );
   const on = setup({ agentKeys: true });
   on.env.AGENT_KEY_GROK = KEY;
   on.env.AGENT_WRITE = "grok";
-  assert.equal(await (await on.call("/mcp", { headers: { Authorization: `Bearer ${KEY}` } })).text(), "served");
-  assert.deepEqual(on.served[0].caller, { kind: "agent", principal: "grok", scopes: [SCOPES.read, SCOPES.write] });
+  assert.equal(
+    await (await on.call("/mcp", { headers: { Authorization: `Bearer ${KEY}` } })).text(),
+    "served",
+  );
+  assert.deepEqual(on.served[0].caller, {
+    kind: "agent",
+    principal: "grok",
+    scopes: [SCOPES.read, SCOPES.write],
+  });
 });
 
 test("the provider is bound to PUBLIC_ORIGIN/mcp and allows only exact registration callbacks", async () => {
@@ -125,8 +172,18 @@ test("the provider is bound to PUBLIC_ORIGIN/mcp and allows only exact registrat
   const options = built.at(-1) ?? {};
   assert.equal(options.resourceMetadata.resource, `${ORIGIN}/mcp`);
   assert.deepEqual(options.requiredScopes, SCOPES.all);
-  assert.equal(options.clientRegistrationCallback({ clientMetadata: { redirect_uris: ["https://client.example.com/cb"] } }), undefined);
-  assert.equal(options.clientRegistrationCallback({ clientMetadata: { redirect_uris: ["https://client.example.com/cb2"] } }).code, "invalid_redirect_uri");
+  assert.equal(
+    options.clientRegistrationCallback({
+      clientMetadata: { redirect_uris: ["https://client.example.com/cb"] },
+    }),
+    undefined,
+  );
+  assert.equal(
+    options.clientRegistrationCallback({
+      clientMetadata: { redirect_uris: ["https://client.example.com/cb2"] },
+    }).code,
+    "invalid_redirect_uri",
+  );
 });
 
 test("not configured is not open: no PUBLIC_ORIGIN serves nothing, /health fails without the site binding, the cron needs its bucket", async () => {
@@ -136,18 +193,33 @@ test("not configured is not open: no PUBLIC_ORIGIN serves nothing, /health fails
   env.PUBLIC_ORIGIN = ORIGIN;
   // Every server asks the site over its binding (sample-reach): a 404 is up, a 5xx warns.
   const up = await (await call("/health", { method: "GET" })).json();
-  assert.equal(up.checks.find((/** @type {{ name: string }} */ c) => c.name === "sample-reach")?.status, "pass");
+  assert.equal(
+    up.checks.find((/** @type {{ name: string }} */ c) => c.name === "sample-reach")?.status,
+    "pass",
+  );
   /** @type {Request[]} */
   const asked = [];
-  env.SITE = { fetch: async (/** @type {Request} */ request) => (asked.push(request), new Response(null, { status: 503 })) };
+  env.SITE = {
+    fetch: async (/** @type {Request} */ request) =>
+      (asked.push(request), new Response(null, { status: 503 })),
+  };
   const down = await (await call("/health", { method: "GET" })).json();
-  assert.equal(down.checks.find((/** @type {{ name: string }} */ c) => c.name === "sample-reach")?.status, "warn");
+  assert.equal(
+    down.checks.find((/** @type {{ name: string }} */ c) => c.name === "sample-reach")?.status,
+    "warn",
+  );
   // A reserved name the site answers without its API, and its redirect is not followed.
-  assert.deepEqual(asked.map((r) => [r.url, r.redirect]), [["https://sample.invalid/", "manual"]]);
+  assert.deepEqual(
+    asked.map((r) => [r.url, r.redirect]),
+    [["https://sample.invalid/", "manual"]],
+  );
   delete env.SITE;
   const health = await call("/health", { method: "GET" });
   assert.equal(health.status, 503);
   const body = await health.json();
-  assert.equal(body.checks.find((/** @type {{ name: string }} */ c) => c.name === "sample")?.status, "fail");
+  assert.equal(
+    body.checks.find((/** @type {{ name: string }} */ c) => c.name === "sample")?.status,
+    "fail",
+  );
   await assert.rejects(worker.scheduled({}, env), /AUDIT_BUCKET/);
 });
