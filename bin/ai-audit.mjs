@@ -453,16 +453,24 @@ async function grantProxy(/** @type {string} */ endpoint, /** @type {string} */ 
       headers.set(name, Array.isArray(value) ? value.join(", ") : value);
     }
     headers.set("authorization", `Bearer ${grant}`);
+    // Streamed, never buffered: a subscriptions/listen answer is an event stream that stays open, so reading it whole
+    // held back its first frame (the acknowledgment) until the timeout, and the suite failed SEP-2575's ack and
+    // subscription-id checks on every server. The upstream request ends when the suite closes its side.
+    const upstream = new AbortController();
+    res.on("close", () => upstream.abort());
     try {
-      const answer = await fetch(target, { method: req.method, headers, body: chunks.length ? Buffer.concat(chunks) : undefined, redirect: "manual", signal: AbortSignal.timeout(TIMEOUT_MS) });
+      const answer = await fetch(target, { method: req.method, headers, body: chunks.length ? Buffer.concat(chunks) : undefined, redirect: "manual", signal: AbortSignal.any([upstream.signal, AbortSignal.timeout(TIMEOUT_MS)]) });
       const out = {};
       answer.headers.forEach((value, name) => {
         if (!["content-encoding", "content-length", "transfer-encoding", "connection"].includes(name)) /** @type {any} */ (out)[name] = value;
       });
       res.writeHead(answer.status, out);
-      res.end(Buffer.from(await answer.arrayBuffer()));
+      if (!answer.body) return void res.end();
+      for await (const chunk of answer.body) res.write(chunk);
+      res.end();
     } catch {
-      res.writeHead(502).end();
+      if (res.headersSent) res.destroy();
+      else res.writeHead(502).end();
     }
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(undefined)));
