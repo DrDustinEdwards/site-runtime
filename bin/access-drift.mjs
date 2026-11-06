@@ -17,7 +17,13 @@
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 
-import { accessAllowed, accessDrift, accessDriftHashed, fetchAdminList, parseAdminList } from "../access-drift.mjs";
+import {
+  accessAllowed,
+  accessDrift,
+  accessDriftHashed,
+  fetchAdminList,
+  parseAdminList,
+} from "../access-drift.mjs";
 
 const usage =
   'usage: CLOUDFLARE_API_TOKEN=... site-runtime-access-drift --account <id> --app "<name>" (--admins-url <url> with ACCESS_CLIENT_ID and ACCESS_CLIENT_SECRET | ADMIN_EMAILS=... | --admins-file <path>) [--show-addresses]';
@@ -57,10 +63,20 @@ try {
   if (values?.["admins-url"]) {
     const clientId = process.env.ACCESS_CLIENT_ID;
     const clientSecret = process.env.ACCESS_CLIENT_SECRET;
-    if (!clientId || !clientSecret) fail("--admins-url needs ACCESS_CLIENT_ID and ACCESS_CLIENT_SECRET (an Access service token)");
+    if (!clientId || !clientSecret)
+      fail(
+        "--admins-url needs ACCESS_CLIENT_ID and ACCESS_CLIENT_SECRET (an Access service token)",
+      );
     const [found, list] = await Promise.all([
-      accessAllowed({ accountId: String(accountId), appName: String(appName), token: String(token) }),
-      fetchAdminList(values["admins-url"], { clientId: String(clientId), clientSecret: String(clientSecret) }),
+      accessAllowed({
+        accountId: String(accountId),
+        appName: String(appName),
+        token: String(token),
+      }),
+      fetchAdminList(values["admins-url"], {
+        clientId: String(clientId),
+        clientSecret: String(clientSecret),
+      }),
     ]);
     site = await accessDriftHashed(found, list);
     admins = site.admins;
@@ -68,9 +84,23 @@ try {
     let text = process.env.ADMIN_EMAILS ?? "";
     if (values?.["admins-file"]) text = readFileSync(values["admins-file"], "utf8");
     const list = parseAdminList(text);
-    if (list.length === 0) fail("no admin list: pass --admins-url, set ADMIN_EMAILS or pass --admins-file");
-    const drift = accessDrift(await accessAllowed({ accountId: String(accountId), appName: String(appName), token: String(token) }), list);
-    site = { onlyInAccess: drift.onlyInAccess, onlyInAppCount: drift.onlyInApp.length, onlyInApp: drift.onlyInApp, admins: list.length, open: drift.open };
+    if (list.length === 0)
+      fail("no admin list: pass --admins-url, set ADMIN_EMAILS or pass --admins-file");
+    const drift = accessDrift(
+      await accessAllowed({
+        accountId: String(accountId),
+        appName: String(appName),
+        token: String(token),
+      }),
+      list,
+    );
+    site = {
+      onlyInAccess: drift.onlyInAccess,
+      onlyInAppCount: drift.onlyInApp.length,
+      onlyInApp: drift.onlyInApp,
+      admins: list.length,
+      open: drift.open,
+    };
     admins = list.length;
   }
 } catch (error) {
@@ -80,10 +110,18 @@ if (admins === 0) fail("the site's admin list is empty");
 
 const { onlyInAccess, onlyInAppCount, open } = site;
 const named = /** @type {{ onlyInApp?: string[] }} */ (site).onlyInApp;
-for (const email of onlyInAccess) say(`${shown(email)} is let in by Access but is not an admin in the app`);
-if (named) for (const email of named) say(`${shown(email)} is an admin in the app but Access does not let them in`);
-else if (onlyInAppCount) say(`${onlyInAppCount} of the app's ${admins} admins ${onlyInAppCount === 1 ? "is" : "are"} not let in by Access`);
+for (const email of onlyInAccess)
+  say(`${shown(email)} is let in by Access but is not an admin in the app`);
+if (named)
+  for (const email of named)
+    say(`${shown(email)} is an admin in the app but Access does not let them in`);
+else if (onlyInAppCount)
+  say(
+    `${onlyInAppCount} of the app's ${admins} admins ${onlyInAppCount === 1 ? "is" : "are"} not let in by Access`,
+  );
 for (const rule of open) say(`${rule} lets in people the app's list cannot name`);
 const count = onlyInAccess.length + onlyInAppCount + open.length;
-console.log(`site-runtime-access-drift: "${appName}": ${admins} admins in the app; ${count ? `${count} differences` : "Access matches"}.`);
+console.log(
+  `site-runtime-access-drift: "${appName}": ${admins} admins in the app; ${count ? `${count} differences` : "Access matches"}.`,
+);
 process.exit(count ? 1 : 0);

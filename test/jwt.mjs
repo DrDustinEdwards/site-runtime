@@ -5,9 +5,18 @@ export const b64url = (bytes) => Buffer.from(bytes).toString("base64url");
 /** @param {unknown} value */
 export const encode = (value) => b64url(new TextEncoder().encode(JSON.stringify(value)));
 
-const keyParams = { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" };
-export const pair = /** @type {CryptoKeyPair} */ (await crypto.subtle.generateKey(keyParams, true, ["sign", "verify"]));
-export const other = /** @type {CryptoKeyPair} */ (await crypto.subtle.generateKey(keyParams, true, ["sign", "verify"]));
+const keyParams = {
+  name: "RSASSA-PKCS1-v1_5",
+  modulusLength: 2048,
+  publicExponent: new Uint8Array([1, 0, 1]),
+  hash: "SHA-256",
+};
+export const pair = /** @type {CryptoKeyPair} */ (
+  await crypto.subtle.generateKey(keyParams, true, ["sign", "verify"])
+);
+export const other = /** @type {CryptoKeyPair} */ (
+  await crypto.subtle.generateKey(keyParams, true, ["sign", "verify"])
+);
 export const publicJwk = { ...(await crypto.subtle.exportKey("jwk", pair.publicKey)), kid: "k1" };
 /** @type {import("../access-login.d.mts").KeySource} */
 export const keys = async (kid) => (kid === "k1" ? publicJwk : undefined);

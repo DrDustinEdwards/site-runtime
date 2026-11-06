@@ -71,7 +71,10 @@ export function accessKeys(teamDomain) {
   return async (kid, fresh) => {
     let entry = cachedKeys.get(url);
     if (!entry || (fresh && Date.now() - entry.fetchedAt >= REFETCH_COOLDOWN_MS)) {
-      const response = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(KEYS_TIMEOUT_MS) });
+      const response = await fetch(url, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(KEYS_TIMEOUT_MS),
+      });
       if (!response.ok) throw new Error(`the Access keys at ${url} answered ${response.status}`);
       const body = /** @type {{ keys?: unknown }} */ (await response.json().catch(() => ({})));
       if (!Array.isArray(body.keys)) throw new Error(`the Access keys at ${url} are not a key set`);
@@ -103,7 +106,9 @@ function cookieValue(request, name) {
  * @returns {string | null}
  */
 export function accessToken(request, { cookie = false } = {}) {
-  return request.headers.get(ACCESS_JWT_HEADER) || (cookie ? cookieValue(request, ACCESS_COOKIE) : null);
+  return (
+    request.headers.get(ACCESS_JWT_HEADER) || (cookie ? cookieValue(request, ACCESS_COOKIE) : null)
+  );
 }
 
 /**
@@ -126,7 +131,10 @@ export function verifyAccessToken(token, keys, expect) {
  * @param {{ teamDomain: string | undefined, audience: string | undefined, cookie?: boolean, keys?: KeySource, now?: number }} options
  * @returns {Promise<import("./access.d.mts").AccessVerdict>}
  */
-export async function verifyAccessRequest(request, { teamDomain, audience, cookie = false, keys, now }) {
+export async function verifyAccessRequest(
+  request,
+  { teamDomain, audience, cookie = false, keys, now },
+) {
   const issuer = accessIssuer(teamDomain);
   const aud = audience?.trim();
   if (!issuer || !aud) return { ok: false, reason: "not-configured" };
@@ -148,7 +156,9 @@ export function adminEmails(env) {
 /** @param {string | readonly string[] | undefined | null} value */
 function emailList(value) {
   const items = typeof value === "string" ? value.split(",") : (value ?? []);
-  return items.map((email) => String(email).trim().toLowerCase()).filter((email) => email.length > 0);
+  return items
+    .map((email) => String(email).trim().toLowerCase())
+    .filter((email) => email.length > 0);
 }
 
 /**
@@ -163,11 +173,19 @@ function emailList(value) {
 export async function accessAdmin(request, env, { admins, keys, now } = {}) {
   const list = admins === undefined ? adminEmails(env) : emailList(admins);
   if (list.length === 0) return null;
-  if (env.ACCESS_DEV_BYPASS === "1" && new URL(request.url).hostname === "localhost") return { email: /** @type {string} */ (list[0]) };
+  if (env.ACCESS_DEV_BYPASS === "1" && new URL(request.url).hostname === "localhost")
+    return { email: /** @type {string} */ (list[0]) };
   try {
-    const verdict = await verifyAccessRequest(request, { teamDomain: env.ACCESS_TEAM_DOMAIN, audience: env.ACCESS_AUD, cookie: true, keys, now });
+    const verdict = await verifyAccessRequest(request, {
+      teamDomain: env.ACCESS_TEAM_DOMAIN,
+      audience: env.ACCESS_AUD,
+      cookie: true,
+      keys,
+      now,
+    });
     if (!verdict.ok) return null;
-    const email = typeof verdict.claims.email === "string" ? verdict.claims.email.trim().toLowerCase() : "";
+    const email =
+      typeof verdict.claims.email === "string" ? verdict.claims.email.trim().toLowerCase() : "";
     return email && list.includes(email) ? { email } : null;
   } catch (error) {
     // The keys could not be fetched: refused, never let through.
@@ -197,7 +215,8 @@ export function accessSignInUrl(request, { path = "/admin/access" } = {}) {
  */
 export function safeAdminNext(next, { prefix = "/admin", path = "/admin/access" } = {}) {
   if (!next || next.includes("\\") || next.startsWith(path)) return prefix;
-  if (next === prefix || next.startsWith(`${prefix}/`) || next.startsWith(`${prefix}?`)) return next;
+  if (next === prefix || next.startsWith(`${prefix}/`) || next.startsWith(`${prefix}?`))
+    return next;
   return prefix;
 }
 
@@ -234,8 +253,18 @@ function tokenClaims(token) {
  */
 async function seenMac(claims, time, secret) {
   const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  return base64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(`${claims.sub}.${claims.iat}.${time}`))));
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  return base64url(
+    new Uint8Array(
+      await crypto.subtle.sign("HMAC", key, enc.encode(`${claims.sub}.${claims.iat}.${time}`)),
+    ),
+  );
 }
 
 /** The shortest `secret` adminIdle takes: 32 characters, 256 bits as the deploy mints it (base64url of 32 bytes). */
@@ -250,7 +279,10 @@ export const BACKGROUND_HEADER = "x-background";
  * @param {Request} request
  */
 function isBackground(request) {
-  return request.headers.get(BACKGROUND_HEADER) === "1" || /\bprefetch\b/.test(request.headers.get("sec-purpose") ?? "");
+  return (
+    request.headers.get(BACKGROUND_HEADER) === "1" ||
+    /\bprefetch\b/.test(request.headers.get("sec-purpose") ?? "")
+  );
 }
 
 /**
@@ -270,7 +302,16 @@ function isBackground(request) {
  * @param {{ idleSeconds?: number, now?: number, session?: { id: string, signedInAt: number } | null, cookieName?: string, secret: string }} options `now` in epoch milliseconds
  * @returns {Promise<{ idle: true, response: Response } | { idle: false, cookie?: string }>}
  */
-export async function adminIdle(request, { idleSeconds = ADMIN_IDLE_SECONDS, now = Date.now(), session, cookieName = ADMIN_SEEN_COOKIE, secret }) {
+export async function adminIdle(
+  request,
+  {
+    idleSeconds = ADMIN_IDLE_SECONDS,
+    now = Date.now(),
+    session,
+    cookieName = ADMIN_SEEN_COOKIE,
+    secret,
+  },
+) {
   /** @type {Record<string, unknown>} */
   let claims;
   if (session) {
@@ -281,12 +322,15 @@ export async function adminIdle(request, { idleSeconds = ADMIN_IDLE_SECONDS, now
     claims = tokenClaims(token);
   }
   if (typeof secret !== "string" || secret.length < MIN_IDLE_SECRET_LENGTH) {
-    throw new TypeError(`adminIdle needs secret, a server-only value of at least ${MIN_IDLE_SECRET_LENGTH} characters (a Worker secret such as ADMIN_IDLE_SECRET)`);
+    throw new TypeError(
+      `adminIdle needs secret, a server-only value of at least ${MIN_IDLE_SECRET_LENGTH} characters (a Worker secret such as ADMIN_IDLE_SECRET)`,
+    );
   }
   const seconds = Math.floor(now / 1000);
   const [time, mac] = (cookieValue(request, cookieName) ?? "").split(".");
   const iat = typeof claims.iat === "number" ? claims.iat : null;
-  const seen = time && mac && (await safeEqual(mac, await seenMac(claims, time, secret))) ? Number(time) : iat;
+  const seen =
+    time && mac && (await safeEqual(mac, await seenMac(claims, time, secret))) ? Number(time) : iat;
   if (seen === null || seconds - seen > idleSeconds) {
     logEvent("admin_idle_logout", { idleSeconds });
     return {
@@ -303,7 +347,10 @@ export async function adminIdle(request, { idleSeconds = ADMIN_IDLE_SECONDS, now
   }
   if (isBackground(request)) return { idle: false };
   const value = `${seconds}.${await seenMac(claims, String(seconds), secret)}`;
-  return { idle: false, cookie: `${cookieName}=${value}; Path=/; Max-Age=${idleSeconds}; Secure; HttpOnly; SameSite=Lax` };
+  return {
+    idle: false,
+    cookie: `${cookieName}=${value}; Path=/; Max-Age=${idleSeconds}; Secure; HttpOnly; SameSite=Lax`,
+  };
 }
 
 /**
@@ -315,9 +362,18 @@ export async function adminIdle(request, { idleSeconds = ADMIN_IDLE_SECONDS, now
  * @param {{ prefixes?: readonly string[], idleSeconds?: number, session?: { id: string, signedInAt: number } | null, cookieName?: string, secret: string }} options
  * @returns {Promise<Response>}
  */
-export async function withAdminIdle(request, handle, { prefixes = ["/admin"], idleSeconds, session, cookieName, secret }) {
+export async function withAdminIdle(
+  request,
+  handle,
+  { prefixes = ["/admin"], idleSeconds, session, cookieName, secret },
+) {
   const { pathname } = new URL(request.url);
-  if (!prefixes.some((prefix) => prefix === "/" || pathname === prefix || pathname.startsWith(`${prefix}/`))) return handle();
+  if (
+    !prefixes.some(
+      (prefix) => prefix === "/" || pathname === prefix || pathname.startsWith(`${prefix}/`),
+    )
+  )
+    return handle();
   const gate = await adminIdle(request, { idleSeconds, session, cookieName, secret });
   if (gate.idle) return gate.response;
   const response = await handle();

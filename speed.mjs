@@ -47,11 +47,19 @@ const upgradeOnly = (/** @type {string} */ from, /** @type {string | undefined} 
   if (!to) return false;
   const a = new URL(from);
   const b = new URL(to);
-  return a.protocol === "http:" && b.protocol === "https:" && a.host === b.host && a.pathname === b.pathname && a.search === b.search;
+  return (
+    a.protocol === "http:" &&
+    b.protocol === "https:" &&
+    a.host === b.host &&
+    a.pathname === b.pathname &&
+    a.search === b.search
+  );
 };
 
-const median = (/** @type {number[]} */ values) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
-const isHtml = (/** @type {Got} */ got) => (got.headers["content-type"] ?? "").includes("text/html");
+const median = (/** @type {number[]} */ values) =>
+  [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
+const isHtml = (/** @type {Got} */ got) =>
+  (got.headers["content-type"] ?? "").includes("text/html");
 /**
  * True for a file a build named by its content: a name ending in a hash-like token, the
  * bundler's `root-DYYv4ssa.css` or `inter-latin-opsz-normal-BwkfbSeq.woff2`. A token is 8 or more letters, digits or
@@ -62,20 +70,31 @@ const isHtml = (/** @type {Got} */ got) => (got.headers["content-type"] ?? "").i
 const hashed = (/** @type {string} */ url) => {
   // A bundler's hash is base64url, so it may hold a hyphen (`root-Coj2Oi-v.css`, `lib--DwWN2sy.js`): when no hyphen-free
   // token of 8 or more fits, the last 8 characters after a separator are the hash.
-  const token = (/[.-]([A-Za-z0-9_]{8,})\.[a-z0-9]+$/.exec(url) ?? /[.-]([A-Za-z0-9_-]{8})\.[a-z0-9]+$/.exec(url))?.[1];
-  return !!token && !/^\d+x\d+$/.test(token) && (/\d/.test(token) || (/[a-z]/.test(token) && /[A-Z]/.test(token)));
+  const token = (
+    /[.-]([A-Za-z0-9_]{8,})\.[a-z0-9]+$/.exec(url) ?? /[.-]([A-Za-z0-9_-]{8})\.[a-z0-9]+$/.exec(url)
+  )?.[1];
+  return (
+    !!token &&
+    !/^\d+x\d+$/.test(token) &&
+    (/\d/.test(token) || (/[a-z]/.test(token) && /[A-Z]/.test(token)))
+  );
 };
 
 /** True when a cache-control lets a shared cache keep the response: `public`, or a positive max-age or s-maxage without `private` or `no-store`. */
 const allowsStoring = (/** @type {string} */ cacheControl) => {
-  const directives = cacheControl.toLowerCase().split(",").map((part) => part.trim());
+  const directives = cacheControl
+    .toLowerCase()
+    .split(",")
+    .map((part) => part.trim());
   if (directives.includes("private") || directives.includes("no-store")) return false;
   return directives.some((part) => part === "public" || /^(max-age|s-maxage)=[1-9]\d*$/.test(part));
 };
 /** The browser's max-age in seconds (s-maxage is the edge's, so it does not count), 0 when there is none. */
-const browserMaxAge = (/** @type {string} */ cacheControl) => Number(/(?:^|,)\s*max-age=(\d+)/i.exec(cacheControl)?.[1] ?? 0);
+const browserMaxAge = (/** @type {string} */ cacheControl) =>
+  Number(/(?:^|,)\s*max-age=(\d+)/i.exec(cacheControl)?.[1] ?? 0);
 /** A page or an unhashed file kept longer than the bar: a deploy reaches a returning reader that much later, and a page and its files can expire apart. */
-const keptTooLong = (/** @type {string} */ cacheControl) => browserMaxAge(cacheControl) > BAR.unhashedMaxAgeS;
+const keptTooLong = (/** @type {string} */ cacheControl) =>
+  browserMaxAge(cacheControl) > BAR.unhashedMaxAgeS;
 const ms = (/** @type {number} */ n) => `${Math.round(n)} ms`;
 
 /** True when the page runs a React Router app, which prefetches through its own links, not speculation rules. */
@@ -97,7 +116,8 @@ export function speedFindings(o) {
   const home = o.second[0];
 
   for (const got of o.second) {
-    if (got.status !== 200) add("B1", "error", got.url, `a sitemap page answered ${got.status || got.error}`);
+    if (got.status !== 200)
+      add("B1", "error", got.url, `a sitemap page answered ${got.status || got.error}`);
   }
   for (const got of pages) {
     const status = got.headers["cf-cache-status"] ?? "none";
@@ -105,23 +125,66 @@ export function speedFindings(o) {
       // What the first request saw and where each was answered, so a miss says whether the page was never stored, was
       // purged between the two, or was answered by another data center (cf-ray ends in the colo).
       const before = o.first.find((f) => f.url === got.url);
-      const colo = (/** @type {Got | undefined} */ g) => g?.headers["cf-ray"]?.split("-").pop() ?? "?";
-      add("B1", "error", got.url, `not from the edge on the second request: cf-cache-status ${status} (first ${before?.headers["cf-cache-status"] ?? "none"}), cache-control ${got.headers["cache-control"] ?? "none"}, colo ${colo(before)} then ${colo(got)}`);
+      const colo = (/** @type {Got | undefined} */ g) =>
+        g?.headers["cf-ray"]?.split("-").pop() ?? "?";
+      add(
+        "B1",
+        "error",
+        got.url,
+        `not from the edge on the second request: cf-cache-status ${status} (first ${before?.headers["cf-cache-status"] ?? "none"}), cache-control ${got.headers["cache-control"] ?? "none"}, colo ${colo(before)} then ${colo(got)}`,
+      );
     }
-    if (!got.headers.etag && !got.headers["last-modified"]) add("B7", "error", got.url, "no ETag or Last-Modified, so a repeat visit downloads the page again");
-    if (!/^(zstd|br)$/.test(got.headers["content-encoding"] ?? "")) add("C3", "error", got.url, `HTML sent ${got.headers["content-encoding"] ?? "uncompressed"}, not zstd or Brotli`);
-    if (/no-store/.test(got.headers["cache-control"] ?? "")) add("E2", "error", got.url, "a public page sent no-store, which keeps it out of the back/forward cache");
-    if (keptTooLong(got.headers["cache-control"] ?? "")) add("C2", "error", got.url, `a page sent cache-control ${got.headers["cache-control"]}: browsers keep it over ${BAR.unhashedMaxAgeS} s without asking, so a deploy reaches returning readers late`);
-    if (worker && !got.headers["server-timing"]) add("F3", "error", got.url, "no Server-Timing header");
-    if (!/rel=("|)preload/.test(got.headers.link ?? "")) add("D1", "error", got.url, "no Link preload header for Early Hints");
+    if (!got.headers.etag && !got.headers["last-modified"])
+      add(
+        "B7",
+        "error",
+        got.url,
+        "no ETag or Last-Modified, so a repeat visit downloads the page again",
+      );
+    if (!/^(zstd|br)$/.test(got.headers["content-encoding"] ?? ""))
+      add(
+        "C3",
+        "error",
+        got.url,
+        `HTML sent ${got.headers["content-encoding"] ?? "uncompressed"}, not zstd or Brotli`,
+      );
+    if (/no-store/.test(got.headers["cache-control"] ?? ""))
+      add(
+        "E2",
+        "error",
+        got.url,
+        "a public page sent no-store, which keeps it out of the back/forward cache",
+      );
+    if (keptTooLong(got.headers["cache-control"] ?? ""))
+      add(
+        "C2",
+        "error",
+        got.url,
+        `a page sent cache-control ${got.headers["cache-control"]}: browsers keep it over ${BAR.unhashedMaxAgeS} s without asking, so a deploy reaches returning readers late`,
+      );
+    if (worker && !got.headers["server-timing"])
+      add("F3", "error", got.url, "no Server-Timing header");
+    if (!/rel=("|)preload/.test(got.headers.link ?? ""))
+      add("D1", "error", got.url, "no Link preload header for Early Hints");
   }
   for (const got of o.conditional) {
-    if (got.status !== 304) add("B7", "error", got.url, `a conditional request with the page's own validator answered ${got.status}, not 304`);
+    if (got.status !== 304)
+      add(
+        "B7",
+        "error",
+        got.url,
+        `a conditional request with the page's own validator answered ${got.status}, not 304`,
+      );
   }
 
   if (worker) {
     if (!/private|no-store/.test(o.withCookie.headers["cache-control"] ?? "")) {
-      add("B4", "error", o.withCookie.url, `a request with a cookie got cache-control ${o.withCookie.headers["cache-control"] ?? "none"}, not private`);
+      add(
+        "B4",
+        "error",
+        o.withCookie.url,
+        `a request with a cookie got cache-control ${o.withCookie.headers["cache-control"] ?? "none"}, not private`,
+      );
     }
   }
   // A 404 is judged by what it was told to do. Workers static assets report cf-cache-status HIT for their shared 404
@@ -132,74 +195,182 @@ export function speedFindings(o) {
     const cc = missingAgain.headers["cache-control"] ?? "";
     const fromEdge = FROM_EDGE.has(missingAgain.headers["cf-cache-status"] ?? "");
     const aged = Number(missingAgain.headers.age) > 0;
-    if (allowsStoring(cc)) add("B4", "error", missingAgain.url, `a ${missingAgain.status} sent cache-control ${cc}, which lets the edge store it`);
-    else if (fromEdge && (aged || !cc)) add("B4", "error", missingAgain.url, `a ${missingAgain.status} was stored and served from the edge${aged ? ` (age ${missingAgain.headers.age})` : ""}`);
+    if (allowsStoring(cc))
+      add(
+        "B4",
+        "error",
+        missingAgain.url,
+        `a ${missingAgain.status} sent cache-control ${cc}, which lets the edge store it`,
+      );
+    else if (fromEdge && (aged || !cc))
+      add(
+        "B4",
+        "error",
+        missingAgain.url,
+        `a ${missingAgain.status} was stored and served from the edge${aged ? ` (age ${missingAgain.headers.age})` : ""}`,
+      );
   }
-  if (home && FROM_EDGE.has(home.headers["cf-cache-status"] ?? "") && !FROM_EDGE.has(o.campaign.headers["cf-cache-status"] ?? "")) {
-    add("B5", "error", o.campaign.url, `a campaign link missed the stored home page: cf-cache-status ${o.campaign.headers["cf-cache-status"] ?? "none"}`);
+  if (
+    home &&
+    FROM_EDGE.has(home.headers["cf-cache-status"] ?? "") &&
+    !FROM_EDGE.has(o.campaign.headers["cf-cache-status"] ?? "")
+  ) {
+    add(
+      "B5",
+      "error",
+      o.campaign.url,
+      `a campaign link missed the stored home page: cf-cache-status ${o.campaign.headers["cf-cache-status"] ?? "none"}`,
+    );
   }
 
   for (const got of o.files) {
     const cc = got.headers["cache-control"] ?? "";
     if (got.status !== 200) continue;
     if (hashed(got.url)) {
-      if (!/max-age=31536000/.test(cc) || !/immutable/.test(cc)) add("C1", "error", got.url, `a hashed file sent cache-control ${cc || "none"}, not a year immutable`);
+      if (!/max-age=31536000/.test(cc) || !/immutable/.test(cc))
+        add(
+          "C1",
+          "error",
+          got.url,
+          `a hashed file sent cache-control ${cc || "none"}, not a year immutable`,
+        );
     } else {
-      if (!got.headers.etag && !got.headers["last-modified"]) add("C2", "error", got.url, "an unhashed file has no ETag or Last-Modified");
-      if (/immutable/.test(cc)) add("C2", "warning", got.url, "an unhashed file is immutable: a change in place reaches no returning reader");
-      else if (keptTooLong(cc)) add("C2", "error", got.url, `an unhashed file sent cache-control ${cc}: browsers keep it over ${BAR.unhashedMaxAgeS} s without asking, so a deploy reaches returning readers late; hash its name or revalidate`);
+      if (!got.headers.etag && !got.headers["last-modified"])
+        add("C2", "error", got.url, "an unhashed file has no ETag or Last-Modified");
+      if (/immutable/.test(cc))
+        add(
+          "C2",
+          "warning",
+          got.url,
+          "an unhashed file is immutable: a change in place reaches no returning reader",
+        );
+      else if (keptTooLong(cc))
+        add(
+          "C2",
+          "error",
+          got.url,
+          `an unhashed file sent cache-control ${cc}: browsers keep it over ${BAR.unhashedMaxAgeS} s without asking, so a deploy reaches returning readers late; hash its name or revalidate`,
+        );
     }
-    if (/\.(css|js|svg)$/.test(new URL(got.url).pathname) && !/^(zstd|br)$/.test(got.headers["content-encoding"] ?? "")) {
-      add("C3", "error", got.url, `sent ${got.headers["content-encoding"] ?? "uncompressed"}, not zstd or Brotli`);
+    if (
+      /\.(css|js|svg)$/.test(new URL(got.url).pathname) &&
+      !/^(zstd|br)$/.test(got.headers["content-encoding"] ?? "")
+    ) {
+      add(
+        "C3",
+        "error",
+        got.url,
+        `sent ${got.headers["content-encoding"] ?? "uncompressed"}, not zstd or Brotli`,
+      );
     }
   }
 
-  if (home && !/h3=/.test(home.headers["alt-svc"] ?? "")) add("C4", "error", home.url, "no HTTP/3 (alt-svc h3)");
+  if (home && !/h3=/.test(home.headers["alt-svc"] ?? ""))
+    add("C4", "error", home.url, "no HTTP/3 (alt-svc h3)");
   for (const [kind, chain] of Object.entries(o.redirects)) {
     // A first hop that only upgrades http to https on the same host, path and query does not count. hstspreload.org
     // requires it ("Redirect from HTTP to HTTPS on the same host"), so http://www.x cannot go straight to https://x, and
     // once a browser has the HSTS policy it makes that upgrade itself without asking the server (RFC 6797, 8.3).
-    const redirects = chain.filter((hop, at) => hop.status >= 300 && hop.status < 400 && !(at === 0 && upgradeOnly(hop.url, chain[1]?.url))).length;
-    if (redirects > 1) add("C5", "error", chain[0].url, `${kind}: ${redirects} redirects (${chain.map((hop) => `${hop.status} ${hop.url}`).join(" > ")})`);
+    const redirects = chain.filter(
+      (hop, at) =>
+        hop.status >= 300 && hop.status < 400 && !(at === 0 && upgradeOnly(hop.url, chain[1]?.url)),
+    ).length;
+    if (redirects > 1)
+      add(
+        "C5",
+        "error",
+        chain[0].url,
+        `${kind}: ${redirects} redirects (${chain.map((hop) => `${hop.status} ${hop.url}`).join(" > ")})`,
+      );
   }
 
   // An answer that could not be read is not measured: never a pass, and never "no 103" when nothing was seen.
-  if (!Array.isArray(o.earlyHints)) add("D1", "unmeasured", `${o.base}/`, `could not read the HTTP/2 response to look for a 103: ${o.earlyHints?.error ?? "no answer"}`);
+  if (!Array.isArray(o.earlyHints))
+    add(
+      "D1",
+      "unmeasured",
+      `${o.base}/`,
+      `could not read the HTTP/2 response to look for a 103: ${o.earlyHints?.error ?? "no answer"}`,
+    );
   else if (!o.earlyHints.includes(103)) {
-    const why = new URL(o.base).host.endsWith(".workers.dev") ? ": workers.dev never sends Early Hints; the site needs its own domain" : "";
+    const why = new URL(o.base).host.endsWith(".workers.dev")
+      ? ": workers.dev never sends Early Hints; the site needs its own domain"
+      : "";
     add("D1", "error", `${o.base}/`, `no 103 Early Hints before the page${why}`);
   }
 
   if (home && isHtml(home) && !runsApp(home.body)) {
     const rules = home.headers["speculation-rules"];
-    if (!rules) add("E1", "error", home.url, "a page with no app sends no Speculation-Rules header");
-    else if (rules.includes("/cdn-cgi/")) add("E1", "error", home.url, `Cloudflare's generic rules (${rules}), not site-runtime's ./prefetch file`);
+    if (!rules)
+      add("E1", "error", home.url, "a page with no app sends no Speculation-Rules header");
+    else if (rules.includes("/cdn-cgi/"))
+      add(
+        "E1",
+        "error",
+        home.url,
+        `Cloudflare's generic rules (${rules}), not site-runtime's ./prefetch file`,
+      );
   }
 
   if (o.hits.length) {
     const hit = median(o.hits.map((got) => got.ttfb));
-    if (hit > BAR.hitTtfbMs) add("A2", "warning", o.hits[0].url, `a stored page took ${ms(hit)} to the first byte (bar ${ms(BAR.hitTtfbMs)})`);
+    if (hit > BAR.hitTtfbMs)
+      add(
+        "A2",
+        "warning",
+        o.hits[0].url,
+        `a stored page took ${ms(hit)} to the first byte (bar ${ms(BAR.hitTtfbMs)})`,
+      );
   }
   if (worker && o.misses.length) {
     const miss = median(o.misses.map((got) => got.ttfb));
-    if (miss > BAR.missTtfbErrorMs) add("F2", "error", o.misses[0].url, `an uncached render took ${ms(miss)} to the first byte (bar ${ms(BAR.missTtfbMs)})`);
-    else if (miss > BAR.missTtfbMs) add("F2", "warning", o.misses[0].url, `an uncached render took ${ms(miss)} to the first byte (bar ${ms(BAR.missTtfbMs)})`);
+    if (miss > BAR.missTtfbErrorMs)
+      add(
+        "F2",
+        "error",
+        o.misses[0].url,
+        `an uncached render took ${ms(miss)} to the first byte (bar ${ms(BAR.missTtfbMs)})`,
+      );
+    else if (miss > BAR.missTtfbMs)
+      add(
+        "F2",
+        "warning",
+        o.misses[0].url,
+        `an uncached render took ${ms(miss)} to the first byte (bar ${ms(BAR.missTtfbMs)})`,
+      );
   }
 
   for (const [strategy, result] of Object.entries(o.pagespeed)) {
     const url = `${o.base}/`;
     if (result.error) {
       // A refusal (Google's keyless quota answers 429) measures nothing, so the lab and field items stay unmeasured.
-      add("A3", "unmeasured", url, `${strategy}: ${result.error}, so A1, A3, D2, D3, D4 and D6 were not measured`);
+      add(
+        "A3",
+        "unmeasured",
+        url,
+        `${strategy}: ${result.error}, so A1, A3, D2, D3, D4 and D6 were not measured`,
+      );
       continue;
     }
     const lh = result.lighthouseResult;
     const score = lh?.categories?.performance?.score;
     const bar = strategy === "mobile" ? BAR.labPhone : BAR.labDesktop;
-    if (typeof score === "number" && score < bar) add("A3", "error", url, `${strategy} Lighthouse performance ${Math.round(score * 100)} (bar ${bar * 100})`);
+    if (typeof score === "number" && score < bar)
+      add(
+        "A3",
+        "error",
+        url,
+        `${strategy} Lighthouse performance ${Math.round(score * 100)} (bar ${bar * 100})`,
+      );
     for (const [id, item] of Object.entries(AUDITS)) {
       const audit = lh?.audits?.[id];
-      if (audit && typeof audit.score === "number" && audit.score < 0.9) add(item, "error", url, `${strategy} Lighthouse ${id}: ${audit.displayValue || audit.title}`);
+      if (audit && typeof audit.score === "number" && audit.score < 0.9)
+        add(
+          item,
+          "error",
+          url,
+          `${strategy} Lighthouse ${id}: ${audit.displayValue || audit.title}`,
+        );
     }
     const field = result.loadingExperience?.metrics;
     if (!field) {
@@ -216,7 +387,8 @@ export function speedFindings(o) {
     ];
     for (const [key, bar, item, name, show] of checks) {
       const value = p75(key);
-      if (typeof value === "number" && value > bar) add(item, "error", url, `${strategy} field p75 ${name} ${show(value)} (bar ${show(bar)})`);
+      if (typeof value === "number" && value > bar)
+        add(item, "error", url, `${strategy} field p75 ${name} ${show(value)} (bar ${show(bar)})`);
     }
   }
   return findings;

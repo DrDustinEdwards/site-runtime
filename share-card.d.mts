@@ -14,7 +14,10 @@ export function cardText(value: unknown): string;
 
 /** The card's PNG (image/png, CORP cross-origin, a week at the edge unless `headers` sets Cache-Control), or null when the render fails. */
 export function renderShareCard(
-  ImageResponse: new (html: string, options: { width: number; height: number; fonts: never[] }) => Response,
+  ImageResponse: new (
+    html: string,
+    options: { width: number; height: number; fonts: never[] },
+  ) => Response,
   html: string,
   options: { fonts: unknown[]; width?: number; height?: number; headers?: Record<string, string> },
 ): Promise<Response | null>;
@@ -34,7 +37,10 @@ export const SHARE_CARD_HEADERS: Readonly<{ "Cross-Origin-Resource-Policy": "cro
  * miss only), kept in `cache` (default the zone cache; in `ctx.waitUntil` when given), else a 503 with Retry-After: 300.
  */
 export function shareCardResponse(
-  ImageResponse: new (html: string, options: { width: number; height: number; fonts: never[] }) => Response,
+  ImageResponse: new (
+    html: string,
+    options: { width: number; height: number; fonts: never[] },
+  ) => Response,
   options: {
     html: string | (() => string | Promise<string>);
     fonts: unknown[] | (() => unknown[] | Promise<unknown[]>);

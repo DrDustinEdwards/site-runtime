@@ -25,11 +25,19 @@ export interface D1Like {
 }
 
 /** UTC midnight of `now` in epoch ms, the pathname (a `.data` request as its page) cut to 512, and its kind; never the query. */
-export function notFoundKey(url: URL, now?: Date): { day: number; path: string; kind: "page" | "probe" };
+export function notFoundKey(
+  url: URL,
+  now?: Date,
+): { day: number; path: string; kind: "page" | "probe" };
 /** The host of an http or https Referer; "" otherwise. */
 export function referrerHost(referer: string | null | undefined): string;
 /** Counts one 404 for `url` now, awaited; of `referer` only its host is kept. */
-export function recordNotFound(db: D1Like, url: URL, now?: Date, referer?: string | null): Promise<void>;
+export function recordNotFound(
+  db: D1Like,
+  url: URL,
+  now?: Date,
+  referer?: string | null,
+): Promise<void>;
 /** Counts a 404 to a GET in `ctx.waitUntil`; never throws, a failed write is logged as not_found_count_failed. */
 export function countNotFound(
   db: D1Like | (() => D1Like),

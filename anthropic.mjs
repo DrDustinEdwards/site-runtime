@@ -68,10 +68,34 @@ const DAY_MS = 86_400_000;
  * @type {Readonly<Record<string, Readonly<{ state: "active" | "deprecated" | "retired"; deprecated: string | null; retires: string | null; notBefore: string | null; cacheMin: number | null }>>>}
  */
 export const MODELS = Object.freeze({
-  "claude-sonnet-5": Object.freeze({ state: "active", deprecated: null, retires: null, notBefore: "2027-06-30", cacheMin: 1024 }),
-  "claude-opus-4-8": Object.freeze({ state: "active", deprecated: null, retires: null, notBefore: "2027-05-28", cacheMin: 1024 }),
-  "claude-haiku-4-5-20251001": Object.freeze({ state: "active", deprecated: null, retires: null, notBefore: "2026-10-15", cacheMin: 4096 }),
-  "claude-sonnet-4-20250514": Object.freeze({ state: "retired", deprecated: "2026-04-14", retires: "2026-06-15", notBefore: null, cacheMin: null }),
+  "claude-sonnet-5": Object.freeze({
+    state: "active",
+    deprecated: null,
+    retires: null,
+    notBefore: "2027-06-30",
+    cacheMin: 1024,
+  }),
+  "claude-opus-4-8": Object.freeze({
+    state: "active",
+    deprecated: null,
+    retires: null,
+    notBefore: "2027-05-28",
+    cacheMin: 1024,
+  }),
+  "claude-haiku-4-5-20251001": Object.freeze({
+    state: "active",
+    deprecated: null,
+    retires: null,
+    notBefore: "2026-10-15",
+    cacheMin: 4096,
+  }),
+  "claude-sonnet-4-20250514": Object.freeze({
+    state: "retired",
+    deprecated: "2026-04-14",
+    retires: "2026-06-15",
+    notBefore: null,
+    cacheMin: null,
+  }),
 });
 export const MODELS_CHECKED = "2026-10-31";
 
@@ -87,14 +111,30 @@ export const MODEL_IDS = Object.freeze({
 });
 
 /** The deprecations page as Markdown, which the daily check reads (`parseDeprecations`). */
-export const DEPRECATIONS_URL = "https://platform.claude.com/docs/en/about-claude/model-deprecations.md";
+export const DEPRECATIONS_URL =
+  "https://platform.claude.com/docs/en/about-claude/model-deprecations.md";
 
-const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+const MONTHS = [
+  "january",
+  "february",
+  "march",
+  "april",
+  "may",
+  "june",
+  "july",
+  "august",
+  "september",
+  "october",
+  "november",
+  "december",
+];
 /** "June 15, 2026" as 2026-06-15, or null. @param {string} text */
 function isoDate(text) {
   const m = /([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})/.exec(text);
   const month = m ? MONTHS.indexOf(m[1].toLowerCase()) : -1;
-  return m && month >= 0 ? `${m[3]}-${String(month + 1).padStart(2, "0")}-${m[2].padStart(2, "0")}` : null;
+  return m && month >= 0
+    ? `${m[3]}-${String(month + 1).padStart(2, "0")}-${m[2].padStart(2, "0")}`
+    : null;
 }
 
 /**
@@ -109,14 +149,25 @@ export function parseDeprecations(markdown) {
   const out = {};
   let inTable = false;
   for (const line of String(markdown).split("\n")) {
-    const cells = line.trim().startsWith("|") ? line.split("|").slice(1, -1).map((c) => c.trim()) : null;
+    const cells = line.trim().startsWith("|")
+      ? line
+          .split("|")
+          .slice(1, -1)
+          .map((c) => c.trim())
+      : null;
     if (!cells) inTable = false;
-    else if (/^API model name$/i.test(cells[0] ?? "") && /state/i.test(cells[1] ?? "")) inTable = true;
+    else if (/^API model name$/i.test(cells[0] ?? "") && /state/i.test(cells[1] ?? ""))
+      inTable = true;
     else if (inTable && cells.length >= 4 && /^claude-[a-z0-9.-]+$/.test(cells[0])) {
       const state = cells[1].toLowerCase();
       if (state !== "active" && state !== "deprecated" && state !== "retired") continue;
       const later = /not sooner than/i.test(cells[3]);
-      out[cells[0]] = { state, deprecated: isoDate(cells[2]), retires: later ? null : isoDate(cells[3]), notBefore: later ? isoDate(cells[3]) : null };
+      out[cells[0]] = {
+        state,
+        deprecated: isoDate(cells[2]),
+        retires: later ? null : isoDate(cells[3]),
+        notBefore: later ? isoDate(cells[3]) : null,
+      };
     }
   }
   return out;
@@ -142,11 +193,15 @@ export function deprecationProblems(ids, table, now = Date.now()) {
     }
     const left = live.retires ? Date.parse(`${live.retires}T00:00:00Z`) - Number(now) : Infinity;
     if (live.state !== "active" || left <= 60 * DAY_MS) {
-      problems.push(`${id} is ${live.state}${live.retires ? `, retiring ${live.retires}` : ""}; move to its replacement`);
+      problems.push(
+        `${id} is ${live.state}${live.retires ? `, retiring ${live.retires}` : ""}; move to its replacement`,
+      );
     }
     const ours = modelEntry(id);
     if (ours && (ours.state !== live.state || ours.retires !== live.retires)) {
-      problems.push(`MODELS says ${id} is ${ours.state}${ours.retires ? ` until ${ours.retires}` : ""}, the page says ${live.state}${live.retires ? ` until ${live.retires}` : ""}; refresh MODELS`);
+      problems.push(
+        `MODELS says ${id} is ${ours.state}${ours.retires ? ` until ${ours.retires}` : ""}, the page says ${live.state}${live.retires ? ` until ${live.retires}` : ""}; refresh MODELS`,
+      );
     }
   }
   return problems;
@@ -165,7 +220,10 @@ export function modelStatus(id, now = Date.now()) {
   if (entry.state === "retired") return { status: "retired", retires: entry.retires };
   if (!entry.retires) return { status: "ok", retires: null };
   const left = Date.parse(`${entry.retires}T00:00:00Z`) - Number(now);
-  return { status: left <= 0 ? "retired" : left <= 60 * DAY_MS ? "retiring" : "ok", retires: entry.retires };
+  return {
+    status: left <= 0 ? "retired" : left <= 60 * DAY_MS ? "retiring" : "ok",
+    retires: entry.retires,
+  };
 }
 
 /** What a reader may be shown for each kind of failure. */
@@ -195,8 +253,14 @@ const RETRYABLE = new Set(["rate_limited", "unavailable", "timeout"]);
  * @returns {string}
  */
 export function untrusted(label, text) {
-  const name = String(label).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40) || "data";
-  const body = String(text ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const name =
+    String(label)
+      .replace(/[^A-Za-z0-9_-]/g, "")
+      .slice(0, 40) || "data";
+  const body = String(text ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
   return `<data label="${name}">${body}</data>`;
 }
 
@@ -239,7 +303,10 @@ async function answer(env, app, request, options, parse) {
     content.push(...(Array.isArray(message.content) ? message.content : []));
     if (message.stop_reason === "pause_turn" && pauses < call.maxPauses) {
       // Send the assistant's content back unchanged, with its container, so the server tool loop resumes.
-      body = { ...body, messages: [...body.messages, { role: "assistant", content: message.content }] };
+      body = {
+        ...body,
+        messages: [...body.messages, { role: "assistant", content: message.content }],
+      };
       if (message.container?.id) body.container = message.container.id;
       continue;
     }
@@ -251,7 +318,12 @@ async function answer(env, app, request, options, parse) {
         result = failure("invalid_output", { status: 200, stopReason: result.stopReason });
       }
     }
-    return finish(call, { ...result, requestId: sent.requestId, gatewayLogId: sent.gatewayLogId, pauses });
+    return finish(call, {
+      ...result,
+      requestId: sent.requestId,
+      gatewayLogId: sent.gatewayLogId,
+      pauses,
+    });
   }
 }
 
@@ -290,7 +362,8 @@ export async function* stream(env, app, request, options = {}) {
   // A reader who stops early returns the generator at a `yield`; the call is still logged and metered then, as
   // `aborted`, with the tokens seen so far (they are billed).
   let reported = false;
-  const done = (/** @type {MessageResult} */ result) => ((reported = true), { type: /** @type {const} */ ("done"), result: finish(call, result) });
+  const done = (/** @type {MessageResult} */ result) =>
+    ((reported = true), { type: /** @type {const} */ ("done"), result: finish(call, result) });
   try {
     sent = await send(call, call.body);
     if (!sent.ok) {
@@ -312,8 +385,13 @@ export async function* stream(env, app, request, options = {}) {
           if (data.delta?.type === "text_delta" && block) {
             block.text = (block.text ?? "") + data.delta.text;
             yield { type: "text", delta: data.delta.text };
-          } else if (data.delta?.type === "input_json_delta") json[data.index] = (json[data.index] ?? "") + data.delta.partial_json;
-        } else if (event === "content_block_stop" && json[data.index] !== undefined && content[data.index]) {
+          } else if (data.delta?.type === "input_json_delta")
+            json[data.index] = (json[data.index] ?? "") + data.delta.partial_json;
+        } else if (
+          event === "content_block_stop" &&
+          json[data.index] !== undefined &&
+          content[data.index]
+        ) {
           try {
             content[data.index].input = JSON.parse(json[data.index] || "{}");
           } catch {
@@ -325,7 +403,10 @@ export async function* stream(env, app, request, options = {}) {
           message.usage = { ...message.usage, ...data.usage };
         } else if (event === "error") {
           // An error after the 200 (an overload mid-stream) arrives as an event, not a status.
-          broken = { kind: "unavailable", providerType: String(data.error?.type ?? "error").slice(0, 64) };
+          broken = {
+            kind: "unavailable",
+            providerType: String(data.error?.type ?? "error").slice(0, 64),
+          };
           break;
         } else if (event === "message_stop") break;
       }
@@ -344,7 +425,11 @@ export async function* stream(env, app, request, options = {}) {
   } finally {
     if (!reported) {
       if (message) add(call.usage, message.usage);
-      finish(call, { ...failure("aborted", { status: 200 }), requestId: sent?.requestId, gatewayLogId: sent?.gatewayLogId });
+      finish(call, {
+        ...failure("aborted", { status: 200 }),
+        requestId: sent?.requestId,
+        gatewayLogId: sent?.gatewayLogId,
+      });
     }
   }
 }
@@ -371,10 +456,15 @@ export async function* stream(env, app, request, options = {}) {
 function prepare(env, app, request, options, streaming) {
   const key = env.ANTHROPIC_API_KEY?.trim();
   if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
-  if (!request || typeof request.model !== "string" || !request.model) throw new TypeError("The request needs a model");
-  if (!Number.isInteger(request.max_tokens) || request.max_tokens < 1) throw new TypeError("The request needs max_tokens, a positive whole number");
+  if (!request || typeof request.model !== "string" || !request.model)
+    throw new TypeError("The request needs a model");
+  if (!Number.isInteger(request.max_tokens) || request.max_tokens < 1)
+    throw new TypeError("The request needs max_tokens, a positive whole number");
   const sampling = SAMPLING.filter((name) => request[name] !== undefined);
-  if (sampling.length) throw new TypeError(`API version ${ANTHROPIC_VERSION} refuses ${sampling.join(", ")}; leave them out`);
+  if (sampling.length)
+    throw new TypeError(
+      `API version ${ANTHROPIC_VERSION} refuses ${sampling.join(", ")}; leave them out`,
+    );
   if (!Array.isArray(request.messages)) throw new TypeError("The request needs messages");
 
   const route = anthropicRoute(env, app, options.feature);
@@ -390,7 +480,8 @@ function prepare(env, app, request, options, streaming) {
   /** @type {Record<string, any>} */
   const body = { ...rest, ...(streaming ? { stream: true } : {}) };
   const ttl = cacheFor(request, options.cache);
-  if (ttl && body.cache_control === undefined && !hasBreakpoint(request)) body.cache_control = ttl === "1h" ? { type: "ephemeral", ttl: "1h" } : { type: "ephemeral" };
+  if (ttl && body.cache_control === undefined && !hasBreakpoint(request))
+    body.cache_control = ttl === "1h" ? { type: "ephemeral", ttl: "1h" } : { type: "ephemeral" };
 
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const started = Date.now();
@@ -431,9 +522,12 @@ function cacheFor(request, cache) {
   if (cache === false) return false;
   if (cache === "1h") return "1h";
   if (cache === true) return "5m";
-  const chars = (/** @type {unknown} */ part) => (typeof part === "string" ? part.length : part == null ? 0 : JSON.stringify(part).length);
+  const chars = (/** @type {unknown} */ part) =>
+    typeof part === "string" ? part.length : part == null ? 0 : JSON.stringify(part).length;
   const min = modelEntry(request.model)?.cacheMin ?? 1024;
-  return (chars(request.system) + chars(request.tools) + chars(request.messages)) / 4 >= min ? "5m" : false;
+  return (chars(request.system) + chars(request.tools) + chars(request.messages)) / 4 >= min
+    ? "5m"
+    : false;
 }
 
 /**
@@ -442,7 +536,11 @@ function cacheFor(request, cache) {
  */
 function hasBreakpoint(request) {
   const list = (/** @type {unknown} */ value) => (Array.isArray(value) ? value : []);
-  const blocks = [...list(request.system), ...list(request.tools), ...list(request.messages).flatMap((m) => list(m?.content))];
+  const blocks = [
+    ...list(request.system),
+    ...list(request.tools),
+    ...list(request.messages).flatMap((m) => list(m?.content)),
+  ];
   return blocks.some((block) => block?.cache_control != null);
 }
 
@@ -470,7 +568,9 @@ async function wait(call, ms) {
   else if (!signal.aborted) {
     /** @type {() => void} */
     let stop = () => {};
-    const aborted = new Promise((resolve) => signal.addEventListener("abort", (stop = () => resolve(undefined)), { once: true }));
+    const aborted = new Promise((resolve) =>
+      signal.addEventListener("abort", (stop = () => resolve(undefined)), { once: true }),
+    );
     await Promise.race([call.sleep(ms, signal), aborted]);
     signal.removeEventListener("abort", stop);
   }
@@ -495,15 +595,24 @@ async function send(call, body) {
     const remaining = call.deadline - Date.now();
     if (remaining <= 0) return failure("timeout", {});
     // A stream's idle timer is the deadline's remainder until headers arrive, so its retries share the one deadline.
-    const idle = call.streaming ? idleTimer(call.timeoutMs, Math.min(call.timeoutMs, remaining)) : null;
-    const signals = [call.streaming ? /** @type {any} */ (idle).signal : AbortSignal.timeout(remaining)];
+    const idle = call.streaming
+      ? idleTimer(call.timeoutMs, Math.min(call.timeoutMs, remaining))
+      : null;
+    const signals = [
+      call.streaming ? /** @type {any} */ (idle).signal : AbortSignal.timeout(remaining),
+    ];
     if (call.signal) signals.push(call.signal);
     /** @type {Response} */
     let response;
     /** @type {any} */
     let parsed = null;
     try {
-      response = await call.fetcher(call.url, { method: "POST", headers: call.headers, body: JSON.stringify(body), signal: AbortSignal.any(signals) });
+      response = await call.fetcher(call.url, {
+        method: "POST",
+        headers: call.headers,
+        body: JSON.stringify(body),
+        signal: AbortSignal.any(signals),
+      });
       // A 200's body that fails to read or parse is a network failure (retried), not an empty answer.
       if (!response.ok) parsed = await response.json().catch(() => null);
       else if (!call.streaming) parsed = await response.json();
@@ -529,16 +638,42 @@ async function send(call, body) {
     }
     idle?.stop();
     // G5: through a gateway, an answer with neither Anthropic's request id nor its error body is the gateway's own.
-    const fromGateway = call.gateway && !response.headers.has("request-id") && parsed?.type !== "error";
-    const decision = fromGateway ? { kind: response.status === 429 ? "rate_limited" : response.status >= 500 ? "unavailable" : "rejected", retry: false, waitMs: 0 } : retryDecision(response.status, response.headers, parsed, call.attempts);
-    if (decision.retry && call.attempts < call.maxAttempts && Date.now() + decision.waitMs < call.deadline) {
+    const fromGateway =
+      call.gateway && !response.headers.has("request-id") && parsed?.type !== "error";
+    const decision = fromGateway
+      ? {
+          kind:
+            response.status === 429
+              ? "rate_limited"
+              : response.status >= 500
+                ? "unavailable"
+                : "rejected",
+          retry: false,
+          waitMs: 0,
+        }
+      : retryDecision(response.status, response.headers, parsed, call.attempts);
+    if (
+      decision.retry &&
+      call.attempts < call.maxAttempts &&
+      Date.now() + decision.waitMs < call.deadline
+    ) {
       if (!(await wait(call, decision.waitMs))) return failure("aborted", {});
       continue;
     }
-    const providerType = typeof parsed?.error?.type === "string" ? parsed.error.type.slice(0, 64) : undefined;
+    const providerType =
+      typeof parsed?.error?.type === "string" ? parsed.error.type.slice(0, 64) : undefined;
     const code = Array.isArray(parsed?.error) ? Number(parsed.error[0]?.code) : NaN;
-    const source = fromGateway ? { source: "gateway", ...(Number.isInteger(code) ? { gatewayCode: code } : {}) } : { source: "anthropic" };
-    return failure(decision.kind, { status: response.status, requestId, gatewayLogId, providerType, retryAfter: decision.retryAfter, ...source });
+    const source = fromGateway
+      ? { source: "gateway", ...(Number.isInteger(code) ? { gatewayCode: code } : {}) }
+      : { source: "anthropic" };
+    return failure(decision.kind, {
+      status: response.status,
+      requestId,
+      gatewayLogId,
+      providerType,
+      retryAfter: decision.retryAfter,
+      ...source,
+    });
   }
 }
 
@@ -552,15 +687,21 @@ async function send(call, body) {
  */
 function retryDecision(status, headers, body, attempt) {
   if (status === 429) {
-    if (body?.error?.details?.error_code === "enforced_spend_limit_reached") return { kind: "spend_limit", retry: false, waitMs: 0 };
+    if (body?.error?.details?.error_code === "enforced_spend_limit_reached")
+      return { kind: "spend_limit", retry: false, waitMs: 0 };
     const seconds = Number(headers.get("retry-after"));
-    if (!headers.has("retry-after") || !Number.isFinite(seconds) || seconds < 0) return { kind: "rate_limited", retry: false, waitMs: 0 };
+    if (!headers.has("retry-after") || !Number.isFinite(seconds) || seconds < 0)
+      return { kind: "rate_limited", retry: false, waitMs: 0 };
     return { kind: "rate_limited", retry: true, waitMs: seconds * 1000, retryAfter: seconds };
   }
-  if (status === 400 && String(body?.error?.message ?? "").startsWith("You have reached your specified")) {
+  if (
+    status === 400 &&
+    String(body?.error?.message ?? "").startsWith("You have reached your specified")
+  ) {
     return { kind: "spend_limit", retry: false, waitMs: 0 };
   }
-  if (RETRY_STATUS.has(status)) return { kind: "unavailable", retry: true, waitMs: backoff(attempt) };
+  if (RETRY_STATUS.has(status))
+    return { kind: "unavailable", retry: true, waitMs: backoff(attempt) };
   return { kind: status >= 500 ? "unavailable" : "rejected", retry: false, waitMs: 0 };
 }
 
@@ -585,13 +726,23 @@ function stopped(message) {
     case "end_turn":
     case "stop_sequence":
     case "tool_use":
-      return { ok: true, text, content: message.content, stopReason, stopSequence: message.stop_sequence ?? null };
+      return {
+        ok: true,
+        text,
+        content: message.content,
+        stopReason,
+        stopSequence: message.stop_sequence ?? null,
+      };
     case "max_tokens":
       return failure("truncated", { status: 200, stopReason, content: message.content });
     case "model_context_window_exceeded":
       return failure("context_window", { status: 200, stopReason, content: message.content });
     case "refusal":
-      return failure("refusal", { status: 200, stopReason, stopDetails: message.stop_details ?? null });
+      return failure("refusal", {
+        status: 200,
+        stopReason,
+        stopDetails: message.stop_details ?? null,
+      });
     case "pause_turn":
       return failure("paused", { status: 200, stopReason, content: message.content });
     default:
@@ -605,7 +756,13 @@ function stopped(message) {
  * @returns {MessageResult}
  */
 function failure(kind, fields) {
-  return { ok: false, kind, error: FAILURE_TEXT[/** @type {keyof typeof FAILURE_TEXT} */ (kind)], retryable: RETRYABLE.has(kind), ...fields };
+  return {
+    ok: false,
+    kind,
+    error: FAILURE_TEXT[/** @type {keyof typeof FAILURE_TEXT} */ (kind)],
+    retryable: RETRYABLE.has(kind),
+    ...fields,
+  };
 }
 
 /**
@@ -630,7 +787,12 @@ function add(total, usage) {
 function finish(call, result) {
   const { response: _response, idle: _idle, ...rest } = result;
   /** @type {MessageResult} */
-  const out = { ...rest, usage: { ...call.usage }, attempts: call.attempts, pauses: result.pauses ?? 0 };
+  const out = {
+    ...rest,
+    usage: { ...call.usage },
+    attempts: call.attempts,
+    pauses: result.pauses ?? 0,
+  };
   const status = modelStatus(call.model).status;
   const record = {
     app: call.app,
@@ -657,7 +819,9 @@ function finish(call, result) {
     // A meter that fails must not fail the answer the reader is waiting on.
     Promise.resolve()
       .then(() => call.onResult?.(record))
-      .catch((error) => logEvent("anthropic_meter_failed", { app: call.app, error }, { level: "error" }));
+      .catch((error) =>
+        logEvent("anthropic_meter_failed", { app: call.app, error }, { level: "error" }),
+      );
   }
   return out;
 }
@@ -680,7 +844,10 @@ function idleTimer(ms, first = ms) {
   let timer;
   const touch = (wait = ms) => {
     clearTimeout(timer);
-    timer = setTimeout(() => controller.abort(new DOMException("No data from the stream", "TimeoutError")), wait);
+    timer = setTimeout(
+      () => controller.abort(new DOMException("No data from the stream", "TimeoutError")),
+      wait,
+    );
   };
   touch(first);
   return { signal: controller.signal, touch, stop: () => clearTimeout(timer) };

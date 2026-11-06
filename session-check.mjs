@@ -6,7 +6,14 @@ import { readdirSync } from "node:fs";
 import { join } from "node:path";
 
 const SOURCE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
-const SKIP_DIRS = new Set(["node_modules", "build", "dist", ".react-router", ".wrangler", "coverage"]);
+const SKIP_DIRS = new Set([
+  "node_modules",
+  "build",
+  "dist",
+  ".react-router",
+  ".wrangler",
+  "coverage",
+]);
 const TEST_FILE = /\.(?:test|spec)\.[^.]+$/;
 const CALL = /\bapi\s*\.\s*getSession\s*\(\s*/g;
 
@@ -17,7 +24,9 @@ const CALL = /\bapi\s*\.\s*getSession\s*\(\s*/g;
  */
 function withoutComments(source) {
   const blank = (/** @type {string} */ text) => text.replace(/[^\n]/g, " ");
-  return source.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/(^|[^:])\/\/[^\n]*/g, (match, before) => before + blank(match.slice(before.length)));
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, blank)
+    .replace(/(^|[^:])\/\/[^\n]*/g, (match, before) => before + blank(match.slice(before.length)));
 }
 
 /**
@@ -48,4 +57,3 @@ export function sourceFiles(dir) {
     return SOURCE.test(entry.name) && !TEST_FILE.test(entry.name) ? [path] : [];
   });
 }
-

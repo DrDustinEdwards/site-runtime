@@ -10,7 +10,12 @@ export type Drift = { onlyInAccess: string[]; onlyInApp: string[]; open: string[
 /** `ADMIN_EMAILS` (comma-separated) or a file's text (lines or commas, `#` comments), lower-cased and deduplicated. */
 export function parseAdminList(text: string): string[];
 /** Reads the application named `appName` and its policies, groups and email lists through the Cloudflare API. */
-export function accessAllowed(options: { accountId: string; appName: string; token: string; fetch?: typeof fetch }): Promise<Allowed>;
+export function accessAllowed(options: {
+  accountId: string;
+  appName: string;
+  token: string;
+  fetch?: typeof fetch;
+}): Promise<Allowed>;
 /** The differences; no drift when all three lists are empty. */
 export function accessDrift(allowed: Allowed, admins: string[]): Drift;
 
@@ -25,7 +30,12 @@ export function adminHash(salt: string, email: string): Promise<string>;
 export function adminListResponse(
   request: Request,
   env: { ACCESS_TEAM_DOMAIN?: string; ACCESS_AUD?: string },
-  options: { admins: readonly string[]; clientId?: string; keys?: import("./access-login.d.mts").KeySource; now?: number },
+  options: {
+    admins: readonly string[];
+    clientId?: string;
+    keys?: import("./access-login.d.mts").KeySource;
+    now?: number;
+  },
 ): Promise<Response>;
 /** The job's fetch of that route through Access with a service token. Throws on a redirect, an error status or a bad body. */
 export function fetchAdminList(

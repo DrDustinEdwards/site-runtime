@@ -18,7 +18,11 @@ export const IMAGE_QUALITY: 85;
 export const FOCUS_METADATA: "focus";
 
 /** The share crop (1200 x 630, 1.91:1, JPEG) and the Article image ratios at 1200 wide, added by `shareImages: true`. */
-export const SHARE_IMAGE: { readonly width: 1200; readonly ratio: "40x21"; readonly format: "jpeg" };
+export const SHARE_IMAGE: {
+  readonly width: 1200;
+  readonly ratio: "40x21";
+  readonly format: "jpeg";
+};
 export const ARTICLE_IMAGE_RATIOS: readonly ["16x9", "4x3", "1x1"];
 
 /** A file's version for `v=`: a hex hash's first 12 characters, or a time (Date, epoch ms, ISO string) in base 36; else null. */
@@ -31,7 +35,12 @@ export function originalKey(key: string, request: Request | URL | string): strin
 export function focusOf(value: unknown): string | null;
 
 /** Astro's widths for a layout, never wider than the original. */
-export function imageWidths(options: { layout: ImageLayout; width?: number; originalWidth?: number; breakpoints?: number[] }): number[];
+export function imageWidths(options: {
+  layout: ImageLayout;
+  width?: number;
+  originalWidth?: number;
+  breakpoints?: number[];
+}): number[];
 
 /** Astro's `sizes` for a layout. */
 export function imageSizes(options: { layout: ImageLayout; width?: number }): string | undefined;
@@ -90,7 +99,11 @@ export interface R2ObjectLike {
 }
 
 export interface ImagesOutput {
-  output(options: { format: string; quality?: number; anim?: boolean }): Promise<{ response(): Response }>;
+  output(options: {
+    format: string;
+    quality?: number;
+    anim?: boolean;
+  }): Promise<{ response(): Response }>;
 }
 
 export interface ImagesLike {
@@ -110,7 +123,14 @@ export function defineImages<U extends string>(config: {
   /** One size's URL; with no width, the original, versioned. */
   url(
     src: string,
-    options: { width?: number; format?: ImageFormat | "jpeg"; ratio?: string; focus?: string | null; still?: boolean; version?: string | number | Date | null },
+    options: {
+      width?: number;
+      format?: ImageFormat | "jpeg";
+      ratio?: string;
+      focus?: string | null;
+      still?: boolean;
+      version?: string | number | Date | null;
+    },
   ): string;
   attributes(image: StoredImage, use: U): ImageAttributes;
   /** og:image: 1200 x 630 around the focal point, image/jpeg; null with no size or not a raster. Needs `shareImages`. */
@@ -123,13 +143,24 @@ export function defineImages<U extends string>(config: {
    */
   respond(
     request: Request,
-    options: { object: R2ObjectLike | null; images?: ImagesLike; cache?: Cache; cacheControl?: string; reread?: () => Promise<R2ObjectLike | null> },
+    options: {
+      object: R2ObjectLike | null;
+      images?: ImagesLike;
+      cache?: Cache;
+      cacheControl?: string;
+      reread?: () => Promise<R2ObjectLike | null>;
+    },
   ): Promise<Response>;
 };
 
 export interface PictureProps {
   /** One `<source>` each; empty when the page writes the `<img>` alone. */
-  sources: Array<{ type: string; srcSet: string; sizes: string | undefined; media: string | undefined }>;
+  sources: Array<{
+    type: string;
+    srcSet: string;
+    sizes: string | undefined;
+    media: string | undefined;
+  }>;
   img: {
     src: string;
     srcSet: string | undefined;
@@ -147,7 +178,10 @@ export interface PictureProps {
 }
 
 /** What a `<picture>` for `attributes()` holds, with JSX's prop names (undefined where unset). No React needed. */
-export function pictureProps(attrs: ImageAttributes, options: { alt: string; priority?: boolean; className?: string }): PictureProps;
+export function pictureProps(
+  attrs: ImageAttributes,
+  options: { alt: string; priority?: boolean; className?: string },
+): PictureProps;
 
 /** `<picture>` markup for `attributes()`: `pictureProps` written out, escaped with the site's attribute escape. */
 export function pictureHtml(
@@ -176,5 +210,11 @@ export type EditFormat = "image/jpeg" | "image/png" | "image/webp" | "image/avif
 export function editImage(
   images: ImagesLike,
   input: ReadableStream | ArrayBuffer | ArrayBufferView,
-  options: { rotate?: 90 | 180 | 270; flip?: "h" | "v" | "hv"; maxEdge?: number; format: EditFormat; quality?: number },
+  options: {
+    rotate?: 90 | 180 | 270;
+    flip?: "h" | "v" | "hv";
+    maxEdge?: number;
+    format: EditFormat;
+    quality?: number;
+  },
 ): Promise<Response>;

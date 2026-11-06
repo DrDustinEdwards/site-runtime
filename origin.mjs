@@ -27,14 +27,17 @@ export const ORIGIN_REFUSAL = "Cross-origin requests are not accepted.";
  * @returns {{ ok: boolean, reason: "absent" | "same-origin" | "cross-origin" | "unparseable-request-url" }}
  */
 export function originVerdict(origin, requestUrl) {
-  if (origin === null || origin === undefined || origin === "") return { ok: true, reason: "absent" };
+  if (origin === null || origin === undefined || origin === "")
+    return { ok: true, reason: "absent" };
   let self;
   try {
     self = new URL(requestUrl).origin;
   } catch {
     return { ok: false, reason: "unparseable-request-url" };
   }
-  return origin === self ? { ok: true, reason: "same-origin" } : { ok: false, reason: "cross-origin" };
+  return origin === self
+    ? { ok: true, reason: "same-origin" }
+    : { ok: false, reason: "cross-origin" };
 }
 
 /**
@@ -45,7 +48,11 @@ export function originVerdict(origin, requestUrl) {
 export function originRefusal(headers = {}) {
   return new Response(ORIGIN_REFUSAL, {
     status: 403,
-    headers: { ...headers, "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+    headers: {
+      ...headers,
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
   });
 }
 
@@ -64,9 +71,10 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 export function refuseCrossSite(request, headers, { sameSite = false } = {}) {
   if (SAFE_METHODS.has(request.method)) return null;
   const site = request.headers.get("Sec-Fetch-Site");
-  const ok = site === null
-    ? originVerdict(request.headers.get("Origin"), request.url).ok
-    : site === "same-origin" || site === "none" || (sameSite && site === "same-site");
+  const ok =
+    site === null
+      ? originVerdict(request.headers.get("Origin"), request.url).ok
+      : site === "same-origin" || site === "none" || (sameSite && site === "same-site");
   return ok ? null : originRefusal(headers);
 }
 
@@ -82,9 +90,15 @@ export function refuseCrossSite(request, headers, { sameSite = false } = {}) {
 export function isolationVerdict(request) {
   const site = request.headers.get("Sec-Fetch-Site");
   if (site === null) return { ok: true, reason: "no-fetch-metadata" };
-  if (site === "same-origin" || site === "same-site" || site === "none") return { ok: true, reason: site };
+  if (site === "same-origin" || site === "same-site" || site === "none")
+    return { ok: true, reason: site };
   const dest = request.headers.get("Sec-Fetch-Dest");
-  if (request.headers.get("Sec-Fetch-Mode") === "navigate" && request.method === "GET" && dest !== "object" && dest !== "embed") {
+  if (
+    request.headers.get("Sec-Fetch-Mode") === "navigate" &&
+    request.method === "GET" &&
+    dest !== "object" &&
+    dest !== "embed"
+  ) {
     return { ok: true, reason: "navigation" };
   }
   return { ok: false, reason: "cross-site" };

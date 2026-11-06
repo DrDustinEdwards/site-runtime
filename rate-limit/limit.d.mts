@@ -9,16 +9,23 @@
  * nothing and only says whether the rules are spent, for a limit on failures: peek before the attempt, and `limit`
  * after a failed one.
  */
-export function limit<Id>(namespace: {
-    idFromName(name: string): Id;
-    get(id: Id): {
-        hit: (rules: import("./core.mjs").Rule[]) => Promise<import("./core.mjs").Hit>;
-        peek?: (rules: import("./core.mjs").Rule[]) => Promise<import("./core.mjs").Hit>;
-    };
-} | undefined, key: string, rules: import("./core.mjs").Rule[], options: {
+export function limit<Id>(
+  namespace:
+    | {
+        idFromName(name: string): Id;
+        get(id: Id): {
+          hit: (rules: import("./core.mjs").Rule[]) => Promise<import("./core.mjs").Hit>;
+          peek?: (rules: import("./core.mjs").Rule[]) => Promise<import("./core.mjs").Hit>;
+        };
+      }
+    | undefined,
+  key: string,
+  rules: import("./core.mjs").Rule[],
+  options: {
     onUnavailable: "allow" | "refuse";
     peek?: boolean;
-}): Promise<Verdict>;
+  },
+): Promise<Verdict>;
 /**
  * Whether the caller must stop here: `limited` always, `unavailable` only when the site chose to refuse.
  * @param {Verdict} verdict
@@ -38,9 +45,12 @@ export function limitedResponse(verdict: Verdict): Response;
  * @param {string} prefix
  * @param {Request} request
  */
-export function ipKey(prefix: string, request: Request): {
-    key: string;
-    anonymous: boolean;
+export function ipKey(
+  prefix: string,
+  request: Request,
+): {
+  key: string;
+  anonymous: boolean;
 };
 /**
  * A key for an email address: `prefix:` and the SHA-256 of the address trimmed and lower-cased, so `A@x.test ` shares
@@ -62,17 +72,19 @@ export function normalizePath(pathname: string): string;
  * @param {R[]} rules
  * @returns {R | undefined}
  */
-export function matchRule<R extends {
+export function matchRule<
+  R extends {
     path: string;
     prefix?: boolean;
     methods?: string[];
-}>(request: Request, rules: R[]): R | undefined;
+  },
+>(request: Request, rules: R[]): R | undefined;
 export type Status = "ok" | "limited" | "unavailable";
 export type Verdict = {
-    status: Status;
-    used: number;
-    limit: number;
-    retryAfterSeconds: number;
-    window?: number;
-    detail?: string;
+  status: Status;
+  used: number;
+  limit: number;
+  retryAfterSeconds: number;
+  window?: number;
+  detail?: string;
 };

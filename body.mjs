@@ -12,7 +12,8 @@
  * @returns {Promise<Uint8Array | null>} the body (empty when there is none), or null when it is longer than `max`
  */
 export async function readCappedBytes(source, max) {
-  if (!Number.isInteger(max) || max < 0) throw new RangeError(`the ceiling must be a whole number of bytes, got ${max}`);
+  if (!Number.isInteger(max) || max < 0)
+    throw new RangeError(`the ceiling must be a whole number of bytes, got ${max}`);
   if (!source.body) return new Uint8Array(0);
   const reader = source.body.getReader();
   /** @type {Uint8Array[]} */
@@ -33,7 +34,10 @@ export async function readCappedBytes(source, max) {
       chunks.push(value);
     }
   } catch (error) {
-    throw new Error(`the body stream failed after ${total} bytes: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+    throw new Error(
+      `the body stream failed after ${total} bytes: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
   }
   const joined = new Uint8Array(total);
   let at = 0;
@@ -63,7 +67,8 @@ export async function readCapped(source, max) {
  * @returns {Response | null}
  */
 export function requireJson(request) {
-  const type = (request.headers.get("Content-Type") ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
+  const type =
+    (request.headers.get("Content-Type") ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
   if (type === "application/json" || /^application\/[a-z0-9.+-]+\+json$/.test(type)) return null;
   return new Response("This route takes application/json only.", {
     status: 415,

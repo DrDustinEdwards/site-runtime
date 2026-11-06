@@ -83,7 +83,10 @@ export const SESSION_SECONDS: 2592000;
 /** Sign-in mails per address: five an hour. */
 export const LINK_EMAIL_RULES: readonly [Readonly<{ limit: 5; windowSeconds: 3600 }>];
 /** Wrong sign-in codes per address, counted across links: three an hour and ten a day. */
-export const CODE_EMAIL_RULES: readonly [Readonly<{ limit: 3; windowSeconds: 3600 }>, Readonly<{ limit: 10; windowSeconds: 86400 }>];
+export const CODE_EMAIL_RULES: readonly [
+  Readonly<{ limit: 3; windowSeconds: 3600 }>,
+  Readonly<{ limit: 10; windowSeconds: 86400 }>,
+];
 /** Failed passkey or social sign-ins per address: ten an hour. */
 export const SIGN_IN_FAILURE_RULES: readonly [Readonly<{ limit: 10; windowSeconds: 3600 }>];
 /** Failed sign-ins per passkey (credential id): 100 in 30 days. */
@@ -94,12 +97,21 @@ export const TURNSTILE_OFF_UNTIL_KEYS: "off-until-keys";
 /** The hook that blanks an account row's OAuth tokens before Better Auth writes it. */
 type NoOAuthTokensHook = {
   before: () => Promise<{
-    data: { accessToken: null; refreshToken: null; idToken: null; accessTokenExpiresAt: null; refreshTokenExpiresAt: null };
+    data: {
+      accessToken: null;
+      refreshToken: null;
+      idToken: null;
+      accessTokenExpiresAt: null;
+      refreshTokenExpiresAt: null;
+    };
   }>;
 };
 
 /** The Turnstile site key when the check on the email link is on (key and secret both set), else null. */
-export function turnstileSiteKey(env: { TURNSTILE_SITE_KEY?: string; TURNSTILE_SECRET_KEY?: string }): string | null;
+export function turnstileSiteKey(env: {
+  TURNSTILE_SITE_KEY?: string;
+  TURNSTILE_SECRET_KEY?: string;
+}): string | null;
 
 /** Better Auth options to spread into a site's betterAuth({ ... }) beside its database, sessions and hooks. */
 export function signInOptions(
@@ -110,7 +122,10 @@ export function signInOptions(
      * Mails the link and the six-digit code together. The mail carries `url` untouched and `code` as text, says they last
      * SIGN_IN_EXPIRES_IN_WORDS, and never logs either (`token` is the one inside `url`, for cutting it out of an error).
      */
-    sendMagicLink: (data: { email: string; url: string; token: string; code: string }, ctx?: unknown) => Promise<void> | void;
+    sendMagicLink: (
+      data: { email: string; url: string; token: string; code: string },
+      ctx?: unknown,
+    ) => Promise<void> | void;
     /** Google and Apple, when their settings are set; also the hooks that store no OAuth tokens. */
     social?: boolean;
     /** Opens APP_CODE_PATH, for a phone app that asks for a code alone; needs `sendSignInCode`. */
@@ -154,11 +169,24 @@ export function signInOptions(
    * Typed one by one, so a site's auth.api knows the magic-link, email OTP and passkey endpoints; then the sign-out
    * hook, the auth event log and notices, the captcha and the per-address limit, which add none.
    */
-  plugins: [ReturnType<typeof magicLink>, ReturnType<typeof emailOTP>, ReturnType<typeof passkey>, ...BetterAuthPlugin[]];
+  plugins: [
+    ReturnType<typeof magicLink>,
+    ReturnType<typeof emailOTP>,
+    ReturnType<typeof passkey>,
+    ...BetterAuthPlugin[],
+  ];
   disabledPaths: string[];
   socialProviders: {
-    google?: { clientId: string; clientSecret: string; mapProfileToUser: (profile: { email?: unknown }) => Promise<Record<string, never>> };
-    apple?: { clientId: string; clientSecret: string; mapProfileToUser: (profile: { email?: unknown }) => Promise<Record<string, never>> };
+    google?: {
+      clientId: string;
+      clientSecret: string;
+      mapProfileToUser: (profile: { email?: unknown }) => Promise<Record<string, never>>;
+    };
+    apple?: {
+      clientId: string;
+      clientSecret: string;
+      mapProfileToUser: (profile: { email?: unknown }) => Promise<Record<string, never>>;
+    };
   };
   account: { accountLinking: { enabled: true; disableImplicitLinking: true } };
   /** A site that sets its own session options keeps this: `session: { ...signIn.session, ... }`. */
@@ -175,7 +203,11 @@ export function signInOptions(
   /** Present with `social: true`: no OAuth token is stored. Merge a site's own hooks beside it. */
   databaseHooks?: { account: { create: NoOAuthTokensHook; update: NoOAuthTokensHook } };
   /** `customRules` holds APP_CODE_PATH's three a minute with `appCode: true`. */
-  rateLimit: { enabled: true; storage: "database"; customRules?: Record<string, { window: number; max: number }> };
+  rateLimit: {
+    enabled: true;
+    storage: "database";
+    customRules?: Record<string, { window: number; max: number }>;
+  };
   advanced: { ipAddress: { ipAddressHeaders: ["cf-connecting-ip"] } };
   trustedOrigins: string[];
 }>;

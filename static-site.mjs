@@ -20,12 +20,22 @@
  * `["/*", "!/assets/*"]`; `not_found_handling` may be "none" or "404-page".
  */
 
-import { CSP_REPORT_GROUP, CSP_REPORT_PATH, buildContentSecurityPolicy, buildStagedPolicy, reportingEndpoints } from "./csp.mjs";
+import {
+  CSP_REPORT_GROUP,
+  CSP_REPORT_PATH,
+  buildContentSecurityPolicy,
+  buildStagedPolicy,
+  reportingEndpoints,
+} from "./csp.mjs";
 import { receiveCspReport } from "./csp-report.mjs";
 import { UNCACHED } from "./edge-cache.mjs";
 import { applyHeaderSet, buildSecurityHeaders, headersFile } from "./headers.mjs";
 import { healthResponse } from "./health.mjs";
-import { SPECULATION_RULES_HEADER, SPECULATION_RULES_PATH, speculationRulesResponse } from "./prefetch.mjs";
+import {
+  SPECULATION_RULES_HEADER,
+  SPECULATION_RULES_PATH,
+  speculationRulesResponse,
+} from "./prefetch.mjs";
 import { withPreloadHeader } from "./preload.mjs";
 import { serverTiming } from "./server-timing.mjs";
 import { canonicalRedirect } from "./url.mjs";
@@ -39,7 +49,15 @@ import { canonicalRedirect } from "./url.mjs";
  */
 
 /** The opt-ins that are the page policy's options too (buildContentSecurityPolicy). */
-const POLICY_OPT_INS = /** @type {const} */ (["cloudflareWebAnalytics", "inlineScripts", "strictDynamic", "framedBySameOrigin", "embeds", "baseUriSelf", "formTargets"]);
+const POLICY_OPT_INS = /** @type {const} */ ([
+  "cloudflareWebAnalytics",
+  "inlineScripts",
+  "strictDynamic",
+  "framedBySameOrigin",
+  "embeds",
+  "baseUriSelf",
+  "formTargets",
+]);
 
 /**
  * A site's headers from its registry entry (./sites), for its static files and the Worker in front of them: `set`, what
@@ -61,7 +79,11 @@ export function staticHeaders(entry, { headers = {} } = {}) {
   /** @type {Record<string, Record<string, string>>} */
   const rules = {};
   if (policy) {
-    const optIns = Object.fromEntries(POLICY_OPT_INS.flatMap((key) => (entry.optIns?.[key] ? [[key, entry.optIns[key].value]] : [])));
+    const optIns = Object.fromEntries(
+      POLICY_OPT_INS.flatMap((key) =>
+        entry.optIns?.[key] ? [[key, entry.optIns[key].value]] : [],
+      ),
+    );
     const remote = new URL(reportOrigin).origin !== entry.origin;
     const types = entry.optIns?.trustedTypes?.value;
     const unlisted = entry.optIns?.denyUnlisted?.value;
@@ -77,15 +99,22 @@ export function staticHeaders(entry, { headers = {} } = {}) {
     set[csp.name] = csp.value;
     rules["/*"] = { [csp.name]: csp.value };
     // What the entry stages (a "report-only" trustedTypes or denyUnlisted) rides in the Report-Only policy beside it.
-    const staged = { ...(types === "report-only" ? { trustedTypes: /** @type {const} */ (true) } : {}), ...(unlisted === "report-only" ? { denyUnlisted: true } : {}) };
+    const staged = {
+      ...(types === "report-only" ? { trustedTypes: /** @type {const} */ (true) } : {}),
+      ...(unlisted === "report-only" ? { denyUnlisted: true } : {}),
+    };
     if (Object.keys(staged).length > 0) {
       const companion = buildStagedPolicy(options, staged);
       set[companion.name] = companion.value;
       rules["/*"][companion.name] = companion.value;
     }
-    set["Reporting-Endpoints"] = reportingEndpoints(CSP_REPORT_GROUP, new URL(CSP_REPORT_PATH, reportOrigin));
+    set["Reporting-Endpoints"] = reportingEndpoints(
+      CSP_REPORT_GROUP,
+      new URL(CSP_REPORT_PATH, reportOrigin),
+    );
   }
-  for (const [pattern, added] of Object.entries(paths)) rules[pattern] = { ...rules[pattern], ...added };
+  for (const [pattern, added] of Object.entries(paths))
+    rules[pattern] = { ...rules[pattern], ...added };
   const file = headersFile(set, {
     charset: true,
     comment: `Written by site-runtime-headers from the site registry (@dustinedwards/site-runtime/sites, ${entry.id}). Do not edit.`,
@@ -109,7 +138,16 @@ export function staticHeaders(entry, { headers = {} } = {}) {
  *   health?: string | false,
  * }} [options]
  */
-export function staticSite({ site, headers: extra = {}, preload = "", reportPath = CSP_REPORT_PATH, prefetch = {}, canonical = {}, notFound = "/404", health = "/health" } = {}) {
+export function staticSite({
+  site,
+  headers: extra = {},
+  preload = "",
+  reportPath = CSP_REPORT_PATH,
+  prefetch = {},
+  canonical = {},
+  notFound = "/404",
+  health = "/health",
+} = {}) {
   const headers = site ? staticHeaders(site, { headers: extra }).set : extra;
   return {
     /** @param {Request} request @param {StaticSiteEnv} env */
@@ -121,22 +159,29 @@ export function staticSite({ site, headers: extra = {}, preload = "", reportPath
         const limiter = env.CSP_REPORT_RATE_LIMIT;
         // Keyed on the edge-set client address, which is counted and never logged; a refusal drops the report (still 204).
         const allow = limiter
-          ? async (/** @type {Request} */ r) => (await limiter.limit({ key: r.headers.get("CF-Connecting-IP") ?? "unknown" })).success
+          ? async (/** @type {Request} */ r) =>
+              (await limiter.limit({ key: r.headers.get("CF-Connecting-IP") ?? "unknown" })).success
           : undefined;
         return receiveCspReport(request, { headers, allow });
       }
-      if (health !== false && url.pathname === health) return applyHeaderSet(await healthResponse({ sha: env.DEPLOY_SHA }), headers);
-      if (prefetch !== false && url.pathname === SPECULATION_RULES_PATH) return applyHeaderSet(speculationRulesResponse(prefetch, request), headers);
+      if (health !== false && url.pathname === health)
+        return applyHeaderSet(await healthResponse({ sha: env.DEPLOY_SHA }), headers);
+      if (prefetch !== false && url.pathname === SPECULATION_RULES_PATH)
+        return applyHeaderSet(speculationRulesResponse(prefetch, request), headers);
 
       const start = performance.now();
       let response = await env.ASSETS.fetch(request);
-      const missing = (request.method === "GET" || request.method === "HEAD") && response.status === 404;
+      const missing =
+        (request.method === "GET" || request.method === "HEAD") && response.status === 404;
       if (missing) {
         // The 404 page through the asset server, so its own `_headers` rules (its policy) come with it.
         const page = await env.ASSETS.fetch(new Request(new URL(notFound, url)));
         if (page.ok) {
           await response.body?.cancel();
-          response = new Response(request.method === "HEAD" ? null : page.body, { status: 404, headers: page.headers });
+          response = new Response(request.method === "HEAD" ? null : page.body, {
+            status: 404,
+            headers: page.headers,
+          });
         }
       }
       const ms = performance.now() - start;
@@ -144,10 +189,16 @@ export function staticSite({ site, headers: extra = {}, preload = "", reportPath
 
       const out = new Headers(response.headers);
       applyHeaderSet(out, headers, { overwrite: false });
-      if (prefetch !== false) out.set(SPECULATION_RULES_HEADER.name, SPECULATION_RULES_HEADER.value);
+      if (prefetch !== false)
+        out.set(SPECULATION_RULES_HEADER.name, SPECULATION_RULES_HEADER.value);
       out.append("Server-Timing", serverTiming([{ name: "asset", ms }]));
-      if (response.status >= 400 || request.headers.has("Cookie")) out.set("Cache-Control", UNCACHED);
-      const page = new Response(response.body, { status: response.status, statusText: response.statusText, headers: out });
+      if (response.status >= 400 || request.headers.has("Cookie"))
+        out.set("Cache-Control", UNCACHED);
+      const page = new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: out,
+      });
       return response.status === 200 ? withPreloadHeader(page, preload) : page;
     },
   };

@@ -26,7 +26,10 @@ export type LoginOptions<E extends LoginEnv> = {
    * Whether the email Access verified is let in. An object admits and is added to the grant's props, for a server
    * with several people that keeps its own id for each (Carrel's personId); false or null refuses.
    */
-  admit(env: E, user: { email: string; name?: string }): boolean | Record<string, unknown> | null | Promise<boolean | Record<string, unknown> | null>;
+  admit(
+    env: E,
+    user: { email: string; name?: string },
+  ): boolean | Record<string, unknown> | null | Promise<boolean | Record<string, unknown> | null>;
   /** Who is let in, for the consent page's line and the refusal. Default: the single configured administrator. */
   admits?: { consent: string; refusal: string };
   /** Whether the consent page's write box starts ticked for the scopes a client asked for. Default: it asked for write. */
@@ -53,11 +56,17 @@ export type LoginOptions<E extends LoginEnv> = {
  * app's private-use scheme), whether it is an app on this computer (a loopback host or a private-use scheme), and the
  * warning to show then. An unparsable URI comes back as itself, not local.
  */
-export function describeRedirect(uri: string): { host: string; local: boolean; warning: string | null };
+export function describeRedirect(uri: string): {
+  host: string;
+  local: boolean;
+  warning: string | null;
+};
 /** The consent page's one inline <style>, for the page's Content-Security-Policy hash. */
 export const CONSENT_STYLE: string;
 /** The provider's defaultHandler: /health, /authorize (consent page and form, urlencoded only, 64 KiB at most), /callback and /owner. */
-export function loginHandler<E extends LoginEnv>(options: LoginOptions<E>): { fetch(request: Request, env: E): Promise<Response> };
+export function loginHandler<E extends LoginEnv>(
+  options: LoginOptions<E>,
+): { fetch(request: Request, env: E): Promise<Response> };
 /** Whether `user.email` is ADMIN_EMAIL, compared without case. Unset admits nobody. */
 export function isAdminUser(env: { ADMIN_EMAIL?: string }, user: { email?: unknown }): boolean;
 /** The registration callbacks that are the same for every user: Grok's two, ChatGPT's fixed one, Gemini Enterprise's. */
@@ -65,10 +74,16 @@ export const DCR_CALLBACKS: readonly string[];
 /** The https redirect URIs a registered client may name, from DCR_REDIRECT_URIS (commas or spaces). */
 export function allowedRedirects(configured: string | undefined): string[];
 /** Null when a registration names one to five redirect URIs, each allowlisted exactly; else why it is refused. */
-export function registrationRefusal(configured: string | undefined, clientMetadata: Record<string, unknown>): string | null;
+export function registrationRefusal(
+  configured: string | undefined,
+  clientMetadata: Record<string, unknown>,
+): string | null;
 /** Counts one POST /register in KV: the 429 to send (five an hour per address, thirty a day in all), or null. */
 export function registrationLimited(
   request: Request,
-  kv: { get(key: string): Promise<string | null>; put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void> },
+  kv: {
+    get(key: string): Promise<string | null>;
+    put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
+  },
   now?: number,
 ): Promise<Response | null>;

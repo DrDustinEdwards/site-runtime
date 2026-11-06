@@ -12,15 +12,18 @@ export function trimReportUrl(value: unknown): string | undefined;
 /** The reports in a parsed body, in either format, each with its type: csp-violation, integrity-violation or coep. */
 export function reportBodies(parsed: unknown): { type: string; body: Record<string, unknown> }[];
 /** One report as the line the receiver logs; `directive` is the CSP directive, `blocked-destinations` or the COEP check. */
-export function summarizeReport(body: Record<string, unknown>, type?: string): {
-    event: string;
-    directive: string | undefined;
-    blocked: string | undefined;
-    page: string | undefined;
-    source: string | undefined;
-    line: number | undefined;
-    destination?: string;
-    disposition: "enforce" | "report" | undefined;
+export function summarizeReport(
+  body: Record<string, unknown>,
+  type?: string,
+): {
+  event: string;
+  directive: string | undefined;
+  blocked: string | undefined;
+  page: string | undefined;
+  source: string | undefined;
+  line: number | undefined;
+  destination?: string;
+  disposition: "enforce" | "report" | undefined;
 };
 /**
  * `allow`: the site's rate limiter; false drops the report, still with 204. Without it, one `csp_report_unlimited` warning per isolate. `allowOrigin`: the one origin whose
@@ -28,10 +31,10 @@ export function summarizeReport(body: Record<string, unknown>, type?: string): {
  * set, put on every response. `log`: where lines go (console.log).
  */
 export type ReceiveOptions = {
-    allow?: (request: Request) => boolean | Promise<boolean>;
-    allowOrigin?: string;
-    headers?: Readonly<Record<string, string>>;
-    log?: (line: Record<string, unknown>) => void;
+  allow?: (request: Request) => boolean | Promise<boolean>;
+  allowOrigin?: string;
+  headers?: Readonly<Record<string, string>>;
+  log?: (line: Record<string, unknown>) => void;
 };
 /** Receives one report request and answers it: POST 204, OPTIONS the preflight, anything else 405. */
 export function receiveCspReport(request: Request, options?: ReceiveOptions): Promise<Response>;

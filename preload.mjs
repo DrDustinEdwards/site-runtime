@@ -32,23 +32,39 @@ const CROSS_ORIGIN = new Set(["anonymous", "use-credentials"]);
 export function preloads(entries) {
   const links = entries.map((entry) => {
     const rel = entry.rel ?? "preload";
-    if (rel !== "preload" && rel !== "preconnect") throw new Error(`preloads: rel "${rel}" is not preload or preconnect.`);
+    if (rel !== "preload" && rel !== "preconnect")
+      throw new Error(`preloads: rel "${rel}" is not preload or preconnect.`);
     if (!/^(\/(?!\/)|https:\/\/)[\x21-\x7e]*$/.test(entry.href) || /[<>"]/.test(entry.href)) {
-      throw new Error(`preloads: href "${entry.href}" is not a path or an https URL with only ASCII characters a Link header can carry.`);
+      throw new Error(
+        `preloads: href "${entry.href}" is not a path or an https URL with only ASCII characters a Link header can carry.`,
+      );
     }
     if (entry.crossOrigin !== undefined && !CROSS_ORIGIN.has(entry.crossOrigin)) {
-      throw new Error(`preloads: crossOrigin "${entry.crossOrigin}" is not anonymous or use-credentials.`);
+      throw new Error(
+        `preloads: crossOrigin "${entry.crossOrigin}" is not anonymous or use-credentials.`,
+      );
     }
-    if (rel === "preconnect") return { rel, href: entry.href, ...(entry.crossOrigin ? { crossOrigin: entry.crossOrigin } : {}) };
+    if (rel === "preconnect")
+      return {
+        rel,
+        href: entry.href,
+        ...(entry.crossOrigin ? { crossOrigin: entry.crossOrigin } : {}),
+      };
     const { as, type, imageSrcSet, imageSizes, fetchPriority } = /** @type {Preload} */ (entry);
-    if (!AS.has(as)) throw new Error(`preloads: as "${as}" is not font, image, style, script or fetch.`);
-    if (type !== undefined && !/^[\w.+-]+\/[\w.+-]+$/.test(type)) throw new Error(`preloads: type "${type}" is not a media type such as font/woff2.`);
+    if (!AS.has(as))
+      throw new Error(`preloads: as "${as}" is not font, image, style, script or fetch.`);
+    if (type !== undefined && !/^[\w.+-]+\/[\w.+-]+$/.test(type))
+      throw new Error(`preloads: type "${type}" is not a media type such as font/woff2.`);
     for (const [name, value] of Object.entries({ imageSrcSet, imageSizes })) {
       if (value === undefined) continue;
       if (as !== "image") throw new Error(`preloads: ${name} is for an image, not ${as}.`);
-      if (!/^[\x20-\x7e]+$/.test(value) || /[<>"\\]/.test(value)) throw new Error(`preloads: ${name} "${value}" holds a character a Link header cannot carry.`);
+      if (!/^[\x20-\x7e]+$/.test(value) || /[<>"\\]/.test(value))
+        throw new Error(
+          `preloads: ${name} "${value}" holds a character a Link header cannot carry.`,
+        );
     }
-    if (fetchPriority !== undefined && !["high", "low", "auto"].includes(fetchPriority)) throw new Error(`preloads: fetchPriority "${fetchPriority}" is not high, low or auto.`);
+    if (fetchPriority !== undefined && !["high", "low", "auto"].includes(fetchPriority))
+      throw new Error(`preloads: fetchPriority "${fetchPriority}" is not high, low or auto.`);
     const crossOrigin = entry.crossOrigin ?? (as === "font" ? "anonymous" : undefined);
     return {
       rel,
@@ -94,7 +110,8 @@ export function rootStylesheets(build) {
  */
 export function withPreloadHeader(response, ...values) {
   const links = values.filter(Boolean);
-  if (!links.length || !(response.headers.get("Content-Type") ?? "").startsWith("text/html")) return response;
+  if (!links.length || !(response.headers.get("Content-Type") ?? "").startsWith("text/html"))
+    return response;
   const append = (/** @type {Headers} */ headers) => {
     for (const link of links) headers.append("Link", link);
   };
@@ -104,6 +121,10 @@ export function withPreloadHeader(response, ...values) {
   } catch {
     const headers = new Headers(response.headers);
     append(headers);
-    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
   }
 }

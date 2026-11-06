@@ -4,15 +4,31 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, test } from "node:test";
 
-import { describeRedirect, isAdminUser, loginHandler, registrationLimited, registrationRefusal } from "../mcp-login.mjs";
+import {
+  describeRedirect,
+  isAdminUser,
+  loginHandler,
+  registrationLimited,
+  registrationRefusal,
+} from "../mcp-login.mjs";
 import { publicJwk as jwk, sign as idToken } from "./jwt.mjs";
 
 const ORIGIN = "https://wrapper.test";
 const TEAM = "https://sample.cloudflareaccess.com";
 const ISSUER = `${TEAM}/cdn-cgi/access/sso/oidc/client-id`;
-const AUTH_REQUEST = { clientId: "https://client.example.com/meta", redirectUri: "https://client.example.com/cb", scope: ["s.read", "s.write"], state: "s" };
+const AUTH_REQUEST = {
+  clientId: "https://client.example.com/meta",
+  redirectUri: "https://client.example.com/cb",
+  scope: ["s.read", "s.write"],
+  state: "s",
+};
 
-const handler = loginHandler({ name: "Sample Admin", scopes: { read: "s.read", write: "s.write" }, about: "<p>Sample.</p>", admit: isAdminUser });
+const handler = loginHandler({
+  name: "Sample Admin",
+  scopes: { read: "s.read", write: "s.write" },
+  about: "<p>Sample.</p>",
+  admit: isAdminUser,
+});
 
 function setup() {
   /** @type {{ upstream?: { request: typeof AUTH_REQUEST, data: { verifier: string, nonce: string } }, approvedScope?: string[], completed?: Record<string, any> }} */
@@ -33,7 +49,10 @@ function setup() {
       /** @param {typeof AUTH_REQUEST} request @param {{ data: { verifier: string, nonce: string } }} options */
       async beginUpstream(request, options) {
         seen.upstream = { request, data: options.data };
-        return { state: "upstream-state", headers: new Headers({ "Set-Cookie": "__Host-upstream=bound" }) };
+        return {
+          state: "upstream-state",
+          headers: new Headers({ "Set-Cookie": "__Host-upstream=bound" }),
+        };
       },
       async finishUpstream() {
         assert.ok(seen.upstream, "the callback came before the sign-in started");
@@ -58,13 +77,22 @@ let tokenClaims;
 let lastNonce = "";
 
 beforeEach(() => {
-  tokenClaims = (nonce) => ({ iss: ISSUER, aud: "client-id", exp: Math.floor(Date.now() / 1000) + 300, nonce, email: "Admin@Example.com" });
+  tokenClaims = (nonce) => ({
+    iss: ISSUER,
+    aud: "client-id",
+    exp: Math.floor(Date.now() / 1000) + 300,
+    nonce,
+    email: "Admin@Example.com",
+  });
   globalThis.fetch = /** @type {typeof fetch} */ (
     async (input, init) => {
       const url = String(input);
       if (url === `${ISSUER}/jwks`) return Response.json({ keys: [jwk] });
       assert.equal(url, `${ISSUER}/token`);
-      assert.equal(new URLSearchParams(String(init?.body)).get("redirect_uri"), `${ORIGIN}/callback`);
+      assert.equal(
+        new URLSearchParams(String(init?.body)).get("redirect_uri"),
+        `${ORIGIN}/callback`,
+      );
       return Response.json({ id_token: await idToken(tokenClaims(lastNonce)) });
     }
   );
@@ -111,8 +139,15 @@ describe("the consent POST", () => {
 
   test("PLANT: a body that is not the form, or is over 64 KiB, is refused before it is parsed", async () => {
     const { env } = setup();
-    const post = (/** @type {BodyInit} */ body) => handler.fetch(new Request(`${ORIGIN}/authorize`, { method: "POST", body }), env);
-    assert.deepEqual([(await post("{}")).status, (await post(new URLSearchParams({ handle: "x".repeat(70_000) }))).status], [415, 413]);
+    const post = (/** @type {BodyInit} */ body) =>
+      handler.fetch(new Request(`${ORIGIN}/authorize`, { method: "POST", body }), env);
+    assert.deepEqual(
+      [
+        (await post("{}")).status,
+        (await post(new URLSearchParams({ handle: "x".repeat(70_000) }))).status,
+      ],
+      [415, 413],
+    );
   });
 });
 
@@ -130,7 +165,12 @@ describe("the callback", () => {
     assert.equal(res.headers.get("location"), "https://client.example.com/cb?code=x");
     assert.equal(seen.completed?.userId, "admin@example.com");
     assert.deepEqual(seen.completed?.scope, ["s.read"]);
-    assert.deepEqual(seen.completed?.props, { email: "Admin@Example.com", scopes: ["s.read"], client: "Sample Client", clientId: AUTH_REQUEST.clientId });
+    assert.deepEqual(seen.completed?.props, {
+      email: "Admin@Example.com",
+      scopes: ["s.read"],
+      client: "Sample Client",
+      clientId: AUTH_REQUEST.clientId,
+    });
   });
 
   test("a server with several people: an admit object travels with the grant, and its refusal names who is let in", async () => {
@@ -138,8 +178,12 @@ describe("the callback", () => {
       name: "Sample Team",
       scopes: { read: "s.read", write: "s.write" },
       about: "<p>Sample.</p>",
-      admit: (_env, user) => (user.email.toLowerCase() === "admin@example.com" ? { personId: 7 } : null),
-      admits: { consent: "Only people Sample knows are let in.", refusal: "This person is not in Sample." },
+      admit: (_env, user) =>
+        user.email.toLowerCase() === "admin@example.com" ? { personId: 7 } : null,
+      admits: {
+        consent: "Only people Sample knows are let in.",
+        refusal: "This person is not in Sample.",
+      },
     });
     const { env, seen } = setup();
     await approve(env, false);
@@ -147,19 +191,40 @@ describe("the callback", () => {
     await team.fetch(new Request(`${ORIGIN}/callback?code=c1&state=upstream-state`), env);
     assert.equal(seen.completed?.props.personId, 7);
     const other = setup();
-    tokenClaims = (nonce) => ({ iss: ISSUER, aud: "client-id", exp: Math.floor(Date.now() / 1000) + 300, nonce, email: "someone@example.com" });
+    tokenClaims = (nonce) => ({
+      iss: ISSUER,
+      aud: "client-id",
+      exp: Math.floor(Date.now() / 1000) + 300,
+      nonce,
+      email: "someone@example.com",
+    });
     await approve(other.env, false);
     lastNonce = other.seen.upstream?.data.nonce ?? "";
-    const res = await team.fetch(new Request(`${ORIGIN}/callback?code=c1&state=upstream-state`), other.env);
-    assert.equal(new URL(res.headers.get("location") ?? "").searchParams.get("error_description"), "This person is not in Sample.");
+    const res = await team.fetch(
+      new Request(`${ORIGIN}/callback?code=c1&state=upstream-state`),
+      other.env,
+    );
+    assert.equal(
+      new URL(res.headers.get("location") ?? "").searchParams.get("error_description"),
+      "This person is not in Sample.",
+    );
     assert.equal(other.seen.completed, undefined);
   });
 
   test("PLANT: anyone else is refused back to the client, and nothing is granted", async () => {
     const { env, seen } = setup();
-    tokenClaims = (nonce) => ({ iss: ISSUER, aud: "client-id", exp: Math.floor(Date.now() / 1000) + 300, nonce, email: "someone@example.com" });
+    tokenClaims = (nonce) => ({
+      iss: ISSUER,
+      aud: "client-id",
+      exp: Math.floor(Date.now() / 1000) + 300,
+      nonce,
+      email: "someone@example.com",
+    });
     const res = await signIn(env, seen);
-    assert.equal(new URL(res.headers.get("location") ?? "").searchParams.get("error"), "access_denied");
+    assert.equal(
+      new URL(res.headers.get("location") ?? "").searchParams.get("error"),
+      "access_denied",
+    );
     assert.equal(seen.completed, undefined);
   });
 
@@ -167,15 +232,27 @@ describe("the callback", () => {
     const { env, seen } = setup();
     env.ADMIN_EMAIL = " ";
     const res = await signIn(env, seen);
-    assert.equal(new URL(res.headers.get("location") ?? "").searchParams.get("error"), "access_denied");
+    assert.equal(
+      new URL(res.headers.get("location") ?? "").searchParams.get("error"),
+      "access_denied",
+    );
     assert.equal(seen.completed, undefined);
   });
 
   test("PLANT: a token carrying another sign-in's nonce is refused", async () => {
     const { env, seen } = setup();
-    tokenClaims = () => ({ iss: ISSUER, aud: "client-id", exp: Math.floor(Date.now() / 1000) + 300, nonce: "another", email: "admin@example.com" });
+    tokenClaims = () => ({
+      iss: ISSUER,
+      aud: "client-id",
+      exp: Math.floor(Date.now() / 1000) + 300,
+      nonce: "another",
+      email: "admin@example.com",
+    });
     const res = await signIn(env, seen);
-    assert.equal(new URL(res.headers.get("location") ?? "").searchParams.get("error"), "access_denied");
+    assert.equal(
+      new URL(res.headers.get("location") ?? "").searchParams.get("error"),
+      "access_denied",
+    );
     assert.equal(seen.completed, undefined);
   });
 });
@@ -192,8 +269,18 @@ describe("registrationRefusal", () => {
 
   test("PLANT: a near miss, or an http callback even when listed, is refused, naming it", () => {
     const listed = `${LIST} http://insecure.example/cb`;
-    for (const uri of [`${GEMINI}/`, `${GEMINI}?x=1`, "https://vertexaisearch.cloud.google.com/oauth", GEMINI.toUpperCase(), "http://insecure.example/cb"]) {
-      assert.match(registrationRefusal(listed, { redirect_uris: [GEMINI, uri] }) ?? "", /not allowlisted/, uri);
+    for (const uri of [
+      `${GEMINI}/`,
+      `${GEMINI}?x=1`,
+      "https://vertexaisearch.cloud.google.com/oauth",
+      GEMINI.toUpperCase(),
+      "http://insecure.example/cb",
+    ]) {
+      assert.match(
+        registrationRefusal(listed, { redirect_uris: [GEMINI, uri] }) ?? "",
+        /not allowlisted/,
+        uri,
+      );
     }
   });
 });
@@ -201,17 +288,36 @@ describe("registrationRefusal", () => {
 describe("registrationLimited", () => {
   test("PLANT: the sixth registration from one address in an hour is refused", async () => {
     const store = new Map();
-    const kv = { get: async (/** @type {string} */ k) => store.get(k) ?? null, put: async (/** @type {string} */ k, /** @type {string} */ v) => void store.set(k, v) };
-    const register = () => registrationLimited(new Request(`${ORIGIN}/register`, { method: "POST", headers: { "CF-Connecting-IP": "192.0.2.1" } }), kv, 0);
+    const kv = {
+      get: async (/** @type {string} */ k) => store.get(k) ?? null,
+      put: async (/** @type {string} */ k, /** @type {string} */ v) => void store.set(k, v),
+    };
+    const register = () =>
+      registrationLimited(
+        new Request(`${ORIGIN}/register`, {
+          method: "POST",
+          headers: { "CF-Connecting-IP": "192.0.2.1" },
+        }),
+        kv,
+        0,
+      );
     for (let i = 0; i < 5; i++) assert.equal(await register(), null);
     assert.equal((await register())?.status, 429);
   });
 });
 
 test("describeRedirect: a loopback host or an app's own scheme is an app on this computer; a web host is not", () => {
-  assert.deepEqual(describeRedirect("http://127.0.0.1:53682/callback"), { host: "127.0.0.1", local: true, warning: describeRedirect("cursor://cb").warning });
+  assert.deepEqual(describeRedirect("http://127.0.0.1:53682/callback"), {
+    host: "127.0.0.1",
+    local: true,
+    warning: describeRedirect("cursor://cb").warning,
+  });
   assert.equal(describeRedirect("cursor://anysphere.cursor-retrieval/oauth").host, "cursor://");
   assert.ok(describeRedirect("http://[::1]/cb").local);
-  assert.deepEqual(describeRedirect("https://claude.ai/api/mcp/auth_callback"), { host: "claude.ai", local: false, warning: null });
+  assert.deepEqual(describeRedirect("https://claude.ai/api/mcp/auth_callback"), {
+    host: "claude.ai",
+    local: false,
+    warning: null,
+  });
   assert.equal(describeRedirect("https://localhost.example.com/cb").local, false);
 });

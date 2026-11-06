@@ -64,7 +64,12 @@ export function confirmLinkURL(verifyUrl, confirmPath, sentAt = Date.now()) {
 async function postedParams(request) {
   const posted = new URL(request.url);
   if (posted.searchParams.get("token")) return posted.searchParams;
-  return (await request.clone().formData().catch(() => null)) ?? new URLSearchParams();
+  return (
+    (await request
+      .clone()
+      .formData()
+      .catch(() => null)) ?? new URLSearchParams()
+  );
 }
 
 /**
@@ -78,14 +83,19 @@ function verifyRequest(request, url) {
   headers.delete("content-type");
   headers.delete("content-length");
   const cf = /** @type {{ cf?: unknown }} */ (request).cf;
-  return new Request(url, /** @type {RequestInit} */ ({ method: "GET", headers, ...(cf ? { cf } : {}) }));
+  return new Request(
+    url,
+    /** @type {RequestInit} */ ({ method: "GET", headers, ...(cf ? { cf } : {}) }),
+  );
 }
 
 /** @param {string} value @param {string} origin @param {Record<string, string>} add */
 function withParams(value, origin, add) {
   const url = new URL(value, origin);
   for (const [name, v] of Object.entries(add)) url.searchParams.set(name, v);
-  return url.origin === origin && !/^[a-z][a-z0-9+.-]*:/i.test(value) ? `${url.pathname}${url.search}` : url.toString();
+  return url.origin === origin && !/^[a-z][a-z0-9+.-]*:/i.test(value)
+    ? `${url.pathname}${url.search}`
+    : url.toString();
 }
 
 /**
@@ -98,20 +108,32 @@ function withParams(value, origin, add) {
  * @param {Request} request
  */
 export async function confirmSignInLink(auth, request) {
-  if (request.method !== "POST") return new Response(null, { status: 405, headers: { ...NO_STORE, Allow: "POST" } });
+  if (request.method !== "POST")
+    return new Response(null, { status: 405, headers: { ...NO_STORE, Allow: "POST" } });
   const posted = new URL(request.url);
   const params = await postedParams(request);
-  const verify = new URL(`${auth.options.basePath || "/api/auth"}/magic-link/verify`, posted.origin);
+  const verify = new URL(
+    `${auth.options.basePath || "/api/auth"}/magic-link/verify`,
+    posted.origin,
+  );
   for (const name of LINK_PARAMS) {
     const value = params.get(name);
     if (typeof value === "string" && value) verify.searchParams.set(name, value);
   }
-  if (!verify.searchParams.get("token")) return new Response(null, { status: 400, headers: NO_STORE });
+  if (!verify.searchParams.get("token"))
+    return new Response(null, { status: 400, headers: NO_STORE });
   // Without a callbackURL Better Auth answers with the session token as JSON instead of a redirect.
   if (!verify.searchParams.get("callbackURL")) verify.searchParams.set("callbackURL", "/");
   const sent = params.get(SENT);
   const errorTo = verify.searchParams.get("errorCallbackURL") ?? posted.pathname;
-  verify.searchParams.set("errorCallbackURL", withParams(errorTo, posted.origin, typeof sent === "string" && /^\d+$/.test(sent) ? { [SENT]: sent } : {}));
+  verify.searchParams.set(
+    "errorCallbackURL",
+    withParams(
+      errorTo,
+      posted.origin,
+      typeof sent === "string" && /^\d+$/.test(sent) ? { [SENT]: sent } : {},
+    ),
+  );
   return auth.handler(verifyRequest(request, verify));
 }
 
@@ -189,13 +211,23 @@ export function emailConfirmURL(verifyUrl, confirmPath = EMAIL_CONFIRM_PATH) {
 }
 
 /** Which step a token is, read without a check (Better Auth checks it on the POST): only its words depend on it. */
-const STEPS = /** @type {const} */ ({ "change-email-confirmation": "approved", "change-email-verification": "changed" });
+const STEPS = /** @type {const} */ ({
+  "change-email-confirmation": "approved",
+  "change-email-verification": "changed",
+});
 
 /** @param {unknown} token @returns {"approved" | "changed" | "verified"} */
 function stepOf(token) {
   try {
     const payload = String(token).split(".")[1] ?? "";
-    const json = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(payload.length / 4) * 4, "=")));
+    const json = JSON.parse(
+      atob(
+        payload
+          .replace(/-/g, "+")
+          .replace(/_/g, "/")
+          .padEnd(Math.ceil(payload.length / 4) * 4, "="),
+      ),
+    );
     return STEPS[/** @type {keyof typeof STEPS} */ (json.requestType)] ?? "verified";
   } catch {
     return "verified";
@@ -214,14 +246,19 @@ function stepOf(token) {
  * @param {{ callbackURL?: string }} [options] where to land after, a path on the site
  */
 export async function confirmEmailLink(auth, request, { callbackURL } = {}) {
-  if (request.method !== "POST") return new Response(null, { status: 405, headers: { ...NO_STORE, Allow: "POST" } });
+  if (request.method !== "POST")
+    return new Response(null, { status: 405, headers: { ...NO_STORE, Allow: "POST" } });
   const posted = new URL(request.url);
   const token = (await postedParams(request)).get("token");
-  if (typeof token !== "string" || !token) return new Response(null, { status: 400, headers: NO_STORE });
+  if (typeof token !== "string" || !token)
+    return new Response(null, { status: 400, headers: NO_STORE });
   const verify = new URL(`${auth.options.basePath || "/api/auth"}/verify-email`, posted.origin);
   verify.searchParams.set("token", token);
   // With a callbackURL Better Auth redirects on success and on a refusal (with ?error=), never answers JSON.
-  verify.searchParams.set("callbackURL", withParams(callbackURL ?? posted.pathname, posted.origin, { done: stepOf(token) }));
+  verify.searchParams.set(
+    "callbackURL",
+    withParams(callbackURL ?? posted.pathname, posted.origin, { done: stepOf(token) }),
+  );
   return auth.handler(verifyRequest(request, verify));
 }
 
@@ -251,6 +288,7 @@ export function emailLinkResult(url) {
   const error = params.get("error");
   if (error) return { done: null, problem: EMAIL_ERRORS[error] ?? "failed" };
   const done = params.get("done");
-  if (done === "approved" || done === "changed" || done === "verified") return { done, problem: null };
+  if (done === "approved" || done === "changed" || done === "verified")
+    return { done, problem: null };
   return { done: null, problem: params.get("token") ? null : "missing" };
 }

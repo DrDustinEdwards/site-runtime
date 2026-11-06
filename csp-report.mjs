@@ -29,7 +29,8 @@ import { logEvent } from "./log.mjs";
 let warnedUnlimited = false;
 
 /** The browser's own and extensions' schemes, whose violations no site can act on. */
-const NOISE = /^(chrome-extension|moz-extension|safari-extension|safari-web-extension|ms-browser-extension|resource|file|jar|about):/i;
+const NOISE =
+  /^(chrome-extension|moz-extension|safari-extension|safari-web-extension|ms-browser-extension|resource|file|jar|about):/i;
 
 /** The (directive, blocked origin) pairs this isolate has seen, capped so a flood cannot grow it without end. */
 const seen = new Set();
@@ -71,10 +72,21 @@ const KEPT = new Set(["csp-violation", "integrity-violation", "coep"]);
 export function reportBodies(parsed) {
   if (Array.isArray(parsed)) {
     return parsed
-      .filter((r) => isObject(r) && typeof r.type === "string" && KEPT.has(r.type) && isObject(r.body))
-      .map((r) => ({ type: /** @type {string} */ (r.type), body: /** @type {Record<string, unknown>} */ (r.body) }));
+      .filter(
+        (r) => isObject(r) && typeof r.type === "string" && KEPT.has(r.type) && isObject(r.body),
+      )
+      .map((r) => ({
+        type: /** @type {string} */ (r.type),
+        body: /** @type {Record<string, unknown>} */ (r.body),
+      }));
   }
-  if (isObject(parsed) && isObject(parsed["csp-report"])) return [{ type: "csp-violation", body: /** @type {Record<string, unknown>} */ (parsed["csp-report"]) }];
+  if (isObject(parsed) && isObject(parsed["csp-report"]))
+    return [
+      {
+        type: "csp-violation",
+        body: /** @type {Record<string, unknown>} */ (parsed["csp-report"]),
+      },
+    ];
   return [];
 }
 
@@ -87,11 +99,21 @@ export function reportBodies(parsed) {
  * @param {string} [type] the report's type (default csp-violation)
  */
 export function summarizeReport(body, type = "csp-violation") {
-  const field = (/** @type {string[]} */ ...names) => names.map((n) => body[n]).find((v) => v !== undefined);
+  const field = (/** @type {string[]} */ ...names) =>
+    names.map((n) => body[n]).find((v) => v !== undefined);
   const line = field("lineNumber", "line-number");
   const disposition = field("disposition");
   const refusedBy =
-    type === "integrity-violation" ? "blocked-destinations" : type === "coep" ? field("type") : field("effectiveDirective", "effective-directive", "violatedDirective", "violated-directive");
+    type === "integrity-violation"
+      ? "blocked-destinations"
+      : type === "coep"
+        ? field("type")
+        : field(
+            "effectiveDirective",
+            "effective-directive",
+            "violatedDirective",
+            "violated-directive",
+          );
   const destination = field("destination");
   return {
     event: type,
@@ -102,7 +124,11 @@ export function summarizeReport(body, type = "csp-violation") {
     line: typeof line === "number" ? line : undefined,
     ...(typeof destination === "string" ? { destination: destination.slice(0, 32) } : {}),
     disposition:
-      disposition === "enforce" || body.reportOnly === false ? "enforce" : disposition === "report" || disposition === "reporting" || body.reportOnly === true ? "report" : undefined,
+      disposition === "enforce" || body.reportOnly === false
+        ? "enforce"
+        : disposition === "report" || disposition === "reporting" || body.reportOnly === true
+          ? "report"
+          : undefined,
   };
 }
 
@@ -139,13 +165,25 @@ async function readReport(request, max) {
  * @param {ReceiveOptions} [options]
  * @returns {Promise<Response>}
  */
-export async function receiveCspReport(request, { allow, allowOrigin, headers = {}, log = (line) => console.log(JSON.stringify(line)) } = {}) {
+export async function receiveCspReport(
+  request,
+  { allow, allowOrigin, headers = {}, log = (line) => console.log(JSON.stringify(line)) } = {},
+) {
   /** @type {Record<string, string>} */
-  const cors = allowOrigin && request.headers.get("Origin") === allowOrigin
-    ? { "Access-Control-Allow-Origin": allowOrigin, "Access-Control-Allow-Methods": "POST", "Access-Control-Allow-Headers": "Content-Type", Vary: "Origin" }
-    : {};
+  const cors =
+    allowOrigin && request.headers.get("Origin") === allowOrigin
+      ? {
+          "Access-Control-Allow-Origin": allowOrigin,
+          "Access-Control-Allow-Methods": "POST",
+          "Access-Control-Allow-Headers": "Content-Type",
+          Vary: "Origin",
+        }
+      : {};
   const answer = (/** @type {number} */ status, /** @type {Record<string, string>} */ extra = {}) =>
-    new Response(null, { status, headers: { ...headers, ...cors, "Cache-Control": "no-store", ...extra } });
+    new Response(null, {
+      status,
+      headers: { ...headers, ...cors, "Cache-Control": "no-store", ...extra },
+    });
 
   if (request.method === "OPTIONS") return answer(204);
   if (request.method !== "POST") return answer(405, { Allow: "POST, OPTIONS" });
@@ -154,7 +192,11 @@ export async function receiveCspReport(request, { allow, allowOrigin, headers = 
   if (allow && !(await allow(request))) return answer(204);
   if (!allow && !warnedUnlimited) {
     warnedUnlimited = true;
-    logEvent("csp_report_unlimited", { note: "receiveCspReport has no allow: pass the site's rate limiter" }, { level: "warn" });
+    logEvent(
+      "csp_report_unlimited",
+      { note: "receiveCspReport has no allow: pass the site's rate limiter" },
+      { level: "warn" },
+    );
   }
   const text = await readReport(request, MAX_REPORT_BYTES);
   if (text === null) return answer(204);
@@ -169,7 +211,8 @@ export async function receiveCspReport(request, { allow, allowOrigin, headers = 
     if (raw.some((v) => typeof v === "string" && NOISE.test(v))) continue;
     const line = summarizeReport(body, type);
     log(line);
-    const blocked = line.blocked && /^https?:/.test(line.blocked) ? new URL(line.blocked).origin : line.blocked;
+    const blocked =
+      line.blocked && /^https?:/.test(line.blocked) ? new URL(line.blocked).origin : line.blocked;
     const key = `${line.directive} ${blocked}`;
     if (!seen.has(key) && seen.size < MAX_SEEN) {
       seen.add(key);

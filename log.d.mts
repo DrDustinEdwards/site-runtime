@@ -15,7 +15,10 @@ export function scrubText(text: string, options?: ScrubOptions): string;
 /** A URL or path: query and fragment dropped, then scrubbed as text. */
 export function scrubUrl(url: string, options?: ScrubOptions): string;
 /** A scrubbed copy of `fields`: strings scrubbed, Errors as "name: message", DROPPED_FIELD keys left out. */
-export function scrubFields(fields: Record<string, unknown>, options?: ScrubOptions): Record<string, unknown>;
+export function scrubFields(
+  fields: Record<string, unknown>,
+  options?: ScrubOptions,
+): Record<string, unknown>;
 /** Writes one JSON line, `{ event, ...fields }` scrubbed, at `level` (default "log"). */
 export function logEvent(
   event: string,
@@ -35,14 +38,20 @@ export function requestFields(
  */
 export function withRequestLog<A extends unknown[]>(
   handler: (request: Request, ...rest: A) => Response | Promise<Response>,
-  options?: { sha?: string | ((...rest: A) => string | undefined); route?: (request: Request) => string | undefined; inputValidation?: boolean } & ScrubOptions,
+  options?: {
+    sha?: string | ((...rest: A) => string | undefined);
+    route?: (request: Request) => string | undefined;
+    inputValidation?: boolean;
+  } & ScrubOptions,
 ): (request: Request, ...rest: A) => Promise<Response>;
 /**
  * A `route` namer for withRequestLog from a React Router build's `routes`: the full pattern of the most specific
  * matching route (`/blog/:slug`), a `.data` suffix read as its page; undefined when nothing matches.
  */
 export function routeNamer(
-  routes: Readonly<Record<string, { path?: string; parentId?: string; index?: boolean } | undefined>>,
+  routes: Readonly<
+    Record<string, { path?: string; parentId?: string; index?: boolean } | undefined>
+  >,
 ): (request: Request) => string | undefined;
 /** OWASP Logging Vocabulary event names for sign-in, sessions, account changes, authorization, input validation and rate limiting. */
 export const OWASP_EVENTS: Readonly<{

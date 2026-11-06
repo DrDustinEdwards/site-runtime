@@ -23,7 +23,10 @@ async function digest(text) {
  * @param {Uint8Array<ArrayBuffer>} b
  */
 function sameBytes(a, b) {
-  const native = /** @type {{ timingSafeEqual?: (x: BufferSource, y: BufferSource) => boolean }} */ (crypto.subtle).timingSafeEqual;
+  const native =
+    /** @type {{ timingSafeEqual?: (x: BufferSource, y: BufferSource) => boolean }} */ (
+      crypto.subtle
+    ).timingSafeEqual;
   if (typeof native === "function") return native.call(crypto.subtle, a, b);
   let diff = 0;
   for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
@@ -40,7 +43,10 @@ function sameBytes(a, b) {
 export async function safeEqual(a, b) {
   // Both digests are computed before either check is answered, so a refused type or empty side costs what a compare does.
   const valid = typeof a === "string" && typeof b === "string" && a !== "" && b !== "";
-  const [left, right] = await Promise.all([digest(typeof a === "string" ? a : ""), digest(typeof b === "string" ? b : "")]);
+  const [left, right] = await Promise.all([
+    digest(typeof a === "string" ? a : ""),
+    digest(typeof b === "string" ? b : ""),
+  ]);
   const same = sameBytes(left, right);
   return valid && same;
 }

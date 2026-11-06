@@ -30,14 +30,35 @@ function pkcs8(pem) {
  * @returns {Promise<string | null>}
  */
 export async function appleClientSecret(env, now = Math.floor(Date.now() / 1000)) {
-  const { APPLE_CLIENT_ID: clientId, APPLE_TEAM_ID: teamId, APPLE_KEY_ID: keyId, APPLE_PRIVATE_KEY: pem } = env;
+  const {
+    APPLE_CLIENT_ID: clientId,
+    APPLE_TEAM_ID: teamId,
+    APPLE_KEY_ID: keyId,
+    APPLE_PRIVATE_KEY: pem,
+  } = env;
   if (!clientId || !teamId || !keyId || !pem) return null;
-  const key = await crypto.subtle.importKey("pkcs8", pkcs8(pem), { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+  const key = await crypto.subtle.importKey(
+    "pkcs8",
+    pkcs8(pem),
+    { name: "ECDSA", namedCurve: "P-256" },
+    false,
+    ["sign"],
+  );
   const header = base64url(JSON.stringify({ alg: "ES256", kid: keyId }));
   const claims = base64url(
-    JSON.stringify({ iss: teamId, iat: now, exp: now + LIFETIME_SECONDS, aud: APPLE_AUDIENCE, sub: clientId }),
+    JSON.stringify({
+      iss: teamId,
+      iat: now,
+      exp: now + LIFETIME_SECONDS,
+      aud: APPLE_AUDIENCE,
+      sub: clientId,
+    }),
   );
   const input = `${header}.${claims}`;
-  const signature = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, new TextEncoder().encode(input));
+  const signature = await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    key,
+    new TextEncoder().encode(input),
+  );
   return `${input}.${bytesToBase64url(signature)}`;
 }

@@ -6,7 +6,11 @@ export const TURNSTILE_ORIGIN: "https://challenges.cloudflare.com";
  * `cf-turnstile-response` input. Returns a function that removes the widget; called before the script loads, nothing is
  * rendered. Browser only.
  */
-export function mountTurnstile(el: HTMLElement, siteKey: string, options?: { onToken?: (token: string) => void }): () => void;
+export function mountTurnstile(
+  el: HTMLElement,
+  siteKey: string,
+  options?: { onToken?: (token: string) => void },
+): () => void;
 
 /** Cloudflare's server-side check of a widget token. */
 export const SITEVERIFY_URL: "https://challenges.cloudflare.com/turnstile/v0/siteverify";
@@ -18,5 +22,11 @@ export const SITEVERIFY_URL: "https://challenges.cloudflare.com/turnstile/v0/sit
 export function verifyTurnstile(
   token: string | null | undefined,
   secret: string | null | undefined,
-  options?: { remoteIp?: string | null; hostname?: string; action?: string; timeoutMs?: number; fetch?: typeof fetch },
+  options?: {
+    remoteIp?: string | null;
+    hostname?: string;
+    action?: string;
+    timeoutMs?: number;
+    fetch?: typeof fetch;
+  },
 ): Promise<{ ok: boolean; errors: string[]; hostname?: string; action?: string }>;

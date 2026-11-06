@@ -2,7 +2,17 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { checkSecurityHeaders, failures, parsePolicy } from "../check.mjs";
-import { CLOUDFLARE_WEB_ANALYTICS, broadSource, buildContentSecurityPolicy, buildPolicy, buildStagedPolicy, generateNonce, renewNonce, reportingEndpoints, scriptHash } from "../csp.mjs";
+import {
+  CLOUDFLARE_WEB_ANALYTICS,
+  broadSource,
+  buildContentSecurityPolicy,
+  buildPolicy,
+  buildStagedPolicy,
+  generateNonce,
+  renewNonce,
+  reportingEndpoints,
+  scriptHash,
+} from "../csp.mjs";
 import { applyHeaderSet } from "../headers.mjs";
 
 const SINK = { reportUri: "/csp-report", reportTo: "csp-endpoint" };
@@ -26,12 +36,16 @@ test("generateNonce: 16 random bytes as 24 base64 characters, fresh each call", 
 test("scriptHash is the SHA-256 of the script's UTF-8 text, as a CSP hash source", async () => {
   assert.equal(await scriptHash(""), HASH);
   for (const text of ["alert(1)", "document.title = 'café ✓';\n"]) {
-    assert.equal(await scriptHash(text), `sha256-${createHash("sha256").update(text, "utf8").digest("base64")}`);
+    assert.equal(
+      await scriptHash(text),
+      `sha256-${createHash("sha256").update(text, "utf8").digest("base64")}`,
+    );
   }
 });
 
 test("buildPolicy refuses an empty or blank directive", () => {
-  for (const bad of [[""], ["default-src 'self'", "  "]]) assert.throws(() => buildPolicy(bad), /a CSP directive is empty/);
+  for (const bad of [[""], ["default-src 'self'", "  "]])
+    assert.throws(() => buildPolicy(bad), /a CSP directive is empty/);
 });
 
 test("a site that loads nothing extra gets the fixed policy, enforced", () => {
@@ -54,18 +68,33 @@ test("a site that loads nothing extra gets the fixed policy, enforced", () => {
 });
 
 test("framedBySameOrigin lets the site frame its own pages and no one else", () => {
-  assert.deepEqual(directives({ ...SINK, framedBySameOrigin: true }).get("frame-ancestors"), ["'self'"]);
-  assert.deepEqual(directives({ ...SINK, framedBySameOrigin: false }).get("frame-ancestors"), ["'none'"]);
+  assert.deepEqual(directives({ ...SINK, framedBySameOrigin: true }).get("frame-ancestors"), [
+    "'self'",
+  ]);
+  assert.deepEqual(directives({ ...SINK, framedBySameOrigin: false }).get("frame-ancestors"), [
+    "'none'",
+  ]);
   const headers = new Headers();
   applyHeaderSet(headers, { "X-Frame-Options": "sameorigin", ...ENDPOINTS });
   const { name, value } = buildContentSecurityPolicy({ ...SINK, framedBySameOrigin: true });
   headers.set(name, value);
-  assert.deepEqual(failures(checkSecurityHeaders(headers, { standard: { "X-Frame-Options": "deny" } })), []);
+  assert.deepEqual(
+    failures(checkSecurityHeaders(headers, { standard: { "X-Frame-Options": "deny" } })),
+    [],
+  );
 });
 
 test("a policy always has both report sinks, the family's unless given, written last", () => {
-  for (const sinks of [{ reportUri: "" }, { reportTo: "" }]) assert.throws(() => buildContentSecurityPolicy(sinks), /needs both report sinks/, JSON.stringify(sinks));
-  assert.match(buildContentSecurityPolicy({}).value, /; report-uri \/csp-report; report-to csp-endpoint$/);
+  for (const sinks of [{ reportUri: "" }, { reportTo: "" }])
+    assert.throws(
+      () => buildContentSecurityPolicy(sinks),
+      /needs both report sinks/,
+      JSON.stringify(sinks),
+    );
+  assert.match(
+    buildContentSecurityPolicy({}).value,
+    /; report-uri \/csp-report; report-to csp-endpoint$/,
+  );
   assert.deepEqual([...directives(SINK).keys()].slice(-2), ["report-uri", "report-to"]);
 });
 
@@ -81,16 +110,35 @@ test("a nonce goes on script-src and style-src and nowhere else", () => {
   assert.ok(policy.get("script-src")?.includes(`'nonce-${nonce}'`));
   assert.ok(policy.get("style-src")?.includes(`'nonce-${nonce}'`));
   for (const [name, sources] of policy) {
-    if (name !== "script-src" && name !== "style-src") assert.ok(!sources.some((s) => s.includes("nonce")), `${name} carries the nonce`);
+    if (name !== "script-src" && name !== "style-src")
+      assert.ok(!sources.some((s) => s.includes("nonce")), `${name} carries the nonce`);
   }
-  assert.ok(!buildContentSecurityPolicy(SINK).value.includes("nonce"), "no nonce was given but one was written");
+  assert.ok(
+    !buildContentSecurityPolicy(SINK).value.includes("nonce"),
+    "no nonce was given but one was written",
+  );
 });
 
 test("a nonce that is short or not base64 is refused", () => {
   assert.doesNotThrow(() => buildContentSecurityPolicy({ ...SINK, nonce: "abcdefghijklmnop" }));
   assert.doesNotThrow(() => buildContentSecurityPolicy({ ...SINK, nonce: "abc-def_ghi+jkl/mn==" }));
-  for (const nonce of ["", "abcdefghijklmno", "abcdefghijklmnop'", "'abcdefghijklmnop", " abcdefghijklmnop", "abcdefghijklmnop\n", "abcdefghij klmnop", "abcdefghijklmnop===", "*; abcdefghijklmnop", "abcdefghijklmnop; script-src *"]) {
-    assert.throws(() => buildContentSecurityPolicy({ ...SINK, nonce }), /the nonce is not a base64 value/, `accepted ${JSON.stringify(nonce)}`);
+  for (const nonce of [
+    "",
+    "abcdefghijklmno",
+    "abcdefghijklmnop'",
+    "'abcdefghijklmnop",
+    " abcdefghijklmnop",
+    "abcdefghijklmnop\n",
+    "abcdefghij klmnop",
+    "abcdefghijklmnop===",
+    "*; abcdefghijklmnop",
+    "abcdefghijklmnop; script-src *",
+  ]) {
+    assert.throws(
+      () => buildContentSecurityPolicy({ ...SINK, nonce }),
+      /the nonce is not a base64 value/,
+      `accepted ${JSON.stringify(nonce)}`,
+    );
   }
 });
 
@@ -100,13 +148,34 @@ test("hashes are quoted onto their own directive", () => {
   assert.ok(!policy.get("script-src")?.includes("'sha384-abc'"));
   assert.ok(policy.get("style-src")?.includes("'sha384-abc'"));
   assert.ok(!policy.get("style-src")?.includes(`'${HASH}'`));
-  assert.ok(directives({ ...SINK, scriptHashes: ["sha512-x_y-z="] }).get("script-src")?.includes("'sha512-x_y-z='"));
+  assert.ok(
+    directives({ ...SINK, scriptHashes: ["sha512-x_y-z="] })
+      .get("script-src")
+      ?.includes("'sha512-x_y-z='"),
+  );
 });
 
 test("a value that is not a sha256, sha384 or sha512 source is refused as a hash", () => {
-  for (const hash of ["sha1-abc", "47DEQpj8HBSa", `'${HASH}'`, "sha256-", "sha256-abc def", "sha256-abc===", "xsha256-abc", "sha256-abc'"]) {
-    assert.throws(() => buildContentSecurityPolicy({ ...SINK, scriptHashes: [hash] }), /is not a hash source/, `script accepted ${hash}`);
-    assert.throws(() => buildContentSecurityPolicy({ ...SINK, styleHashes: [hash] }), /is not a hash source/, `style accepted ${hash}`);
+  for (const hash of [
+    "sha1-abc",
+    "47DEQpj8HBSa",
+    `'${HASH}'`,
+    "sha256-",
+    "sha256-abc def",
+    "sha256-abc===",
+    "xsha256-abc",
+    "sha256-abc'",
+  ]) {
+    assert.throws(
+      () => buildContentSecurityPolicy({ ...SINK, scriptHashes: [hash] }),
+      /is not a hash source/,
+      `script accepted ${hash}`,
+    );
+    assert.throws(
+      () => buildContentSecurityPolicy({ ...SINK, styleHashes: [hash] }),
+      /is not a hash source/,
+      `style accepted ${hash}`,
+    );
   }
 });
 
@@ -141,83 +210,215 @@ test("media-src and frame-src are written only when the site loads some", () => 
 });
 
 test("broadSource: a wildcard host or subdomain or a network scheme anywhere; data: and blob: only where script runs", () => {
-  for (const source of ["*", "https://*", "HTTP://*", "https://*:443", "*:*", "*:8080", "https://*/js/app.js", "wss://*", "https://*.example.com", "*.example.com:443/js/", "https:", "HTTP:", "wss:"]) {
-    for (const directive of ["script-src", "img-src", "connect-src", "worker-src"]) assert.ok(broadSource(source, directive), `${directive} ${source}`);
+  for (const source of [
+    "*",
+    "https://*",
+    "HTTP://*",
+    "https://*:443",
+    "*:*",
+    "*:8080",
+    "https://*/js/app.js",
+    "wss://*",
+    "https://*.example.com",
+    "*.example.com:443/js/",
+    "https:",
+    "HTTP:",
+    "wss:",
+  ]) {
+    for (const directive of ["script-src", "img-src", "connect-src", "worker-src"])
+      assert.ok(broadSource(source, directive), `${directive} ${source}`);
   }
   for (const source of ["data:", "blob:"]) {
-    for (const directive of ["script-src", "script-src-elem", "script-src-attr"]) assert.ok(broadSource(source, directive), `${directive} ${source}`);
-    for (const directive of ["img-src", "media-src", "font-src", "connect-src", "style-src"]) assert.equal(broadSource(source, directive), "", `${directive} ${source}`);
+    for (const directive of ["script-src", "script-src-elem", "script-src-attr"])
+      assert.ok(broadSource(source, directive), `${directive} ${source}`);
+    for (const directive of ["img-src", "media-src", "font-src", "connect-src", "style-src"])
+      assert.equal(broadSource(source, directive), "", `${directive} ${source}`);
   }
   assert.ok(broadSource("data:", "worker-src"));
-  assert.equal(broadSource("blob:", "worker-src"), "", "a blob: worker is one the page's own script made");
-  for (const named of ["https://js.example.com", "https://js.example.com/*", "'self'", "'nonce-abc'"]) assert.equal(broadSource(named), "", named);
+  assert.equal(
+    broadSource("blob:", "worker-src"),
+    "",
+    "a blob: worker is one the page's own script made",
+  );
+  for (const named of [
+    "https://js.example.com",
+    "https://js.example.com/*",
+    "'self'",
+    "'nonce-abc'",
+  ])
+    assert.equal(broadSource(named), "", named);
 });
 
 test("the builder refuses a broad source in every kind, and an unsafe keyword as a script source in any case", () => {
-  for (const [kind, source] of [["script", "*"], ["script", "data:"], ["script", "https://*.example.com"], ["img", "https:"], ["connect", "wss://*"], ["media", "*"]]) {
-    assert.throws(() => buildContentSecurityPolicy({ ...SINK, sources: { [kind]: [source] } }), /is not an acceptable \S+ source: it allows/, `${kind} ${source}`);
+  for (const [kind, source] of [
+    ["script", "*"],
+    ["script", "data:"],
+    ["script", "https://*.example.com"],
+    ["img", "https:"],
+    ["connect", "wss://*"],
+    ["media", "*"],
+  ]) {
+    assert.throws(
+      () => buildContentSecurityPolicy({ ...SINK, sources: { [kind]: [source] } }),
+      /is not an acceptable \S+ source: it allows/,
+      `${kind} ${source}`,
+    );
   }
   for (const keyword of ["'unsafe-inline'", "'UNSAFE-INLINE'", "'Unsafe-Eval'"]) {
-    assert.throws(() => buildContentSecurityPolicy({ ...SINK, sources: { script: [keyword] } }), /is not an acceptable script-src source/, keyword);
+    assert.throws(
+      () => buildContentSecurityPolicy({ ...SINK, sources: { script: [keyword] } }),
+      /is not an acceptable script-src source/,
+      keyword,
+    );
   }
-  const policy = directives({ ...SINK, sources: { img: ["data:", "blob:"], media: ["blob:"], script: ["https://js.example.com"] } });
+  const policy = directives({
+    ...SINK,
+    sources: { img: ["data:", "blob:"], media: ["blob:"], script: ["https://js.example.com"] },
+  });
   assert.deepEqual(policy.get("img-src"), ["'self'", "data:", "blob:"]);
   assert.deepEqual(policy.get("media-src"), ["'self'", "blob:"]);
   assert.deepEqual(policy.get("script-src"), ["'self'", "https://js.example.com"]);
 });
 
 test("the refusal names the offending source", () => {
-  assert.throws(() => buildContentSecurityPolicy({ ...SINK, sources: { script: ["https://js.example.com", "data:"] } }), /^Error: data: is not an acceptable script-src source/);
+  assert.throws(
+    () =>
+      buildContentSecurityPolicy({
+        ...SINK,
+        sources: { script: ["https://js.example.com", "data:"] },
+      }),
+    /^Error: data: is not an acceptable script-src source/,
+  );
 });
 
 test("a source with a space, semicolon or comma, or not a string, is refused in every kind and in the sinks", () => {
   for (const kind of ["script", "style", "img", "font", "connect", "frame", "media"]) {
-    for (const bad of ["", "https://a.example.com https://b.example.com", "https://a.example.com;script-src", "a,b", 7]) {
-      assert.throws(() => buildContentSecurityPolicy({ ...SINK, sources: { [kind]: [bad] } }), /is not a CSP source/, `${kind} accepted ${JSON.stringify(bad)}`);
+    for (const bad of [
+      "",
+      "https://a.example.com https://b.example.com",
+      "https://a.example.com;script-src",
+      "a,b",
+      7,
+    ]) {
+      assert.throws(
+        () => buildContentSecurityPolicy({ ...SINK, sources: { [kind]: [bad] } }),
+        /is not a CSP source/,
+        `${kind} accepted ${JSON.stringify(bad)}`,
+      );
     }
   }
-  assert.throws(() => buildContentSecurityPolicy({ ...SINK, reportUri: "/r; script-src *" }), /is not a CSP source/);
-  assert.throws(() => buildContentSecurityPolicy({ ...SINK, reportTo: "a b" }), /is not a CSP source/);
+  assert.throws(
+    () => buildContentSecurityPolicy({ ...SINK, reportUri: "/r; script-src *" }),
+    /is not a CSP source/,
+  );
+  assert.throws(
+    () => buildContentSecurityPolicy({ ...SINK, reportTo: "a b" }),
+    /is not a CSP source/,
+  );
 });
 
 test("cloudflareWebAnalytics lets the beacon run and report", () => {
   const policy = directives({ ...SINK, cloudflareWebAnalytics: true });
-  for (const source of CLOUDFLARE_WEB_ANALYTICS.script) assert.ok(policy.get("script-src")?.includes(source));
+  for (const source of CLOUDFLARE_WEB_ANALYTICS.script)
+    assert.ok(policy.get("script-src")?.includes(source));
   assert.ok(policy.get("connect-src")?.includes("'self'"));
   const without = directives(SINK);
   assert.ok(!without.get("script-src")?.some((s) => s.includes("cloudflareinsights")));
 });
 
 test("styleAttributesInline allows style attributes only, and only when asked", () => {
-  assert.deepEqual(directives({ ...SINK, styleAttributesInline: true }).get("style-src-attr"), ["'unsafe-inline'"]);
+  assert.deepEqual(directives({ ...SINK, styleAttributesInline: true }).get("style-src-attr"), [
+    "'unsafe-inline'",
+  ]);
   assert.equal(directives(SINK).has("style-src-attr"), false);
-  assert.ok(!directives({ ...SINK, styleAttributesInline: true }).get("style-src")?.includes("'unsafe-inline'"));
+  assert.ok(
+    !directives({ ...SINK, styleAttributesInline: true })
+      .get("style-src")
+      ?.includes("'unsafe-inline'"),
+  );
 });
 
 test("extra directives are added; an empty one, one that restates a fixed directive or reopens scripts, is refused", () => {
-  const policy = directives({ ...SINK, extraDirectives: ["upgrade-insecure-requests", "worker-src 'self'"] });
+  const policy = directives({
+    ...SINK,
+    extraDirectives: ["upgrade-insecure-requests", "worker-src 'self'"],
+  });
   assert.deepEqual(policy.get("upgrade-insecure-requests"), []);
   assert.deepEqual(policy.get("worker-src"), ["'self'"]);
-  assert.throws(() => buildContentSecurityPolicy({ ...SINK, extraDirectives: [" "] }), /a CSP directive is empty/);
-  for (const extra of ["script-src-elem 'unsafe-inline'", "script-src-attr 'unsafe-inline'", "style-src-elem 'unsafe-inline'", "STYLE-SRC *", "img-src *", "connect-src *", "frame-src 'self'", "form-action *", "frame-ancestors *"]) {
-    assert.throws(() => buildContentSecurityPolicy({ ...SINK, extraDirectives: [extra] }), /written by the builder/, extra);
+  assert.throws(
+    () => buildContentSecurityPolicy({ ...SINK, extraDirectives: [" "] }),
+    /a CSP directive is empty/,
+  );
+  for (const extra of [
+    "script-src-elem 'unsafe-inline'",
+    "script-src-attr 'unsafe-inline'",
+    "style-src-elem 'unsafe-inline'",
+    "STYLE-SRC *",
+    "img-src *",
+    "connect-src *",
+    "frame-src 'self'",
+    "form-action *",
+    "frame-ancestors *",
+  ]) {
+    assert.throws(
+      () => buildContentSecurityPolicy({ ...SINK, extraDirectives: [extra] }),
+      /written by the builder/,
+      extra,
+    );
   }
-  assert.throws(() => buildContentSecurityPolicy({ ...SINK, extraDirectives: ["worker-src *"] }), /not an acceptable directive/);
+  assert.throws(
+    () => buildContentSecurityPolicy({ ...SINK, extraDirectives: ["worker-src *"] }),
+    /not an acceptable directive/,
+  );
 });
 
 test("PLANT: formTargets adds https origins to form-action 'self'; a wildcard, a path, http or noForms is refused", () => {
-  assert.deepEqual(directives({ ...SINK, formTargets: ["https://checkout.stripe.com", "https://connect.stripe.com"] }).get("form-action"), ["'self'", "https://checkout.stripe.com", "https://connect.stripe.com"]);
-  for (const target of ["*", "https://*.stripe.com", "https:", "http://checkout.stripe.com", "https://checkout.stripe.com/pay", "checkout.stripe.com"]) {
-    assert.throws(() => buildContentSecurityPolicy({ ...SINK, formTargets: [target] }), /not a form target/, target);
+  assert.deepEqual(
+    directives({
+      ...SINK,
+      formTargets: ["https://checkout.stripe.com", "https://connect.stripe.com"],
+    }).get("form-action"),
+    ["'self'", "https://checkout.stripe.com", "https://connect.stripe.com"],
+  );
+  for (const target of [
+    "*",
+    "https://*.stripe.com",
+    "https:",
+    "http://checkout.stripe.com",
+    "https://checkout.stripe.com/pay",
+    "checkout.stripe.com",
+  ]) {
+    assert.throws(
+      () => buildContentSecurityPolicy({ ...SINK, formTargets: [target] }),
+      /not a form target/,
+      target,
+    );
   }
-  assert.throws(() => buildContentSecurityPolicy({ ...SINK, noForms: true, formTargets: ["https://checkout.stripe.com"] }), /cannot go with noForms/);
+  assert.throws(
+    () =>
+      buildContentSecurityPolicy({
+        ...SINK,
+        noForms: true,
+        formTargets: ["https://checkout.stripe.com"],
+      }),
+    /cannot go with noForms/,
+  );
 });
 
 test("every policy the builder writes passes the header check", () => {
   const sites = [
     SINK,
     { ...SINK, nonce: generateNonce(), styleAttributesInline: true },
-    { ...SINK, scriptHashes: [HASH], cloudflareWebAnalytics: true, sources: { script: ["https://js.example.com"], img: ["data:"], frame: ["https://player.example.com"] } },
+    {
+      ...SINK,
+      scriptHashes: [HASH],
+      cloudflareWebAnalytics: true,
+      sources: {
+        script: ["https://js.example.com"],
+        img: ["data:"],
+        frame: ["https://player.example.com"],
+      },
+    },
     { ...SINK, formTargets: ["https://checkout.stripe.com"] },
   ];
   for (const site of sites) {
@@ -226,7 +427,16 @@ test("every policy the builder writes passes the header check", () => {
     const { name, value } = buildContentSecurityPolicy(site);
     headers.set(name, value);
     headers.set("Reporting-Endpoints", ENDPOINTS["Reporting-Endpoints"]);
-    assert.deepEqual(failures(checkSecurityHeaders(headers, { cloudflareWebAnalytics: Boolean(site.cloudflareWebAnalytics), formTargets: site.formTargets })), [], JSON.stringify(site));
+    assert.deepEqual(
+      failures(
+        checkSecurityHeaders(headers, {
+          cloudflareWebAnalytics: Boolean(site.cloudflareWebAnalytics),
+          formTargets: site.formTargets,
+        }),
+      ),
+      [],
+      JSON.stringify(site),
+    );
   }
 });
 
@@ -234,29 +444,85 @@ test("inlineScripts opts script-src into 'unsafe-inline' alone; beside a nonce o
   const site = { ...SINK, inlineScripts: /** @type {const} */ ("unsafe-inline") };
   assert.deepEqual(directives(site).get("script-src"), ["'self'", "'unsafe-inline'"]);
   for (const extra of [{ nonce: generateNonce() }, { scriptHashes: [HASH] }]) {
-    assert.throws(() => buildContentSecurityPolicy({ ...site, ...extra }), /cannot go with a nonce or script hashes/);
+    assert.throws(
+      () => buildContentSecurityPolicy({ ...site, ...extra }),
+      /cannot go with a nonce or script hashes/,
+    );
   }
-  assert.throws(() => buildContentSecurityPolicy({ ...SINK, inlineScripts: /** @type {any} */ ("unsafe-eval") }), /inlineScripts is "unsafe-inline"/);
-  const headers = new Headers({ "Content-Security-Policy": buildContentSecurityPolicy(site).value, ...ENDPOINTS });
-  assert.ok(failures(checkSecurityHeaders(headers, { standard: {} })).some((r) => /'unsafe-inline'/.test(r.name)));
-  assert.deepEqual(failures(checkSecurityHeaders(headers, { standard: {}, inlineScripts: "unsafe-inline" })), []);
+  assert.throws(
+    () =>
+      buildContentSecurityPolicy({ ...SINK, inlineScripts: /** @type {any} */ ("unsafe-eval") }),
+    /inlineScripts is "unsafe-inline"/,
+  );
+  const headers = new Headers({
+    "Content-Security-Policy": buildContentSecurityPolicy(site).value,
+    ...ENDPOINTS,
+  });
+  assert.ok(
+    failures(checkSecurityHeaders(headers, { standard: {} })).some((r) =>
+      /'unsafe-inline'/.test(r.name),
+    ),
+  );
+  assert.deepEqual(
+    failures(checkSecurityHeaders(headers, { standard: {}, inlineScripts: "unsafe-inline" })),
+    [],
+  );
 });
 
 test("strictDynamic follows the nonce or hashes; without one, beside the beacon, or as a raw source, it is refused", () => {
   const nonce = generateNonce();
-  assert.deepEqual(directives({ ...SINK, nonce, strictDynamic: true }).get("script-src"), [`'nonce-${nonce}'`, "'self'", "'strict-dynamic'"]);
-  assert.ok(directives({ ...SINK, scriptHashes: [HASH], strictDynamic: true }).get("script-src")?.includes("'strict-dynamic'"));
-  assert.throws(() => buildContentSecurityPolicy({ ...SINK, strictDynamic: true }), /needs a nonce or script hashes/);
-  assert.throws(() => buildContentSecurityPolicy({ ...SINK, nonce, strictDynamic: true, cloudflareWebAnalytics: true }), /cannot go with cloudflareWebAnalytics/);
+  assert.deepEqual(directives({ ...SINK, nonce, strictDynamic: true }).get("script-src"), [
+    `'nonce-${nonce}'`,
+    "'self'",
+    "'strict-dynamic'",
+  ]);
+  assert.ok(
+    directives({ ...SINK, scriptHashes: [HASH], strictDynamic: true })
+      .get("script-src")
+      ?.includes("'strict-dynamic'"),
+  );
+  assert.throws(
+    () => buildContentSecurityPolicy({ ...SINK, strictDynamic: true }),
+    /needs a nonce or script hashes/,
+  );
+  assert.throws(
+    () =>
+      buildContentSecurityPolicy({
+        ...SINK,
+        nonce,
+        strictDynamic: true,
+        cloudflareWebAnalytics: true,
+      }),
+    /cannot go with cloudflareWebAnalytics/,
+  );
   for (const raw of ["'strict-dynamic'", "'STRICT-DYNAMIC'"]) {
-    assert.throws(() => buildContentSecurityPolicy({ ...SINK, nonce, sources: { script: [raw] } }), /pass strictDynamic: true/, raw);
+    assert.throws(
+      () => buildContentSecurityPolicy({ ...SINK, nonce, sources: { script: [raw] } }),
+      /pass strictDynamic: true/,
+      raw,
+    );
   }
 });
 
 test("reportingEndpoints takes https or loopback http and refuses what a browser ignores", () => {
-  assert.equal(reportingEndpoints("csp-endpoint", new URL("/csp-report", "https://example.com")), 'csp-endpoint="https://example.com/csp-report"');
-  for (const url of ["http://localhost:5173/r", "http://foo.localhost/r", "http://127.0.0.2/r", "http://[::1]:8787/r"]) assert.ok(reportingEndpoints("csp-endpoint", url));
-  for (const url of ["/csp-report", "http://example.com/csp-report", "http://localhost.example.com/r", "http://notlocalhost/r", "http://127.0.0.1.example.com/r"]) {
+  assert.equal(
+    reportingEndpoints("csp-endpoint", new URL("/csp-report", "https://example.com")),
+    'csp-endpoint="https://example.com/csp-report"',
+  );
+  for (const url of [
+    "http://localhost:5173/r",
+    "http://foo.localhost/r",
+    "http://127.0.0.2/r",
+    "http://[::1]:8787/r",
+  ])
+    assert.ok(reportingEndpoints("csp-endpoint", url));
+  for (const url of [
+    "/csp-report",
+    "http://example.com/csp-report",
+    "http://localhost.example.com/r",
+    "http://notlocalhost/r",
+    "http://127.0.0.1.example.com/r",
+  ]) {
     assert.throws(() => reportingEndpoints("csp-endpoint", url));
   }
 });
@@ -267,16 +533,31 @@ test("trustedTypes writes require-trusted-types-for, and its names; the staged c
   const policy = parsePolicy(staged.value);
   assert.deepEqual(policy.get("require-trusted-types-for"), ["'script'"]);
   assert.deepEqual(policy.get("trusted-types"), ["default", "'allow-duplicates'"]);
-  assert.throws(() => buildContentSecurityPolicy({ ...SINK, trustedTypes: ["bad name"] }), /Trusted Types policy name/);
+  assert.throws(
+    () => buildContentSecurityPolicy({ ...SINK, trustedTypes: ["bad name"] }),
+    /Trusted Types policy name/,
+  );
   assert.throws(() => buildStagedPolicy(SINK, {}), /stages nothing/);
 });
 
 test("renewNonce leaves a response with no nonce as it is, and refuses to resend a stored nonce without HTMLRewriter", () => {
-  const plain = new Response("x", { headers: { "Content-Type": "text/html", "Content-Security-Policy": "script-src 'self'" } });
+  const plain = new Response("x", {
+    headers: { "Content-Type": "text/html", "Content-Security-Policy": "script-src 'self'" },
+  });
   assert.equal(renewNonce(plain), plain);
-  const json = new Response("{}", { headers: { "Content-Type": "application/json", "Content-Security-Policy": `script-src 'nonce-${generateNonce()}'` } });
+  const json = new Response("{}", {
+    headers: {
+      "Content-Type": "application/json",
+      "Content-Security-Policy": `script-src 'nonce-${generateNonce()}'`,
+    },
+  });
   assert.equal(renewNonce(json), json);
   if (typeof globalThis.HTMLRewriter !== "undefined") return;
-  const stored = new Response("<script nonce=a></script>", { headers: { "Content-Type": "text/html", "Content-Security-Policy": `script-src 'nonce-${generateNonce()}'` } });
+  const stored = new Response("<script nonce=a></script>", {
+    headers: {
+      "Content-Type": "text/html",
+      "Content-Security-Policy": `script-src 'nonce-${generateNonce()}'`,
+    },
+  });
   assert.throws(() => renewNonce(stored), /needs HTMLRewriter/);
 });

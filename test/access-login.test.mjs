@@ -3,7 +3,13 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, test } from "node:test";
 
-import { accessSaas, authorizationUrl, finishSignIn, newSignIn, verifyIdToken } from "../access-login.mjs";
+import {
+  accessSaas,
+  authorizationUrl,
+  finishSignIn,
+  newSignIn,
+  verifyIdToken,
+} from "../access-login.mjs";
 import { encode, b64url, other, pair, publicJwk, keys, sign } from "./jwt.mjs";
 
 const ENV = {
@@ -15,12 +21,21 @@ const saas = /** @type {NonNullable<ReturnType<typeof accessSaas>>} */ (accessSa
 
 const now = Math.floor(Date.now() / 1000);
 /** @param {Record<string, unknown>} [over] */
-const claims = (over = {}) => ({ iss: saas.issuer, aud: saas.clientId, exp: now + 300, nonce: "n1", email: "admin@example.com", ...over });
-
+const claims = (over = {}) => ({
+  iss: saas.issuer,
+  aud: saas.clientId,
+  exp: now + 300,
+  nonce: "n1",
+  email: "admin@example.com",
+  ...over,
+});
 
 describe("accessSaas", () => {
   test("derives every endpoint from the team domain and client id", () => {
-    assert.equal(saas.issuer, "https://sample.cloudflareaccess.com/cdn-cgi/access/sso/oidc/client-1");
+    assert.equal(
+      saas.issuer,
+      "https://sample.cloudflareaccess.com/cdn-cgi/access/sso/oidc/client-1",
+    );
     assert.equal(saas.authorizationUrl, `${saas.issuer}/authorization`);
     assert.equal(saas.tokenUrl, `${saas.issuer}/token`);
     assert.equal(saas.jwksUrl, `${saas.issuer}/jwks`);
@@ -39,8 +54,13 @@ describe("verifyIdToken", () => {
   const expect = { issuer: saas.issuer, audience: saas.clientId };
 
   test("accepts a token signed by the app's key, for this client, in date", async () => {
-    assert.equal((await verifyIdToken(await sign(claims()), keys, expect))?.email, "admin@example.com");
-    assert.ok(await verifyIdToken(await sign(claims({ aud: ["other", saas.clientId] })), keys, expect));
+    assert.equal(
+      (await verifyIdToken(await sign(claims()), keys, expect))?.email,
+      "admin@example.com",
+    );
+    assert.ok(
+      await verifyIdToken(await sign(claims({ aud: ["other", saas.clientId] })), keys, expect),
+    );
   });
 
   test("PLANT: a token signed by another key is refused", async () => {
@@ -48,7 +68,10 @@ describe("verifyIdToken", () => {
   });
 
   test("PLANT: another issuer, another audience, or expired is refused", async () => {
-    assert.equal(await verifyIdToken(await sign(claims({ iss: "https://evil.example.com" })), keys, expect), null);
+    assert.equal(
+      await verifyIdToken(await sign(claims({ iss: "https://evil.example.com" })), keys, expect),
+      null,
+    );
     assert.equal(await verifyIdToken(await sign(claims({ aud: "client-2" })), keys, expect), null);
     assert.equal(await verifyIdToken(await sign(claims({ exp: now - 120 })), keys, expect), null);
     assert.equal(await verifyIdToken(await sign(claims({ exp: undefined })), keys, expect), null);
@@ -64,12 +87,28 @@ describe("verifyIdToken", () => {
   test("PLANT: alg none, HS256 or a missing kid is refused", async () => {
     const unsigned = `${encode({ alg: "none", kid: "k1" })}.${encode(claims())}.`;
     assert.equal(await verifyIdToken(unsigned, keys, expect), null);
-    assert.equal(await verifyIdToken(await sign(claims(), pair.privateKey, { alg: "HS256", kid: "k1" }), keys, expect), null);
-    assert.equal(await verifyIdToken(await sign(claims(), pair.privateKey, { alg: "RS256" }), keys, expect), null);
+    assert.equal(
+      await verifyIdToken(
+        await sign(claims(), pair.privateKey, { alg: "HS256", kid: "k1" }),
+        keys,
+        expect,
+      ),
+      null,
+    );
+    assert.equal(
+      await verifyIdToken(await sign(claims(), pair.privateKey, { alg: "RS256" }), keys, expect),
+      null,
+    );
   });
 
   test("garbage is refused, not thrown", async () => {
-    for (const token of ["", "a.b", "a.b.c", "!!.!!.!!", `${encode({ alg: "RS256", kid: "k1" })}.${encode([1])}.x`]) {
+    for (const token of [
+      "",
+      "a.b",
+      "a.b.c",
+      "!!.!!.!!",
+      `${encode({ alg: "RS256", kid: "k1" })}.${encode([1])}.x`,
+    ]) {
       assert.equal(await verifyIdToken(token, keys, expect), null);
     }
   });
@@ -98,7 +137,14 @@ describe("newSignIn and authorizationUrl", () => {
 
   test("the URL carries the client, the redirect, the state, the nonce and the S256 challenge, never the verifier", async () => {
     const { verifier, nonce } = newSignIn();
-    const url = new URL(await authorizationUrl(saas, { redirectUri: "https://mcp.example.com/callback", state: "s1", verifier, nonce }));
+    const url = new URL(
+      await authorizationUrl(saas, {
+        redirectUri: "https://mcp.example.com/callback",
+        state: "s1",
+        verifier,
+        nonce,
+      }),
+    );
     assert.equal(url.origin + url.pathname, saas.authorizationUrl);
     assert.equal(url.searchParams.get("client_id"), "client-1");
     assert.equal(url.searchParams.get("redirect_uri"), "https://mcp.example.com/callback");
@@ -107,7 +153,9 @@ describe("newSignIn and authorizationUrl", () => {
     assert.equal(url.searchParams.get("state"), "s1");
     assert.equal(url.searchParams.get("nonce"), nonce);
     assert.equal(url.searchParams.get("code_challenge_method"), "S256");
-    const challenge = b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
+    const challenge = b64url(
+      new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))),
+    );
     assert.equal(url.searchParams.get("code_challenge"), challenge);
     assert.ok(!url.href.includes(verifier));
   });
@@ -119,7 +167,12 @@ describe("finishSignIn", () => {
   let exchanges = [];
   /** @type {() => Promise<Response>} */
   let tokenEndpoint;
-  const input = { code: "c1", redirectUri: "https://mcp.example.com/callback", verifier: "v1", nonce: "n1" };
+  const input = {
+    code: "c1",
+    redirectUri: "https://mcp.example.com/callback",
+    verifier: "v1",
+    nonce: "n1",
+  };
 
   beforeEach(() => {
     exchanges = [];
@@ -137,7 +190,10 @@ describe("finishSignIn", () => {
   });
 
   test("exchanges the code with the verifier and the client secret, and returns the verified email", async () => {
-    assert.deepEqual(await finishSignIn(saas, input, keys), { ok: true, email: "admin@example.com" });
+    assert.deepEqual(await finishSignIn(saas, input, keys), {
+      ok: true,
+      email: "admin@example.com",
+    });
     const sent = exchanges[0];
     assert.equal(sent.get("grant_type"), "authorization_code");
     assert.equal(sent.get("code"), "c1");
@@ -148,8 +204,13 @@ describe("finishSignIn", () => {
   });
 
   test("returns the name too, trimmed and cut to 80 characters", async () => {
-    tokenEndpoint = async () => Response.json({ id_token: await sign(claims({ name: `  ${"n".repeat(100)} ` })) });
-    assert.deepEqual(await finishSignIn(saas, input, keys), { ok: true, email: "admin@example.com", name: "n".repeat(80) });
+    tokenEndpoint = async () =>
+      Response.json({ id_token: await sign(claims({ name: `  ${"n".repeat(100)} ` })) });
+    assert.deepEqual(await finishSignIn(saas, input, keys), {
+      ok: true,
+      email: "admin@example.com",
+      name: "n".repeat(80),
+    });
   });
 
   test("PLANT: another nonce, an unverified email or no email is refused", async () => {
@@ -167,16 +228,25 @@ describe("finishSignIn", () => {
 
   test("PLANT: a token signed by another key is refused", async () => {
     tokenEndpoint = async () => Response.json({ id_token: await sign(claims(), other.privateKey) });
-    assert.deepEqual(await finishSignIn(saas, input, keys), { ok: false, reason: "invalid-id-token" });
+    assert.deepEqual(await finishSignIn(saas, input, keys), {
+      ok: false,
+      reason: "invalid-id-token",
+    });
   });
 
   test("a failed or unanswered exchange, or an answer with no ID token, is a refusal, not a throw", async () => {
     tokenEndpoint = async () => {
       throw new DOMException("The operation timed out.", "TimeoutError");
     };
-    assert.deepEqual(await finishSignIn(saas, input, keys), { ok: false, reason: "token-exchange-unanswered" });
+    assert.deepEqual(await finishSignIn(saas, input, keys), {
+      ok: false,
+      reason: "token-exchange-unanswered",
+    });
     tokenEndpoint = async () => new Response("busy", { status: 503 });
-    assert.deepEqual(await finishSignIn(saas, input, keys), { ok: false, reason: "token-exchange-503" });
+    assert.deepEqual(await finishSignIn(saas, input, keys), {
+      ok: false,
+      reason: "token-exchange-503",
+    });
     tokenEndpoint = async () => new Response("not json");
     assert.deepEqual(await finishSignIn(saas, input, keys), { ok: false, reason: "no-id-token" });
   });

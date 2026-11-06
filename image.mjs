@@ -93,8 +93,16 @@ const COLOR = /^#[0-9a-f]{6}$/i;
  * @returns {string | null}
  */
 export function imageVersion(value) {
-  if (typeof value === "string" && /^[0-9a-f]{12,}$/i.test(value)) return value.slice(0, 12).toLowerCase();
-  const time = value instanceof Date ? value.getTime() : typeof value === "number" ? value : typeof value === "string" ? Date.parse(value) : NaN;
+  if (typeof value === "string" && /^[0-9a-f]{12,}$/i.test(value))
+    return value.slice(0, 12).toLowerCase();
+  const time =
+    value instanceof Date
+      ? value.getTime()
+      : typeof value === "number"
+        ? value
+        : typeof value === "string"
+          ? Date.parse(value)
+          : NaN;
   return Number.isFinite(time) && time > 0 ? Math.trunc(time).toString(36) : null;
 }
 
@@ -106,7 +114,9 @@ export function imageVersion(value) {
  * @returns {string}
  */
 export function originalKey(key, request) {
-  const url = new URL(typeof request === "string" ? request : request instanceof URL ? request.href : request.url);
+  const url = new URL(
+    typeof request === "string" ? request : request instanceof URL ? request.href : request.url,
+  );
   return url.searchParams.has("w") ? (suffixed(key)?.stored ?? key) : key;
 }
 
@@ -147,8 +157,13 @@ export function imageWidths({ layout, width, originalWidth, breakpoints = SCREEN
   if (!width) return [];
   const doubleWidth = width * 2;
   const maxSize = originalWidth ? Math.min(doubleWidth, originalWidth) : doubleWidth;
-  if (layout === "fixed") return originalWidth && width > originalWidth ? [originalWidth] : [...new Set([width, maxSize])];
-  return [...new Set([width, doubleWidth, ...breakpoints])].filter((w) => w <= maxSize).sort((a, b) => a - b);
+  if (layout === "fixed")
+    return originalWidth && width > originalWidth
+      ? [originalWidth]
+      : [...new Set([width, maxSize])];
+  return [...new Set([width, doubleWidth, ...breakpoints])]
+    .filter((w) => w <= maxSize)
+    .sort((a, b) => a - b);
 }
 
 /**
@@ -181,20 +196,33 @@ export function imageSizes({ layout, width }) {
  * @template {string} U
  * @param {{ uses: Record<U, ImageUse & { ratio?: string }>, breakpoints?: number[], quality?: number, shareImages?: boolean }} config
  */
-export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAGE_QUALITY, shareImages = false }) {
+export function defineImages({
+  uses,
+  breakpoints = SCREEN_WIDTHS,
+  quality = IMAGE_QUALITY,
+  shareImages = false,
+}) {
   const names = /** @type {U[]} */ (Object.keys(uses));
   if (names.length === 0) throw new Error("defineImages: name at least one use.");
-  if (!breakpoints.every((w) => Number.isInteger(w) && w > 0)) throw new Error("defineImages: breakpoints are whole-pixel widths.");
+  if (!breakpoints.every((w) => Number.isInteger(w) && w > 0))
+    throw new Error("defineImages: breakpoints are whole-pixel widths.");
   const widths = new Set();
   const ratios = new Set();
   for (const name of names) {
     const use = uses[name];
-    if (use.layout !== "full-width" && !(Number.isInteger(use.width) && /** @type {number} */ (use.width) > 0)) {
-      throw new Error(`defineImages: use "${name}" is ${use.layout} and needs a whole-pixel width.`);
+    if (
+      use.layout !== "full-width" &&
+      !(Number.isInteger(use.width) && /** @type {number} */ (use.width) > 0)
+    ) {
+      throw new Error(
+        `defineImages: use "${name}" is ${use.layout} and needs a whole-pixel width.`,
+      );
     }
-    if (use.ratio !== undefined && !RATIO.test(use.ratio)) throw new Error(`defineImages: use "${name}" has ratio "${use.ratio}"; write it as 16x9.`);
+    if (use.ratio !== undefined && !RATIO.test(use.ratio))
+      throw new Error(`defineImages: use "${name}" has ratio "${use.ratio}"; write it as 16x9.`);
     if (use.ratio) ratios.add(use.ratio);
-    for (const w of imageWidths({ layout: use.layout, width: use.width, breakpoints })) widths.add(w);
+    for (const w of imageWidths({ layout: use.layout, width: use.width, breakpoints }))
+      widths.add(w);
   }
   const formats = new Set(["avif", "webp"]);
   if (shareImages) {
@@ -240,28 +268,57 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
   function attributes(image, useName) {
     const use = uses[useName];
     if (!use) throw new Error(`defineImages: no use named "${useName}".`);
-    const plain = { src: image.src, srcset: undefined, sizes: undefined, sources: [], width: image.width ?? undefined, height: image.height ?? undefined, background: undefined };
+    const plain = {
+      src: image.src,
+      srcset: undefined,
+      sizes: undefined,
+      sources: [],
+      width: image.width ?? undefined,
+      height: image.height ?? undefined,
+      background: undefined,
+    };
     if (!image.width || !image.height || !isRasterPath(image.src)) return plain;
-    const offered = imageWidths({ layout: use.layout, width: use.width, originalWidth: image.width, breakpoints }).filter((w) => widths.has(w));
+    const offered = imageWidths({
+      layout: use.layout,
+      width: use.width,
+      originalWidth: image.width,
+      breakpoints,
+    }).filter((w) => widths.has(w));
     if (offered.length === 0) return plain;
     const shape = use.ratio ? RATIO.exec(use.ratio) : null;
     const aspect = shape ? Number(shape[2]) / Number(shape[1]) : image.height / image.width;
-    const shown = use.layout === "full-width" ? image.width : Math.min(/** @type {number} */ (use.width), image.width);
+    const shown =
+      use.layout === "full-width"
+        ? image.width
+        : Math.min(/** @type {number} */ (use.width), image.width);
     // An AVIF larger than Cloudflare encodes would come back WebP, so the AVIF source names that size's WebP: still
     // every width for a sharp picture on a dense screen, and each URL holds the format it names.
     const formatAt = (/** @type {keyof typeof IMAGE_FORMATS} */ format, /** @type {number} */ w) =>
       format === "avif" && Math.max(w, Math.round(w * aspect)) > AVIF_MAX_EDGE ? "webp" : format;
     const srcsetOf = (/** @type {keyof typeof IMAGE_FORMATS} */ format, still = false) =>
-      offered.map((w) => `${url(image.src, { width: w, format: formatAt(format, w), ratio: use.ratio, focus: image.focus, still, version: image.version })} ${w}w`).join(", ");
+      offered
+        .map(
+          (w) =>
+            `${url(image.src, { width: w, format: formatAt(format, w), ratio: use.ratio, focus: image.focus, still, version: image.version })} ${w}w`,
+        )
+        .join(", ");
     const sources = GIF_PATH.test(image.src)
       ? [
           { type: IMAGE_FORMATS.avif, srcset: srcsetOf("avif", true), media: REDUCED_MOTION },
           { type: IMAGE_FORMATS.webp, srcset: srcsetOf("webp", true), media: REDUCED_MOTION },
           { type: IMAGE_FORMATS.webp, srcset: srcsetOf("webp") },
         ]
-      : [{ type: IMAGE_FORMATS.avif, srcset: srcsetOf("avif") }, { type: IMAGE_FORMATS.webp, srcset: srcsetOf("webp") }];
+      : [
+          { type: IMAGE_FORMATS.avif, srcset: srcsetOf("avif") },
+          { type: IMAGE_FORMATS.webp, srcset: srcsetOf("webp") },
+        ];
     return {
-      src: url(image.src, { width: offered.find((w) => w >= shown) ?? offered[offered.length - 1], ratio: use.ratio, focus: image.focus, version: image.version }),
+      src: url(image.src, {
+        width: offered.find((w) => w >= shown) ?? offered[offered.length - 1],
+        ratio: use.ratio,
+        focus: image.focus,
+        version: image.version,
+      }),
       srcset: srcsetOf("webp"),
       sizes: use.sizes ?? imageSizes(use),
       sources,
@@ -280,7 +337,12 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
     if (!shareImages) throw new Error("defineImages: shareImage needs shareImages: true.");
     if (!image.width || !image.height || !isRasterPath(image.src)) return null;
     const { width, ratio, format } = SHARE_IMAGE;
-    return { url: url(image.src, { width, ratio, format, focus: image.focus, version: image.version }), width, height: cropHeight(width, ratio), type: "image/jpeg" };
+    return {
+      url: url(image.src, { width, ratio, format, focus: image.focus, version: image.version }),
+      width,
+      height: cropHeight(width, ratio),
+      type: "image/jpeg",
+    };
   }
 
   /**
@@ -308,7 +370,10 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
    * @param {{ object: R2ObjectLike | null, images?: ImagesLike, cache?: Cache, cacheControl?: string, reread?: () => Promise<R2ObjectLike | null> }} options
    * @returns {Promise<Response>}
    */
-  async function respond(request, { object, images, cache, cacheControl = "public, max-age=31536000, immutable", reread }) {
+  async function respond(
+    request,
+    { object, images, cache, cacheControl = "public, max-age=31536000, immutable", reread },
+  ) {
     const query = new URL(request.url).searchParams;
     const requested = query.get("w");
     if (requested === null) return original(request, object, cacheControl);
@@ -316,7 +381,8 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
     const width = Number(requested);
     const suffix = suffixed(new URL(request.url).pathname);
     const named = query.get("f");
-    if (suffix && named !== null && named !== suffix.format) return new Response("Unsupported format", { status: 400 });
+    if (suffix && named !== null && named !== suffix.format)
+      return new Response("Unsupported format", { status: 400 });
     const format = suffix?.format ?? named ?? "webp";
     const version = query.get("v");
     const ratio = query.get("r");
@@ -325,17 +391,22 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
     // Closed sets: anything outside them is a 400, never a billed transform.
     if (!widths.has(width)) return new Response("Unsupported width", { status: 400 });
     if (!formats.has(format)) return new Response("Unsupported format", { status: 400 });
-    if (version !== null && !VERSION.test(version)) return new Response("Unsupported version", { status: 400 });
-    if (ratio !== null && !ratios.has(ratio)) return new Response("Unsupported crop", { status: 400 });
-    if (fp !== null && (ratio === null || focusOf(fp) !== fp)) return new Response("Unsupported focal point", { status: 400 });
+    if (version !== null && !VERSION.test(version))
+      return new Response("Unsupported version", { status: 400 });
+    if (ratio !== null && !ratios.has(ratio))
+      return new Response("Unsupported crop", { status: 400 });
+    if (fp !== null && (ratio === null || focusOf(fp) !== fp))
+      return new Response("Unsupported focal point", { status: 400 });
     if (still !== null && still !== "1") return new Response("Unsupported still", { status: 400 });
     if (!object) return new Response("Not found", { status: 404 });
     // The focal point in the URL must be the file's own, or any caller could mint crops.
     const stored = focusOf(object.customMetadata?.[FOCUS_METADATA]);
     if (fp !== null && fp !== stored) return new Response("Stale focal point", { status: 400 });
     // A still is a second billed transform of each size, so only a GIF has one.
-    if (still !== null && mediaType(object.httpMetadata?.contentType) !== "image/gif") return new Response("Unsupported still", { status: 400 });
-    if (!isRasterType(object.httpMetadata?.contentType)) return original(request, object, cacheControl);
+    if (still !== null && mediaType(object.httpMetadata?.contentType) !== "image/gif")
+      return new Response("Unsupported still", { status: 400 });
+    if (!isRasterType(object.httpMetadata?.contentType))
+      return original(request, object, cacheControl);
 
     // TRAP: the edge cache is keyed by URL alone and has no purge, so every input to the body goes into the key, as
     // parameters never served or linked: the encoder's quality, and the original's etag, so a file replaced under the
@@ -376,11 +447,18 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
       const result = await images.input(object.body).transform(transform).output(output);
       response = result.response();
     } catch (error) {
-      console.error(JSON.stringify({ alert: "image-transform-failed", url: request.url, detail: error instanceof Error ? error.message : String(error) }));
+      console.error(
+        JSON.stringify({
+          alert: "image-transform-failed",
+          url: request.url,
+          detail: error instanceof Error ? error.message : String(error),
+        }),
+      );
       // The body above is spent, so the original is read again. Short-lived: this URL should hold the size once the
       // transform recovers.
       const again = reread ? await reread() : null;
-      if (!again) return new Response("Image unavailable", { status: 503, headers: { "retry-after": "60" } });
+      if (!again)
+        return new Response("Image unavailable", { status: 503, headers: { "retry-after": "60" } });
       const headers = objectHeaders(again, "public, max-age=300");
       headers.set("x-image", "original-fallback");
       return new Response(again.body, { headers });
@@ -395,18 +473,37 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
       const twin = new URL(request.url);
       if (suffix) twin.pathname = twin.pathname.replace(/\.avif$/i, ".webp");
       else twin.searchParams.delete("f");
-      const moved = new Response(null, { status: 301, headers: { location: `${twin.pathname}${twin.search}`, "cache-control": cacheControl, "cross-origin-resource-policy": "cross-origin", "x-image": `w=${width} avif-over-limit webp` } });
+      const moved = new Response(null, {
+        status: 301,
+        headers: {
+          location: `${twin.pathname}${twin.search}`,
+          "cache-control": cacheControl,
+          "cross-origin-resource-policy": "cross-origin",
+          "x-image": `w=${width} avif-over-limit webp`,
+        },
+      });
       if (cache) await cache.put(cacheKey, moved.clone());
       return moved;
     }
     headers.set("cache-control", cacheControl);
-    headers.set("x-image", `w=${width}${ratio ? ` r=${ratio}` : ""}${still ? " still" : ""} ${format}`);
+    headers.set(
+      "x-image",
+      `w=${width}${ratio ? ` r=${ratio}` : ""}${still ? " still" : ""} ${format}`,
+    );
     const out = new Response(response.body, { headers });
     if (cache) await cache.put(cacheKey, out.clone());
     return out;
   }
 
-  return { widths: [...widths].sort((a, b) => a - b), ratios: [...ratios], url, attributes, shareImage, articleImages, respond };
+  return {
+    widths: [...widths].sort((a, b) => a - b),
+    ratios: [...ratios],
+    url,
+    attributes,
+    shareImage,
+    articleImages,
+    respond,
+  };
 }
 
 /**
@@ -420,7 +517,12 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
 export function pictureProps(attrs, { alt, priority = false, className }) {
   const style = attrs.background ? { background: attrs.background } : undefined;
   return {
-    sources: attrs.sources.map((s) => ({ type: s.type, srcSet: s.srcset, sizes: attrs.sizes, media: s.media })),
+    sources: attrs.sources.map((s) => ({
+      type: s.type,
+      srcSet: s.srcset,
+      sizes: attrs.sizes,
+      media: s.media,
+    })),
     img: {
       src: attrs.src,
       srcSet: attrs.srcset,
@@ -455,7 +557,11 @@ export function imagePreload(attrs) {
 }
 
 /** The HTML attribute for each JSX prop `pictureProps` names differently. */
-const HTML_NAMES = /** @type {Record<string, string>} */ ({ srcSet: "srcset", className: "class", fetchPriority: "fetchpriority" });
+const HTML_NAMES = /** @type {Record<string, string>} */ ({
+  srcSet: "srcset",
+  className: "class",
+  fetchPriority: "fetchpriority",
+});
 
 /**
  * `<picture>` markup for `attributes()`, for a page that writes HTML as a string: `pictureProps` written out, so the
@@ -469,7 +575,10 @@ export function pictureHtml(attrs, options, escape) {
   const tag = (/** @type {string} */ name, /** @type {Record<string, unknown>} */ props) =>
     `<${name}${Object.entries(props)
       .filter(([, value]) => value !== undefined && value !== null)
-      .map(([prop, value]) => ` ${HTML_NAMES[prop] ?? prop}="${escape(prop === "style" ? `background:${/** @type {{ background: string }} */ (value).background}` : String(value))}"`)
+      .map(
+        ([prop, value]) =>
+          ` ${HTML_NAMES[prop] ?? prop}="${escape(prop === "style" ? `background:${/** @type {{ background: string }} */ (value).background}` : String(value))}"`,
+      )
       .join("")}>`;
   if (sources.length === 0) return tag("img", img);
   return `<picture>${sources.map((s) => tag("source", s)).join("")}${tag("img", img)}</picture>`;
@@ -493,22 +602,36 @@ const EDIT_FORMATS = new Set(["image/jpeg", "image/png", "image/webp", "image/av
  * @param {{ rotate?: 90 | 180 | 270, flip?: "h" | "v" | "hv", maxEdge?: number, format: "image/jpeg" | "image/png" | "image/webp" | "image/avif", quality?: number }} options
  * @returns {Promise<Response>} the binding's response: the new bytes, with their content type
  */
-export async function editImage(images, input, { rotate, flip, maxEdge, format, quality = IMAGE_QUALITY }) {
-  if (rotate !== undefined && rotate !== 90 && rotate !== 180 && rotate !== 270) throw new Error(`editImage: rotate is 90, 180 or 270, not ${rotate}.`);
-  if (flip !== undefined && flip !== "h" && flip !== "v" && flip !== "hv") throw new Error(`editImage: flip is "h", "v" or "hv", not ${flip}.`);
-  if (maxEdge !== undefined && !(Number.isInteger(maxEdge) && maxEdge > 0)) throw new Error(`editImage: maxEdge is a whole-pixel length, not ${maxEdge}.`);
-  if (!EDIT_FORMATS.has(format)) throw new Error(`editImage: format is one of ${[...EDIT_FORMATS].join(", ")}, not ${format}.`);
-  if (!(Number.isInteger(quality) && quality >= 1 && quality <= 100)) throw new Error(`editImage: quality is 1 to 100, not ${quality}.`);
+export async function editImage(
+  images,
+  input,
+  { rotate, flip, maxEdge, format, quality = IMAGE_QUALITY },
+) {
+  if (rotate !== undefined && rotate !== 90 && rotate !== 180 && rotate !== 270)
+    throw new Error(`editImage: rotate is 90, 180 or 270, not ${rotate}.`);
+  if (flip !== undefined && flip !== "h" && flip !== "v" && flip !== "hv")
+    throw new Error(`editImage: flip is "h", "v" or "hv", not ${flip}.`);
+  if (maxEdge !== undefined && !(Number.isInteger(maxEdge) && maxEdge > 0))
+    throw new Error(`editImage: maxEdge is a whole-pixel length, not ${maxEdge}.`);
+  if (!EDIT_FORMATS.has(format))
+    throw new Error(`editImage: format is one of ${[...EDIT_FORMATS].join(", ")}, not ${format}.`);
+  if (!(Number.isInteger(quality) && quality >= 1 && quality <= 100))
+    throw new Error(`editImage: quality is 1 to 100, not ${quality}.`);
   /** @type {Record<string, unknown>} */
   const transform = {};
   if (flip) transform.flip = flip;
   if (rotate) transform.rotate = rotate;
   if (maxEdge) Object.assign(transform, { width: maxEdge, height: maxEdge, fit: "scale-down" });
   // A Response reads any buffer or view as exactly its own bytes, never the larger allocation a view may sit in.
-  const stream = input instanceof ReadableStream ? input : /** @type {ReadableStream} */ (new Response(/** @type {BodyInit} */ (input)).body);
+  const stream =
+    input instanceof ReadableStream
+      ? input
+      : /** @type {ReadableStream} */ (new Response(/** @type {BodyInit} */ (input)).body);
   // A re-encode alone goes straight to output: the binding takes `.output()` on its input, with no transform.
   const source = images.input(stream);
-  const result = await (Object.keys(transform).length ? source.transform(transform) : source).output({ format, quality });
+  const result = await (
+    Object.keys(transform).length ? source.transform(transform) : source
+  ).output({ format, quality });
   return result.response();
 }
 
@@ -539,11 +662,16 @@ function cropHeight(width, ratio) {
  */
 function placeholderBackground({ src, placeholder, color, focus }) {
   if (!/\.(jpe?g|webp|avif)(?:$|[?#])/i.test(src)) return undefined;
-  const picture = typeof placeholder === "string" && placeholder.length <= 2048 && PLACEHOLDER.test(placeholder) ? placeholder : null;
+  const picture =
+    typeof placeholder === "string" && placeholder.length <= 2048 && PLACEHOLDER.test(placeholder)
+      ? placeholder
+      : null;
   const fill = typeof color === "string" && COLOR.test(color) ? color.toLowerCase() : null;
   if (!picture && !fill) return undefined;
   if (!picture) return /** @type {string} */ (fill);
-  const [x, y] = (focusOf(focus) ?? "0.5x0.5").split("x").map((n) => `${Math.round(Number(n) * 100)}%`);
+  const [x, y] = (focusOf(focus) ?? "0.5x0.5")
+    .split("x")
+    .map((n) => `${Math.round(Number(n) * 100)}%`);
   return `${fill ? `${fill} ` : ""}url("${picture}") ${x} ${y}/cover no-repeat`;
 }
 
@@ -576,7 +704,8 @@ function objectHeaders(object, cacheControl) {
   headers.set("cross-origin-resource-policy", corpFor(headers.get("content-type")));
   // An SVG served inline from the site's own origin is script running as the site. Keyed on the stored type, so a file
   // renamed to .png is caught.
-  if ((headers.get("content-type") ?? "").toLowerCase().startsWith("image/svg+xml")) headers.set("content-disposition", "attachment");
+  if ((headers.get("content-type") ?? "").toLowerCase().startsWith("image/svg+xml"))
+    headers.set("content-disposition", "attachment");
   return headers;
 }
 
@@ -587,6 +716,7 @@ function objectHeaders(object, cacheControl) {
  */
 function original(request, object, cacheControl) {
   if (!object) return new Response("Not found", { status: 404 });
-  if (request.headers.get("if-none-match") === object.httpEtag) return new Response(null, { status: 304, headers: { etag: object.httpEtag } });
+  if (request.headers.get("if-none-match") === object.httpEtag)
+    return new Response(null, { status: 304, headers: { etag: object.httpEtag } });
   return new Response(object.body, { headers: objectHeaders(object, cacheControl) });
 }

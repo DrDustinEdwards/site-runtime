@@ -33,7 +33,13 @@ export function redact(text, secrets = []) {
 /** @param {unknown} address */
 function addressOf(address) {
   if (typeof address === "string") return address.trim();
-  if (address && typeof address === "object" && "email" in address && typeof address.email === "string") return address.email.trim();
+  if (
+    address &&
+    typeof address === "object" &&
+    "email" in address &&
+    typeof address.email === "string"
+  )
+    return address.email.trim();
   return "";
 }
 
@@ -53,7 +59,11 @@ function cleanAddress(address) {
  * @returns {{ sent: false; code: string; error: string }}
  */
 function refused(code, error) {
-  logEvent("email_send_failed", { code, error }, { level: code === "not_configured" ? "warn" : "error" });
+  logEvent(
+    "email_send_failed",
+    { code, error },
+    { level: code === "not_configured" ? "warn" : "error" },
+  );
   return { sent: false, code, error };
 }
 
@@ -68,11 +78,16 @@ export async function sendEmail(binding, mail, options = {}) {
   const to = Array.isArray(mail.to) ? mail.to : [mail.to];
   const recipients = to.map(addressOf);
   const from = addressOf(mail.from);
-  if (!binding || typeof binding.send !== "function") return refused("not_configured", "no send_email binding");
+  if (!binding || typeof binding.send !== "function")
+    return refused("not_configured", "no send_email binding");
   if (!from) return refused("not_configured", "no sender address");
-  if (recipients.length === 0 || recipients.some((r) => !r)) return refused("not_configured", "no recipient address");
-  const names = [mail.from, ...to, ...(mail.replyTo ? [mail.replyTo] : [])].map((a) => (typeof a === "string" ? a : a.email));
-  if (names.some((a) => LINE_BREAK.test(a))) return refused("header_line_break", "an address holds a line break");
+  if (recipients.length === 0 || recipients.some((r) => !r))
+    return refused("not_configured", "no recipient address");
+  const names = [mail.from, ...to, ...(mail.replyTo ? [mail.replyTo] : [])].map((a) =>
+    typeof a === "string" ? a : a.email,
+  );
+  if (names.some((a) => LINE_BREAK.test(a)))
+    return refused("header_line_break", "an address holds a line break");
   /** @type {import("./email.d.mts").Mail} */
   const message = {
     ...mail,
@@ -82,8 +97,13 @@ export async function sendEmail(binding, mail, options = {}) {
   };
   if (mail.replyTo) message.replyTo = cleanAddress(mail.replyTo);
   try {
-    const result = /** @type {{ messageId?: unknown } | null | undefined} */ (await binding.send(/** @type {never} */ (message)));
-    return { sent: true, messageId: typeof result?.messageId === "string" ? result.messageId : null };
+    const result = /** @type {{ messageId?: unknown } | null | undefined} */ (
+      await binding.send(/** @type {never} */ (message))
+    );
+    return {
+      sent: true,
+      messageId: typeof result?.messageId === "string" ? result.messageId : null,
+    };
   } catch (err) {
     const e = /** @type {{ code?: unknown; message?: unknown }} */ (err ?? {});
     const code = typeof e.code === "string" && CODE.test(e.code) ? e.code : "unknown";

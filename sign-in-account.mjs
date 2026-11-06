@@ -94,7 +94,9 @@ export function coarseLocation(request) {
   const cf = request?.cf;
   if (!cf) return null;
   const country = typeof cf.country === "string" && cf.country ? countryName(cf.country) : null;
-  const parts = [cf.city, cf.region, country].filter((part) => typeof part === "string" && part !== "");
+  const parts = [cf.city, cf.region, country].filter(
+    (part) => typeof part === "string" && part !== "",
+  );
   return parts.length ? [...new Set(parts)].join(", ") : null;
 }
 
@@ -205,7 +207,11 @@ export function sessionRows(sessions, currentToken) {
       current: Boolean(currentToken) && session.token === currentToken,
       location: typeof session.location === "string" && session.location ? session.location : null,
     }))
-    .sort((a, b) => Number(b.current) - Number(a.current) || b.lastActiveAt.getTime() - a.lastActiveAt.getTime());
+    .sort(
+      (a, b) =>
+        Number(b.current) - Number(a.current) ||
+        b.lastActiveAt.getTime() - a.lastActiveAt.getTime(),
+    );
 }
 
 /**
@@ -225,10 +231,14 @@ export function sessionRows(sessions, currentToken) {
 export async function accountSessions(auth, request) {
   const headers = request.headers;
   try {
-    const [current, sessions] = await Promise.all([auth.api.getSession(sessionLookup(request)), auth.api.listSessions({ headers })]);
+    const [current, sessions] = await Promise.all([
+      auth.api.getSession(sessionLookup(request)),
+      auth.api.listSessions({ headers }),
+    ]);
     return sessionRows(sessions, current?.session.token);
   } catch (error) {
-    if (/** @type {{ body?: { code?: string } }} */ (error)?.body?.code === "SESSION_NOT_FRESH") return null;
+    if (/** @type {{ body?: { code?: string } }} */ (error)?.body?.code === "SESSION_NOT_FRESH")
+      return null;
     throw error;
   }
 }
@@ -287,7 +297,11 @@ export async function requireFreshSession(auth, request) {
   if (sessionIsFresh(found.session)) return found;
   await logAuthEvent({
     event: OWASP_EVENTS.authorizationFailure,
-    fields: { reason: "SESSION_NOT_FRESH", endpoint: new URL(request.url).pathname, user_id: found.user.id },
+    fields: {
+      reason: "SESSION_NOT_FRESH",
+      endpoint: new URL(request.url).pathname,
+      user_id: found.user.id,
+    },
     level: "warn",
   });
   throw new SessionNotFresh();
@@ -352,8 +366,10 @@ const ZERO_AAGUID = "00000000-0000-0000-0000-000000000000";
  */
 export function knownProvider(aaguid, userAgent) {
   const id = aaguid?.trim().toLowerCase();
-  if (id && Object.hasOwn(PROVIDERS, id)) return PROVIDERS[/** @type {keyof typeof PROVIDERS} */ (id)];
-  if ((!id || id === ZERO_AAGUID) && /\b(?:iPhone|iPad|Macintosh)\b/.test(userAgent ?? "")) return "Apple Passwords";
+  if (id && Object.hasOwn(PROVIDERS, id))
+    return PROVIDERS[/** @type {keyof typeof PROVIDERS} */ (id)];
+  if ((!id || id === ZERO_AAGUID) && /\b(?:iPhone|iPad|Macintosh)\b/.test(userAgent ?? ""))
+    return "Apple Passwords";
   return null;
 }
 
@@ -488,11 +504,19 @@ export async function shouldOfferPasskey(db, userId, passkeys, now = Date.now())
 // ---- which event a request was ------------------------------------------------------------------
 
 /** The ways in, by Better Auth endpoint. `/callback/:id` and `/sign-in/social` name the provider instead. */
-const SIGN_IN_VIA = { "/magic-link/verify": "link", "/sign-in/email-otp": "code", "/passkey/verify-authentication": "passkey" };
+const SIGN_IN_VIA = {
+  "/magic-link/verify": "link",
+  "/sign-in/email-otp": "code",
+  "/passkey/verify-authentication": "passkey",
+};
 /** The endpoints that mail a sign-in link or code. */
 const SENT_VIA = { "/sign-in/magic-link": "link", "/email-otp/send-verification-otp": "code" };
 /** The session revocations, and which sessions each ends. */
-const REVOKED = { "/revoke-session": "one", "/revoke-sessions": "all", "/revoke-other-sessions": "others" };
+const REVOKED = {
+  "/revoke-session": "one",
+  "/revoke-sessions": "all",
+  "/revoke-other-sessions": "others",
+};
 /** Refusals for want of a recent sign-in: the fresh-session middleware's, and /delete-user's own. */
 const NOT_FRESH = new Set(["SESSION_NOT_FRESH", "SESSION_EXPIRED"]);
 
@@ -514,7 +538,10 @@ export function outcome(returned) {
     const code = location ? new URL(location, "http://x").searchParams.get("error") : null;
     return code ? { ok: false, code } : { ok: true };
   }
-  const code = typeof error.body?.code === "string" ? error.body.code : String(error.status ?? error.statusCode ?? "error");
+  const code =
+    typeof error.body?.code === "string"
+      ? error.body.code
+      : String(error.status ?? error.statusCode ?? "error");
   return { ok: false, code };
 }
 
@@ -540,7 +567,11 @@ export function authEvent({ path, params, body, returned, signedIn, userId, link
   const result = outcome(returned);
   const user = userId ? { user_id: userId } : {};
   if (!result.ok && result.code && NOT_FRESH.has(result.code)) {
-    return { event: OWASP_EVENTS.authorizationFailure, fields: { reason: result.code, endpoint: path, ...user }, level: "warn" };
+    return {
+      event: OWASP_EVENTS.authorizationFailure,
+      fields: { reason: result.code, endpoint: path, ...user },
+      level: "warn",
+    };
   }
   const via = Object.hasOwn(SIGN_IN_VIA, path)
     ? SIGN_IN_VIA[/** @type {keyof typeof SIGN_IN_VIA} */ (path)]
@@ -553,8 +584,17 @@ export function authEvent({ path, params, body, returned, signedIn, userId, link
     if (signedIn) return { event: OWASP_EVENTS.signInSuccess, fields: { via, ...user } };
     if (result.ok) return null; // an OAuth callback that linked (told by the account hook), or a sign-in started
     if (linking)
-      return { event: OWASP_EVENTS.userUpdated, fields: { change: "sign_in_linked", via, code: result.code }, level: "warn" };
-    return { event: OWASP_EVENTS.signInFailure, fields: { via, code: result.code }, level: "warn", email: body?.email };
+      return {
+        event: OWASP_EVENTS.userUpdated,
+        fields: { change: "sign_in_linked", via, code: result.code },
+        level: "warn",
+      };
+    return {
+      event: OWASP_EVENTS.signInFailure,
+      fields: { via, code: result.code },
+      level: "warn",
+      email: body?.email,
+    };
   }
   if (!result.ok) return null;
   if (Object.hasOwn(SENT_VIA, path)) {
@@ -578,7 +618,10 @@ export function authEvent({ path, params, body, returned, signedIn, userId, link
     return {
       event: OWASP_EVENTS.userUpdated,
       fields: { change: "passkey_added", ...user },
-      notice: { kind: "passkey-added", ...(typeof name === "string" && name ? { passkeyName: name } : {}) },
+      notice: {
+        kind: "passkey-added",
+        ...(typeof name === "string" && name ? { passkeyName: name } : {}),
+      },
     };
   }
   if (path === "/passkey/delete-passkey") {
@@ -598,10 +641,20 @@ export function authEvent({ path, params, body, returned, signedIn, userId, link
  * @param {{ db?: D1Like | null, userAgent?: string | null, request?: Request | null, deviceId?: string | null }} [where]
  *   `deviceId` (string or null) only with `sessionDetails`, whose migration adds the column
  */
-export async function logAuthEvent({ event, fields, level, email }, { db, userAgent, request, deviceId } = {}) {
+export async function logAuthEvent(
+  { event, fields, level, email },
+  { db, userAgent, request, deviceId } = {},
+) {
   const key = typeof email === "string" ? await emailKey("email", email) : null;
   logEvent(event, { ...fields, ...(key ? { email_key: key } : {}) }, level ? { level } : {});
-  if (db) await recordAuthEvent(db, { event, fields, userAgent: userAgent ?? request?.headers.get("user-agent"), request, deviceId });
+  if (db)
+    await recordAuthEvent(db, {
+      event,
+      fields,
+      userAgent: userAgent ?? request?.headers.get("user-agent"),
+      request,
+      deviceId,
+    });
 }
 
 // ---- the event table and the security history ----------------------------------------------------------
@@ -637,9 +690,21 @@ CREATE INDEX IF NOT EXISTS auth_events_at ON auth_events (at, event);
  * @param {D1Like} db
  * @param {{ event: string, fields: Record<string, unknown>, userAgent?: string | null, request?: Request | null, at?: number, deviceId?: string | null }} row
  */
-export async function recordAuthEvent(db, { event, fields, userAgent, request, at = Date.now(), deviceId }) {
-  const text = (/** @type {unknown} */ value) => (typeof value === "string" && value ? value : null);
-  const values = [at, event, text(fields.change) ?? text(fields.scope) ?? text(fields.passkey_id), text(fields.via), text(fields.user_id), deviceName(userAgent), coarseLocation(request)];
+export async function recordAuthEvent(
+  db,
+  { event, fields, userAgent, request, at = Date.now(), deviceId },
+) {
+  const text = (/** @type {unknown} */ value) =>
+    typeof value === "string" && value ? value : null;
+  const values = [
+    at,
+    event,
+    text(fields.change) ?? text(fields.scope) ?? text(fields.passkey_id),
+    text(fields.via),
+    text(fields.user_id),
+    deviceName(userAgent),
+    coarseLocation(request),
+  ];
   const withDevice = deviceId !== undefined;
   try {
     await db
@@ -684,7 +749,10 @@ export async function securityHistory(db, userId, limit = 50) {
     .bind(userId, limit)
     .all();
   return results.map((row) => ({
-    kind: row.event === OWASP_EVENTS.signInSuccess ? "sign-in" : HISTORY_KINDS[/** @type {keyof typeof HISTORY_KINDS} */ (row.change)],
+    kind:
+      row.event === OWASP_EVENTS.signInSuccess
+        ? "sign-in"
+        : HISTORY_KINDS[/** @type {keyof typeof HISTORY_KINDS} */ (row.change)],
     via: row.via ?? null,
     at: new Date(row.at),
     device: row.device ?? null,
@@ -699,7 +767,9 @@ export async function securityHistory(db, userId, limit = 50) {
  */
 export async function signedInDevices(db, userId) {
   const { results } = await db
-    .prepare(`SELECT DISTINCT device FROM auth_events WHERE user_id = ?1 AND event = '${OWASP_EVENTS.signInSuccess}'`)
+    .prepare(
+      `SELECT DISTINCT device FROM auth_events WHERE user_id = ?1 AND event = '${OWASP_EVENTS.signInSuccess}'`,
+    )
     .bind(userId)
     .all();
   return results.map((row) => row.device ?? null);
@@ -712,7 +782,9 @@ export async function signedInDevices(db, userId) {
  */
 export async function signedInDeviceIds(db, userId) {
   const { results } = await db
-    .prepare(`SELECT DISTINCT device_id FROM auth_events WHERE user_id = ?1 AND event = '${OWASP_EVENTS.signInSuccess}' AND device_id IS NOT NULL`)
+    .prepare(
+      `SELECT DISTINCT device_id FROM auth_events WHERE user_id = ?1 AND event = '${OWASP_EVENTS.signInSuccess}' AND device_id IS NOT NULL`,
+    )
     .bind(userId)
     .all();
   return results.map((row) => String(row.device_id));
@@ -721,7 +793,9 @@ export async function signedInDeviceIds(db, userId) {
 /** Whether a person's history shows a passkey added, so a sign-in with none left is a recovery. @param {D1Like} db @param {string} userId */
 export async function hadPasskey(db, userId) {
   const { results } = await db
-    .prepare(`SELECT 1 FROM auth_events WHERE user_id = ?1 AND event = '${OWASP_EVENTS.userUpdated}' AND change = 'passkey_added' LIMIT 1`)
+    .prepare(
+      `SELECT 1 FROM auth_events WHERE user_id = ?1 AND event = '${OWASP_EVENTS.userUpdated}' AND change = 'passkey_added' LIMIT 1`,
+    )
     .bind(userId)
     .all();
   return results.length > 0;
@@ -759,7 +833,10 @@ export async function authEventCounts(db, sinceMs) {
  */
 export async function pruneAuthEvents(db, now = Date.now()) {
   const day = 24 * 60 * 60 * 1000;
-  await db.prepare("DELETE FROM auth_events WHERE (user_id IS NULL AND at < ?1) OR at < ?2").bind(now - 30 * day, now - 365 * day).run();
+  await db
+    .prepare("DELETE FROM auth_events WHERE (user_id IS NULL AND at < ?1) OR at < ?2")
+    .bind(now - 30 * day, now - 365 * day)
+    .run();
 }
 
 // ---- security notices -------------------------------------------------------------------------------
@@ -767,7 +844,8 @@ export async function pruneAuthEvents(db, now = Date.now()) {
 const PROVIDER_NAMES = /** @type {Record<string, string>} */ ({ google: "Google", apple: "Apple" });
 
 /** @param {string | undefined} providerId */
-export const providerName = (providerId) => (providerId && PROVIDER_NAMES[providerId]) || providerId || "A sign-in method";
+export const providerName = (providerId) =>
+  (providerId && PROVIDER_NAMES[providerId]) || providerId || "A sign-in method";
 
 /**
  * @typedef {{
@@ -789,7 +867,10 @@ const CONTACT = (/** @type {string} */ site) => `If this was not you, contact ${
  *   passkeyName?: string, provider?: string, oldEmail?: string, newEmail?: string, toOldAddress?: boolean }} facts
  * @returns {NoticeDetail}
  */
-export function noticeDetail(kind, { siteName, at = new Date(), userAgent, request, toOldAddress, ...facts }) {
+export function noticeDetail(
+  kind,
+  { siteName, at = new Date(), userAgent, request, toOldAddress, ...facts },
+) {
   const provider = providerName(facts.provider);
   /** @type {Record<string, [string, string | null, string]>} */
   const words = {
@@ -807,7 +888,9 @@ export function noticeDetail(kind, { siteName, at = new Date(), userAgent, reque
       toOldAddress ? `${CONTACT(siteName)} Sign-in links now go to the new address.` : IF_NOT_YOU,
     ],
     "sessions-revoked": [
-      facts.scope === "others" ? "You were signed out on your other devices" : "You were signed out everywhere",
+      facts.scope === "others"
+        ? "You were signed out on your other devices"
+        : "You were signed out everywhere",
       null,
       "If this was not you, sign in again and check your passkeys and sign-in methods.",
     ],
@@ -817,7 +900,7 @@ export function noticeDetail(kind, { siteName, at = new Date(), userAgent, reque
       null,
       "If this was not you, sign in now, end that device's session, and check your passkeys and sign-in methods.",
     ],
-    "recovery": [
+    recovery: [
       "You signed in by email, with no passkey on your account",
       "Every other device was signed out. Add a passkey now so you can sign in without email next time.",
       IF_NOT_YOU,
@@ -855,6 +938,10 @@ export async function sendNoticeSafely(send, kind, notice) {
   try {
     await send(kind, notice);
   } catch (error) {
-    logEvent("security_notice_failed", { kind, user_id: notice.user.id, error }, { level: "error" });
+    logEvent(
+      "security_notice_failed",
+      { kind, user_id: notice.user.id, error },
+      { level: "error" },
+    );
   }
 }

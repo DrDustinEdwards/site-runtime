@@ -152,14 +152,17 @@ export async function readAuditLog(env, { before, limit = LOG_PAGE } = {}) {
 }
 
 /** @param {number | undefined} ms */
-const when = (ms) => (ms ? new Date(ms * (ms < 1e12 ? 1000 : 1)).toISOString().replace("T", " ").slice(0, 16) : "never");
+const when = (ms) =>
+  ms ? new Date(ms * (ms < 1e12 ? 1000 : 1)).toISOString().replace("T", " ").slice(0, 16) : "never";
 
 /** @param {string | null} json */
 function resultLine(json) {
   if (!json) return "";
   try {
     const result = JSON.parse(json);
-    const line = String(result.text ?? "").replace(/\s+/g, " ").slice(0, 140);
+    const line = String(result.text ?? "")
+      .replace(/\s+/g, " ")
+      .slice(0, 140);
     return `${result.isError ? "Error: " : ""}${line}`;
   } catch {
     return "";
@@ -180,7 +183,12 @@ function page({ name, email, csrf, grants, keys, probe, log, before, notice }) {
 <td><form method="post" action="${OWNER_PATH}/revoke">${token}<input type="hidden" name="grant" value="${escape(g.id)}"><button>Revoke</button></form></td></tr>`;
     })
     .join("\n");
-  const keyRows = keys.map((k) => `<li><code>${escape(k)}</code> (Worker secret <code>${AGENT_KEY_PREFIX}${escape(k.toUpperCase())}</code>)</li>`).join("\n");
+  const keyRows = keys
+    .map(
+      (k) =>
+        `<li><code>${escape(k)}</code> (Worker secret <code>${AGENT_KEY_PREFIX}${escape(k.toUpperCase())}</code>)</li>`,
+    )
+    .join("\n");
   const rows = Array.isArray(log) ? log : [];
   const logRows = rows
     .map(
@@ -189,7 +197,10 @@ function page({ name, email, csrf, grants, keys, probe, log, before, notice }) {
     )
     .join("\n");
   const oldest = rows.at(-1)?.seq;
-  const older = rows.length === LOG_PAGE && oldest ? `<p><a href="${OWNER_PATH}?before=${oldest}">Older calls</a></p>` : "";
+  const older =
+    rows.length === LOG_PAGE && oldest
+      ? `<p><a href="${OWNER_PATH}?before=${oldest}">Older calls</a></p>`
+      : "";
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -224,12 +235,12 @@ ${
     : log === "owner"
       ? "<p>The tool-call log holds everyone's calls, so only the server's owner reads it.</p>"
       : rows.length
-      ? `<p>Newest first, times in UTC. Older rows are in the daily copy in R2.</p>
+        ? `<p>Newest first, times in UTC. Older rows are in the daily copy in R2.</p>
 <div class="scroll"><table><thead><tr><th>Time</th><th>Event</th><th>Caller</th><th>Tool</th><th>Result</th></tr></thead><tbody>
 ${logRows}
 </tbody></table></div>
 ${older}`
-      : "<p>No calls yet.</p>"
+        : "<p>No calls yet.</p>"
 }
 ${before ? `<p><a href="${OWNER_PATH}">Newest calls</a></p>` : ""}
 </body></html>`;
@@ -264,18 +275,33 @@ export function ownerPage({ name, admit, server, readsLog = () => true }) {
     const id = cookie(request, SESSION_COOKIE);
     if (!id || !/^[0-9a-f]{64}$/.test(id)) return null;
     const stored = await env.OAUTH_KV.get(`owner:session:${await sha256Hex(id)}`);
-    return stored ? /** @type {{ email: string, csrf: string, log: boolean }} */ (JSON.parse(stored)) : null;
+    return stored
+      ? /** @type {{ email: string, csrf: string, log: boolean }} */ (JSON.parse(stored))
+      : null;
   }
 
   /** @param {Request} request @param {E} env */
   async function startSignIn(request, env) {
     const saas = accessSaas(env);
-    if (!saas) return respond("This server is not configured for sign-in. Not configured means not open.", 503);
+    if (!saas)
+      return respond(
+        "This server is not configured for sign-in. Not configured means not open.",
+        503,
+      );
     const state = `${STATE_PREFIX}${randomId()}`;
     const signIn = newSignIn();
-    await env.OAUTH_KV.put(`owner:sign-in:${state}`, JSON.stringify(signIn), { expirationTtl: SIGN_IN_SECONDS });
-    const to = await authorizationUrl(saas, { redirectUri: `${originOf(request, env)}/callback`, state, ...signIn });
-    return seeOther(to, new Headers({ "set-cookie": setCookie(SIGN_IN_COOKIE, state, SIGN_IN_SECONDS) }));
+    await env.OAUTH_KV.put(`owner:sign-in:${state}`, JSON.stringify(signIn), {
+      expirationTtl: SIGN_IN_SECONDS,
+    });
+    const to = await authorizationUrl(saas, {
+      redirectUri: `${originOf(request, env)}/callback`,
+      state,
+      ...signIn,
+    });
+    return seeOther(
+      to,
+      new Headers({ "set-cookie": setCookie(SIGN_IN_COOKIE, state, SIGN_IN_SECONDS) }),
+    );
   }
 
   /** @param {Request} request @param {E} env */
@@ -284,16 +310,29 @@ export function ownerPage({ name, admit, server, readsLog = () => true }) {
     const state = url.searchParams.get("state") ?? "";
     const code = url.searchParams.get("code");
     const bound = cookie(request, SIGN_IN_COOKIE);
-    if (!bound || !(await safeEqual(bound, state))) return respond("This sign-in was started in another browser. Open the owner page again.", 400);
+    if (!bound || !(await safeEqual(bound, state)))
+      return respond(
+        "This sign-in was started in another browser. Open the owner page again.",
+        400,
+      );
     const key = `owner:sign-in:${state}`;
     const stored = await env.OAUTH_KV.get(key);
     if (!stored) return respond("This sign-in has expired. Open the owner page again.", 400);
     await env.OAUTH_KV.delete(key);
     const saas = accessSaas(env);
-    if (!saas) return respond("This server is not configured for sign-in. Not configured means not open.", 503);
+    if (!saas)
+      return respond(
+        "This server is not configured for sign-in. Not configured means not open.",
+        503,
+      );
     if (!code) return respond("Sign-in with Cloudflare Access did not complete.", 400);
     const { verifier, nonce } = JSON.parse(stored);
-    const signedIn = await finishSignIn(saas, { code, redirectUri: `${originOf(request, env)}/callback`, verifier, nonce });
+    const signedIn = await finishSignIn(saas, {
+      code,
+      redirectUri: `${originOf(request, env)}/callback`,
+      verifier,
+      nonce,
+    });
     const admitted = signedIn.ok && (await admit(env, signedIn));
     if (env.TOOL_CALL_LOG) {
       await recordAudit(env, {
@@ -301,18 +340,30 @@ export function ownerPage({ name, admit, server, readsLog = () => true }) {
         phase: "sign-in",
         caller: signedIn.ok ? `access:${signedIn.email}` : "unknown",
         tool: "",
-        result: { isError: !admitted, text: signedIn.ok ? (admitted ? "owner page" : "owner page: not-admitted") : `owner page: ${signedIn.reason}` },
+        result: {
+          isError: !admitted,
+          text: signedIn.ok
+            ? admitted
+              ? "owner page"
+              : "owner page: not-admitted"
+            : `owner page: ${signedIn.reason}`,
+        },
         server,
         correlationId: correlationId(),
       });
     }
-    if (!signedIn.ok || !admitted) return respond(`This account cannot open the owner page of ${name}.`, 403);
+    if (!signedIn.ok || !admitted)
+      return respond(`This account cannot open the owner page of ${name}.`, 403);
     const id = randomId();
     const email = signedIn.email.toLowerCase();
     const log = (await readsLog(env, email)) === true;
-    await env.OAUTH_KV.put(`owner:session:${await sha256Hex(id)}`, JSON.stringify({ email, csrf: randomId(), log }), {
-      expirationTtl: SESSION_SECONDS,
-    });
+    await env.OAUTH_KV.put(
+      `owner:session:${await sha256Hex(id)}`,
+      JSON.stringify({ email, csrf: randomId(), log }),
+      {
+        expirationTtl: SESSION_SECONDS,
+      },
+    );
     const headers = new Headers();
     headers.append("set-cookie", setCookie(SESSION_COOKIE, id, SESSION_SECONDS));
     headers.append("set-cookie", setCookie(SIGN_IN_COOKIE, "", 0));
@@ -325,11 +376,13 @@ export function ownerPage({ name, admit, server, readsLog = () => true }) {
    */
   async function postedForm(request, env, signedIn) {
     const from = request.headers.get("origin");
-    if (from !== originOf(request, env)) return respond("This form must be sent from the owner page.", 403);
+    if (from !== originOf(request, env))
+      return respond("This form must be sent from the owner page.", 403);
     const body = await readCapped(request, FORM_MAX_BYTES);
     if (body === null) return respond("The form is too large.", 413);
     const form = new URLSearchParams(body);
-    if (!(await safeEqual(String(form.get("csrf") ?? ""), signedIn.csrf))) return respond("This form has expired. Open the owner page again.", 403);
+    if (!(await safeEqual(String(form.get("csrf") ?? ""), signedIn.csrf)))
+      return respond("This form has expired. Open the owner page again.", 403);
     return form;
   }
 
@@ -349,22 +402,48 @@ export function ownerPage({ name, admit, server, readsLog = () => true }) {
         const before = Number(url.searchParams.get("before")) || null;
         /** @type {AuditLogRow[] | null | "owner"} */
         let log = null;
-        if (env.TOOL_CALL_LOG) log = signedIn.log ? await readAuditLog(env, { before: before ?? undefined }) : "owner";
+        if (env.TOOL_CALL_LOG)
+          log = signedIn.log ? await readAuditLog(env, { before: before ?? undefined }) : "owner";
         const notice = url.searchParams.get("revoked") ? "Grant revoked." : "";
-        const html = page({ name, email: signedIn.email, csrf: signedIn.csrf, grants: await listOwnerGrants(env.OAUTH_PROVIDER, signedIn.email), keys: agentKeyNames(env), probe: Boolean(env.MCP_PROBE_KEY?.trim()), log, before, notice });
+        const html = page({
+          name,
+          email: signedIn.email,
+          csrf: signedIn.csrf,
+          grants: await listOwnerGrants(env.OAUTH_PROVIDER, signedIn.email),
+          keys: agentKeyNames(env),
+          probe: Boolean(env.MCP_PROBE_KEY?.trim()),
+          log,
+          before,
+          notice,
+        });
         return respond(html, 200, "text/html; charset=utf-8");
       }
-      if (request.method !== "POST" || (url.pathname !== `${OWNER_PATH}/revoke` && url.pathname !== `${OWNER_PATH}/sign-out`)) return respond("Not found.", 404);
-      if (!signedIn) return respond("Your owner session has ended. Open the owner page again.", 403);
+      if (
+        request.method !== "POST" ||
+        (url.pathname !== `${OWNER_PATH}/revoke` && url.pathname !== `${OWNER_PATH}/sign-out`)
+      )
+        return respond("Not found.", 404);
+      if (!signedIn)
+        return respond("Your owner session has ended. Open the owner page again.", 403);
       const form = await postedForm(request, env, signedIn);
       if (form instanceof Response) return form;
       if (url.pathname === `${OWNER_PATH}/sign-out`) {
         const id = cookie(request, SESSION_COOKIE) ?? "";
         await env.OAUTH_KV.delete(`owner:session:${await sha256Hex(id)}`);
-        return respond(`Signed out of the owner page of ${name}.`, 200, undefined, new Headers({ "set-cookie": setCookie(SESSION_COOKIE, "", 0) }));
+        return respond(
+          `Signed out of the owner page of ${name}.`,
+          200,
+          undefined,
+          new Headers({ "set-cookie": setCookie(SESSION_COOKIE, "", 0) }),
+        );
       }
       const grantId = String(form.get("grant") ?? "");
-      const done = await revokeOwnerGrant(env, env.OAUTH_PROVIDER, { userId: signedIn.email, grantId, caller: `access:${signedIn.email}`, server });
+      const done = await revokeOwnerGrant(env, env.OAUTH_PROVIDER, {
+        userId: signedIn.email,
+        grantId,
+        caller: `access:${signedIn.email}`,
+        server,
+      });
       if (!done) return respond("You hold no such grant.", 404);
       return seeOther(`${OWNER_PATH}?revoked=1`);
     },

@@ -65,7 +65,8 @@ export const NOT_JUST = [
 ];
 
 /** A sentence that closes its paragraph on a three-item list of one- or two-word items. */
-const CLOSING_TRIAD = /(?:^|[.!?]\s+)([^.!?]*?\b([\p{L}'’]+(?:\s[\p{L}'’]+)?),\s+([\p{L}'’]+(?:\s[\p{L}'’]+)?),?\s+(?:and|or)\s+([\p{L}'’]+(?:\s[\p{L}'’]+)?)[.!])\s*$/u;
+const CLOSING_TRIAD =
+  /(?:^|[.!?]\s+)([^.!?]*?\b([\p{L}'’]+(?:\s[\p{L}'’]+)?),\s+([\p{L}'’]+(?:\s[\p{L}'’]+)?),?\s+(?:and|or)\s+([\p{L}'’]+(?:\s[\p{L}'’]+)?)[.!])\s*$/u;
 
 /** An em dash anywhere, an en dash only with spaces round it (an unspaced one is a range: 2019–2024, pp. 12–14). */
 const DASH = /\s*—\s*|\s+–\s+|\s--\s/gu;
@@ -80,14 +81,22 @@ export const TELLS = [
   ["great question", "Answer the question. Cut the compliment.", SIGNS.collaborative],
   ["you're not wrong", "Cut the reassurance and give the answer.", SIGNS.collaborative],
   ["you're not missing anything", "Cut the reassurance and give the answer.", SIGNS.collaborative],
-  ["would you like me to", "Stop when the answer is done. Offer more only when the reader needs it.", SIGNS.collaborative],
+  [
+    "would you like me to",
+    "Stop when the answer is done. Offer more only when the reader needs it.",
+    SIGNS.collaborative,
+  ],
   ["here's the truth", "Delete it and say the claim.", SIGNS.collaborative],
   ["here is the truth", "Delete it and say the claim.", SIGNS.collaborative],
   // A book blurb's closing verdict.
   ["stays with you", "End on a fact about the book, or stop.", SIGNS.promotional],
   ["long after the last page", "End on a fact about the book, or stop.", SIGNS.promotional],
   ["impossible to put down", "End on a fact about the book, or stop.", SIGNS.promotional],
-  ["remains one of the most", "Say what the book does. Its rank is the reader's to judge.", SIGNS.significance],
+  [
+    "remains one of the most",
+    "Say what the book does. Its rank is the reader's to judge.",
+    SIGNS.significance,
+  ],
   // A newsletter.
   ["we're delighted", "Delete it and start with the news.", SIGNS.promotional],
   ["that's why we've built", "Say what it does.", SIGNS.promotional],
@@ -103,7 +112,17 @@ export const TELLS = [
  * Words current models reach for in a blurb, a bio or an email that most writers rarely use. `checkProse` flags them in
  * any text; `slopScan` only when the author's own excerpts never use them, since a word the author writes is theirs.
  */
-export const OUT_OF_PLACE = ["unforgettable", "haunting", "lyrical", "sweeping", "poignant", "profound", "masterpiece", "quietly", "genuinely"];
+export const OUT_OF_PLACE = [
+  "unforgettable",
+  "haunting",
+  "lyrical",
+  "sweeping",
+  "poignant",
+  "profound",
+  "masterpiece",
+  "quietly",
+  "genuinely",
+];
 
 /** @typedef {{ check: string, sign: string, severity: Severity, re: RegExp, say: string }} PatternRule */
 
@@ -117,12 +136,36 @@ export const OUT_OF_PLACE = ["unforgettable", "haunting", "lyrical", "sweeping",
 export const PATTERNS = [
   // "As an AI language model researcher" and "I'm sorry, but I can't help thinking" are a person's words: the model
   // phrase must not run on into a noun, and the refusal must name the request it refuses.
-  { check: "leftover", sign: SIGNS.refusal, severity: "high", re: /\bas (?:an AI language model|a large language model)\b(?![ \t]+(?!I\b)\p{L})|\bas an AI, I\b|\bI['’]m sorry, but I (?:can(?:not|['’]t)|am unable to) (?:(?:help|assist)(?: you)?|comply) with (?:(?:that|this|your|the) request\b|(?:that|this|it)(?=\s*(?:[.!,;:]|$)))/giu, say: "A chatbot's refusal. Delete it and write the text." },
-  { check: "leftover", sign: SIGNS.cutoff, severity: "high", re: /\b(?:as of|up to) my (?:last |latest )?(?:knowledge|training)(?: data)? (?:update|cut-?off)\b|\bmy knowledge cut-?off\b/giu, say: "A chatbot's note on its training. Delete it and check the fact." },
+  {
+    check: "leftover",
+    sign: SIGNS.refusal,
+    severity: "high",
+    re: /\bas (?:an AI language model|a large language model)\b(?![ \t]+(?!I\b)\p{L})|\bas an AI, I\b|\bI['’]m sorry, but I (?:can(?:not|['’]t)|am unable to) (?:(?:help|assist)(?: you)?|comply) with (?:(?:that|this|your|the) request\b|(?:that|this|it)(?=\s*(?:[.!,;:]|$)))/giu,
+    say: "A chatbot's refusal. Delete it and write the text.",
+  },
+  {
+    check: "leftover",
+    sign: SIGNS.cutoff,
+    severity: "high",
+    re: /\b(?:as of|up to) my (?:last |latest )?(?:knowledge|training)(?: data)? (?:update|cut-?off)\b|\bmy knowledge cut-?off\b/giu,
+    say: "A chatbot's note on its training. Delete it and check the fact.",
+  },
   // Not a blank: a link (inline, reference, or `[label]` defined elsewhere in the text, which checkProse drops), a
   // `[[wiki]]` link, or bracketed text with a digit or a colon ("[Last updated: 2026-10-01]").
-  { check: "placeholder", sign: SIGNS.placeholder, severity: "high", re: /(?<!\[)\[(?:your|insert|recipient|company|client|customer|first|last|full|product|date|name|link|url|phone|email|address)\b[^\]\n\d:]{0,30}\](?![([:\]])|\b(?:19|20)\d\d-XX-XX\b/giu, say: "A blank nobody filled in. Fill it or cut it." },
-  { check: "markup", sign: SIGNS.markup, severity: "high", re: /\boaicite\b|\bcontentReference\[|\bturn\d+(?:search|news|view|file)\d+\b|\butm_source=(?:chatgpt\.com|openai|copilot\.com)|\breferrer=grok\.com/giu, say: "A chatbot's citation markup or tracking tag. Remove it." },
+  {
+    check: "placeholder",
+    sign: SIGNS.placeholder,
+    severity: "high",
+    re: /(?<!\[)\[(?:your|insert|recipient|company|client|customer|first|last|full|product|date|name|link|url|phone|email|address)\b[^\]\n\d:]{0,30}\](?![([:\]])|\b(?:19|20)\d\d-XX-XX\b/giu,
+    say: "A blank nobody filled in. Fill it or cut it.",
+  },
+  {
+    check: "markup",
+    sign: SIGNS.markup,
+    severity: "high",
+    re: /\boaicite\b|\bcontentReference\[|\bturn\d+(?:search|news|view|file)\d+\b|\butm_source=(?:chatgpt\.com|openai|copilot\.com)|\breferrer=grok\.com/giu,
+    say: "A chatbot's citation markup or tracking tag. Remove it.",
+  },
 ];
 
 /** Up to twenty characters either side of a match. @param {string} line @param {number} at @param {number} length */
@@ -137,7 +180,10 @@ function escapeRegExp(s) {
 
 /** A whole-word, any-case match for a word or phrase, with either apostrophe. @param {string} phrase */
 function phraseRegExp(phrase) {
-  return new RegExp(`(?<![\\p{L}'’])${escapeRegExp(phrase).replace(/'/g, "['’]")}(?![\\p{L}])`, "giu");
+  return new RegExp(
+    `(?<![\\p{L}'’])${escapeRegExp(phrase).replace(/'/g, "['’]")}(?![\\p{L}])`,
+    "giu",
+  );
 }
 
 /**
@@ -176,8 +222,18 @@ export function checkProse(text, options = {}) {
 
   /** @type {[string, string, string, string | null][]} */
   const listed = [
-    ...(claude ? TELLS : []).map(([p, say, sign]) => /** @type {[string, string, string, string]} */ (["tell", p, say, sign])),
-    ...(claude ? OUT_OF_PLACE : []).map((w) => /** @type {[string, string, string, string]} */ (["word", w, "Use the plain word, or cut it and keep the fact.", SIGNS.vocabulary])),
+    ...(claude ? TELLS : []).map(
+      ([p, say, sign]) => /** @type {[string, string, string, string]} */ (["tell", p, say, sign]),
+    ),
+    ...(claude ? OUT_OF_PLACE : []).map(
+      (w) =>
+        /** @type {[string, string, string, string]} */ ([
+          "word",
+          w,
+          "Use the plain word, or cut it and keep the fact.",
+          SIGNS.vocabulary,
+        ]),
+    ),
     ...phrases.map((p) => /** @type {[string, string, string, null]} */ (["phrase", p, "", null])),
   ];
   // Every occurrence counts, two on one line included.
@@ -186,7 +242,8 @@ export function checkProse(text, options = {}) {
     const re = phraseRegExp(phrase);
     lines.forEach((line, i) => {
       for (const m of line.matchAll(re)) {
-        const message = check === "phrase" ? `"${phrase}" is on the list of stock phrases.` : `"${m[0]}": ${say}`;
+        const message =
+          check === "phrase" ? `"${phrase}" is on the list of stock phrases.` : `"${m[0]}": ${say}`;
         out.push({ check, message, excerpt: m[0], line: firstLine + i, severity: "high", sign });
       }
     });
@@ -194,7 +251,9 @@ export function checkProse(text, options = {}) {
 
   // The patterns read the lines outside fenced code, with inline code taken out. A `[label]` that the text defines as a
   // Markdown reference link is a link, not a blank.
-  const defined = new Set([...text.matchAll(/^ {0,3}\[([^\]\n]+)\]:[ \t]*\S/gmu)].map((m) => `[${m[1].toLowerCase()}]`));
+  const defined = new Set(
+    [...text.matchAll(/^ {0,3}\[([^\]\n]+)\]:[ \t]*\S/gmu)].map((m) => `[${m[1].toLowerCase()}]`),
+  );
   let fenced = false;
   lines.forEach((line, i) => {
     const fence = /^\s*(?:```|~~~)/.test(line);
@@ -202,7 +261,18 @@ export function checkProse(text, options = {}) {
     if (fence || fenced) return;
     for (const { check, sign, severity, re, say } of PATTERNS) {
       for (const m of line.replace(/`[^`]*`/g, "").matchAll(re)) {
-        if (!allowed.has(m[0].toLowerCase()) && !(check === "placeholder" && defined.has(m[0].toLowerCase()))) out.push({ check, message: `"${m[0]}": ${say}`, excerpt: m[0], line: firstLine + i, severity, sign });
+        if (
+          !allowed.has(m[0].toLowerCase()) &&
+          !(check === "placeholder" && defined.has(m[0].toLowerCase()))
+        )
+          out.push({
+            check,
+            message: `"${m[0]}": ${say}`,
+            excerpt: m[0],
+            line: firstLine + i,
+            severity,
+            sign,
+          });
       }
     }
   });
@@ -217,10 +287,25 @@ export function checkProse(text, options = {}) {
       return m && m.index < line.length && m.index + m[0].length > line.length ? m : null;
     };
     const m = NOT_JUST.map((re) => re.exec(line) ?? across(re)).find(Boolean);
-    if (m) add({ check: "not-x-but-y", message: `The "not X, it's Y" construction.`, excerpt: m[0], line: firstLine + i, severity: "medium", sign: SIGNS.parallelism });
+    if (m)
+      add({
+        check: "not-x-but-y",
+        message: `The "not X, it's Y" construction.`,
+        excerpt: m[0],
+        line: firstLine + i,
+        severity: "medium",
+        sign: SIGNS.parallelism,
+      });
     if (dashes === "flag") {
       for (const d of line.matchAll(DASH)) {
-        add({ check: "dash", message: "A dash where a comma, a full stop or brackets would do.", excerpt: around(line, d.index ?? 0, d[0].length), line: firstLine + i, severity: "medium", sign: SIGNS.dash });
+        add({
+          check: "dash",
+          message: "A dash where a comma, a full stop or brackets would do.",
+          excerpt: around(line, d.index ?? 0, d[0].length),
+          line: firstLine + i,
+          severity: "medium",
+          sign: SIGNS.dash,
+        });
       }
     }
   });
@@ -232,7 +317,15 @@ export function checkProse(text, options = {}) {
       const paragraph = lines.slice(start, i).join(" ").trim();
       const m = CLOSING_TRIAD.exec(paragraph);
       if (m && !paragraph.startsWith("#")) {
-        add({ check: "closing-triad", message: "The paragraph closes on a list of three: fine if there are three things, padding if it is there for rhythm.", excerpt: m[1].trim(), line: firstLine + Math.max(start, i - 1), severity: "low", sign: SIGNS.three });
+        add({
+          check: "closing-triad",
+          message:
+            "The paragraph closes on a list of three: fine if there are three things, padding if it is there for rhythm.",
+          excerpt: m[1].trim(),
+          line: firstLine + Math.max(start, i - 1),
+          severity: "low",
+          sign: SIGNS.three,
+        });
       }
       start = i + 1;
     }
@@ -265,9 +358,54 @@ export const WRITING_RULES = `Write the way the author's excerpts read, not the 
 // ---------- the voice
 
 const FUNCTION_WORDS = [
-  "the", "and", "of", "to", "a", "in", "that", "it", "was", "he", "she", "i", "you", "with", "for", "on", "as",
-  "at", "but", "had", "his", "her", "not", "be", "is", "they", "by", "from", "this", "so", "all", "were", "there",
-  "which", "would", "when", "then", "what", "if", "into", "out", "up", "like", "just", "some", "no", "one", "or",
+  "the",
+  "and",
+  "of",
+  "to",
+  "a",
+  "in",
+  "that",
+  "it",
+  "was",
+  "he",
+  "she",
+  "i",
+  "you",
+  "with",
+  "for",
+  "on",
+  "as",
+  "at",
+  "but",
+  "had",
+  "his",
+  "her",
+  "not",
+  "be",
+  "is",
+  "they",
+  "by",
+  "from",
+  "this",
+  "so",
+  "all",
+  "were",
+  "there",
+  "which",
+  "would",
+  "when",
+  "then",
+  "what",
+  "if",
+  "into",
+  "out",
+  "up",
+  "like",
+  "just",
+  "some",
+  "no",
+  "one",
+  "or",
 ];
 
 /** How long a text needs to be before its profile means anything. */
@@ -284,7 +422,8 @@ const MIN_SPREAD = 0.15;
 /** @typedef {{ name: string, value: number, mean: number, z: number }} FeatureReading */
 /** @typedef {{ distance: number, furthest: FeatureReading[] }} VoiceReading */
 
-const CONTRACTION = /(?:n['’]t|['’](?:re|ve|ll|d|m)|^(?:it|that|there|here|what|who|where|how|he|she|let)['’]s)$/u;
+const CONTRACTION =
+  /(?:n['’]t|['’](?:re|ve|ll|d|m)|^(?:it|that|there|here|what|who|where|how|he|she|let)['’]s)$/u;
 
 /** @param {string} text */
 function words(text) {
@@ -292,7 +431,8 @@ function words(text) {
 }
 
 /** Abbreviations whose full stop does not end a sentence ("Dr. Rivera", "Fig. 1", "U.S. policy"). */
-const ABBREVIATIONS = /\bNo\.(?=\s*\d)|\b(?:Dr|Mr|Mrs|Ms|Prof|St|Jr|Sr|Fig|Figs|Vol|pp|vs|al|e\.g|i\.e|U\.S|U\.K|a\.m|p\.m)\./gu;
+const ABBREVIATIONS =
+  /\bNo\.(?=\s*\d)|\b(?:Dr|Mr|Mrs|Ms|Prof|St|Jr|Sr|Fig|Figs|Vol|pp|vs|al|e\.g|i\.e|U\.S|U\.K|a\.m|p\.m)\./gu;
 
 /** @param {string} text */
 function sentences(text) {
@@ -354,14 +494,19 @@ function runsOf(sents) {
 
 /** Cuts text into runs of about CHUNK_WORDS words, on paragraph boundaries where it can. @param {string} text */
 function chunks(text) {
-  const paragraphs = text.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  const paragraphs = text
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean);
   /** @type {string[]} */
   const out = [];
   /** @type {string[]} */
   let current = [];
   let size = 0;
   // A post with no paragraph breaks would otherwise come back whole: cut such a paragraph on sentences.
-  const pieces = paragraphs.flatMap((p) => (words(p).length > 2 * CHUNK_WORDS ? runsOf(sentences(p)) : [p]));
+  const pieces = paragraphs.flatMap((p) =>
+    words(p).length > 2 * CHUNK_WORDS ? runsOf(sentences(p)) : [p],
+  );
   for (const p of pieces) {
     current.push(p);
     size += words(p).length;
@@ -402,13 +547,25 @@ export function profileOf(passages) {
   // How far the author's own chunks sit from their mean: the 90th percentile is the edge of their usual range.
   const own = rows.map((f) => deltaOf(mean, spread, f)).sort((a, b) => a - b);
   const usual = own[Math.min(own.length - 1, Math.floor(own.length * 0.9))];
-  return { mean, spread, chunks: pieces.length, words: passages.reduce((n, p) => n + words(p).length, 0), usual };
+  return {
+    mean,
+    spread,
+    chunks: pieces.length,
+    words: passages.reduce((n, p) => n + words(p).length, 0),
+    usual,
+  };
 }
 
 /** The mean capped distance, in standard deviations, of one feature set from a profile's. @param {Features} mean @param {Features} spread @param {Features} f */
 function deltaOf(mean, spread, f) {
   const names = Object.keys(mean);
-  return names.reduce((a, name) => a + Math.min(MAX_Z, Math.abs(((f[name] ?? 0) - (mean[name] ?? 0)) / (spread[name] ?? 1))), 0) / names.length;
+  return (
+    names.reduce(
+      (a, name) =>
+        a + Math.min(MAX_Z, Math.abs(((f[name] ?? 0) - (mean[name] ?? 0)) / (spread[name] ?? 1))),
+      0,
+    ) / names.length
+  );
 }
 
 /**
@@ -452,10 +609,11 @@ export function distanceFrom(profile, text) {
 export function nearestPassages(profile, passages, count = 5) {
   // The nearest chunk of each passage, so the examples come from different pieces rather than one long post.
   return passages
-    .map((passage) =>
-      chunks(passage)
-        .map((text) => ({ text, distance: distanceFrom(profile, text)?.distance ?? Infinity }))
-        .sort((a, b) => a.distance - b.distance)[0],
+    .map(
+      (passage) =>
+        chunks(passage)
+          .map((text) => ({ text, distance: distanceFrom(profile, text)?.distance ?? Infinity }))
+          .sort((a, b) => a.distance - b.distance)[0],
     )
     .filter((c) => c !== undefined && Number.isFinite(c.distance))
     .sort((a, b) => a.distance - b.distance)
@@ -490,7 +648,7 @@ export function copiedRuns(text, sources, minWords = 8) {
   const ws = words(text);
   /** @type {string[]} */
   const out = [];
-  for (let i = 0; i + minWords <= ws.length; ) {
+  for (let i = 0; i + minWords <= ws.length;) {
     if (!seen.has(key(ws.slice(i, i + minWords)))) {
       i++;
       continue;
@@ -506,7 +664,8 @@ export function copiedRuns(text, sources, minWords = 8) {
 /** One feature reading in words, for a flag. @param {FeatureReading} f */
 export function describeFeature(f) {
   const round = (/** @type {number} */ n) => (n >= 10 ? Math.round(n) : Math.round(n * 10) / 10);
-  if (f.name === "sentence length") return `sentences average ${round(f.value)} words against ${round(f.mean)} in your passages`;
+  if (f.name === "sentence length")
+    return `sentences average ${round(f.value)} words against ${round(f.mean)} in your passages`;
   return `${round(f.value)} ${f.name} per 1,000 words against ${round(f.mean)}`;
 }
 
@@ -569,7 +728,12 @@ export function sentenceSpread(excerpts) {
     .filter((n) => n >= SPREAD_MIN_WORDS)
     .sort((a, b) => a - b);
   if (lengths.length < 5) return null;
-  return { short: percentile(lengths, 0.1), mid: percentile(lengths, 0.5), long: percentile(lengths, 0.9), longest: lengths[lengths.length - 1] };
+  return {
+    short: percentile(lengths, 0.1),
+    mid: percentile(lengths, 0.5),
+    long: percentile(lengths, 0.9),
+    longest: lengths[lengths.length - 1],
+  };
 }
 
 /** A sentence quoted short enough for a list line. @param {string} s */
@@ -584,12 +748,15 @@ function dashRate(text) {
 }
 
 /** A definition as a first sentence ("Groundwater is water that fills the cracks in rock"); "It is estimated that" is not one. */
-const DEFINITION = /^(?!(?:it|this|that|there|these|those|here)\s)(?:an?\s+|the\s+)?[\p{L}-]+(?:\s+[\p{L}-]+){0,3}\s+(?:is|are)\s+(?:an?\s+|the\s+)?(?:[\p{L}-]+\s+){0,3}[\p{L}-]+\s+(?:that|which|who|used|where|in which)\b/iu;
+const DEFINITION =
+  /^(?!(?:it|this|that|there|these|those|here)\s)(?:an?\s+|the\s+)?[\p{L}-]+(?:\s+[\p{L}-]+){0,3}\s+(?:is|are)\s+(?:an?\s+|the\s+)?(?:[\p{L}-]+\s+){0,3}[\p{L}-]+\s+(?:that|which|who|used|where|in which)\b/iu;
 /** A last sentence that sums up instead of stopping ("This is one reason that...", "In the end,"). */
-const WRAP_UP = /^(?:this is (?:one reason|why|what|how|the reason)|that(?:['’]s| is) (?:why|what|how)|which is why|in short|in the end|ultimately|overall|in other words|all of this|the result is|the lesson|so the next time)\b/iu;
+const WRAP_UP =
+  /^(?:this is (?:one reason|why|what|how|the reason)|that(?:['’]s| is) (?:why|what|how)|which is why|in short|in the end|ultimately|overall|in other words|all of this|the result is|the lesson|so the next time)\b/iu;
 /** A passive verb: a form of "be" and a past participle ("is determined", "were tested", "has been shown"). "Was supposed to",
  * "is used to" and a feeling ("was tired") are not passives. */
-const PASSIVE = /\b(?:is|are|was|were|be|been|being)\s+(?:(?:\p{L}+ly|also|often|not|never|still|then|now|first|always)\s+)?(?!(?:supposed|used|tired|scared|worried|excited|interested|pleased|married|born)\b)(?:\p{L}+ed|known|shown|seen|given|taken|made|found|done|built|written|driven|held|kept|told|brought|caught|left|lost|paid|run|set|sent|spent|thought|understood|won|grown|drawn|chosen|begun|broken|hidden|bound|fed|led|met|put|read|said|sold|struck|worn)\b/iu;
+const PASSIVE =
+  /\b(?:is|are|was|were|be|been|being)\s+(?:(?:\p{L}+ly|also|often|not|never|still|then|now|first|always)\s+)?(?!(?:supposed|used|tired|scared|worried|excited|interested|pleased|married|born)\b)(?:\p{L}+ed|known|shown|seen|given|taken|made|found|done|built|written|driven|held|kept|told|brought|caught|left|lost|paid|run|set|sent|spent|thought|understood|won|grown|drawn|chosen|begun|broken|hidden|bound|fed|led|met|put|read|said|sold|struck|worn)\b/iu;
 /** A sentence opened with "So", "And" or "But" for effect. */
 const CONJUNCTION_OPENER = /^(?:So|And|But)\s+\p{L}/u;
 /** Words in the stinger a paragraph ends on ("There is a cost."). */
@@ -653,7 +820,11 @@ function keyOf(w) {
 
 /** The names and numbers in a text, sentence by sentence: what `detailRate` counts. @param {string} text */
 function specificsOf(text) {
-  return sentences(text).map((s) => (s.match(/[\p{L}\p{N}]+(?:['’.,-][\p{L}\p{N}]+)*/gu) ?? []).filter((w, i) => /\d/.test(w) || (i > 0 && /^\p{Lu}/u.test(w) && !isGenericCaps(w))));
+  return sentences(text).map((s) =>
+    (s.match(/[\p{L}\p{N}]+(?:['’.,-][\p{L}\p{N}]+)*/gu) ?? []).filter(
+      (w, i) => /\d/.test(w) || (i > 0 && /^\p{Lu}/u.test(w) && !isGenericCaps(w)),
+    ),
+  );
 }
 
 /**
@@ -663,8 +834,16 @@ function specificsOf(text) {
  * @returns {SlopFinding[]}
  */
 function unsourced(paragraphs, known, given) {
-  const have = new Set(known.flatMap((k) => (k.match(/[\p{L}\p{N}]+(?:['’.,-][\p{L}\p{N}]+)*/gu) ?? []).flatMap((w) => [keyOf(w), ...w.split(/[-'’]/).map(keyOf)])));
-  const isKnown = (/** @type {string} */ w) => have.has(keyOf(w)) || w.split(/[-'’]/).every((part) => have.has(keyOf(part)));
+  const have = new Set(
+    known.flatMap((k) =>
+      (k.match(/[\p{L}\p{N}]+(?:['’.,-][\p{L}\p{N}]+)*/gu) ?? []).flatMap((w) => [
+        keyOf(w),
+        ...w.split(/[-'’]/).map(keyOf),
+      ]),
+    ),
+  );
+  const isKnown = (/** @type {string} */ w) =>
+    have.has(keyOf(w)) || w.split(/[-'’]/).every((part) => have.has(keyOf(part)));
   /** @type {SlopFinding[]} */
   const out = [];
   for (const p of paragraphs) {
@@ -672,10 +851,21 @@ function unsourced(paragraphs, known, given) {
     missing.forEach((ws, j) => {
       if (!ws.length) return;
       const names = ws.map((w) => `"${w}"`).join(", ");
-      if (given) out.push({ kind: "source", excerpt: quote(sentences(p.text)[j]), line: p.line, say: `${names} ${ws.length === 1 ? "is" : "are"} not in the sources or the author's writing. Check it against a source and add the source, or cut it.` });
+      if (given)
+        out.push({
+          kind: "source",
+          excerpt: quote(sentences(p.text)[j]),
+          line: p.line,
+          say: `${names} ${ws.length === 1 ? "is" : "are"} not in the sources or the author's writing. Check it against a source and add the source, or cut it.`,
+        });
     });
     if (!given && missing.some((ws) => ws.length) && !out.length) {
-      out.push({ kind: "source", excerpt: quote(p.text), line: p.line, say: "This draft names things that are not in the author's writing, and no sources were given. List the sources the draft used and scan again." });
+      out.push({
+        kind: "source",
+        excerpt: quote(p.text),
+        line: p.line,
+        say: "This draft names things that are not in the author's writing, and no sources were given. List the sources the draft used and scan again.",
+      });
     }
   }
   return out;
@@ -722,16 +912,23 @@ export function slopScan(text, excerpts, options = {}) {
 
   // Length, over the draft's sentences in reading order.
   if (spread) {
-    const sents = lines.flatMap((l) => sentences(l.text).map((s) => ({ s, n: words(s).length, line: l.line })));
+    const sents = lines.flatMap((l) =>
+      sentences(l.text).map((s) => ({ s, n: words(s).length, line: l.line })),
+    );
     // Past the excerpts' long sentences by eight words, and past their longest: a length the author writes is theirs.
     const limit = Math.max(spread.long + 7, spread.longest);
     for (const { s, n, line } of sents) {
       if (n > limit) {
-        found.push({ kind: "length", excerpt: quote(s), line, say: `This is ${n} words. The long sentences in the excerpts are about ${spread.long}. Split it where the subject changes.` });
+        found.push({
+          kind: "length",
+          excerpt: quote(s),
+          line,
+          say: `This is ${n} words. The long sentences in the excerpts are about ${spread.long}. Split it where the subject changes.`,
+        });
       }
     }
     if (spread.long - spread.short >= 10) {
-      for (let i = 0; i + 4 <= sents.length; ) {
+      for (let i = 0; i + 4 <= sents.length;) {
         let end = i + 1;
         let lo = sents[i].n;
         let hi = sents[i].n;
@@ -771,20 +968,35 @@ export function slopScan(text, excerpts, options = {}) {
       }
     }
     for (const { re, say } of PATTERNS) {
-      for (const m of line.matchAll(re)) found.push({ kind: "filler", excerpt: m[0].trim(), line: n, say });
+      for (const m of line.matchAll(re))
+        found.push({ kind: "filler", excerpt: m[0].trim(), line: n, say });
     }
     for (const word of outOfPlace) {
       for (const m of line.matchAll(phraseRegExp(word))) {
         const at = m.index ?? 0;
         if (filled.some(([a, b]) => at >= a && at < b)) continue;
-        found.push({ kind: "word", excerpt: m[0], line: n, say: "This word is not in the excerpts. Use the plain word the excerpts would use, or cut it and keep the fact." });
+        found.push({
+          kind: "word",
+          excerpt: m[0],
+          line: n,
+          say: "This word is not in the excerpts. Use the plain word the excerpts would use, or cut it and keep the fact.",
+        });
       }
     }
     if (!dashesAreTheirs) {
       for (const m of line.matchAll(DASH)) {
         // Between two numbers it is a range (2019—2024), not a joiner.
-        if (/\d$/.test(line.slice(0, m.index ?? 0)) && /^\d/.test(line.slice((m.index ?? 0) + m[0].length))) continue;
-        found.push({ kind: "shape", excerpt: around(line, m.index ?? 0, m[0].length), line: n, say: "Make this two sentences, or a comma if it is one thought." });
+        if (
+          /\d$/.test(line.slice(0, m.index ?? 0)) &&
+          /^\d/.test(line.slice((m.index ?? 0) + m[0].length))
+        )
+          continue;
+        found.push({
+          kind: "shape",
+          excerpt: around(line, m.index ?? 0, m[0].length),
+          line: n,
+          say: "Make this two sentences, or a comma if it is one thought.",
+        });
       }
     }
     if (!notXIsTheirs) {
@@ -793,21 +1005,41 @@ export function slopScan(text, excerpts, options = {}) {
         const own = re.exec(line);
         if (own) return own;
         const m = next ? re.exec(line + next) : null;
-        return m && (m.index ?? 0) < line.length && (m.index ?? 0) + m[0].length > line.length ? m : null;
+        return m && (m.index ?? 0) < line.length && (m.index ?? 0) + m[0].length > line.length
+          ? m
+          : null;
       }).find(Boolean);
-      if (hit) found.push({ kind: "shape", excerpt: hit[0].trim(), line: n, say: 'Say what it is. "Not X, it\'s Y" sets up a claim nobody made.' });
+      if (hit)
+        found.push({
+          kind: "shape",
+          excerpt: hit[0].trim(),
+          line: n,
+          say: 'Say what it is. "Not X, it\'s Y" sets up a claim nobody made.',
+        });
     }
     // A paragraph's last line: the next line is blank or there is none.
     const last = !lines[i + 1] || !lines[i + 1].text.trim() || lines[i + 1].line !== n + 1;
     const triad = last ? CLOSING_TRIAD.exec(line.trim()) : null;
     if (triad) {
-      const padded = [triad[2], triad[3], triad[4]].filter((item) => words(item).some((w) => outOfPlace.includes(w))).length;
+      const padded = [triad[2], triad[3], triad[4]].filter((item) =>
+        words(item).some((w) => outOfPlace.includes(w)),
+      ).length;
       if (padded >= 2) {
         // The list's own words are this finding's to fix, not three more.
         for (let k = found.length - 1; k >= 0; k--) {
-          if (found[k].kind === "word" && found[k].line === n && triad[1].toLowerCase().includes(found[k].excerpt.toLowerCase())) found.splice(k, 1);
+          if (
+            found[k].kind === "word" &&
+            found[k].line === n &&
+            triad[1].toLowerCase().includes(found[k].excerpt.toLowerCase())
+          )
+            found.splice(k, 1);
         }
-        found.push({ kind: "shape", excerpt: triad[1].trim(), line: n, say: "This list is padding. End on the fact. Keep a list of three only when the three things are real." });
+        found.push({
+          kind: "shape",
+          excerpt: triad[1].trim(),
+          line: n,
+          say: "This list is padding. End on the fact. Keep a list of three only when the three things are real.",
+        });
       }
     }
   });
@@ -818,49 +1050,111 @@ export function slopScan(text, excerpts, options = {}) {
   const stingersAreTheirs = theirParagraphs.some((p) => isStinger(p.text));
   // About one in every two thousand words, as an author who writes that way does; a formal writer's one "And third," in a
   // paper is not a habit.
-  const openersAreTheirs = per1000(theirParagraphs.flatMap((p) => sentences(p.text)).filter((t) => CONJUNCTION_OPENER.test(t)).length, words(source).length) >= 0.5;
+  const openersAreTheirs =
+    per1000(
+      theirParagraphs.flatMap((p) => sentences(p.text)).filter((t) => CONJUNCTION_OPENER.test(t))
+        .length,
+      words(source).length,
+    ) >= 0.5;
   const paragraphs = paragraphsOf(lines);
   const floor = detailFloor(excerpts);
   if (floor !== null) {
     for (const p of paragraphs) {
       if (p.text.split(/\s+/).length < DETAIL_DRAFT_MIN_WORDS) continue;
       if (detailRate(p.text) < floor / 2) {
-        found.push({ kind: "detail", excerpt: quote(sentences(p.text)[0] ?? p.text), line: p.line, say: "Nothing in this paragraph is specific: no number, name, place or thing that happened. Put in the specific case it is about, or cut it." });
+        found.push({
+          kind: "detail",
+          excerpt: quote(sentences(p.text)[0] ?? p.text),
+          line: p.line,
+          say: "Nothing in this paragraph is specific: no number, name, place or thing that happened. Put in the specific case it is about, or cut it.",
+        });
       }
     }
   }
   const opening = sentences(paragraphs[0]?.text ?? "")[0];
   if (opening && DEFINITION.test(opening)) {
-    found.push({ kind: "shape", excerpt: quote(opening), line: paragraphs[0].line, say: "This opens on a definition the reader already knows. Start with the case, the finding or the question." });
+    found.push({
+      kind: "shape",
+      excerpt: quote(opening),
+      line: paragraphs[0].line,
+      say: "This opens on a definition the reader already knows. Start with the case, the finding or the question.",
+    });
   }
-  const closing = paragraphs.length ? sentences(paragraphs[paragraphs.length - 1].text).at(-1) : undefined;
+  const closing = paragraphs.length
+    ? sentences(paragraphs[paragraphs.length - 1].text).at(-1)
+    : undefined;
   if (closing && WRAP_UP.test(closing)) {
-    found.push({ kind: "shape", excerpt: quote(closing), line: paragraphs[paragraphs.length - 1].last, say: "This sums up what was just said. Cut it and end on the last fact." });
+    found.push({
+      kind: "shape",
+      excerpt: quote(closing),
+      line: paragraphs[paragraphs.length - 1].last,
+      say: "This sums up what was just said. Cut it and end on the last fact.",
+    });
   }
   const boldIsTheirs = excerpts.some((e) => proseLines(e, 1).some((l) => l.bold));
   if (!boldIsTheirs) {
-    for (const l of lines) if (l.bold) found.push({ kind: "shape", excerpt: quote(l.text), line: l.line, say: "A bold lead-in. Make it a plain first sentence, or cut it." });
+    for (const l of lines)
+      if (l.bold)
+        found.push({
+          kind: "shape",
+          excerpt: quote(l.text),
+          line: l.line,
+          say: "A bold lead-in. Make it a plain first sentence, or cut it.",
+        });
   }
   // A question to the reader: weighed against the excerpts, except that a piece never ends by asking the reader something.
-  const questionsAreTheirs = per1000(theirParagraphs.flatMap((p) => sentences(p.text)).filter((t) => t.endsWith("?")).length, words(source).length) >= 0.5;
+  const questionsAreTheirs =
+    per1000(
+      theirParagraphs.flatMap((p) => sentences(p.text)).filter((t) => t.endsWith("?")).length,
+      words(source).length,
+    ) >= 0.5;
   paragraphs.forEach((p, k) => {
     const ss = sentences(p.text);
     ss.forEach((t, j) => {
       if (!t.endsWith("?")) return;
       if (k === paragraphs.length - 1 && j === ss.length - 1 && ASKS_THE_READER.test(t)) {
-        found.push({ kind: "shape", excerpt: quote(t), line: p.last, say: "This ends by asking the reader something. Stop on the last fact." });
+        found.push({
+          kind: "shape",
+          excerpt: quote(t),
+          line: p.last,
+          say: "This ends by asking the reader something. Stop on the last fact.",
+        });
       } else if (!questionsAreTheirs) {
-        found.push({ kind: "shape", excerpt: quote(t), line: p.line, say: "A question to the reader. Say the answer instead." });
+        found.push({
+          kind: "shape",
+          excerpt: quote(t),
+          line: p.line,
+          say: "A question to the reader. Say the answer instead.",
+        });
       }
     });
   });
-  if (options.sources) found.push(...unsourced(paragraphs, [...options.sources, source], options.sources.length > 0));
+  if (options.sources)
+    found.push(...unsourced(paragraphs, [...options.sources, source], options.sources.length > 0));
   for (const p of paragraphs) {
-    if (!stingersAreTheirs && isStinger(p.text)) found.push({ kind: "shape", excerpt: sentences(p.text).at(-1) ?? "", line: p.last, say: "A short line to end the paragraph on a beat. Fold it into the sentence before, or cut it." });
+    if (!stingersAreTheirs && isStinger(p.text))
+      found.push({
+        kind: "shape",
+        excerpt: sentences(p.text).at(-1) ?? "",
+        line: p.last,
+        say: "A short line to end the paragraph on a beat. Fold it into the sentence before, or cut it.",
+      });
     for (const t of sentences(p.text)) {
-      if (!openersAreTheirs && CONJUNCTION_OPENER.test(t)) found.push({ kind: "shape", excerpt: quote(t), line: p.line, say: `Drop the opening "${t.split(/\s/)[0]}" and say the sentence plainly.` });
+      if (!openersAreTheirs && CONJUNCTION_OPENER.test(t))
+        found.push({
+          kind: "shape",
+          excerpt: quote(t),
+          line: p.line,
+          say: `Drop the opening "${t.split(/\s/)[0]}" and say the sentence plainly.`,
+        });
       const passive = PASSIVE.exec(t);
-      if (passive) found.push({ kind: "shape", excerpt: passive[0], line: p.line, say: "Passive. Name who did it and make them the subject." });
+      if (passive)
+        found.push({
+          kind: "shape",
+          excerpt: passive[0],
+          line: p.line,
+          say: "Passive. Name who did it and make them the subject.",
+        });
     }
   }
 
@@ -879,9 +1173,18 @@ export function instructionFor(findings, spread) {
   if (findings.length === 0) return null;
   const head = [
     "Edit the draft in place. Change only the spans listed. Keep every fact, name, number, and link. Leave every other sentence as it is.",
-    ...(spread ? [`The excerpts' sentences run about ${spread.short}, ${spread.mid}, and ${spread.long} words. Stay inside that spread. Do not alternate short and long on purpose.`] : []),
+    ...(spread
+      ? [
+          `The excerpts' sentences run about ${spread.short}, ${spread.mid}, and ${spread.long} words. Stay inside that spread. Do not alternate short and long on purpose.`,
+        ]
+      : []),
   ];
-  return [...head, ...findings.map((f) => `- ${f.line === null ? "" : `Line ${f.line}, `}"${f.excerpt}": ${f.say}`)].join("\n");
+  return [
+    ...head,
+    ...findings.map(
+      (f) => `- ${f.line === null ? "" : `Line ${f.line}, `}"${f.excerpt}": ${f.say}`,
+    ),
+  ].join("\n");
 }
 
 /** A passage's excerpts: its ~300-word chunks, or the whole of a short post that still has something to show. @param {string} passage */

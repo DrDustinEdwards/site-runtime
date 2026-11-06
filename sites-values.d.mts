@@ -9,11 +9,26 @@ export { PASSKEY_OVERRIDES, permissionsAllowingSelf } from "./headers.mjs";
 import type { HeaderOverride } from "./headers.mjs";
 
 /** One export per entry, so a Worker bundles only its own. */
-export const dustinedwardsInfo: ServedSiteEntry, foxhound: ServedSiteEntry, foxing: ServedSiteEntry, germomics: ServedSiteEntry,
-    julieedwardsInfo: ServedSiteEntry, bsw: ServedSiteEntry, txasm: ServedSiteEntry, carrel: ServedSiteEntry, carrelDesk: ServedSiteEntry,
-    capsidPortal: ServedSiteEntry, capsidMcp: ServedSiteEntry, carrelMcp: ServedSiteEntry, capsid: ServedSiteEntry, enarratio: ServedSiteEntry,
-    foxhoundMcp: ServedSiteEntry, dustinedwardsMcp: ServedSiteEntry, foxingMcp: ServedSiteEntry, germomicsMcp: ServedSiteEntry,
-    capsomer: ServedSiteEntry, prelum: ServedSiteEntry;
+export const dustinedwardsInfo: ServedSiteEntry,
+  foxhound: ServedSiteEntry,
+  foxing: ServedSiteEntry,
+  germomics: ServedSiteEntry,
+  julieedwardsInfo: ServedSiteEntry,
+  bsw: ServedSiteEntry,
+  txasm: ServedSiteEntry,
+  carrel: ServedSiteEntry,
+  carrelDesk: ServedSiteEntry,
+  capsidPortal: ServedSiteEntry,
+  capsidMcp: ServedSiteEntry,
+  carrelMcp: ServedSiteEntry,
+  capsid: ServedSiteEntry,
+  enarratio: ServedSiteEntry,
+  foxhoundMcp: ServedSiteEntry,
+  dustinedwardsMcp: ServedSiteEntry,
+  foxingMcp: ServedSiteEntry,
+  germomicsMcp: ServedSiteEntry,
+  capsomer: ServedSiteEntry,
+  prelum: ServedSiteEntry;
 export const SITES: readonly ServedSiteEntry[];
 /** The entry for an id; an unknown id throws. */
 export function siteEntry(id: string): ServedSiteEntry;

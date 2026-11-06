@@ -27,6 +27,7 @@ of what the site loads, and the check that proves a site's responses carry them.
 ## Source
 
 <!-- owasp:begin -->
+
 The defaults are read from the OWASP Secure Headers Project, not typed here: page https://owasp.org/www-project-secure-headers/, data https://github.com/OWASP/www-project-secure-headers/tree/master/ci
 (`headers_add.json`, `headers_remove.json`, last updated by OWASP 2026-10-18 07:04:36 UTC), read on
 **2026-10-30**. Refresh with `node update-owasp.mjs`.
@@ -40,19 +41,22 @@ OSHP's values in the repository.
 `STANDARD_SECURITY_HEADERS` is OSHP's recommended set, in OSHP's words, minus four it recommends and this package does not
 put on every response (`OWASP_SKIPPED` carries each reason in code):
 
-| Skipped | Why |
-| --- | --- |
-| `Cache-Control: no-store, max-age=0` | Sent on every response it makes nothing cacheable, edge caches included. A site sets caching per route. |
-| `Clear-Site-Data` | Sent on every response it wipes the reader's cookies, storage and cache at each page load. It belongs on the logout response only: a site's sign-out sends `LOGOUT_HEADERS` (the sign-in's sign-out hook does). |
+| Skipped                                      | Why                                                                                                                                                                                                                                                                                                                                                                                               |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Cache-Control: no-store, max-age=0`         | Sent on every response it makes nothing cacheable, edge caches included. A site sets caching per route.                                                                                                                                                                                                                                                                                           |
+| `Clear-Site-Data`                            | Sent on every response it wipes the reader's cookies, storage and cache at each page load. It belongs on the logout response only: a site's sign-out sends `LOGOUT_HEADERS` (the sign-in's sign-out hook does).                                                                                                                                                                                   |
 | `Cross-Origin-Embedder-Policy: require-corp` | It refuses every cross-origin subresource that does not opt in with CORP or CORS, which breaks images, fonts and scripts a normal site loads elsewhere. Every registry site declares `coep` in its entry (`{ value: "credentialless", reportOnly: true }` to start), and `buildSecurityHeaders` writes it with `report-to="csp-endpoint"`, so what it refuses, or would refuse, reaches the sink. |
-| `Content-Security-Policy` | A policy names what a site loads, so it is not one string for every site. It is built per site (below). |
+| `Content-Security-Policy`                    | A policy names what a site loads, so it is not one string for every site. It is built per site (below).                                                                                                                                                                                                                                                                                           |
 
 A site that must differ on another header says so in `overrides`, each with a reason in the same place:
 
 ```js
 const SECURITY_HEADERS = buildSecurityHeaders({
   overrides: {
-    "Cross-Origin-Resource-Policy": { value: "cross-origin", reason: "og:image previews load this site's images from other origins" },
+    "Cross-Origin-Resource-Policy": {
+      value: "cross-origin",
+      reason: "og:image previews load this site's images from other origins",
+    },
   },
 });
 ```
@@ -89,9 +93,9 @@ builder and the check read the same entry, so a site cannot build one set and be
 its own export, so a Worker imports its entry by name and bundles that entry, not the registry. `./sites` serves the values alone (`sites-values.mjs`), with no `reason` and no `deviations`; the deviations, the only reasons anything prints, are `sites-deviations.mjs`, which only the check imports and joins back by id, so a Worker that runs the check bundles each value once and one that does not bundles none of the prose. The other reasons are for whoever reads `sites.mjs`. Both files are written from it by `node update-sites-values.mjs` (the registry test fails while they differ):
 
 ```js
-import { mySite } from "@dustinedwards/site-runtime/sites";             // the site's own entry, by its export name
-const SECURITY_HEADERS = buildSecurityHeaders({ site: mySite });        // the standard with the site's declared deviations
-checkSecurityHeaders(response.headers, { site: "my-site" });            // graded against exactly that, opt-ins included
+import { mySite } from "@dustinedwards/site-runtime/sites"; // the site's own entry, by its export name
+const SECURITY_HEADERS = buildSecurityHeaders({ site: mySite }); // the standard with the site's declared deviations
+checkSecurityHeaders(response.headers, { site: "my-site" }); // graded against exactly that, opt-ins included
 ```
 
 A deviation an audit marked as a gap is left out of the registry on purpose, so the check fails it until the site is
@@ -124,7 +128,7 @@ encrypted-media, fullscreen, picture-in-picture). A site whose posts embed them 
 Prelum's test holds that every player its renderer builds is on this list, so a new service is added here first.
 
 ```js
-const csp = buildContentSecurityPolicy({ ...mySitePolicy, embeds: true });  // frame-src 'self' + the players
+const csp = buildContentSecurityPolicy({ ...mySitePolicy, embeds: true }); // frame-src 'self' + the players
 ```
 
 ## The policy, from a list of what the site loads
@@ -132,14 +136,17 @@ const csp = buildContentSecurityPolicy({ ...mySitePolicy, embeds: true });  // f
 ```js
 const { name, value } = buildContentSecurityPolicy({
   sources: { img: ["data:"], media: ["https://media.example.com"] },
-  scriptHashes: [await scriptHash(inlineLoaderText)],   // an edge-cached page: hashes, never a nonce
-  nonce,                                                 // a page that is never shared-cached: generateNonce()
-  styleAttributesInline: true,                           // style="" attributes, which a nonce cannot cover
-  cloudflareWebAnalytics: true,                          // the beacon, once, here
-  reportOnly: false,                                     // true ships the policy as Content-Security-Policy-Report-Only
+  scriptHashes: [await scriptHash(inlineLoaderText)], // an edge-cached page: hashes, never a nonce
+  nonce, // a page that is never shared-cached: generateNonce()
+  styleAttributesInline: true, // style="" attributes, which a nonce cannot cover
+  cloudflareWebAnalytics: true, // the beacon, once, here
+  reportOnly: false, // true ships the policy as Content-Security-Policy-Report-Only
 });
 headers.set(name, value);
-headers.set("Reporting-Endpoints", reportingEndpoints(CSP_REPORT_GROUP, new URL(CSP_REPORT_PATH, url.origin)));
+headers.set(
+  "Reporting-Endpoints",
+  reportingEndpoints(CSP_REPORT_GROUP, new URL(CSP_REPORT_PATH, url.origin)),
+);
 ```
 
 Every site reports to `CSP_REPORT_PATH` (`/csp-report`) under the group `CSP_REPORT_GROUP` (`csp-endpoint`): the
@@ -232,7 +239,8 @@ at `/csp-report`. It keeps the three kinds a site's headers ask for: CSP violati
 
 ```js
 import { receiveCspReport } from "@dustinedwards/site-runtime/csp-report";
-if (url.pathname === "/csp-report") return receiveCspReport(request, { headers: SECURITY_HEADERS, allow: (r) => myLimiter(r) });
+if (url.pathname === "/csp-report")
+  return receiveCspReport(request, { headers: SECURITY_HEADERS, allow: (r) => myLimiter(r) });
 ```
 
 A POST always gets 204 (an error status makes browsers send the report again). The body is read to 16 KB and no further;
@@ -285,7 +293,15 @@ It is not an encoder for unquoted attributes, `javascript:` URLs, or the inside 
 the caller decides what a flag means.
 
 ```js
-import { checkProse, profileOf, nearestPassages, distanceFrom, thresholdFor, copiedRuns, WRITING_RULES } from "@dustinedwards/site-runtime/prose";
+import {
+  checkProse,
+  profileOf,
+  nearestPassages,
+  distanceFrom,
+  thresholdFor,
+  copiedRuns,
+  WRITING_RULES,
+} from "@dustinedwards/site-runtime/prose";
 
 const issues = checkProse(body, { phrases: authorList, allow, dashes: "flag", firstLine, model });
 const profile = profileOf(publishedPosts); // null under ~900 words
@@ -358,7 +374,11 @@ return healthResponse({
   ping: () => env.DB.prepare("SELECT 1").first(),
   backup: () => backupHealth(env.BACKUPS),
   sha: env.DEPLOY_SHA,
-  checks: [r2Check("media", env.MEDIA), cronCheck(env.DB), { name: "drift", level: "warn", run: contentDrift }],
+  checks: [
+    r2Check("media", env.MEDIA),
+    cronCheck(env.DB),
+    { name: "drift", level: "warn", run: contentDrift },
+  ],
 });
 ```
 
@@ -402,19 +422,27 @@ import { defineImages, originalKey, pictureHtml } from "@dustinedwards/site-runt
 
 export const images = defineImages({
   uses: {
-    content: { layout: "constrained", width: 704 },   // the prose column
-    cover: { layout: "full-width", ratio: "16x9" },    // cut around the file's focal point
+    content: { layout: "constrained", width: 704 }, // the prose column
+    cover: { layout: "full-width", ratio: "16x9" }, // cut around the file's focal point
     tile: { layout: "fixed", width: 160, ratio: "1x1" },
   },
 });
 
 // The page: srcset, sizes, width, height, and AVIF then WebP sources for a <picture>.
-const attrs = images.attributes({ src: "/media/photo.jpg", width: 2400, height: 1600, focus: "0.4x0.3" }, "content");
+const attrs = images.attributes(
+  { src: "/media/photo.jpg", width: 2400, height: 1600, focus: "0.4x0.3" },
+  "content",
+);
 const html = pictureHtml(attrs, { alt: "The lab bench", priority: true }, escapeHtml);
 
 // The route, /media/*: the original, or one size for ?w=. originalKey turns photo.jpg.webp back into photo.jpg.
 const key = originalKey(params["*"], request);
-return images.respond(request, { object: await env.MEDIA.get(key), images: env.IMAGES, cache: caches.default, reread: () => env.MEDIA.get(key) });
+return images.respond(request, {
+  object: await env.MEDIA.get(key),
+  images: env.IMAGES,
+  cache: caches.default,
+  reread: () => env.MEDIA.get(key),
+});
 ```
 
 The widths and the three layouts are Astro's (MIT, credited in `image.mjs`): `constrained` offers the use's width, twice
@@ -458,9 +486,11 @@ alone (germomics' `Picture` falling back to the original). A site adds its own p
 ```jsx
 const { sources, img } = pictureProps(images.attributes(photo, "content"), { alt: photo.alt });
 <picture>
-  {sources.map((s) => <source key={s.type + (s.media ?? "")} {...s} />)}
+  {sources.map((s) => (
+    <source key={s.type + (s.media ?? "")} {...s} />
+  ))}
   <img {...img} style={{ ...img.style, objectPosition: objectPosition(photo.focus) }} />
-</picture>
+</picture>;
 ```
 
 The stored placeholder shows while the picture loads. Pass the media row's `placeholder` and `color` (site-api's
@@ -499,7 +529,11 @@ is stored, a small copy shown to a model), each a billed transform; serving size
 sets. A bad option throws before the binding is called.
 
 ```js
-const turned = await editImage(env.IMAGES, object.body, { rotate: 90, format: "image/jpeg", quality: 92 });
+const turned = await editImage(env.IMAGES, object.body, {
+  rotate: 90,
+  format: "image/jpeg",
+  quality: 92,
+});
 const shrunk = await editImage(env.IMAGES, bytes, { maxEdge: 4096, format: "image/webp" });
 const jpeg = await editImage(env.IMAGES, heicBytes, { format: "image/jpeg" });
 ```
@@ -511,9 +545,14 @@ with no script: Chrome and Edge read speculation rules from a file the `Speculat
 browsers ignore it. The header needs no CSP allowance (an inline rule set would need one on every page).
 
 ```js
-import { SPECULATION_RULES_HEADER, SPECULATION_RULES_PATH, speculationRulesResponse } from "@dustinedwards/site-runtime/prefetch";
+import {
+  SPECULATION_RULES_HEADER,
+  SPECULATION_RULES_PATH,
+  speculationRulesResponse,
+} from "@dustinedwards/site-runtime/prefetch";
 
-if (url.pathname === SPECULATION_RULES_PATH) return speculationRulesResponse({ exclude: ["/drafts"] }, request);
+if (url.pathname === SPECULATION_RULES_PATH)
+  return speculationRulesResponse({ exclude: ["/drafts"] }, request);
 // On every HTML response, beside the security headers:
 headers.set(SPECULATION_RULES_HEADER.name, SPECULATION_RULES_HEADER.value);
 ```
@@ -578,7 +617,14 @@ it shows nothing signed in. Everything else stays `private, no-store`.
 
 ```js
 import { WorkerEntrypoint } from "cloudflare:workers";
-import { cacheKey, forReader, forRenderer, publicPageHeaders, purgeTags, settleCacheHeaders } from "@dustinedwards/site-runtime/edge-cache";
+import {
+  cacheKey,
+  forReader,
+  forRenderer,
+  publicPageHeaders,
+  purgeTags,
+  settleCacheHeaders,
+} from "@dustinedwards/site-runtime/edge-cache";
 
 // A public route: stored a day, served stale a week while it re-renders, tagged "pages".
 export const headers = () => publicPageHeaders();
@@ -599,7 +645,9 @@ export class Renderer extends WorkerEntrypoint {
 export default {
   async fetch(request, env, ctx) {
     // Signed-in paths, APIs and writes answer here, before the Renderer.
-    const page = await ctx.exports.Renderer.fetch(forRenderer(request), { cf: { cacheKey: cacheKey(request.url) } });
+    const page = await ctx.exports.Renderer.fetch(forRenderer(request), {
+      cf: { cacheKey: cacheKey(request.url) },
+    });
     return forReader(page, request); // a request with a cookie is told no-store for the browser
   },
 };
@@ -655,7 +703,9 @@ if (isWrite) {
   purgeAfterWrite(request, response, ctx, `carrel ${request.method} ${url.pathname}`);
   return response;
 }
-const page = await ctx.exports.Renderer.fetch(forRenderer(request), { cf: { cacheKey: cacheKey(url, { dimensions: { theme } }) } });
+const page = await ctx.exports.Renderer.fetch(forRenderer(request), {
+  cf: { cacheKey: cacheKey(url, { dimensions: { theme } }) },
+});
 return forReader(page, request, { publicCookies: ["theme"] });
 // site-api
 createSiteApi({ adapter, key, hooks: [indexNow, schedulePurgeHook()] });
@@ -686,26 +736,26 @@ site header or nav, prose as lines at a 720 px measure, each image at its `sizes
 column) and its height-to-width ratio, and a run of alike siblings that hold narrow images laid out as a grid. Only an image
 clearly above the fold (its top under 0.8 of the screen at either width) or clearly below it (over 1.1 at both) is judged.
 
-| Item | Finds |
-|---|---|
-| A2 | a raster `<img>` wider than 300 px (its width attribute, else the file) with no `srcset` and `sizes` (a `<picture>` source's counts) |
-| A3 | a `/media` size URL whose AVIF (its `.avif` name, or `f=avif` on a site still on the older URLs) does not answer `image/avif` (not a GIF's: it has none) |
-| A4 | an `<img>` without `width` and `height` |
-| A5 | more than one `fetchpriority="high"` image on a page, or a lazy one; the largest image above the fold at either width, when its visible area beats every paragraph, heading and list item there, that is lazy or not high |
-| A6 | an image below the fold that is not `loading="lazy"` and `decoding="async"`, or is high; a lazy image above the fold; an image preload (in the page or the `Link` header) of an image below the fold |
-| A7 | a file more than 1.5 times its shown width times the DPR: the candidate a browser picks from the `<picture>` source or `srcset` for the `sizes` slot (the width from its `w` descriptor, `?w=` or the file), or the src |
-| A12 | a size URL without `immutable`, or not a `cf-cache-status: HIT` when asked a second time; an original with no ETag, or that does not answer 304 to `If-None-Match` with it |
-| B1, B2 | an `<img>` with no alt; an alt that is the file name, "image", "photo" or a URL |
-| C1 | og:image missing, not absolute https, not 200 or not an image |
-| C2 | og:image not 1200 by 630 (a warning when at least 1200 wide); og:image:width, height, type or alt missing or not the file's |
-| C3 | twitter:card not `summary_large_image`; no twitter:image:alt or one over 420 characters; og:image:type not the Content-Type served to a crawler (`Accept: */*`) and to a browser (AVIF and WebP accepted); a Content-Type that is not what the bytes are |
-| C8 | a sitemap page with content images (raster, not decorative, in `<main>`) and no `image:image` entry |
-| C9 | an indexed page with no `max-image-preview:large` in a robots meta tag or `X-Robots-Tag` |
-| C11 | a share card, size URL or original without `Cross-Origin-Resource-Policy: cross-origin`; an image the page's CSP `img-src` (header or meta) refuses |
-| D2 | an original on the site (its host or a subdomain) the page shows or links (`img` src and srcset, `<source>`, `a href`) whose EXIF (JPEG, PNG, WebP, AVIF) or XMP holds GPS, a serial number, an owner name or a MakerNote |
-| E1 | a youtube.com (not youtube-nocookie.com) or Vimeo player in the page with no facade; an iframe with no title |
-| E2 | a `<video>` without a poster, controls or a captions track, or with `preload="auto"` |
-| E3 | an `<audio>` without controls (its own, or a player's buttons around it), without `preload="none"`, or, when it has a source (`src` or a `<source>`), on a page with no transcript link; a sourceless `<audio>` is a player that plays what the reader picks |
+| Item   | Finds                                                                                                                                                                                                                                                        |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| A2     | a raster `<img>` wider than 300 px (its width attribute, else the file) with no `srcset` and `sizes` (a `<picture>` source's counts)                                                                                                                         |
+| A3     | a `/media` size URL whose AVIF (its `.avif` name, or `f=avif` on a site still on the older URLs) does not answer `image/avif` (not a GIF's: it has none)                                                                                                     |
+| A4     | an `<img>` without `width` and `height`                                                                                                                                                                                                                      |
+| A5     | more than one `fetchpriority="high"` image on a page, or a lazy one; the largest image above the fold at either width, when its visible area beats every paragraph, heading and list item there, that is lazy or not high                                    |
+| A6     | an image below the fold that is not `loading="lazy"` and `decoding="async"`, or is high; a lazy image above the fold; an image preload (in the page or the `Link` header) of an image below the fold                                                         |
+| A7     | a file more than 1.5 times its shown width times the DPR: the candidate a browser picks from the `<picture>` source or `srcset` for the `sizes` slot (the width from its `w` descriptor, `?w=` or the file), or the src                                      |
+| A12    | a size URL without `immutable`, or not a `cf-cache-status: HIT` when asked a second time; an original with no ETag, or that does not answer 304 to `If-None-Match` with it                                                                                   |
+| B1, B2 | an `<img>` with no alt; an alt that is the file name, "image", "photo" or a URL                                                                                                                                                                              |
+| C1     | og:image missing, not absolute https, not 200 or not an image                                                                                                                                                                                                |
+| C2     | og:image not 1200 by 630 (a warning when at least 1200 wide); og:image:width, height, type or alt missing or not the file's                                                                                                                                  |
+| C3     | twitter:card not `summary_large_image`; no twitter:image:alt or one over 420 characters; og:image:type not the Content-Type served to a crawler (`Accept: */*`) and to a browser (AVIF and WebP accepted); a Content-Type that is not what the bytes are     |
+| C8     | a sitemap page with content images (raster, not decorative, in `<main>`) and no `image:image` entry                                                                                                                                                          |
+| C9     | an indexed page with no `max-image-preview:large` in a robots meta tag or `X-Robots-Tag`                                                                                                                                                                     |
+| C11    | a share card, size URL or original without `Cross-Origin-Resource-Policy: cross-origin`; an image the page's CSP `img-src` (header or meta) refuses                                                                                                          |
+| D2     | an original on the site (its host or a subdomain) the page shows or links (`img` src and srcset, `<source>`, `a href`) whose EXIF (JPEG, PNG, WebP, AVIF) or XMP holds GPS, a serial number, an owner name or a MakerNote                                    |
+| E1     | a youtube.com (not youtube-nocookie.com) or Vimeo player in the page with no facade; an iframe with no title                                                                                                                                                 |
+| E2     | a `<video>` without a poster, controls or a captions track, or with `preload="auto"`                                                                                                                                                                         |
+| E3     | an `<audio>` without controls (its own, or a player's buttons around it), without `preload="none"`, or, when it has a source (`src` or a `<source>`), on a page with no transcript link; a sourceless `<audio>` is a player that plays what the reader picks |
 
 It reads the HTML the server sends, so an image a script adds later is not seen, and it reads no CSS: an image a class sizes
 (say, a logo set to 36 px tall) counts at its attributes, an image a stylesheet sets as a background is not a candidate for
@@ -733,9 +783,16 @@ import { ImageResponse } from "workers-og";
 
 return shareCardResponse(ImageResponse, {
   cacheKey: `https://og.example.com/book/${book.slug}?v=${book.updatedAt}`, // whatever changes the card
-  html: () => cardHtml(book),                                              // called on a miss only
-  fonts: async () => [{ name: "DM Sans", data: await googleFont("DM Sans", 500, { cache: caches.default }), weight: 500, style: "normal" }],
-  ctx,                                                                     // the cache write goes in ctx.waitUntil
+  html: () => cardHtml(book), // called on a miss only
+  fonts: async () => [
+    {
+      name: "DM Sans",
+      data: await googleFont("DM Sans", 500, { cache: caches.default }),
+      weight: 500,
+      style: "normal",
+    },
+  ],
+  ctx, // the cache write goes in ctx.waitUntil
 });
 ```
 
@@ -752,7 +809,11 @@ vulnerability.
 
 ```js
 import { securityTxtResponse } from "@dustinedwards/site-runtime/security-txt";
-return securityTxtResponse({ origin: "https://example.com", contact: "security@example.com", expires: "2027-09-28T00:00:00Z" });
+return securityTxtResponse({
+  origin: "https://example.com",
+  contact: "security@example.com",
+  expires: "2027-09-28T00:00:00Z",
+});
 ```
 
 `securityTxt(fields)` is the text: Contact (an address becomes a `mailto:` URI), Expires, Policy when given,
@@ -865,7 +926,11 @@ const auth = betterAuth({
   secret: env.BETTER_AUTH_SECRET,
   database: drizzleAdapter(db, { provider: "sqlite", schema }),
   ...(await signInOptions(env, {
-    siteName: "Example Co", sendMagicLink, social: true, emailLimiter: env.AUTH_RATE_LIMITER, eventsDb: env.DB,
+    siteName: "Example Co",
+    sendMagicLink,
+    social: true,
+    emailLimiter: env.AUTH_RATE_LIMITER,
+    eventsDb: env.DB,
   })),
 });
 // the confirm page's action (CONFIRM_PATH, /sign-in/confirm): return confirmSignInLink(auth, request)
@@ -955,9 +1020,14 @@ const auth = betterAuth({
     return confirmSignInLink(await getAuth(context.cloudflare.env), request);
   }
   export default function Confirm() {
-    return <Form method="post"><button type="submit">Sign in to Example Co</button></Form>;
+    return (
+      <Form method="post">
+        <button type="submit">Sign in to Example Co</button>
+      </Form>
+    );
   }
   ```
+
 - Per address, as well as per IP: with `emailLimiter` (the site's `RateLimiter` Durable Object namespace,
   `./rate-limit`), each address gets five sign-in mails an hour (`LINK_EMAIL_RULES`: the link request, and with
   `appCode` the app's code request); three wrong codes an hour and ten a day, counted across links
@@ -1064,22 +1134,23 @@ its own and the notices by passing one function.
 
 - The auth event log (F2): one `./log` line per event, named from the OWASP Logging Vocabulary (`OWASP_EVENTS`).
 
-  | Event | Line |
-  | --- | --- |
-  | sign-in, by `via`: `link`, `code`, `passkey`, `google`, `apple` | `authn_login_success` (`user_id`), `authn_login_fail` (`code`, such as `INVALID_TOKEN`, `INVALID_OTP`, `PASSKEY_NOT_FOUND`) |
-  | a sign-in link or the app's code mailed | `authn_token_created` (`via`) |
-  | a per-address limit hit (`emailLimiter`) | `excess_rate_limit_exceeded` (`endpoint`, `bucket`) |
-  | sign-out | `session_logout` |
-  | a session ended from the sessions list | `session_expired` (`reason: "revoked"`, `scope`: `one`, `others`, `all`) |
+  | Event                                                                                         | Line                                                                                                                              |
+  | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+  | sign-in, by `via`: `link`, `code`, `passkey`, `google`, `apple`                               | `authn_login_success` (`user_id`), `authn_login_fail` (`code`, such as `INVALID_TOKEN`, `INVALID_OTP`, `PASSKEY_NOT_FOUND`)       |
+  | a sign-in link or the app's code mailed                                                       | `authn_token_created` (`via`)                                                                                                     |
+  | a per-address limit hit (`emailLimiter`)                                                      | `excess_rate_limit_exceeded` (`endpoint`, `bucket`)                                                                               |
+  | sign-out                                                                                      | `session_logout`                                                                                                                  |
+  | a session ended from the sessions list                                                        | `session_expired` (`reason: "revoked"`, `scope`: `one`, `others`, `all`)                                                          |
   | a passkey added or removed, Google or Apple linked or unlinked, the email changed, a recovery | `user_updated` (`change`: `passkey_added`, `passkey_removed`, `sign_in_linked`, `sign_in_unlinked`, `email_changed`, `recovered`) |
-  | the other sessions ended after an email change or a recovery | `session_expired` (`reason`: `email_changed`, `recovered`; `scope: "others"`) |
-  | the account deleted | `user_deleted` |
-  | refused for want of a fresh sign-in | `authz_fail` (`reason`: `SESSION_NOT_FRESH`, or `/delete-user`'s `SESSION_EXPIRED`; `endpoint`) |
+  | the other sessions ended after an email change or a recovery                                  | `session_expired` (`reason`: `email_changed`, `recovered`; `scope: "others"`)                                                     |
+  | the account deleted                                                                           | `user_deleted`                                                                                                                    |
+  | refused for want of a fresh sign-in                                                           | `authz_fail` (`reason`: `SESSION_NOT_FRESH`, or `/delete-user`'s `SESSION_EXPIRED`; `endpoint`)                                   |
 
   A line carries `user_id` once there is a user, and before that the address hashed as `emailKey` hashes it
   (`email_key: "email:<sha-256>"`); never the address, a token, a code or a session id. Better Auth's own per-IP limits
   answer 429 before any hook runs (its router's `onRequest`), so those refusals are not in the log; Workers Logs shows
   them as 429s on `/api/auth`.
+
 - Security notices (A8, E1; NIST SP 800-63B-4 4.1.2.1 and 4.6): `signInOptions(env, { ...,
   sendSecurityNotice })` calls `sendSecurityNotice(kind, { user, request, detail })` for `passkey-added`,
   `passkey-removed`, `sign-in-linked`, `sign-in-unlinked`, `email-changed` (twice, once to each address, the old one
@@ -1108,6 +1179,7 @@ its own and the notices by passing one function.
   for the mail. A linked or unlinked provider, the two addresses of an email change and a deleted user's address come
   from database hooks (the plugin's own, beside the site's `databaseHooks`); the email change is caught on both of
   Better Auth's paths, `/change-email` for an unconfirmed address and `/verify-email` for a confirmed one.
+
 - Security history (E5): with `eventsDb` (the site's D1, with `AUTH_EVENTS_SQL` as its next migration), every line
   above is also a row in `auth_events`: the time, the OWASP event, its `change` or `scope`, the way in, the user's id
   when there is one, and the device and coarse place; never an address, token or code. `securityHistory(db, userId,
@@ -1156,13 +1228,13 @@ its own and the notices by passing one function.
 - The WebAuthn Signal API (A6), in `./sign-in-client`. Each call runs only where the browser has it (Chrome 132,
   Safari 26) and swallows a refusal; `rpId` defaults to the page's host. When a site calls each:
 
-  | Call | When |
-  | --- | --- |
-  | `signInWithPasskey(authClient, { autoFill })` | every passkey button and autofill, in place of `authClient.signIn.passkey(...)`: on `PASSKEY_NOT_FOUND` (deleted elsewhere) it signals that credential unknown, and on success it keeps the passkey's user handle (`passkeyUserHandle()`) for the calls below |
-  | `signalPasskeys({ credentialIds, name, displayName })` | after a passkey sign-in lands, and each time the account page's passkey list loads, with the rows' `credentialId`s and the account's address as `name` |
-  | `signalCurrentUserDetails({ name, displayName })` | after the email change is made (on the page `emailLinkResult` says `done: "changed"`, `name` the new address) and after the person renames themselves |
-  | `signalAllAcceptedCredentials({ credentialIds })` | inside `signalPasskeys`; alone where only the list matters |
-  | `signalUnknownCredential({ credentialId })` | after the person deletes a passkey on the site, with that row's `credentialId` |
+  | Call                                                   | When                                                                                                                                                                                                                                                          |
+  | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `signInWithPasskey(authClient, { autoFill })`          | every passkey button and autofill, in place of `authClient.signIn.passkey(...)`: on `PASSKEY_NOT_FOUND` (deleted elsewhere) it signals that credential unknown, and on success it keeps the passkey's user handle (`passkeyUserHandle()`) for the calls below |
+  | `signalPasskeys({ credentialIds, name, displayName })` | after a passkey sign-in lands, and each time the account page's passkey list loads, with the rows' `credentialId`s and the account's address as `name`                                                                                                        |
+  | `signalCurrentUserDetails({ name, displayName })`      | after the email change is made (on the page `emailLinkResult` says `done: "changed"`, `name` the new address) and after the person renames themselves                                                                                                         |
+  | `signalAllAcceptedCredentials({ credentialIds })`      | inside `signalPasskeys`; alone where only the list matters                                                                                                                                                                                                    |
+  | `signalUnknownCredential({ credentialId })`            | after the person deletes a passkey on the site, with that row's `credentialId`                                                                                                                                                                                |
 
   `userId` is a passkey's user handle, and @better-auth/passkey 1.7.12 makes a new random handle for every passkey and
   stores none (`generate-register-options`), so the one handle a page can know is that of the passkey that signed in
@@ -1229,8 +1301,8 @@ useEffect(() => mountTurnstile(ref.current, siteKey), [siteKey]);
 import { verifyTurnstile } from "@dustinedwards/site-runtime/turnstile";
 const check = await verifyTurnstile(form.get("cf-turnstile-response"), env.TURNSTILE_SECRET_KEY, {
   remoteIp: request.headers.get("cf-connecting-ip"),
-  hostname: url.hostname,   // optional: the widget ran on this site
-  action: "estimate",       // optional: the widget's data-action
+  hostname: url.hostname, // optional: the widget ran on this site
+  action: "estimate", // optional: the widget's data-action
 });
 if (!check.ok) return refuse(check.errors);
 ```
@@ -1292,7 +1364,10 @@ return operatorResponse(request, {
   limiter: env.RATE_LIMITER,
   tools: {
     backup_status: { description: "Reads the backup state now.", run: () => backupStatus(env) },
-    backup_media: { description: "Runs the files backup now.", run: async () => ({ files: await backupFilesNow(env) }) },
+    backup_media: {
+      description: "Runs the files backup now.",
+      run: async () => ({ files: await backupFilesNow(env) }),
+    },
   },
 });
 ```
@@ -1374,7 +1449,10 @@ a browser. It resolves to null when nothing matches; it does not answer React Ro
 that serves a renamed slug calls it too.
 
 ```js
-const moved = await renameRedirect(request, { prefix: "/blog/", renames: { "spring-update": "spring-update-2026" } });
+const moved = await renameRedirect(request, {
+  prefix: "/blog/",
+  renames: { "spring-update": "spring-update-2026" },
+});
 if (moved) return moved;
 ```
 
@@ -1384,7 +1462,11 @@ if (moved) return moved;
 
 ```js
 import { logEvent } from "@dustinedwards/site-runtime/log";
-logEvent("checkout_failed", { path: url.pathname, error }, { level: "error", tokenPath: /\/(u|p|invite)\/[^/?#\s'"]+/g });
+logEvent(
+  "checkout_failed",
+  { path: url.pathname, error },
+  { level: "error", tokenPath: /\/(u|p|invite)\/[^/?#\s'"]+/g },
+);
 // {"event":"checkout_failed","path":"/u/[token]","error":"Error: ..."}
 ```
 
@@ -1422,6 +1504,7 @@ import * as build from "virtual:react-router/server-build";
 const route = routeNamer(build.routes);
 export default { fetch: withRequestLog(handler, { sha: (env) => env.DEPLOY_SHA, route }) };
 ```
+
 `OWASP_EVENTS` holds the [OWASP Logging Vocabulary](https://cheatsheetseries.owasp.org/cheatsheets/Logging_Vocabulary_Cheat_Sheet.html)
 names for a site's security events: `authn_login_success`, `authn_login_fail`, `authn_token_created`, `session_logout`,
 `session_expired`, `user_updated`, `user_deleted`, `authz_fail`, `input_validation_fail` and
@@ -1518,7 +1601,11 @@ notices and the owner's alerts.
 
 ```js
 import { sendEmail } from "@dustinedwards/site-runtime/email";
-const outcome = await sendEmail(env.EMAIL, { from: { email: env.EMAIL_FROM, name: "Example Co" }, to, ...rendered }, { secrets: [url, code] });
+const outcome = await sendEmail(
+  env.EMAIL,
+  { from: { email: env.EMAIL_FROM, name: "Example Co" }, to, ...rendered },
+  { secrets: [url, code] },
+);
 if (!outcome.sent) throw new Error(`Email not sent (${outcome.code}).`);
 ```
 
@@ -1539,7 +1626,8 @@ The `emailCheck` in `./health` checks the binding is present without sending.
 
 ```js
 import { safeEqual } from "@dustinedwards/site-runtime/compare";
-if (!(await safeEqual(presentedToken, env.OPERATOR_TOKEN))) return new Response("unauthorized", { status: 401 });
+if (!(await safeEqual(presentedToken, env.OPERATOR_TOKEN)))
+  return new Response("unauthorized", { status: 401 });
 ```
 
 - Both sides are hashed with SHA-256 and the 32-byte digests compared, so neither string's length reaches the compare (the
@@ -1556,7 +1644,11 @@ WebCrypto JWT check (`verifyJwt`, which `verifyIdToken` wraps), so there is no J
 
 ```js
 import { verifyAccessRequest } from "@dustinedwards/site-runtime/access";
-const verdict = await verifyAccessRequest(request, { teamDomain: env.ACCESS_TEAM_DOMAIN, audience: env.ACCESS_AUD, cookie: true });
+const verdict = await verifyAccessRequest(request, {
+  teamDomain: env.ACCESS_TEAM_DOMAIN,
+  audience: env.ACCESS_AUD,
+  cookie: true,
+});
 if (!verdict.ok) return refuse(verdict.reason);
 const email = typeof verdict.claims.email === "string" ? verdict.claims.email : null; // a person
 const service = typeof verdict.claims.common_name === "string" ? verdict.claims.common_name : null; // a service token
@@ -1578,9 +1670,9 @@ const service = typeof verdict.claims.common_name === "string" ? verdict.claims.
 
 ```js
 import { accessAdmin, accessSignInUrl, safeAdminNext } from "@dustinedwards/site-runtime/access";
-const admin = await accessAdmin(request, env);                                // ADMIN_EMAILS, else ADMIN_EMAIL
+const admin = await accessAdmin(request, env); // ADMIN_EMAILS, else ADMIN_EMAIL
 const same = await accessAdmin(request, env, { admins: [session.user.email] }); // Access must name this signed-in user
-if (!admin) return redirect(accessSignInUrl(request));                        // /admin/access?next=<this page>
+if (!admin) return redirect(accessSignInUrl(request)); // /admin/access?next=<this page>
 ```
 
 - `accessAdmin(request, env, { admins })` is `{ email }` or null and never throws. The token is the header or the
@@ -1634,7 +1726,8 @@ stays `__Host-admin-seen`:
 
 ```js
 const site = () => app.fetch(request, env, ctx);
-const lab = () => withAdminIdle(request, site, { prefixes: ["/lab"], cookieName: "__Host-lab-seen" });
+const lab = () =>
+  withAdminIdle(request, site, { prefixes: ["/lab"], cookieName: "__Host-lab-seen" });
 return withAdminIdle(request, lab, { prefixes: ["/admin"] });
 ```
 
@@ -1689,8 +1782,19 @@ on: { schedule: [{ cron: "17 6 * * *" }], workflow_dispatch: {} }
 jobs:
   drift:
     uses: DrDustinEdwards/devkit/.github/workflows/access-drift.yml@<full sha> # vX.Y.Z
-    with: { app: example-login, admins-url: "https://example.com/admin/access-drift", account: "${{ vars.CLOUDFLARE_ACCOUNT_ID }}", site-runtime-ref: v0.59.0 }
-    secrets: { ACCESS_READ_TOKEN: "${{ secrets.ACCESS_READ_TOKEN }}", ACCESS_CLIENT_ID: "${{ secrets.ACCESS_CLIENT_ID }}", ACCESS_CLIENT_SECRET: "${{ secrets.ACCESS_CLIENT_SECRET }}" }
+    with:
+      {
+        app: example-login,
+        admins-url: "https://example.com/admin/access-drift",
+        account: "${{ vars.CLOUDFLARE_ACCOUNT_ID }}",
+        site-runtime-ref: v0.59.0,
+      }
+    secrets:
+      {
+        ACCESS_READ_TOKEN: "${{ secrets.ACCESS_READ_TOKEN }}",
+        ACCESS_CLIENT_ID: "${{ secrets.ACCESS_CLIENT_ID }}",
+        ACCESS_CLIENT_SECRET: "${{ secrets.ACCESS_CLIENT_SECRET }}",
+      }
 ```
 
 A failed run is the alert. `test/access-drift.test.mjs` runs it against a fake API: direct addresses, a group with its
@@ -1764,9 +1868,25 @@ reported check `signed-in-security`, devkit `live/areas.json`); GitHub never hol
 Carrel's Desk run it on a schedule.
 
 ```js
-import { crawlApp, guardedCrawl, signedInReport, signedInReportResponse, SIGNED_IN_MISSING_PATH, SIGNED_IN_REPORT_PATH } from "@dustinedwards/site-runtime/signed-in-crawl";
+import {
+  crawlApp,
+  guardedCrawl,
+  signedInReport,
+  signedInReportResponse,
+  SIGNED_IN_MISSING_PATH,
+  SIGNED_IN_REPORT_PATH,
+} from "@dustinedwards/site-runtime/signed-in-crawl";
 
-const result = await guardedCrawl(() => crawlApp({ origin, fetch: ownHandler, headers: { Cookie: session }, pages: ["/", SIGNED_IN_MISSING_PATH], json: ["/api/x"], actions: ["/api/act"] }));
+const result = await guardedCrawl(() =>
+  crawlApp({
+    origin,
+    fetch: ownHandler,
+    headers: { Cookie: session },
+    pages: ["/", SIGNED_IN_MISSING_PATH],
+    json: ["/api/x"],
+    actions: ["/api/act"],
+  }),
+);
 const report = signedInReport({ [origin]: result }, { at: new Date(), ref: "app abc123" }); // store it; serve it with signedInReportResponse(body)
 ```
 
@@ -1792,13 +1912,16 @@ the same pattern is merged into that rule.
 
 ```js
 import { headersFile } from "@dustinedwards/site-runtime/headers";
-writeFileSync("public/_headers", headersFile(SECURITY_HEADERS, {
-  comment: "GENERATED by scripts/gen-headers.mjs. Do not edit.",
-  paths: {
-    "/assets/*": { "Cache-Control": "public, max-age=31536000, immutable" },
-  },
-  charset: true,
-}));
+writeFileSync(
+  "public/_headers",
+  headersFile(SECURITY_HEADERS, {
+    comment: "GENERATED by scripts/gen-headers.mjs. Do not edit.",
+    paths: {
+      "/assets/*": { "Cache-Control": "public, max-age=31536000, immutable" },
+    },
+    charset: true,
+  }),
+);
 ```
 
 Every site writes it with the one bin, from its registry entry:
@@ -1839,7 +1962,11 @@ import { staticSite } from "@dustinedwards/site-runtime/static-site";
 import { prelum } from "@dustinedwards/site-runtime/sites";
 import { TDM_RESERVATION_HEADERS } from "@drdustinedwards/site-helpers/robots";
 import { PAGE_PRELOADS } from "./headers.mjs";
-export default staticSite({ site: prelum, headers: TDM_RESERVATION_HEADERS, preload: PAGE_PRELOADS.header });
+export default staticSite({
+  site: prelum,
+  headers: TDM_RESERVATION_HEADERS,
+  preload: PAGE_PRELOADS.header,
+});
 ```
 
 In wrangler, `run_worker_first` sends the Worker every page and leaves the hashed files to the asset server (for
@@ -1869,9 +1996,17 @@ import { RateLimiter } from "@dustinedwards/site-runtime/rate-limit/durable-obje
 export { RateLimiter }; // the Worker exports the class and binds it in wrangler.jsonc
 
 const { key } = ipKey("ask", request); // an IPv6 address counts by its /64: ask:2001-db8-0-1/64
-const verdict = await limit(env.RATE_LIMITER, key, [{ limit: 300, windowSeconds: 3600 }, { limit: 1000, windowSeconds: 86400 }], {
-  onUnavailable: "refuse", // or "allow": required
-});
+const verdict = await limit(
+  env.RATE_LIMITER,
+  key,
+  [
+    { limit: 300, windowSeconds: 3600 },
+    { limit: 1000, windowSeconds: 86400 },
+  ],
+  {
+    onUnavailable: "refuse", // or "allow": required
+  },
+);
 if (mustStop(verdict, "refuse")) return limitedResponse(verdict);
 ```
 
@@ -1904,24 +2039,63 @@ holds the rules, with no I/O and no dependencies, so they are tested once.
 
 Code checks permissions, never titles. A title is a named bundle of permissions on a layer:
 
-| Layer | Title | Set by |
-| --- | --- | --- |
-| 0 | `primary_owner`, Dustin only | `PRIMARY_OWNER_EMAIL`, deployment configuration; never a row |
-| 1 | `owner` | the Primary Owner, on the members page |
-| 2 | the app's leads | layers 0 and 1 |
-| 3 | the app's members | layers 0 to 2 |
+| Layer | Title                        | Set by                                                       |
+| ----- | ---------------------------- | ------------------------------------------------------------ |
+| 0     | `primary_owner`, Dustin only | `PRIMARY_OWNER_EMAIL`, deployment configuration; never a row |
+| 1     | `owner`                      | the Primary Owner, on the members page                       |
+| 2     | the app's leads              | layers 0 and 1                                               |
+| 3     | the app's members            | layers 0 to 2                                                |
 
 ```js
-import { defineTitles, resolveActor, can, checkChange, defaultEndDate, auditRow, allowList } from "@dustinedwards/site-runtime/members";
+import {
+  defineTitles,
+  resolveActor,
+  can,
+  checkChange,
+  defaultEndDate,
+  auditRow,
+  allowList,
+} from "@dustinedwards/site-runtime/members";
 
 const catalog = defineTitles({
-  permissions: ["read", "use_lot", "record_run", "read_all_runs", "edit_inventory", "draft_procedure"],
+  permissions: [
+    "read",
+    "use_lot",
+    "record_run",
+    "read_all_runs",
+    "edit_inventory",
+    "draft_procedure",
+  ],
   titles: [
-    { id: "lab_manager", label: "Lab manager", layer: 2, expires: true, permissions: ["read", "use_lot", "record_run", "read_all_runs", "edit_inventory", "draft_procedure", "manage_members"] },
-    { id: "lab_worker", label: "Lab worker", layer: 3, expires: true, permissions: ["read", "use_lot", "record_run"] },
+    {
+      id: "lab_manager",
+      label: "Lab manager",
+      layer: 2,
+      expires: true,
+      permissions: [
+        "read",
+        "use_lot",
+        "record_run",
+        "read_all_runs",
+        "edit_inventory",
+        "draft_procedure",
+        "manage_members",
+      ],
+    },
+    {
+      id: "lab_worker",
+      label: "Lab worker",
+      layer: 3,
+      expires: true,
+      permissions: ["read", "use_lot", "record_run"],
+    },
   ],
 });
-const actor = resolveActor(accessEmail, rowFromD1, { catalog, primaryOwnerEmail: env.PRIMARY_OWNER_EMAIL, nowMs: Date.now() });
+const actor = resolveActor(accessEmail, rowFromD1, {
+  catalog,
+  primaryOwnerEmail: env.PRIMARY_OWNER_EMAIL,
+  nowMs: Date.now(),
+});
 if (!can(actor, "edit_inventory")) return notFound();
 ```
 
@@ -1950,15 +2124,31 @@ Every MCP server in the family signs a person in through Cloudflare Access for S
 `./access-login`:
 
 ```js
-import { accessSaas, newSignIn, authorizationUrl, finishSignIn } from "@dustinedwards/site-runtime/access-login";
+import {
+  accessSaas,
+  newSignIn,
+  authorizationUrl,
+  finishSignIn,
+} from "@dustinedwards/site-runtime/access-login";
 
 // After consent: the verifier and nonce go in the provider's upstream state, server-side.
 const signIn = newSignIn();
-const { state, headers } = await env.OAUTH_PROVIDER.beginUpstream(approved.request, { data: signIn, headers: approved.headers });
-return redirect(await authorizationUrl(saas, { redirectUri: `${origin}/callback`, state, ...signIn }), headers);
+const { state, headers } = await env.OAUTH_PROVIDER.beginUpstream(approved.request, {
+  data: signIn,
+  headers: approved.headers,
+});
+return redirect(
+  await authorizationUrl(saas, { redirectUri: `${origin}/callback`, state, ...signIn }),
+  headers,
+);
 // On /callback:
 const { request: original, data } = await env.OAUTH_PROVIDER.finishUpstream(request);
-const signedIn = await finishSignIn(saas, { code, redirectUri: `${origin}/callback`, verifier: data.verifier, nonce: data.nonce });
+const signedIn = await finishSignIn(saas, {
+  code,
+  redirectUri: `${origin}/callback`,
+  verifier: data.verifier,
+  nonce: data.nonce,
+});
 if (!signedIn.ok || !isAdministrator(signedIn.email)) return refuse(original);
 ```
 
@@ -2109,15 +2299,35 @@ where it stopped, printed after the findings gathered so far, so a crash never r
 dependency: the caller hands in the SDK's two functions.
 
 ```js
-import { authorizeCall, callApi, checkRateLimit, mcpScopes, refuse, routeMcpEra } from "@dustinedwards/site-runtime/mcp-server";
+import {
+  authorizeCall,
+  callApi,
+  checkRateLimit,
+  mcpScopes,
+  refuse,
+  routeMcpEra,
+} from "@dustinedwards/site-runtime/mcp-server";
 import { isLegacyRequest } from "@modelcontextprotocol/server";
 import { createMcpHandler } from "agents/mcp/server";
 
 export const SCOPES = mcpScopes("sample"); // { read: "sample.read", write: "sample.write", all }
-return routeMcpEra(request, env, ctx, { factory, options: { route: "/mcp" }, createMcpHandler, isLegacyRequest });
+return routeMcpEra(request, env, ctx, {
+  factory,
+  options: { route: "/mcp" },
+  createMcpHandler,
+  isLegacyRequest,
+});
 const limit = await checkRateLimit(env.MCP_RATE_LIMIT, `admin:${email}`); // { allowed, retryAfter }
-const answer = await callApi(env, { binding: "SITE", token: "OPERATOR_TOKEN", api: "The operator API", userAgent }, "/api/operator", { json: { tool, args } });
-const refusal = authorizeCall(env, caller, SCOPES.write, { site: "sample.example.com", scopes: SCOPES });
+const answer = await callApi(
+  env,
+  { binding: "SITE", token: "OPERATOR_TOKEN", api: "The operator API", userAgent },
+  "/api/operator",
+  { json: { tool, args } },
+);
+const refusal = authorizeCall(env, caller, SCOPES.write, {
+  site: "sample.example.com",
+  scopes: SCOPES,
+});
 ```
 
 - `routeMcpEra` sends a request the SDK's `isLegacyRequest` calls legacy (2025-11-25, `initialize`) to a
@@ -2188,7 +2398,8 @@ export default adminMcpWorker({
   server: SERVER, // { site, scopes: mcpScopes("sample"), name, version }
   site: sampleMcp, // the door's ./sites entry
   securityTxt: { contact: "security@example.com", expires: "2027-09-28T00:00:00Z" },
-  about: "<p>Sample Admin runs sample.example.com. It will always be able to read. Changes need the box below.</p>",
+  about:
+    "<p>Sample Admin runs sample.example.com. It will always be able to read. Changes need the box below.</p>",
   api: { binding: "SITE", name: "sample" },
   OAuthProvider,
   serve: (request, env, ctx, caller) => handleMcp(request, env, ctx, caller),
@@ -2244,7 +2455,11 @@ the minimum required" (RFC 9700, section 2.3), and the live check only lists too
 ```js
 import { probeDoor } from "@dustinedwards/site-runtime/mcp-server";
 // On /mcp, before the OAuth provider. Null means the request carries no test key: go on to OAuth.
-const probed = await probeDoor(request, env, { server: SERVER, limiter: env.MCP_RATE_LIMIT, serve: (req, caller) => handleMcp(req, env, ctx, caller) });
+const probed = await probeDoor(request, env, {
+  server: SERVER,
+  limiter: env.MCP_RATE_LIMIT,
+  serve: (req, caller) => handleMcp(req, env, ctx, caller),
+});
 if (probed) return probed;
 ```
 
