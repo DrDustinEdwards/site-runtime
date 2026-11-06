@@ -39,10 +39,16 @@ const SESSION_URL = /^https:\/\/(?:[a-z0-9-]+\.)*claude\.ai(?:\/[A-Za-z0-9_.-]+)
 // a reset, a Workers "Network connection lost") may have followed the request and is unknown.
 const NOT_SENT = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "EAI_NONAME", "ENETUNREACH", "EHOSTUNREACH", "UND_ERR_CONNECT_TIMEOUT"]);
 
+/** @param {string | undefined} url */
 export function routineId(url) {
   return typeof url === "string" ? (FIRE_URL.exec(url.trim())?.[1] ?? null) : null;
 }
 
+/**
+ * @param {string | undefined} url
+ * @param {string | undefined} token
+ * @returns {import("./routine.mjs").RoutineConfig | { missing: string }}
+ */
 export function routineConfig(url, token) {
   const u = typeof url === "string" ? url.trim() : "";
   const t = typeof token === "string" ? token.trim() : "";
@@ -52,6 +58,12 @@ export function routineConfig(url, token) {
   return { url: u, token: t, routineId: id };
 }
 
+/**
+ * @param {import("./routine.mjs").RoutineConfig} config
+ * @param {string} text
+ * @param {typeof fetch} [fetcher]
+ * @returns {Promise<import("./routine.mjs").FireResult>}
+ */
 export async function fireRoutine(config, text, fetcher = fetch) {
   let res;
   try {
@@ -68,8 +80,9 @@ export async function fireRoutine(config, text, fetcher = fetch) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const code = error?.cause?.code ?? error?.code;
-    if (NOT_SENT.has(code)) return { ok: false, outcome: "unreachable", retry: true, error: `The routine could not be reached (${code}).` };
+    const failure = /** @type {{ code?: unknown, cause?: { code?: unknown } } | null | undefined} */ (error);
+    const code = failure?.cause?.code ?? failure?.code;
+    if (typeof code === "string" && NOT_SENT.has(code)) return { ok: false, outcome: "unreachable", retry: true, error: `The routine could not be reached (${code}).` };
     return { ok: false, outcome: "unknown", retry: false, error: `No answer from the routine (${message.slice(0, 200)}); a session may have started.` };
   }
   if (res.ok) return readAnswer(res);
@@ -82,6 +95,7 @@ export async function fireRoutine(config, text, fetcher = fetch) {
 
 // A 2xx means a session was created. It counts as started only when the answer is a routine_fire naming a session;
 // otherwise it is unknown, never a reason to fire again.
+/** @param {Response} res @returns {Promise<import("./routine.mjs").FireResult>} */
 async function readAnswer(res) {
   const text = (await res.text().catch(() => "")).slice(0, ANSWER_MAX_CHARS);
   let body = null;
@@ -97,8 +111,9 @@ async function readAnswer(res) {
 
 // The id and the URL each stand alone: either one is enough, the other is derived, and when both read but disagree
 // the id is trusted.
+/** @param {Record<string, unknown>} answer */
 function readSession(answer) {
-  const named = (url) => url.split("/").find((s) => SESSION_SEGMENT.test(s)) ?? null;
+  const named = (/** @type {string} */ url) => url.split("/").find((s) => SESSION_SEGMENT.test(s)) ?? null;
   let id = typeof answer.claude_code_session_id === "string" && SESSION_SEGMENT.test(answer.claude_code_session_id) ? answer.claude_code_session_id : null;
   let url = readSessionUrl(answer.claude_code_session_url);
   if (id === null && url !== null) id = named(url);
@@ -108,6 +123,7 @@ function readSession(answer) {
 }
 
 // A claude.ai session URL reduced to origin and path, or null.
+/** @param {unknown} raw */
 function readSessionUrl(raw) {
   if (typeof raw !== "string" || raw.length > 2048) return null;
   let url;
@@ -121,6 +137,7 @@ function readSessionUrl(raw) {
   return SESSION_URL.test(clean) ? clean : null;
 }
 
+/** @param {Response} res */
 async function errorType(res) {
   const body = await res.json().catch(() => null);
   const type = body?.error?.type;
@@ -128,6 +145,12 @@ async function errorType(res) {
 }
 
 // Retry-After as whole seconds: delta-seconds or an HTTP date (RFC 9110, 10.2.3). Absent or unreadable, it is left off.
+/**
+ * @template {import("./routine.mjs").FireResult} T
+ * @param {T} result
+ * @param {Response} res
+ * @returns {T & { retryAfter?: number }}
+ */
 function withRetryAfter(result, res) {
   const raw = res.headers.get("Retry-After")?.trim() ?? "";
   let seconds = null;
@@ -160,6 +183,7 @@ export function d1FireStore(db, table = "routine_fires") {
   };
 }
 
+/** @param {unknown} raw @returns {import("./routine.mjs").FireRecord | null} */
 const readRecord = (raw) => {
   try {
     const record = typeof raw === "string" ? JSON.parse(raw) : raw;
@@ -172,20 +196,28 @@ const readRecord = (raw) => {
 // A reservation older than this was left by a worker that died mid-fire: reported as unknown, not in flight.
 const FIRING_STALE_MS = 10 * 60_000;
 
+/**
+ * @param {import("./routine.mjs").FireStore} store
+ * @param {string} jobKey
+ * @param {import("./routine.mjs").RoutineConfig} config
+ * @param {string} text
+ * @param {{ fetcher?: typeof fetch, force?: boolean, refireAfterMs?: number, now?: Date }} [options]
+ * @returns {Promise<import("./routine.mjs").FireOnceResult>}
+ */
 export async function fireOnce(store, jobKey, config, text, options = {}) {
   if (typeof store?.add !== "function") {
     throw new TypeError("fireOnce needs a store with an atomic add (D1 or a Durable Object); KV's get then put lets two fires through");
   }
   const { fetcher = fetch, force = false, refireAfterMs = Infinity, now = new Date() } = options;
   const key = `routine-fire:${jobKey}`;
-  const age = (record) => now.getTime() - Date.parse(record.at);
+  const age = (/** @type {import("./routine.mjs").FireRecord} */ record) => now.getTime() - Date.parse(record.at);
   // A `failed` record is a sure non-start whose delete failed: it holds nothing.
-  const blocks = (record) => record !== null && record.state !== "failed" && !force && !(age(record) >= refireAfterMs);
+  const blocks = (/** @type {import("./routine.mjs").FireRecord} */ record) => record.state !== "failed" && !force && !(age(record) >= refireAfterMs);
   // Reserve before posting, so a second caller sees "firing" and stays out; `add` lets only one caller reserve.
   const reservation = JSON.stringify({ state: "firing", at: now.toISOString() });
   if (!(await store.add(key, reservation))) {
     let earlier = readRecord(await store.get(key));
-    if (blocks(earlier)) {
+    if (earlier !== null && blocks(earlier)) {
       if (earlier.state === "firing" && !(age(earlier) < FIRING_STALE_MS)) earlier = { ...earlier, state: "unknown", error: "the fire never finished; a session may have started" };
       const at = earlier.at ? ` at ${earlier.at}` : "";
       return { ok: false, outcome: "already_fired", retry: false, record: earlier, error: `${jobKey} was already fired${at} (${earlier.state}${earlier.sessionUrl ? `, ${earlier.sessionUrl}` : ""}); each fire is a new session.` };

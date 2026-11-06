@@ -463,9 +463,10 @@ async function grantProxy(/** @type {string} */ endpoint, /** @type {string} */ 
     res.on("close", () => upstream.abort());
     try {
       const answer = await fetch(target, { method: req.method, headers, body: chunks.length ? Buffer.concat(chunks) : undefined, redirect: "manual", signal: AbortSignal.any([upstream.signal, AbortSignal.timeout(TIMEOUT_MS)]) });
+      /** @type {Record<string, string>} */
       const out = {};
       answer.headers.forEach((value, name) => {
-        if (!["content-encoding", "content-length", "transfer-encoding", "connection"].includes(name)) /** @type {any} */ (out)[name] = value;
+        if (!["content-encoding", "content-length", "transfer-encoding", "connection"].includes(name)) out[name] = value;
       });
       res.writeHead(answer.status, out);
       if (!answer.body) return void res.end();

@@ -16,12 +16,12 @@
  */
 
 import { readFile, writeFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
 const RAW = "https://raw.githubusercontent.com/OWASP/www-project-secure-headers/master";
 const PAGE = "https://owasp.org/www-project-secure-headers/";
 const REPO = "https://github.com/OWASP/www-project-secure-headers";
-const here = (/** @type {string} */ name) => fileURLToPath(new URL(name, import.meta.url));
+const here = (/** @type {string} */ name) => join(import.meta.dirname, name);
 
 /** @param {string} path */
 async function read(path) {

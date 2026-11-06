@@ -414,7 +414,7 @@ export function defineImages({ uses, breakpoints = SCREEN_WIDTHS, quality = IMAG
  * `sources` for the `<source>` elements and `img` for the `<img>`. `alt` is required: an image with nothing to say
  * passes "". Lazy by default; the page's first large image passes `priority`. An unset prop is undefined, which JSX
  * leaves out. With no `sources` the page writes the `<img>` alone.
- * @param {ReturnType<ReturnType<typeof defineImages>["attributes"]>} attrs
+ * @param {import("./image.mjs").ImageAttributes} attrs
  * @param {{ alt: string, priority?: boolean, className?: string }} options
  */
 export function pictureProps(attrs, { alt, priority = false, className }) {
@@ -440,7 +440,7 @@ export function pictureProps(attrs, { alt, priority = false, className }) {
 /**
  * The preload for a page's LCP image (`./preload`): the first `<source>` any browser may take (AVIF, typed so a
  * browser without it skips the preload), its srcset and sizes, and fetchpriority=high. With no sources, the `<img>`'s.
- * @param {ReturnType<ReturnType<typeof defineImages>["attributes"]>} attrs
+ * @param {import("./image.mjs").ImageAttributes} attrs
  */
 export function imagePreload(attrs) {
   const source = attrs.sources.find((s) => !s.media);
@@ -460,7 +460,7 @@ const HTML_NAMES = /** @type {Record<string, string>} */ ({ srcSet: "srcset", cl
 /**
  * `<picture>` markup for `attributes()`, for a page that writes HTML as a string: `pictureProps` written out, so the
  * two never differ.
- * @param {ReturnType<ReturnType<typeof defineImages>["attributes"]>} attrs
+ * @param {import("./image.mjs").ImageAttributes} attrs
  * @param {{ alt: string, priority?: boolean, className?: string }} options
  * @param {(value: string) => string} escape the site's HTML attribute escape (`escapeHtml` from ./html)
  */
@@ -552,12 +552,12 @@ function isRasterPath(path) {
   return RASTER_PATH.test(path);
 }
 
-/** @param {string | undefined} type */
+/** @param {string | null | undefined} type */
 function mediaType(type) {
   return (type ?? "").split(";")[0].trim().toLowerCase();
 }
 
-/** @param {string | undefined} type */
+/** @param {string | null | undefined} type */
 function isRasterType(type) {
   return RASTER_TYPES.has(mediaType(type));
 }

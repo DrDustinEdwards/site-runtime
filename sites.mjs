@@ -170,6 +170,7 @@ const staticPages = (/** @type {string[]} */ patterns, /** @type {string} */ whe
 
 // workers/security-headers.mjs, workers/csp.mjs. COOP is the standard's same-origin: the app opens no popup (no
 // window.open in app/ or workers/) and the admin sign-in is a full-page Access redirect.
+/** @type {SiteEntry} */
 export const dustinedwardsInfo = {
   id: "dustinedwards-info",
   origin: "https://dustinedwards.info",
@@ -204,6 +205,7 @@ export const dustinedwardsInfo = {
 };
 
 // app/lib/http/header-set.ts, app/lib/http/content-security-policy.ts
+/** @type {SiteEntry} */
 export const foxhound = {
   id: "foxhound",
   origin: "https://foxhoundapp.com",
@@ -241,6 +243,7 @@ export const foxhound = {
 };
 
 // apps/web/workers/security-headers.ts
+/** @type {SiteEntry} */
 export const foxing = {
   id: "foxing",
   origin: "https://foxing.app",
@@ -260,6 +263,7 @@ export const foxing = {
 };
 
 // app/lib/security-headers.ts
+/** @type {SiteEntry} */
 export const germomics = {
   id: "germomics",
   origin: "https://germomics.com",
@@ -294,6 +298,7 @@ export const germomics = {
 };
 
 // workers/security-headers.ts, workers/header-set.ts
+/** @type {SiteEntry} */
 export const julieedwardsInfo = {
   id: "julieedwards-info",
   origin: "https://julieedwards.info",
@@ -314,6 +319,7 @@ export const julieedwardsInfo = {
 };
 
 // workers/security-headers.ts
+/** @type {SiteEntry} */
 export const bsw = {
   id: "bsw",
   origin: "https://bsw.dustin-edwards.workers.dev",
@@ -339,6 +345,7 @@ export const bsw = {
 
 // app/lib/security-headers.ts; SITE_ORIGIN is txasm.org (app/lib/site-meta.ts), served from workers.dev until cutover.
 // txasm.org itself serves no live site (a suspended host), so the workers.dev host stays indexed (no oldSite).
+/** @type {SiteEntry} */
 export const txasm = {
   id: "txasm",
   origin: "https://txasm.dustin-edwards.workers.dev",
@@ -359,6 +366,7 @@ export const txasm = {
 };
 
 // www/headers.mjs, www/build.mjs, www/wrangler.jsonc
+/** @type {SiteEntry} */
 export const carrel = {
   id: "carrel",
   origin: "https://carrel.dustinedwards.info",
@@ -378,6 +386,7 @@ export const carrel = {
 };
 
 // workers/security-headers.ts: the standard exactly, behind Access; the beacon is never injected.
+/** @type {SiteEntry} */
 export const carrelDesk = {
   id: "carrel-desk",
   origin: "https://desk.dustinedwards.info",
@@ -394,6 +403,7 @@ export const carrelDesk = {
 };
 
 // src/security-headers.ts, src/dashboard-csp.ts
+/** @type {SiteEntry} */
 export const capsidPortal = {
   id: "capsid-portal",
   origin: "https://portal.dustinedwards.info",
@@ -412,12 +422,15 @@ export const capsidPortal = {
 
 // src/security-headers.ts: its only page is the /authorize consent dialog MCP clients open. Its policy (DEFAULT_CSP and
 // the dialog's) is the door's: default-src 'none' and require-trusted-types-for 'script'.
+/** @type {SiteEntry} */
 export const capsidMcp = { id: "capsid-mcp", origin: "https://mcp.dustinedwards.info", headers: popupSignIn, optIns: doorOptIns };
 
 // workers/security-headers.ts: Carrel's AI door.
+/** @type {SiteEntry} */
 export const carrelMcp = { id: "carrel-mcp", origin: "https://carrel-mcp.dustinedwards.info", headers: popupSignIn, optIns: doorOptIns };
 
 // explorer/src/security-headers.mjs, explorer/wrangler-config.mjs: every file is answered by the asset server.
+/** @type {SiteEntry} */
 export const capsid = {
   id: "capsid",
   origin: "https://capsid.dustinedwards.info",
@@ -439,6 +452,7 @@ export const capsid = {
 };
 
 // scripts/security-headers.ts, wrangler.jsonc
+/** @type {SiteEntry} */
 export const enarratio = {
   id: "enarratio",
   origin: "https://enarratio.dustinedwards.info",
@@ -459,18 +473,23 @@ export const enarratio = {
 };
 
 // mcp/src/door.ts: Foxhound's admin AI door.
+/** @type {SiteEntry} */
 export const foxhoundMcp = { id: "foxhound-mcp", origin: "https://admin-mcp.foxhoundapp.com", headers: popupSignIn, optIns: doorOptIns };
 
 // dustinedwards-info mcp/src/index.ts: the site's admin MCP.
+/** @type {SiteEntry} */
 export const dustinedwardsMcp = { id: "dustinedwards-mcp", origin: "https://admin-mcp.dustinedwards.info", headers: popupSignIn, optIns: doorOptIns };
 
 // foxing mcp/src/index.ts: Foxing's admin MCP, the standard exactly.
+/** @type {SiteEntry} */
 export const foxingMcp = { id: "foxing-mcp", origin: "https://admin-mcp.foxing.app", optIns: doorOptIns };
 
 // germomics mcp/src/index.ts: Germomics' admin MCP, the standard exactly.
+/** @type {SiteEntry} */
 export const germomicsMcp = { id: "germomics-mcp", origin: "https://admin-mcp.germomics.com", optIns: doorOptIns };
 
 // scripts/security-headers.ts, wrangler.jsonc
+/** @type {SiteEntry} */
 export const capsomer = {
   id: "capsomer",
   origin: "https://capsomer.dustinedwards.info",
@@ -499,6 +518,7 @@ export const capsomer = {
 };
 
 // specimen/headers.mjs, wrangler.jsonc
+/** @type {SiteEntry} */
 export const prelum = {
   id: "prelum",
   origin: "https://prelum.dustinedwards.info",

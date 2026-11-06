@@ -44,7 +44,14 @@ const CHECK = "site-runtime-speed";
 const ENCODINGS = "zstd, br, gzip";
 const nonce = () => Math.random().toString(36).slice(2, 10);
 
-/** One GET, never followed, with its time to the first byte. */
+/** @typedef {import("../speed.mjs").Got} Got */
+
+/**
+ * One GET, never followed, with its time to the first byte.
+ * @param {string} url
+ * @param {Record<string, string>} [headers]
+ * @returns {Promise<Got>}
+ */
 async function get(url, headers = {}) {
   const started = performance.now();
   try {
@@ -53,12 +60,14 @@ async function get(url, headers = {}) {
     const body = (response.headers.get("content-type") ?? "").includes("text/html") ? await response.text() : (await response.arrayBuffer(), "");
     return { url, status: response.status, headers: Object.fromEntries(response.headers), ttfb, body };
   } catch (error) {
-    return { url, status: 0, headers: {}, ttfb: 0, body: "", error: String(error?.cause?.code ?? error?.message ?? error) };
+    const failure = /** @type {{ message?: string, cause?: { code?: string } } | null | undefined} */ (error);
+    return { url, status: 0, headers: {}, ttfb: 0, body: "", error: String(failure?.cause?.code ?? failure?.message ?? error) };
   }
 }
 
-/** The hops from `url` to the first non-redirect, up to 5. */
+/** The hops from `url` to the first non-redirect, up to 5. @param {string} url */
 async function hops(url) {
+  /** @type {{ url: string, status: number }[]} */
   const chain = [];
   let next = url;
   for (let i = 0; i < 5; i++) {
@@ -82,8 +91,8 @@ function proxyFor(/** @type {URL} */ u) {
 
 /** A TLS socket to the host offering only h2, through the proxy's CONNECT tunnel when there is one. */
 function h2Socket(/** @type {URL} */ u) {
-  return new Promise((resolve, reject) => {
-    const secure = (socket) => {
+  return /** @type {Promise<import("node:tls").TLSSocket>} */ (new Promise((resolve, reject) => {
+    const secure = (/** @type {import("node:stream").Duplex | null} */ socket) => {
       const tls = tlsConnect({ host: u.hostname, port: Number(u.port || 443), servername: u.hostname, ALPNProtocols: ["h2"], ...(socket ? { socket } : {}) });
       tls.once("secureConnect", () => (tls.alpnProtocol === "h2" ? resolve(tls) : (tls.destroy(), reject(new Error(`the server chose ${tls.alpnProtocol || "no protocol"}, not h2`)))));
       tls.once("error", reject);
@@ -97,22 +106,26 @@ function h2Socket(/** @type {URL} */ u) {
     tunnel.once("timeout", () => tunnel.destroy(new Error("the proxy did not answer CONNECT in 15 s")));
     tunnel.once("error", reject);
     tunnel.end();
-  });
+  }));
 }
 
-/** The status codes of the informational responses (103) before the page's own, over HTTP/2, or why they could not be read. */
+/**
+ * The status codes of the informational responses (103) before the page's own, over HTTP/2, or why they could not be read.
+ * @param {string} url
+ * @returns {Promise<number[] | { error: string }>}
+ */
 async function informational(url) {
   const u = new URL(url);
   let socket;
   try {
     socket = await h2Socket(u);
   } catch (error) {
-    return { error: String(error?.message ?? error) };
+    return { error: error instanceof Error ? error.message : String(error) };
   }
   return new Promise((resolve) => {
     const session = connect(u.origin, { createConnection: () => socket });
     let settled = false;
-    const done = (value) => {
+    const done = (/** @type {number[] | { error: string }} */ value) => {
       if (settled) return;
       settled = true;
       session.close();
@@ -120,6 +133,7 @@ async function informational(url) {
     };
     session.on("error", (error) => done({ error: `HTTP/2: ${error.message}` }));
     session.setTimeout(15_000, () => done({ error: "no HTTP/2 answer in 15 s" }));
+    /** @type {number[]} */
     const seen = [];
     const stream = session.request({ ":path": u.pathname + u.search, "user-agent": UA, "x-check": CHECK, "accept-encoding": ENCODINGS });
     stream.on("headers", (headers) => seen.push(Number(headers[":status"])));
@@ -132,8 +146,9 @@ async function informational(url) {
   });
 }
 
-/** Cloudflare sends the 103 from a per-URI hint cache that a colo may not hold yet, so one answer with it is enough. */
+/** Cloudflare sends the 103 from a per-URI hint cache that a colo may not hold yet, so one answer with it is enough. @param {string} url */
 async function earlyHints(url) {
+  /** @type {number[] | { error: string } | null} */
   let seen = null;
   for (let i = 0; i < 3; i++) {
     const statuses = await informational(url);
@@ -146,7 +161,7 @@ async function earlyHints(url) {
 
 /** Every <loc> in the sitemap, following a sitemap index one level. */
 async function sitemapUrls() {
-  const locs = async (url) => [...(await (await fetch(url, { headers: { "user-agent": UA, "x-check": CHECK } })).text()).matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)].map((m) => m[1]);
+  const locs = async (/** @type {string} */ url) => [...(await (await fetch(url, { headers: { "user-agent": UA, "x-check": CHECK } })).text()).matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)].map((m) => m[1]);
   try {
     const top = await locs(`${base}/sitemap.xml`);
     const nested = top.filter((loc) => /\.xml(\?|$)/.test(loc));
@@ -158,14 +173,21 @@ async function sitemapUrls() {
   }
 }
 
-/** Up to `n` URLs, one per first path segment before a second from any, so every page type is in the sample. */
+/**
+ * Up to `n` URLs, one per first path segment before a second from any, so every page type is in the sample.
+ * @param {string[]} urls
+ * @param {number} n
+ */
 function sample(urls, n) {
+  /** @type {Map<string, string[]>} */
   const groups = new Map();
   for (const url of urls) {
     const key = new URL(url).pathname.split("/")[1] ?? "";
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(url);
+    const list = groups.get(key) ?? [];
+    groups.set(key, list);
+    list.push(url);
   }
+  /** @type {string[]} */
   const picked = [];
   for (let round = 0; picked.length < n; round++) {
     let added = false;
@@ -186,8 +208,10 @@ const sleep = (/** @type {number} */ ms) => new Promise((resolve) => setTimeout(
 /**
  * PageSpeed Insights for the home page, phone and desktop: the Lighthouse result and the field data. A 429 or a 5xx is
  * retried with exponential backoff and jitter (Retry-After when the answer gives one, at most a minute).
+ * @param {string} url
  */
 async function pagespeed(url) {
+  /** @type {Parameters<typeof speedFindings>[0]["pagespeed"]} */
   const out = {};
   for (const strategy of ["mobile", "desktop"]) {
     const key = process.env.PSI_API_KEY ? `&key=${process.env.PSI_API_KEY}` : "";
@@ -203,7 +227,7 @@ async function pagespeed(url) {
         const after = Number(r.headers.get("retry-after"));
         if (attempt < PSI_TRIES) await sleep(Math.min(60_000, Number.isFinite(after) && after > 0 ? after * 1000 : 2 ** attempt * 1000 + Math.random() * 1000));
       } catch (error) {
-        out[strategy] = { error: `PageSpeed Insights could not be reached: ${error.message}` };
+        out[strategy] = { error: `PageSpeed Insights could not be reached: ${error instanceof Error ? error.message : String(error)}` };
         if (attempt < PSI_TRIES) await sleep(2 ** attempt * 1000);
       }
     }
@@ -227,7 +251,7 @@ const conditional = [];
 for (const page of second) {
   const { etag, "last-modified": lastModified } = page.headers;
   if (page.status === 200 && (etag || lastModified)) {
-    conditional.push({ url: page.url, ...(await get(page.url, { ...(etag ? { "if-none-match": etag } : {}), ...(lastModified ? { "if-modified-since": lastModified } : {}) })) });
+    conditional.push(await get(page.url, { ...(etag ? { "if-none-match": etag } : {}), ...(lastModified ? { "if-modified-since": lastModified } : {}) }));
   }
 }
 const files = [...new Set([...home.body.matchAll(/(?:href|src)="(\/[^"?#]+\.(?:css|js|woff2|svg|png|webp|avif|jpg|ico))"/g)].map((m) => m[1]))]

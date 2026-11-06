@@ -90,6 +90,7 @@ const runsApp = (/** @type {string} */ html) => /__reactRouterContext|__remixCon
 export function speedFindings(o) {
   /** @type {Finding[]} */
   const findings = [];
+  /** @param {string} item @param {Finding["severity"]} severity @param {string} url @param {string} detail */
   const add = (item, severity, url, detail) => findings.push({ item, severity, url, detail });
   const worker = o.kind !== "static";
   const pages = o.second.filter((got) => got.status === 200 && isHtml(got));
@@ -104,7 +105,7 @@ export function speedFindings(o) {
       // What the first request saw and where each was answered, so a miss says whether the page was never stored, was
       // purged between the two, or was answered by another data center (cf-ray ends in the colo).
       const before = o.first.find((f) => f.url === got.url);
-      const colo = (g) => g?.headers["cf-ray"]?.split("-").pop() ?? "?";
+      const colo = (/** @type {Got | undefined} */ g) => g?.headers["cf-ray"]?.split("-").pop() ?? "?";
       add("B1", "error", got.url, `not from the edge on the second request: cf-cache-status ${status} (first ${before?.headers["cf-cache-status"] ?? "none"}), cache-control ${got.headers["cache-control"] ?? "none"}, colo ${colo(before)} then ${colo(got)}`);
     }
     if (!got.headers.etag && !got.headers["last-modified"]) add("B7", "error", got.url, "no ETag or Last-Modified, so a repeat visit downloads the page again");
@@ -205,12 +206,13 @@ export function speedFindings(o) {
       add("A1", "warning", url, `${strategy}: no Chrome field data for this page yet`);
       continue;
     }
-    const p75 = (key) => field[key]?.percentile;
+    const p75 = (/** @type {string} */ key) => field[key]?.percentile;
+    /** @type {[key: string, bar: number, item: string, name: string, show: (v: number) => string][]} */
     const checks = [
-      ["LARGEST_CONTENTFUL_PAINT_MS", BAR.lcpMs, "A1", "LCP", (v) => ms(v)],
-      ["INTERACTION_TO_NEXT_PAINT", BAR.inpMs, "A1", "INP", (v) => ms(v)],
+      ["LARGEST_CONTENTFUL_PAINT_MS", BAR.lcpMs, "A1", "LCP", ms],
+      ["INTERACTION_TO_NEXT_PAINT", BAR.inpMs, "A1", "INP", ms],
       ["CUMULATIVE_LAYOUT_SHIFT_SCORE", BAR.cls * 100, "A1", "CLS", (v) => (v / 100).toFixed(2)],
-      ["EXPERIMENTAL_TIME_TO_FIRST_BYTE", BAR.fieldTtfbMs, "A2", "TTFB", (v) => ms(v)],
+      ["EXPERIMENTAL_TIME_TO_FIRST_BYTE", BAR.fieldTtfbMs, "A2", "TTFB", ms],
     ];
     for (const [key, bar, item, name, show] of checks) {
       const value = p75(key);

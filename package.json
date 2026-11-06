@@ -106,7 +106,7 @@
       "default": "./check.mjs"
     },
     "./sites": {
-      "types": "./sites.d.mts",
+      "types": "./sites-values.d.mts",
       "default": "./sites-values.mjs"
     },
     "./owasp": {
@@ -224,6 +224,7 @@
     "sites.mjs",
     "sites.d.mts",
     "sites-values.mjs",
+    "sites-values.d.mts",
     "sites-deviations.mjs",
     "owasp-headers.mjs",
     "owasp-headers.d.mts",
@@ -317,11 +318,18 @@
     "README.md"
   ],
   "scripts": {
+    "typecheck": "tsc -p . && tsc -p tsconfig.browser.json",
     "test": "node --test \"test/*.test.mjs\"",
     "bloat": "devkit-no-bloat"
   },
   "license": "UNLICENSED",
   "devDependencies": {
-    "@dustinedwards/devkit": "github:DrDustinEdwards/devkit#v0.21.5"
+    "@better-auth/passkey": "1.7.17",
+    "@cloudflare/workers-oauth-provider": "1.2.4",
+    "@cloudflare/workers-types": "5.20261030.1",
+    "@dustinedwards/devkit": "github:DrDustinEdwards/devkit#v0.21.5",
+    "@types/node": "24.19.2",
+    "better-auth": "1.7.17",
+    "typescript": "5.9.3"
   }
 }
