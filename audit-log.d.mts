@@ -8,8 +8,8 @@ export interface AuditEnv {
       fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
     };
   };
-  /** A Worker secret, bound before the first row: the chain is then HMAC-SHA-256 under it, which an editor without it cannot recompute. */
-  AUDIT_CHAIN_KEY?: string;
+  /** The Worker secret the chain's Ed25519 signing key is derived from, at least 32 characters; required (devkit worker-deploy `generated-secrets`). */
+  AUDIT_SIGNING_KEY: string;
 }
 
 export interface AuditRow {
@@ -39,9 +39,24 @@ export interface AuditRow {
   correlationId?: string;
 }
 
+/** The chain's signing key for a secret: its id (16 hex of the public key's SHA-256) and raw Ed25519 public key, base64url. Rejects a secret under 32 characters. */
+export function auditChainKey(
+  secret: string | undefined,
+): Promise<{ id: string; publicKey: string; sign(hash: string): Promise<string> }>;
+
+/** What `verifyAuditChain` finds: every row checked, or the first that fails and why. */
+export type ChainCheck =
+  | { ok: true; hashed: number; signed: number }
+  | {
+      ok: false;
+      seq: unknown;
+      reason: "hash" | "unsigned" | "unknown key" | "signature" | "key change";
+    };
+
 /**
  * The Durable Object class: rows are inserted and never updated; the one delete is retention, of copied rows only. Adds
- * the newer columns to an older table. Its paths (POST /export and /exported, GET /stats, GET /recent) are for `exportAuditLog`,
+ * the newer columns to an older table, and writes a `chain-key` anchor when it starts under a key that did not sign its
+ * newest row. Its paths (POST /export and /exported, GET /stats, /recent and /anchors) are for `exportAuditLog`,
  * `auditLogCheck` and ./owner-page's `readAuditLog`; any other POST appends.
  */
 export declare class ToolCallLog implements DurableObject {
@@ -49,30 +64,32 @@ export declare class ToolCallLog implements DurableObject {
   fetch(request: Request): Promise<Response>;
 }
 /**
- * Checks the hash chain over the table's rows in `seq` order, with `AUDIT_CHAIN_KEY` when the log has one; names the
- * first row that fails. `previous` is the hash before the first row, for a copy that starts mid-chain (an export's).
+ * Checks the chain over rows in `seq` order: every hash, and with trusted public `keys` every signature (a key is also
+ * trusted when an anchor signed by a trusted key names it). `previous` is the hash before the first row, for a slice
+ * that starts mid-chain (a copy's). Without keys only the hashes are checked.
  */
 export function verifyAuditChain(
   rows: Array<Record<string, unknown>>,
-  key?: string,
-  previous?: string | null,
-): Promise<{ ok: true; hashed: number } | { ok: false; seq: unknown }>;
+  options?: { keys?: readonly string[]; previous?: string | null },
+): Promise<ChainCheck>;
 
 /** Days a copied row stays in the log: 90. */
 export const AUDIT_KEEP_DAYS: number;
 /**
- * Copies the rows not yet copied to `bucket` as `<prefix><first seq>-<last seq>.json` (`{ previous, rows }`; prefix
- * default `tool-calls/`), marks them copied, then deletes copied rows older than `keepDays` (default 90). Up to 20
- * batches of 1000 a run; throws when a write fails. Run it from the cron; lock the prefix in R2.
+ * Checks each batch not yet copied, copies it to `bucket` as `<prefix><first seq>-<last seq>.json` (`{ previous, keys,
+ * verified, rows }`; prefix default `tool-calls/`), marks it copied, then deletes copied rows older than `keepDays`
+ * (default 90). Up to 20 batches of 1000 a run; throws when a write fails or AUDIT_SIGNING_KEY is missing. `verified` is
+ * the run's first failed check, else its last pass. Run it from the cron; lock the prefix in R2.
  */
 export function exportAuditLog(
   env: Partial<AuditEnv>,
   bucket: { put(key: string, value: string, options?: unknown): Promise<unknown> },
   options?: { prefix?: string; keepDays?: number },
-): Promise<{ exported: number; objects: string[]; pruned: number }>;
+): Promise<{ exported: number; objects: string[]; pruned: number; verified: ChainCheck | null }>;
 /**
  * The log's /health check, "tool-call-log", level warn and alert: fails on a `started` row with no `finished` after 15
- * minutes, on more than `spikePerHour` (600) calls in the last hour, or on rows not copied for over two days.
+ * minutes, on more than `spikePerHour` (600) calls in the last hour, on rows not copied for over two days, on a failed
+ * chain check of the last copy, or on a missing or short AUDIT_SIGNING_KEY.
  */
 export function auditLogCheck(
   env: Partial<AuditEnv>,
