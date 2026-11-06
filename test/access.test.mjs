@@ -215,8 +215,11 @@ describe("accessAdmin", () => {
 
 test("PLANT: an admin idle past the hour is sent to Access's logout; the seen cookie counts only for its own token and only when the server signed it", async () => {
   const token = await sign(claims({ iat: now - 5400 }));
-  const secret = "server-only-test-secret";
+  const secret = "server-only-test-secret-of-32-chars";
   const at = (cookie) => new Request("https://example.com/admin", { headers: { cookie } });
+  // No key, or a short one, with a session to time: it throws, so a Worker missing ADMIN_IDLE_SECRET fails closed.
+  await assert.rejects(adminIdle(at(`${ACCESS_COOKIE}=${token}`), /** @type {any} */ ({ now: now * 1000 })), TypeError);
+  await assert.rejects(adminIdle(at(`${ACCESS_COOKIE}=${token}`), { now: now * 1000, secret: "short" }), TypeError);
   const log = console.log;
   console.log = () => {};
   const stale = await adminIdle(at(`${ACCESS_COOKIE}=${token}`), { now: now * 1000, secret });
@@ -243,22 +246,23 @@ test("PLANT: an admin idle past the hour is sent to Access's logout; the seen co
 
 test("PLANT: a background request is timed but does not keep the admin awake; a host's own session is timed like a token", async () => {
   const token = await sign(claims({ iat: now - 1800 }));
+  const secret = "server-only-test-secret-of-32-chars";
   const poll = new Request("https://example.com/admin/feed", { headers: { cookie: `${ACCESS_COOKIE}=${token}`, [BACKGROUND_HEADER]: "1" } });
-  assert.deepEqual(await adminIdle(poll, { now: now * 1000 }), { idle: false });
+  assert.deepEqual(await adminIdle(poll, { now: now * 1000, secret }), { idle: false });
   const prefetch = new Request("https://example.com/admin", { headers: { cookie: `${ACCESS_COOKIE}=${token}`, "sec-purpose": "prefetch;prerender" } });
-  assert.deepEqual(await adminIdle(prefetch, { now: now * 1000 }), { idle: false });
+  assert.deepEqual(await adminIdle(prefetch, { now: now * 1000, secret }), { idle: false });
   // No Access token: the session the host hands in is what is timed, and its seen cookie is good for it alone.
   const session = { id: "opaque-1", signedInAt: (now - 5400) * 1000 };
   const bare = (cookie = "") => new Request("https://portal.example.com/", { headers: { cookie } });
-  const fresh = await adminIdle(bare(), { session, now: (now - 1800) * 1000 });
+  const fresh = await adminIdle(bare(), { session, now: (now - 1800) * 1000, secret });
   const seen = /** @type {{ cookie: string }} */ (fresh).cookie.split(";")[0];
-  assert.equal((await adminIdle(bare(seen), { session, now: now * 1000 })).idle, false);
+  assert.equal((await adminIdle(bare(seen), { session, now: now * 1000, secret })).idle, false);
   const log = console.log;
   console.log = () => {};
-  const other = await adminIdle(bare(seen), { session: { ...session, id: "opaque-2" }, now: now * 1000 });
+  const other = await adminIdle(bare(seen), { session: { ...session, id: "opaque-2" }, now: now * 1000, secret });
   console.log = log;
   assert.equal(other.idle, true);
   // A second Access app's check keeps its own cookie, so this one's is left alone.
-  const lab = await adminIdle(bare(), { session, now: (now - 1800) * 1000, cookieName: "__Host-lab-seen" });
+  const lab = await adminIdle(bare(), { session, now: (now - 1800) * 1000, cookieName: "__Host-lab-seen", secret });
   assert.ok(/** @type {{ cookie: string }} */ (lab).cookie.startsWith("__Host-lab-seen="));
 });
