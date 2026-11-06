@@ -23,7 +23,7 @@ jobs:
     # A called workflow holds no more than this job grants: the write lets it push code-map.json to the code-map branch.
     permissions:
       contents: write
-    uses: DrDustinEdwards/devkit/.github/workflows/code-map.yml@cd31a3eba261e27aa5f4b7a9965f7c4fc59ebe49 # v0.21.5
+    uses: DrDustinEdwards/devkit/.github/workflows/code-map.yml@4d0c8fdb2f1794272b31d3c4354059eb2f19a26a # v0.22.0
     with:
       npm-cache: false
       install: npm i --no-save typescript@5.9.3
