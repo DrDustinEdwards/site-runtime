@@ -296,7 +296,7 @@ for (const method of ["GET", "OPTIONS"]) {
 // fetch refuses to send TRACE, so it goes through node:http(s).
 const trace = await new Promise((resolve) => {
   const url = new URL("/", served);
-  const req = (url.protocol === "https:" ? httpsRequest : httpRequest)(url, { method: "TRACE", headers: { "user-agent": UA }, timeout: 20_000 }, (res) => {
+  const req = (url.protocol === "https:" ? httpsRequest : httpRequest)(url.href, { method: "TRACE", headers: { "user-agent": UA }, timeout: 20_000 }, (res) => {
     res.resume();
     resolve(res.statusCode ?? 0);
   });

@@ -19,7 +19,7 @@ let values;
 try {
   ({ values } = parseArgs({ options: { origin: { type: "string" }, from: { type: "string" } } }));
 } catch (error) {
-  console.error(`${error.message}\n${usage}`);
+  console.error(`${error instanceof Error ? error.message : String(error)}\n${usage}`);
   process.exit(2);
 }
 if (!values.origin) {
@@ -31,7 +31,7 @@ let result;
 try {
   result = await signInFindings({ origin: values.origin, from: values.from });
 } catch (error) {
-  console.error(`site-runtime-sign-in: ${error.message}`);
+  console.error(`site-runtime-sign-in: ${error instanceof Error ? error.message : String(error)}`);
   process.exit(2);
 }
 const { findings, found } = result;

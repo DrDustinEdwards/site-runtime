@@ -30,7 +30,8 @@ async function get(/** @type {string} */ url, /** @type {RequestInit} */ init = 
     const body = /html|json|text/.test(r.headers.get("content-type") ?? "") ? await r.text() : (await r.arrayBuffer(), "");
     return { url, status: r.status, headers: r.headers, cookies: r.headers.getSetCookie(), body };
   } catch (error) {
-    return { url, status: 0, headers: new Headers(), cookies: [], body: "", error: String(error?.cause?.code ?? error?.message ?? error) };
+    const failure = /** @type {{ message?: string, cause?: { code?: string } } | null | undefined} */ (error);
+    return { url, status: 0, headers: new Headers(), cookies: [], body: "", error: String(failure?.cause?.code ?? failure?.message ?? error) };
   }
 }
 

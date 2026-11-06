@@ -124,9 +124,9 @@ export function can(actor, permission) {
 export function defaultEndDate(title, termEnds, nowMs, after = null) {
   if (!title.expires) return null;
   const floor = Math.max(nowMs, after ? dayStart(after) + DAY_MS : nowMs);
-  const next = [...termEnds].map((d) => [d, dayStart(d)]).filter(([, t]) => t + DAY_MS > floor).sort((a, b) => a[1] - b[1])[0];
+  const next = termEnds.filter((d) => dayStart(d) + DAY_MS > floor).sort((a, b) => dayStart(a) - dayStart(b))[0];
   if (!next) throw new RangeError("no term end date after today: an Owner enters this year's dates first");
-  return next[0];
+  return next;
 }
 
 /**

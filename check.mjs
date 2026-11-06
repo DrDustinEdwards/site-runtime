@@ -25,7 +25,7 @@ import { SITES, siteEntry } from "./sites-values.mjs";
  */
 function registryEntry(site) {
   const values = typeof site === "string" ? siteEntry(site) : SITES.find((s) => s === site);
-  if (!values) return site;
+  if (!values) return typeof site === "object" ? site : undefined;
   const deviations = /** @type {Record<string, import("./sites.mjs").SiteEntry["deviations"]>} */ (SITE_DEVIATIONS)[values.id];
   return deviations ? { ...values, deviations } : values;
 }

@@ -2,7 +2,8 @@ name: code-map
 
 # After each push to main, devkit's shared code-map workflow measures this repository's modules and functions and
 # publishes code-map.json to the code-map branch, where the Capsid system explorer reads it. Never a gate on a pull request.
-# There is no lockfile and no tsconfig: the map installs only typescript and reads the .mjs files as plain modules.
+# The map installs only typescript and reads the modules tsconfig.json lists; the browser pair (tsconfig.browser.json) and the
+# generated sites-values.mjs are not among them.
 
 on:
   push:

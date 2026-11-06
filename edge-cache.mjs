@@ -162,7 +162,7 @@ function notModified(response, request) {
   const ifNoneMatch = request.headers.get("If-None-Match");
   const weak = (/** @type {string} */ tag) => tag.trim().replace(/^W\//, "");
   let fresh = false;
-  if (ifNoneMatch) fresh = Boolean(etag) && (ifNoneMatch.trim() === "*" || ifNoneMatch.split(",").some((tag) => weak(tag) === weak(etag)));
+  if (ifNoneMatch) fresh = !!etag && (ifNoneMatch.trim() === "*" || ifNoneMatch.split(",").some((tag) => weak(tag) === weak(etag)));
   else {
     const since = Date.parse(request.headers.get("If-Modified-Since") ?? "");
     const modified = Date.parse(response.headers.get("Last-Modified") ?? "");
@@ -250,7 +250,9 @@ export function purgeAfterWrite(request, response, ctx, why) {
 export async function purgeViaRenderer(why, log = console.error) {
   try {
     const { exports } = await import(/* @vite-ignore */ "cloudflare:workers");
-    return await exports.Renderer.purgePages(why);
+    // The Renderer is the site's own export, which only the site's generated types know.
+    const loopback = /** @type {{ Renderer: { purgePages(why: string): Promise<boolean | null> } }} */ (exports);
+    return await loopback.Renderer.purgePages(why);
   } catch (error) {
     log(JSON.stringify({ alert: "cache-purge-unreachable", why, detail: String(error) }));
     return null;

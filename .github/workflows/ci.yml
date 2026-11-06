@@ -25,6 +25,10 @@ jobs:
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
+      # TypeScript and the types the check reads (Workers, Node, Better Auth, the OAuth provider); nothing here runs them.
+      - run: npm ci
+      - name: Typecheck the modules and bins against their declarations
+        run: npm run typecheck
       - name: The rate limiter's windows, refusals and path matcher
         run: npm test
       - name: Every session read goes through sessionLookup

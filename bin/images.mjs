@@ -176,12 +176,12 @@ async function auditPage({ url, origin, html, headers, load, probe, onSite, site
   const corp = (/** @type {Fetched} */ got) => got.headers.get("cross-origin-resource-policy")?.toLowerCase() ?? "";
 
   // D2, A12 and C11 on every original the page shows or links; their sizes feed A2, A7 and the layout.
-  const isOriginal = (/** @type {string | null} */ href) => {
+  const isOriginal = (/** @type {string} */ href) => {
     if (!href || !onSite(href)) return false;
     const parsed = new URL(href);
     return !parsed.searchParams.has("w") && !parsed.pathname.startsWith("/cdn-cgi/") && !/\.svg$/i.test(parsed.pathname);
   };
-  const originals = new Set([...imgs.flatMap(urlsOf), ...all.filter((e) => e.tag === "a" && RASTER_PATH.test(e.attrs.href ?? "")).map((e) => absolute(e.attrs.href))].filter(isOriginal));
+  const originals = new Set([...imgs.flatMap(urlsOf), ...all.filter((e) => e.tag === "a" && RASTER_PATH.test(e.attrs.href ?? "")).map((e) => absolute(e.attrs.href))].filter((u) => u !== null).filter(isOriginal));
   /** @type {Map<string, ImageFile>} */
   const files = new Map();
   await inParallel([...originals], PARALLEL, async (/** @type {string} */ src) => {
@@ -657,7 +657,7 @@ function descendants(el) {
   return childElements(el).flatMap((c) => [c, ...descendants(c)]);
 }
 
-/** @param {El} el */
+/** @param {El} el @returns {string} */
 function textOf(el) {
   return el.children.map((c) => (typeof c === "string" ? c : textOf(c))).join(" ");
 }
