@@ -53,7 +53,10 @@
  */
 
 import { spawn } from "node:child_process";
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { parseArgs } from "node:util";
 
@@ -479,7 +482,7 @@ async function grantProxy(/** @type {string} */ endpoint, /** @type {string} */ 
 }
 
 /**
- * Runs the pinned MCP conformance suite through npx with --verbose, without the grant in its environment, and reads its checks: the
+ * Runs the pinned MCP conformance suite through npx, without the grant in its environment, and reads its checks: the
  * count over the checks that apply, the failing ids, and the ones left out, or why there is none. Two kinds of failure
  * say nothing about the server and are left out (a warning names them): one the suite marks untestable (it needs the
  * suite's own diagnostic tools, test_logging_tool and the like, which a production server does not ship), and a
@@ -492,27 +495,37 @@ async function grantProxy(/** @type {string} */ endpoint, /** @type {string} */ 
 function runMcpConformance(args, capabilities = null) {
   const env = { ...process.env };
   delete env[grantEnv];
+  // The checks are read from the checks.json the suite writes under --output-dir, never from its stdout: the CLI exits
+  // before a pipe drains, so a large tools/list (printed twice by http-header-validation) cut the JSON short and left the
+  // scenario "could not run" (Capsid, run 55, 2026-11-06).
+  const dir = mkdtempSync(join(tmpdir(), "mcp-conformance-"));
   return new Promise((resolve) => {
     let out = "";
-    const child = spawn("npx", ["-y", CONFORMANCE, ...args, "--verbose"], { env, stdio: ["ignore", "pipe", "pipe"], timeout: 300_000, shell: process.platform === "win32" });
+    const child = spawn("npx", ["-y", CONFORMANCE, ...args, "--output-dir", dir], { env, stdio: ["ignore", "pipe", "pipe"], timeout: 300_000, shell: process.platform === "win32" });
     child.stdout.on("data", (d) => (out += d));
     child.stderr.on("data", (d) => (out += d));
     child.on("error", (error) => resolve({ count: null, failed: [], skipped: [], why: `npx could not start (${error.message})` }));
-    child.on("close", () => resolve(readChecks(out.replace(/\x1b\[[0-9;]*m/g, ""), capabilities)));
+    child.on("close", () => {
+      const why = out.replace(/\x1b\[[0-9;]*m/g, "").trim().split("\n").at(-1)?.slice(0, 200) || "no output";
+      resolve(readChecks(savedChecks(dir), why, capabilities));
+      rmSync(dir, { recursive: true, force: true });
+    });
   });
 }
 
-/** The suite's --verbose output (a line, then a JSON array of checks) as a count over the checks that apply. */
-function readChecks(/** @type {string} */ plain, /** @type {Record<string, unknown> | null} */ capabilities) {
-  const start = plain.indexOf("\n[");
-  /** @type {any[] | null} */
-  let checks = null;
-  for (let end = plain.indexOf("\n]", start); start >= 0 && end >= 0 && !checks; end = plain.indexOf("\n]", end + 1)) {
-    try {
-      checks = JSON.parse(plain.slice(start + 1, end + 2));
-    } catch {}
+/** The checks.json the suite saved for its one scenario (in a timestamped folder under the output dir), or null. */
+function savedChecks(/** @type {string} */ dir) {
+  try {
+    const file = readdirSync(dir, { recursive: true, encoding: "utf8" }).find((f) => basename(f) === "checks.json");
+    return file ? JSON.parse(readFileSync(join(dir, file), "utf8")) : null;
+  } catch {
+    return null;
   }
-  if (!Array.isArray(checks)) return { count: null, failed: [], skipped: [], why: plain.trim().split("\n").at(-1)?.slice(0, 200) ?? "no output" };
+}
+
+/** The suite's saved checks as a count over the checks that apply, or why there are none. */
+function readChecks(/** @type {any} */ checks, /** @type {string} */ why, /** @type {Record<string, unknown> | null} */ capabilities) {
+  if (!Array.isArray(checks)) return { count: null, failed: [], skipped: [], why };
   const lists = { "prompts-list": "prompts", "resources-list": "resources", "resources-templates-list": "resources" };
   const notApplicable = (/** @type {any} */ c) => {
     if (c.details?.untestable === true) return true;
