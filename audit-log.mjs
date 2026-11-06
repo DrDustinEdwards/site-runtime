@@ -38,7 +38,7 @@
  * - KEY ANCHOR. When the log starts with a key that did not sign its newest row (the first key, or a new one), it first
  *   writes a `chain-key` row, signed by the new key: `{ from, fromPublicKey, to, publicKey }`. Its hash covers the
  *   newest row before it, so the new key vouches for everything before; `from: null` marks the move from the unsigned
- *   rows of before 0.84. Rotating is replacing the secret (README, The tool-call log); the chain goes on unbroken.
+ *   rows of before 0.85. Rotating is replacing the secret (README, The tool-call log); the chain goes on unbroken.
  * - VERIFY. `verifyAuditChain(rows, { keys, previous })` checks every hash, then every signature against trusted public
  *   keys. A key is trusted when it is given, or when an anchor signed by a trusted key names it as `fromPublicKey`. A
  *   key changes only at an anchor, and an unsigned row passes only before a `from: null` anchor, so stripping the

@@ -2042,11 +2042,11 @@ clientRegistrationCallback: ({ clientMetadata }) => {
   The secret is required (at least 32 characters): without it nothing is written, every tool call is refused and
   `auditLogCheck` fails. Mint it in the deploy, `generated-secrets: AUDIT_SIGNING_KEY` (devkit worker-deploy); nobody
   ever sees it, and only its public key leaves the Worker. It has a new name so a site can mint it before it moves to
-  0.84 (0.83 never reads it); 0.83's HMAC secret `AUDIT_CHAIN_KEY` is no longer read, so delete it.
+  0.85 (0.84 and earlier never read it); the earlier HMAC secret `AUDIT_CHAIN_KEY` is no longer read, so delete it.
   - **Re-anchoring.** When the log starts under a key that did not sign its newest row (its first key, or a new one),
     it first writes a `chain-key` row signed by the new key, `{ from, fromPublicKey, to, publicKey }`, whose hash covers
     everything before it. The chain never breaks, and the new key vouches for the old one. `from: null` is the move
-    from the unsigned rows of 0.83 and earlier.
+    from the unsigned rows of 0.84 and earlier.
   - **Rotating** (a suspected leak, or a scheduled change): replace the secret with a fresh value nobody sees, then let
     the Worker start; the next start anchors. One command, from the Worker's directory:
     `node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64url'))" | npx wrangler secret put AUDIT_SIGNING_KEY --name <worker>`.
