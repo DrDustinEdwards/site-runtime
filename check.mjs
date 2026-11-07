@@ -812,7 +812,7 @@ export function checkSecurityTxt(
         .replace(/^- /gm, "") ?? "")
     : body;
   const fields = (/** @type {string} */ name) =>
-    [...text.matchAll(new RegExp(`^${name}:\\s*(.+?)\\s*$`, "gim"))].map((m) => m[1] ?? "");
+    [...text.matchAll(new RegExp(`^${name}:\\s*(.+)$`, "gim"))].map((m) => (m[1] ?? "").trim());
   result(
     "D2",
     "security.txt has a Contact",

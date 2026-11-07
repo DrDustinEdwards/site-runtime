@@ -685,12 +685,12 @@ function percentile(sorted, p) {
   return sorted[Math.min(sorted.length - 1, Math.max(0, Math.round(p * (sorted.length - 1))))];
 }
 
-/** Markdown reduced to the words a reader reads: link text kept, marks and code dropped. @param {string} line */
+/** Markdown reduced to the words a reader reads: link text kept, marks and code dropped. The bracket and tag runs are bounded or exclude their own opener, so a line of unclosed openers is linear. @param {string} line */
 function readable(line) {
   return line
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/<[^>]+>/g, "")
+    .replace(/!\[[^\]]{0,500}\]\([^)]{0,2000}\)/g, "")
+    .replace(/\[([^\]]{0,500})\]\([^)]{0,2000}\)/g, "$1")
+    .replace(/<[^<>]+>/g, "")
     .replace(/`([^`]*)`/g, "$1")
     .replace(/^\s{0,3}(?:>\s?|[-*+]\s+|\d+\.\s+)/, "")
     .replace(/(\*\*|__|\*|_)(?=\S)([^*_]+?)\1/g, "$2");

@@ -896,8 +896,12 @@ export function readImage(bytes) {
         if (!best || width * height > best.width * best.height) best = { width, height };
       }
       // An Exif item is "Exif\0\0" and a TIFF block, wherever the file stores it.
-      for (let at = bytes.indexOf(0x45); at !== -1; at = bytes.indexOf(0x45, at + 1))
-        if (ascii(at, 6) === "Exif\0\0") exif(bytes.subarray(at + 6));
+      let blocks = 0;
+      for (let at = bytes.indexOf(0x45); at !== -1 && blocks < 8; at = bytes.indexOf(0x45, at + 1))
+        if (ascii(at, 6) === "Exif\0\0") {
+          exif(bytes.subarray(at + 6));
+          blocks += 1;
+        }
       return best && file("image/avif", best.width, best.height);
     }
   } catch {
@@ -924,8 +928,18 @@ function privateExif(tiff) {
   const view = new DataView(tiff.buffer, tiff.byteOffset, tiff.byteLength);
   const little = tiff[0] === 0x49 && tiff[1] === 0x49;
   if (!little && !(tiff[0] === 0x4d && tiff[1] === 0x4d)) return [];
-  const entries = (/** @type {number} */ ifd) =>
-    Array.from({ length: view.getUint16(ifd, little) }, (_, i) => ifd + 2 + i * 12);
+  // An IFD lists at most what fits in the block, and all the IFDs of one block share a budget of entries: a 64,000-entry
+  // IFD whose entries each name a 64,000-entry sub-IFD, the same one or distinct ones, was four billion steps.
+  let budget = 100_000;
+  const entries = (/** @type {number} */ ifd) => {
+    const length = Math.min(
+      view.getUint16(ifd, little),
+      Math.max(0, Math.floor((tiff.length - ifd - 2) / 12)),
+      budget,
+    );
+    budget -= length;
+    return Array.from({ length }, (_, i) => ifd + 2 + i * 12);
+  };
   const found = [];
   try {
     if (view.getUint16(2, little) !== 42) return [];
@@ -1002,7 +1016,7 @@ function parseTree(html) {
   /** @type {El} */
   const root = { tag: "#root", attrs: {}, children: [], parent: null };
   let node = root;
-  for (const m of html.matchAll(/<(\/?)([a-zA-Z][\w-]*)([^>]*)>|([^<]+)/g)) {
+  for (const m of html.matchAll(/<(\/?)([a-zA-Z][\w-]*)([^<>]*)>|([^<]+)/g)) {
     if (m[4] !== undefined) {
       if (m[4].trim()) node.children.push(m[4]);
       continue;

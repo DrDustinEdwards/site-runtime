@@ -58,7 +58,7 @@ function gradeResponse(origin, url, response) {
 function crossOriginLoads(origin, url, html) {
   const out = new Set();
   for (const m of html.matchAll(
-    /<(script|link|img|iframe|source|video|audio|embed)\b[^>]*?\s(?:src|href)\s*=\s*["']?([^"'\s>]+)/gi,
+    /<(script|link|img|iframe|source|video|audio|embed)\b[^<>]*?\s(?:src|href)\s*=\s*["']?([^"'\s>]+)/gi,
   )) {
     const tag = (m[1] ?? "").toLowerCase();
     if (tag === "link" && !/\brel\s*=\s*["']?(?:stylesheet|preload|modulepreload|icon)/i.test(m[0]))
@@ -81,7 +81,7 @@ function crossOriginLoads(origin, url, html) {
 
 /** @param {string} origin @param {string} url @param {string} html */
 function firstScript(origin, url, html) {
-  for (const m of html.matchAll(/<script\b[^>]*\ssrc\s*=\s*["']?([^"'\s>]+)/gi)) {
+  for (const m of html.matchAll(/<script\b[^<>]*\ssrc\s*=\s*["']?([^"'\s>]+)/gi)) {
     try {
       const target = new URL(m[1] ?? "", url);
       if (target.origin === origin) return target.pathname;

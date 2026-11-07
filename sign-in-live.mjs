@@ -74,7 +74,7 @@ const json = (/** @type {Got} */ r) => {
 const noStore = (/** @type {Got} */ r) => /no-store/i.test(r.headers.get("cache-control") ?? "");
 const noindex = (/** @type {Got} */ r) =>
   /noindex/i.test(r.headers.get("x-robots-tag") ?? "") ||
-  [...r.body.matchAll(/<meta\b[^>]*>/gi)].some(
+  [...r.body.matchAll(/<meta\b[^<>]*>/gi)].some(
     ([tag]) => /name=["']?robots/i.test(tag) && /noindex/i.test(tag),
   );
 /** A Set-Cookie that leaves a cookie in the browser (not one that deletes it). */
@@ -152,7 +152,7 @@ export async function signInFindings({ origin, from, probes }) {
         page.url,
         "the sign-in page has no noindex (X-Robots-Tag or robots meta)",
       );
-    const email = [...page.body.matchAll(/<input\b[^>]*>/gi)]
+    const email = [...page.body.matchAll(/<input\b[^<>]*>/gi)]
       .map(([tag]) => tag)
       .find((tag) => /type=["']?email|name=["']?email/i.test(tag));
     const autocomplete =

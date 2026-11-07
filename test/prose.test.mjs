@@ -251,6 +251,11 @@ describe("slopScan", () => {
       ].join("\n"),
     );
     assert.equal(slopScan("The river was up.", ["Too short to measure."]).instruction, null);
+    // A line of unclosed openers is linear: 100,000 of each took 12 s, 2 s and 9 s before the runs were bounded.
+    const t0 = performance.now();
+    for (const opener of ["![", "[a](", "<"])
+      slopScan(opener.repeat(100000 / opener.length), BASELINE);
+    assert.ok(performance.now() - t0 < 2500);
   });
 
   test("CLEAN TWIN: the author's own words, ranges, real lists and their own pages pass", () => {

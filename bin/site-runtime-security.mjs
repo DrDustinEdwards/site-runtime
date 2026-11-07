@@ -232,7 +232,7 @@ if (new URL(served).hostname.endsWith(".workers.dev")) {
 }
 
 // S1: an off-site script or stylesheet with no integrity runs whatever that host serves tomorrow.
-for (const [tag] of homeHtml.matchAll(/<(?:script|link)\b[^>]*>/gi)) {
+for (const [tag] of homeHtml.matchAll(/<(?:script|link)\b[^<>]*>/gi)) {
   if (/^<link/i.test(tag) && !/\srel=["']?stylesheet/i.test(tag)) continue;
   const src = /\s(?:src|href)=["']([^"']+)["']/i.exec(tag)?.[1];
   if (!src || /\sintegrity=/i.test(tag)) continue;
@@ -260,7 +260,7 @@ if (nonce) {
   // A <noscript> body is text to a browser that runs scripts, so a nonce inside it is never presented; a page that
   // parses one later (germomics' hydrate-on-intent) sets its own.
   const live = homeHtml.replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, "");
-  const stale = [...live.matchAll(/<(?:script|style|link)\b[^>]*\snonce="([^"]*)"/gi)]
+  const stale = [...live.matchAll(/<(?:script|style|link)\b[^<>]*\snonce="([^"]*)"/gi)]
     .map((m) => m[1])
     .filter((n) => n !== nonce);
   if (stale.length > 0)
