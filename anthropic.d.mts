@@ -29,7 +29,7 @@ export const MODELS_CHECKED: string;
 
 /** The model for each kind of call (C8): name the role, never an id. Each is in MODELS. */
 export const MODEL_IDS: Readonly<{
-  fast: "claude-haiku-4-5-20251001";
+  fast: "claude-haiku-5-5";
   standard: "claude-sonnet-5";
   deep: "claude-opus-4-8";
 }>;

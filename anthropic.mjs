@@ -82,6 +82,13 @@ export const MODELS = Object.freeze({
     notBefore: "2027-05-28",
     cacheMin: 1024,
   }),
+  "claude-haiku-5-5": Object.freeze({
+    state: "active",
+    deprecated: null,
+    retires: null,
+    notBefore: "2027-10-07",
+    cacheMin: 512,
+  }),
   "claude-haiku-4-5-20251001": Object.freeze({
     state: "active",
     deprecated: null,
@@ -97,7 +104,7 @@ export const MODELS = Object.freeze({
     cacheMin: null,
   }),
 });
-export const MODELS_CHECKED = "2026-10-31";
+export const MODELS_CHECKED = "2026-11-07";
 
 /**
  * The model each kind of call uses, in one place (C8): a site names the role, never an id, so a model change is one
@@ -105,7 +112,7 @@ export const MODELS_CHECKED = "2026-10-31";
  * reader sees, `deep` for long reasoning. Each is a dated or pinned id in MODELS, never a family alias.
  */
 export const MODEL_IDS = Object.freeze({
-  fast: "claude-haiku-4-5-20251001",
+  fast: "claude-haiku-5-5",
   standard: "claude-sonnet-5",
   deep: "claude-opus-4-8",
 });
