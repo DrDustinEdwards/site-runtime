@@ -502,6 +502,17 @@ test("a policy needs both report sinks, and Reporting-Endpoints must name the re
   );
 });
 
+test("with manual Cloudflare Web Analytics, the policy must name the bare file and cloudflareinsights.com", () => {
+  const options = { cloudflareWebAnalytics: /** @type {const} */ ("manual") };
+  const good = `${GOOD_POLICY.replace(
+    "script-src 'self'",
+    "script-src 'self' https://static.cloudflareinsights.com/beacon.min.js",
+  )}; connect-src 'self' https://cloudflareinsights.com`;
+  assert.deepEqual(failed(response({ "Content-Security-Policy": good }), options), []);
+  const noReport = good.replace(" https://cloudflareinsights.com", "");
+  failure(response({ "Content-Security-Policy": noReport }), /manual beacon report/, options);
+});
+
 test("with Cloudflare Web Analytics on, the policy must let the beacon run from its path prefix and report", () => {
   const options = { cloudflareWebAnalytics: true };
   const withBeacon = GOOD_POLICY.replace("script-src 'self'", `script-src 'self' ${BEACON}`);

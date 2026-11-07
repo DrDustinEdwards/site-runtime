@@ -59,7 +59,7 @@ export function buildPolicy(directives: readonly string[]): string;
  *   styleHashes?: readonly string[],
  *   nonce?: string,
  *   styleAttributesInline?: boolean,
- *   cloudflareWebAnalytics?: boolean,
+ *   cloudflareWebAnalytics?: boolean | "manual",
  *   reportUri?: string,
  *   reportTo?: string,
  *   reportOnly?: boolean,
@@ -100,7 +100,18 @@ export function buildContentSecurityPolicy(site: SitePolicy): {
  */
 export const CLOUDFLARE_WEB_ANALYTICS: Readonly<{
   script: readonly string[];
+  manual: Readonly<{ script: readonly string[]; connect: readonly string[] }>;
 }>;
+/**
+ * The attributes of the manual-setup beacon tag (a module script with the site token in data-cf-beacon), for a site
+ * Cloudflare does not proxy. Pair it with `cloudflareWebAnalytics: "manual"` in the policy.
+ */
+export function cloudflareBeaconAttributes(token: string): {
+  type: "module";
+  defer: true;
+  src: string;
+  "data-cf-beacon": string;
+};
 /**
  * The hosts (or schemes, such as `data:`) a site loads, per kind, beyond 'self'. A kind with nothing extra is
  * omitted. A source is written as a policy writes it: `https://cdn.example.com`, `data:`.
@@ -152,7 +163,7 @@ export type SitePolicy = {
   inlineScripts?: "unsafe-inline";
   strictDynamic?: boolean;
   styleAttributesInline?: boolean;
-  cloudflareWebAnalytics?: boolean;
+  cloudflareWebAnalytics?: boolean | "manual";
   reportUri?: string;
   reportTo?: string;
   reportOnly?: boolean;
