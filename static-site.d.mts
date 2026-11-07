@@ -11,6 +11,8 @@ export interface StaticSiteEnv {
   };
   /** The deployed commit, which devkit's worker-deploy sets with `sha-var: DEPLOY_SHA`; /health reports it. */
   readonly DEPLOY_SHA?: string;
+  /** "1" or "true" puts the site in maintenance: every path but /health answers the 503 page (./maintenance). */
+  readonly MAINTENANCE?: string;
 }
 
 export interface StaticSiteOptions {
@@ -28,6 +30,8 @@ export interface StaticSiteOptions {
   canonical?: Parameters<typeof canonicalRedirect>[1] | false;
   /** The 404 page's path. Default /404. */
   notFound?: string;
+  /** The site's name on the maintenance page. */
+  siteName?: string;
   /** Where the /health response (./health, with `sha` from DEPLOY_SHA) is served, or false for none. Default /health. */
   health?: string | false;
 }

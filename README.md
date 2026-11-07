@@ -802,6 +802,22 @@ default is same-origin), keeps the PNG under `cacheKey`, and answers a failed re
 `no-store`), never an empty image. `html` and `fonts` may be values or functions, so a cache hit builds no HTML and
 fetches no font. A route that wants another fallback (Foxing redirects to the book's cover) keeps `renderShareCard`.
 
+## Maintenance page
+
+`./maintenance` is the one maintenance page: a 503 with `Retry-After` (an hour unless given), `Cache-Control: private,
+no-store` and noindex, so a crawler comes back and nothing keeps the notice after the site returns (MDN, 503 Service
+Unavailable). It is self-contained (no database, loader or stylesheet), so it renders with the app down.
+`maintenanceOn(env)` is true when the `MAINTENANCE` var is "1" or "true". `staticSite` answers it for every path but
+`/health` (`siteName` names the site); a rendered site calls it first in its Worker entry:
+
+```js
+import { maintenanceOn, maintenanceResponse } from "@dustinedwards/site-runtime/maintenance";
+if (maintenanceOn(env) && new URL(request.url).pathname !== "/health")
+  return maintenanceResponse({ siteName: "Foxing" });
+```
+
+`staticSite` also answers its 404 page's own address (`/404`) with status 404, never a 200.
+
 ## security.txt
 
 `./security-txt` writes `/.well-known/security.txt` (RFC 9116), so every site tells a finder where to report a

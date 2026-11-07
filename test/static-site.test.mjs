@@ -82,3 +82,20 @@ test("a page gets the speed headers, a missing path the 404 page uncached, and a
   assert.equal(http.headers.get("Location"), "https://example.com/about");
   assert.equal(http.headers.get("X-Content-Type-Options"), "nosniff");
 });
+
+test("the 404 page's own address answers 404, and a site in maintenance answers 503 but for /health", async () => {
+  const direct = await site.fetch(new Request("https://example.com/404"), { ASSETS });
+  assert.equal(direct.status, 404);
+
+  const env = { ASSETS, MAINTENANCE: "true" };
+  const down = await staticSite({ siteName: "Sample" }).fetch(
+    new Request("https://example.com/"),
+    env,
+  );
+  assert.equal(down.status, 503);
+  assert.equal(down.headers.get("Retry-After"), "3600");
+  assert.equal(down.headers.get("Cache-Control"), "private, no-store");
+  assert.match(await down.text(), /<title>Down for maintenance \| Sample<\/title>/);
+  const health = await staticSite().fetch(new Request("https://example.com/health"), env);
+  assert.equal(health.status, 200);
+});
