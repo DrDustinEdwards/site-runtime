@@ -17,6 +17,8 @@
  *                          checks below
  *   /register              the registration limit (./mcp-login), then the provider, which allows only exact callbacks
  *   /token /.well-known/*  the provider
+ *   /api/operator          the server's own jobs (./operator's door, behind the operator bearer): `run_job`, so Capsid
+ *                          Admin runs the tool-call log's copy now through the code the cron runs (./cron runJobTool)
  *
  * Least scope first: the scopes are the provider's (`ctx.auth.scope`, what the consent page granted); a grant with none
  * is refused, never read as read-only. The site's API owns every rule; this door decides only who is talking.
@@ -24,8 +26,10 @@
 
 import { agentPrincipal, agentScopes } from "./agent-keys.mjs";
 import { auditLogCheck, exportAuditLog, recordAudit } from "./audit-log.mjs";
+import { runJobTool, runJobs } from "./cron.mjs";
 import { durableObjectCheck, healthResponse, kvCheck, r2Check } from "./health.mjs";
 import { logEvent, withRequestLog } from "./log.mjs";
+import { operatorResponse } from "./operator.mjs";
 import {
   DCR_CALLBACKS,
   isAdminUser,
@@ -43,6 +47,33 @@ import {
   refuse,
   withMcpHeaders,
 } from "./mcp-server.mjs";
+
+/** The admin server's own operator door: `run_job` over ADMIN_MCP_JOBS, behind the operator bearer. */
+export const ADMIN_MCP_OPERATOR_ROUTE = "/api/operator";
+
+/**
+ * The admin server's scheduled jobs: the daily copy of the tool-call log to R2 and the 90-day prune (L6-L7). A failed
+ * write throws, so the run shows failed, and /health's log check alerts once rows go uncopied for two days. Its result
+ * is exportAuditLog's ({ exported, objects, pruned, verified }), so a run now shows whether the copy's chain verified.
+ * @param {import("./admin-mcp.d.mts").AdminMcpEnv} env
+ * @returns {import("./cron.d.mts").CronJob[]}
+ */
+export function adminMcpJobs(env) {
+  return [
+    {
+      name: "tool-call-log-export",
+      everyMinutes: 1440,
+      timeoutMs: 10 * 60_000,
+      run: async () => {
+        if (!env.AUDIT_BUCKET)
+          throw new Error("AUDIT_BUCKET is not bound; the tool-call log is not copied");
+        const done = await exportAuditLog(env, env.AUDIT_BUCKET);
+        logEvent("tool_call_log_exported", { exported: done.exported, pruned: done.pruned });
+        return done;
+      },
+    },
+  ];
+}
 
 /** The one MCP route on every admin server. */
 export const ADMIN_MCP_ROUTE = "/mcp";
@@ -78,6 +109,7 @@ export function adminMcpWorker({
   agentKeys = false,
   routes,
   checks,
+  operatorToken = "OPERATOR_TOKEN",
 }) {
   const scopes = server.scopes;
   const all = [scopes.read, scopes.write];
@@ -281,6 +313,16 @@ export function adminMcpWorker({
     const own = routes ? await routes(request, env, ctx) : null;
     if (own) return own;
     const url = new URL(request.url);
+    if (url.pathname === ADMIN_MCP_OPERATOR_ROUTE) {
+      const token = /** @type {Record<string, unknown>} */ (env)[operatorToken];
+      return operatorResponse(request, {
+        token: typeof token === "string" ? token : undefined,
+        limiter: /** @type {import("./operator.d.mts").OperatorOptions["limiter"]} */ (
+          env.MCP_RATE_LIMIT
+        ),
+        tools: { run_job: runJobTool(null, adminMcpJobs(env)) },
+      });
+    }
     if (url.pathname === ADMIN_MCP_ROUTE) {
       // Before the token is read, so a page on another origin learns nothing from a 401 (DNS rebinding).
       const foreign = mcpOriginRefusal(request, ADMIN_MCP_ORIGINS);
@@ -362,15 +404,13 @@ export function adminMcpWorker({
       { sha: (env) => env.DEPLOY_SHA },
     ),
     /**
-     * The daily copy of the tool-call log to R2 and the 90-day prune (L6-L7). A failed write throws, so the run shows
-     * failed, and /health's log check alerts once rows go uncopied for two days.
+     * The server's jobs (adminMcpJobs), through ./cron's runJobs as on every site: isolated, timed out, logged, and a
+     * failure fails the invocation. The admin server has no D1, so nothing goes to cron_runs; /health's log check is
+     * what notices a copy that stopped.
      * @param {unknown} _controller @param {E} env
      */
     async scheduled(_controller, env) {
-      if (!env.AUDIT_BUCKET)
-        throw new Error("AUDIT_BUCKET is not bound; the tool-call log is not copied");
-      const done = await exportAuditLog(env, env.AUDIT_BUCKET);
-      logEvent("tool_call_log_exported", { exported: done.exported, pruned: done.pruned });
+      await runJobs(null, adminMcpJobs(env));
     },
   };
 }

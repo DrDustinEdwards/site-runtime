@@ -221,5 +221,5 @@ test("not configured is not open: no PUBLIC_ORIGIN serves nothing, /health fails
     body.checks.find((/** @type {{ name: string }} */ c) => c.name === "sample")?.status,
     "fail",
   );
-  await assert.rejects(worker.scheduled({}, env), /AUDIT_BUCKET/);
+  await assert.rejects(worker.scheduled({}, env), /tool-call-log-export/);
 });

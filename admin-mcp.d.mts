@@ -11,6 +11,10 @@ import type { ServedSiteEntry } from "./sites.mjs";
 
 /** The one MCP route on every admin server. */
 export const ADMIN_MCP_ROUTE: "/mcp";
+/** The admin server's own operator door: `run_job` over adminMcpJobs, behind the operator bearer. */
+export const ADMIN_MCP_OPERATOR_ROUTE: "/api/operator";
+/** The admin server's scheduled jobs: the tool-call log's daily copy ("tool-call-log-export"). */
+export function adminMcpJobs(env: AdminMcpEnv): import("./cron.d.mts").CronJob[];
 /** Origins that may call /mcp besides the server's own (claude.ai). */
 export const ADMIN_MCP_ORIGINS: readonly string[];
 
@@ -103,6 +107,11 @@ export interface AdminMcpOptions<E extends AdminMcpEnv> {
   ): Response | null | Promise<Response | null>;
   /** More /health checks, for the server's own bindings. */
   checks?(env: E): HealthCheck[];
+  /**
+   * The env name of the bearer /api/operator (`run_job`) takes: default "OPERATOR_TOKEN", the secret the server already
+   * sends to its site, so Capsid holds one token per site. Unset or short closes the route (503).
+   */
+  operatorToken?: string;
 }
 
 /** The Worker's default export: the door, and the daily copy of the tool-call log. */
