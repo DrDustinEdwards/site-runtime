@@ -2,7 +2,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { logEvent, routeNamer, scrubFields, scrubText, scrubUrl, withRequestLog } from "../log.mjs";
+import {
+  handleServerError,
+  logEvent,
+  routeNamer,
+  scrubFields,
+  scrubText,
+  scrubUrl,
+  withRequestLog,
+} from "../log.mjs";
 
 test("emails, URL queries, Stripe keys, Drizzle parameters and route tokens are cut", () => {
   assert.equal(
@@ -98,4 +106,26 @@ test("withRequestLog names the route, and a refused input also writes input_vali
       { event: "request", route: "/ok", status: 200 },
     ],
   );
+});
+
+test("handleServerError skips a route 404 and logs any other error with its request", () => {
+  const request = new Request("https://example.com/blog/robots.txt?token=abc");
+  const lines = [];
+  const original = console.error;
+  console.error = (line) => lines.push(line);
+  try {
+    handleServerError(
+      { status: 404, statusText: "Not Found", error: new Error("No route matches URL") },
+      { request },
+    );
+    assert.equal(lines.length, 0);
+    handleServerError(new Error("boom"), { request });
+    assert.equal(lines.length, 1);
+    const line = JSON.parse(lines[0]);
+    assert.equal(line.event, "server_error");
+    assert.equal(line.path, "/blog/robots.txt");
+    assert.equal(line.error, "Error: boom");
+  } finally {
+    console.error = original;
+  }
 });

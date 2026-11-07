@@ -121,6 +121,30 @@ export function logEvent(event, fields = {}, { level = "log", ...scrub } = {}) {
 }
 
 /**
+ * React Router's `handleError` export for entry.server: the framework's default prints every route error to the
+ * console, including the "No route matches URL" error of each scanner's 404, an error-level stack trace with no
+ * request on it. A 404 is not a failure (the 404 counter in `./not-found` keeps count), so it is not logged here; any
+ * other error is one scrubbed `server_error` line at error level with the request's fields.
+ * @param {unknown} error
+ * @param {{ request: Request }} args
+ */
+export function handleServerError(error, { request }) {
+  if (request.signal.aborted) return;
+  // A route error response (a thrown 404 Response, or RR's own no-route-match), not an Error instance.
+  if (
+    !(error instanceof Error) &&
+    /** @type {{ status?: unknown } | null} */ (error)?.status === 404
+  )
+    return;
+  const cause = /** @type {{ error?: unknown } | null} */ (error)?.error;
+  logEvent(
+    "server_error",
+    { ...requestFields(request), error: cause ?? error },
+    { level: "error" },
+  );
+}
+
+/**
  * The fields that tie a log line to its request, for a site to spread into its lines: `request_id` (the `cf-ray`
  * header, empty when there is none), `method`, `path` (scrubbed, never the query) and, when given, the response's
  * `status` and the deployed `sha`.
