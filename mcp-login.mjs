@@ -20,6 +20,7 @@
  * The provider is matched by its errors' names, not imported, so this package keeps no dependencies.
  */
 
+import { isAdminEmail } from "./access.mjs";
 import { accessSaas, authorizationUrl, finishSignIn, newSignIn } from "./access-login.mjs";
 import { correlationId, recordAudit } from "./audit-log.mjs";
 import { readCapped } from "./body.mjs";
@@ -381,15 +382,14 @@ ${target.local ? `<p><strong>${LOCAL_REDIRECT_WARNING[0]}</strong> ${LOCAL_REDIR
 }
 
 /**
- * Whether a signed-in email is the single administrator's: `ADMIN_EMAIL`, compared without case. The email is the one
- * Cloudflare Access verified. Fails closed: an unset or blank value admits nobody.
- * @param {{ ADMIN_EMAIL?: string }} env
+ * Whether a signed-in email is an administrator's: `ADMIN_EMAIL` or an entry of `CO_OWNER_EMAILS`, compared without
+ * case (`isAdminEmail`, ./access). The email is the one Cloudflare Access verified. Fails closed: an unset or blank
+ * `ADMIN_EMAIL` admits nobody.
+ * @param {{ ADMIN_EMAIL?: string, CO_OWNER_EMAILS?: string }} env
  * @param {{ email?: unknown }} user
  */
 export function isAdminUser(env, user) {
-  const admin = (env.ADMIN_EMAIL ?? "").trim().toLowerCase();
-  if (!admin || typeof user.email !== "string") return false;
-  return user.email.trim().toLowerCase() === admin;
+  return isAdminEmail(env, user.email);
 }
 
 /**

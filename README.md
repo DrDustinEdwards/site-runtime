@@ -1735,7 +1735,7 @@ const service = typeof verdict.claims.common_name === "string" ? verdict.claims.
 
 ```js
 import { accessAdmin, accessSignInUrl, safeAdminNext } from "@dustinedwards/site-runtime/access";
-const admin = await accessAdmin(request, env); // ADMIN_EMAILS, else ADMIN_EMAIL
+const admin = await accessAdmin(request, env); // ADMIN_EMAIL (main admin) and CO_OWNER_EMAILS
 const same = await accessAdmin(request, env, { admins: [session.user.email] }); // Access must name this signed-in user
 if (!admin) return redirect(accessSignInUrl(request)); // /admin/access?next=<this page>
 ```
@@ -1746,7 +1746,12 @@ if (!admin) return redirect(accessSignInUrl(request)); // /admin/access?next=<th
   are null, logged as `access_keys_unreachable`.
 - Local development: `ACCESS_DEV_BYPASS="1"` passes the first admin with no token, and only on a `localhost` URL, so a
   stray copy of the setting in production does nothing.
-- `adminEmails(env)` reads `ADMIN_EMAILS`, else `ADMIN_EMAIL`, split on commas, trimmed and lower-cased.
+- The network's one admin model: `ADMIN_EMAIL` is the main admin, the only address that may change who is admin, and
+  `CO_OWNER_EMAILS` (comma-separated) are co-owners, who have full use and no say over admins. `adminRoster(env)` is
+  `{ admin, coOwners, all }`, trimmed and lower-cased; `adminEmails(env)` is `all`; `isAdminEmail(env, email)` is
+  admin-or-co-owner and `isMainAdmin(env, email)` is the main admin only (gate anything that changes admins with it).
+  An unset `ADMIN_EMAIL` admits nobody, co-owners included. There is no other setting name: `ADMIN_EMAILS` is not read.
+  Both are Worker secrets set in Cloudflare.
 - `AccessSecrets` is the type a site's `Env` extends: `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`, `ACCESS_DEV_BYPASS?`.
 - For a site whose Access application covers one path (txasm: `/admin/access`, which sets the domain-wide cookie and
   comes back), `accessSignInUrl(request, { path })` is that path with the current page as `next`, and
@@ -1829,7 +1834,7 @@ CLOUDFLARE_API_TOKEN=... ACCESS_CLIENT_ID=... ACCESS_CLIENT_SECRET=... \
   `ACCESS_CLIENT_SECRET` (sent as `CF-Access-Client-Id` and `-Secret`; a redirect means Access refused it), hashes each
   address Access lets in with the same salt and compares (`fetchAdminList`, `accessDriftHashed`). The service token is
   let in by a Service Auth policy on the application, which the check does not read as people. On your own machine,
-  `ADMIN_EMAILS` or `--admins-file` (one address per line or comma-separated, `#` comments) stand in for the site.
+  `ADMIN_EMAIL` with `CO_OWNER_EMAILS`, or `--admins-file` (one address per line or comma-separated, `#` comments) stand in for the site.
   Addresses compare in lower case.
 - Each difference prints as `::error title=I2 access drift::<address or rule> ...`, the address masked
   (`d***@example.com`) because a public repo's Actions logs are public; `--show-addresses` prints it whole on your own
@@ -2263,7 +2268,7 @@ clientRegistrationCallback: ({ clientMetadata }) => {
   (it starts ticked only when the client asked for it). The grant's props are `{ email, scopes, client, clientId }`,
   `client` being the name the consent page showed, for the server's own log. The page says who publishes a CIMD client
   (its metadata URL's host) and that a registered client's name is its own claim.
-- `admit` decides who is let in; `isAdminUser` is `ADMIN_EMAIL`, compared without case, and an unset value admits nobody.
+- `admit` decides who is let in; `isAdminUser` is `isAdminEmail` (`ADMIN_EMAIL` or a `CO_OWNER_EMAILS` entry, without case), and an unset `ADMIN_EMAIL` admits nobody.
   A server with several people returns an object instead of `true` (Carrel's `{ personId }`): it admits, and its fields
   join the grant's props for the server to check again on every request. `admits: { consent, refusal }` then says who
   is let in, on the consent page and in the refusal (default: the configured administrator). `wantsWrite(requested)`

@@ -47,8 +47,23 @@ export type AccessSecrets = {
   ACCESS_DEV_BYPASS?: string;
 };
 
-/** ADMIN_EMAILS, else ADMIN_EMAIL, split on commas, trimmed and lower-cased; unset is []. */
-export function adminEmails(env: { ADMIN_EMAILS?: string; ADMIN_EMAIL?: string }): string[];
+export type AdminSettings = { ADMIN_EMAIL?: string; CO_OWNER_EMAILS?: string };
+/**
+ * The network's one admin model: ADMIN_EMAIL is the main admin (the only one who may change admins), CO_OWNER_EMAILS
+ * (comma-separated) the co-owners (full use, no say over admins). Lower-cased, blanks and repeats dropped. An unset
+ * ADMIN_EMAIL leaves everyone out, co-owners included.
+ */
+export function adminRoster(env: AdminSettings): {
+  admin: string | null;
+  coOwners: string[];
+  all: string[];
+};
+/** The main admin, then the co-owners; unset ADMIN_EMAIL is []. */
+export function adminEmails(env: AdminSettings): string[];
+/** Whether the email is the main admin or a co-owner (lower case). */
+export function isAdminEmail(env: AdminSettings, email: unknown): boolean;
+/** Whether the email is the main admin, the only one who may change who is admin. */
+export function isMainAdmin(env: AdminSettings, email: unknown): boolean;
 
 /**
  * The admin Access signed this request for (header or CF_Authorization cookie, email compared in lower case), or null.
@@ -56,7 +71,7 @@ export function adminEmails(env: { ADMIN_EMAILS?: string; ADMIN_EMAIL?: string }
  */
 export function accessAdmin(
   request: Request,
-  env: Partial<AccessSecrets> & { ADMIN_EMAILS?: string; ADMIN_EMAIL?: string },
+  env: Partial<AccessSecrets> & AdminSettings,
   options?: { admins?: string | readonly string[]; keys?: KeySource; now?: number },
 ): Promise<{ email: string } | null>;
 

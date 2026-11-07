@@ -36,8 +36,10 @@ export interface AdminMcpEnv
   PUBLIC_ORIGIN?: string;
   /** Exact redirect URIs a dynamically registered client may use beside DCR_CALLBACKS, comma or space separated. */
   DCR_REDIRECT_URIS?: string;
-  /** The single administrator `isAdminUser` admits. */
+  /** The main administrator; `isAdminUser` admits it. */
   ADMIN_EMAIL?: string;
+  /** Co-owners, comma-separated: admitted like ADMIN_EMAIL, with no say over who is admin. */
+  CO_OWNER_EMAILS?: string;
   /** The list-only test key (./mcp-server probeDoor): lists tools, runs none. */
   MCP_PROBE_KEY?: string;
   /** Agent principals that hold the write scope, where `agentKeys` is on. */
@@ -92,7 +94,7 @@ export interface AdminMcpOptions<E extends AdminMcpEnv> {
    * `<name>-reach`, the warn-level request that shows the site is up).
    */
   api: { binding: string; name: string };
-  /** Who is let in, at sign-in and again on every request. Default: isAdminUser (ADMIN_EMAIL). */
+  /** Who is let in, at sign-in and again on every request. Default: isAdminUser (ADMIN_EMAIL or CO_OWNER_EMAILS). */
   admit?(
     env: E,
     user: { email: string } & Record<string, unknown>,
