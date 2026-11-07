@@ -928,20 +928,18 @@ function privateExif(tiff) {
   const view = new DataView(tiff.buffer, tiff.byteOffset, tiff.byteLength);
   const little = tiff[0] === 0x49 && tiff[1] === 0x49;
   if (!little && !(tiff[0] === 0x4d && tiff[1] === 0x4d)) return [];
-  // An IFD lists at most what fits in the block, and every entry pointing at the same sub-IFD walks it once: a 64,000-entry
-  // IFD whose entries all name one 64,000-entry sub-IFD was four billion steps.
-  const entries = (/** @type {number} */ ifd) =>
-    Array.from(
-      {
-        length: Math.min(
-          view.getUint16(ifd, little),
-          Math.max(0, Math.floor((tiff.length - ifd - 2) / 12)),
-        ),
-      },
-      (_, i) => ifd + 2 + i * 12,
+  // An IFD lists at most what fits in the block, and all the IFDs of one block share a budget of entries: a 64,000-entry
+  // IFD whose entries each name a 64,000-entry sub-IFD, the same one or distinct ones, was four billion steps.
+  let budget = 100_000;
+  const entries = (/** @type {number} */ ifd) => {
+    const length = Math.min(
+      view.getUint16(ifd, little),
+      Math.max(0, Math.floor((tiff.length - ifd - 2) / 12)),
+      budget,
     );
-  /** @type {Set<number>} */
-  const walked = new Set();
+    budget -= length;
+    return Array.from({ length }, (_, i) => ifd + 2 + i * 12);
+  };
   const found = [];
   try {
     if (view.getUint16(2, little) !== 42) return [];
@@ -950,11 +948,7 @@ function privateExif(tiff) {
       if (tag === 0x8825 && view.getUint16(view.getUint32(entry + 8, little), little) > 0)
         found.push("GPS coordinates");
       if (tag === 0xc62f) found.push("a camera serial number");
-      if (
-        tag === 0x8769 &&
-        !walked.has(view.getUint32(entry + 8, little)) &&
-        walked.add(view.getUint32(entry + 8, little))
-      )
+      if (tag === 0x8769)
         for (const sub of entries(view.getUint32(entry + 8, little)))
           if (PRIVATE_TAGS[view.getUint16(sub, little)])
             found.push(PRIVATE_TAGS[view.getUint16(sub, little)]);

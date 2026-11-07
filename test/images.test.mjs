@@ -136,6 +136,39 @@ const responses = {
     }),
 };
 
+/** A PNG whose eXIf block has 40,000 entries that each name a sub-IFD: all the same one, or each its own. */
+function pngWithHostileExif(distinct) {
+  const n = 40000;
+  const tiff = new Uint8Array(10 + n * 12);
+  tiff.set([0x4d, 0x4d, 0, 42, 0, 0, 0, 8, n >> 8, n & 255]);
+  for (let i = 0; i < n; i++) {
+    const sub = distinct ? 10 + i * 12 : 8;
+    tiff.set(
+      [0x87, 0x69, 0, 4, 0, 0, 0, 1, sub >>> 24, (sub >>> 16) & 255, (sub >>> 8) & 255, sub & 255],
+      10 + i * 12,
+    );
+  }
+  const be32 = (/** @type {number} */ v) =>
+    Buffer.from([v >>> 24, (v >>> 16) & 255, (v >>> 8) & 255, v & 255]);
+  return new Uint8Array(
+    Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10]),
+      be32(13),
+      Buffer.from("IHDR"),
+      be32(1),
+      be32(1),
+      Buffer.from([8, 6, 0, 0, 0, 0, 0, 0, 0]),
+      be32(tiff.length),
+      Buffer.from("eXIf"),
+      tiff,
+      be32(0),
+      be32(0),
+      Buffer.from("IEND"),
+      be32(0),
+    ]),
+  );
+}
+
 test("one planted mistake from each family is found, on the page or the file that proves it", async () => {
   const requested = [];
   const fake = /** @type {typeof fetch} */ (
@@ -253,6 +286,11 @@ test("one planted mistake from each family is found, on the page or the file tha
     }),
     "::error title=B1::https://example.com/ 100%25 wrong",
   );
+  // EXIF entries that name sub-IFDs, 40,000 of them: read in linear time, not 40,000 squared (1.6 billion steps before).
+  const t0 = performance.now();
+  for (const distinct of [false, true])
+    assert.equal(readImage(pngWithHostileExif(distinct))?.type, "image/png");
+  assert.ok(performance.now() - t0 < 2500);
 });
 
 test("a site that sends a stranger to a sign-in elsewhere is one C1 finding, not an audit of the sign-in page", async () => {
@@ -273,51 +311,4 @@ test("a site that sends a stranger to a sign-in elsewhere is one C1 finding, not
     ["C1"],
   );
   assert.match(findings[0].detail, /sends a stranger to team\.cloudflareaccess\.com/);
-});
-
-test("EXIF whose 40,000 entries all name one sub-IFD is read in linear time, not 40,000 squared", () => {
-  const n = 40000;
-  const tiff = new Uint8Array(10 + n * 12);
-  tiff.set([0x4d, 0x4d, 0, 42, 0, 0, 0, 8, n >> 8, n & 255]);
-  for (let i = 0; i < n; i++) tiff.set([0x87, 0x69, 0, 4, 0, 0, 0, 1, 0, 0, 0, 8], 10 + i * 12);
-  const be32 = (/** @type {number} */ v) => [v >>> 24, (v >>> 16) & 255, (v >>> 8) & 255, v & 255];
-  const png = new Uint8Array([
-    0x89,
-    0x50,
-    0x4e,
-    0x47,
-    13,
-    10,
-    26,
-    10,
-    ...be32(13),
-    ...Buffer.from("IHDR"),
-    ...be32(1),
-    ...be32(1),
-    8,
-    6,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    ...be32(tiff.length),
-    ...Buffer.from("eXIf"),
-    ...tiff,
-    0,
-    0,
-    0,
-    0,
-    ...be32(0),
-    ...Buffer.from("IEND"),
-    0,
-    0,
-    0,
-    0,
-  ]);
-  const t0 = performance.now();
-  assert.equal(readImage(png)?.type, "image/png");
-  assert.ok(performance.now() - t0 < 2500);
 });

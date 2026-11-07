@@ -877,10 +877,40 @@ function judgeConformance(
 // Any origin: public AI text, and the models.
 // ---------------------------------------------------------------------------------------------------------------------
 
+/**
+ * `html` without its script, style, noscript, template and svg elements, each replaced by a space: an element with no
+ * closing tag is left as it is. One search per element name finds its next closing tag, so a run of unclosed openers is
+ * read once, not rescanned from each.
+ * @param {string} html
+ */
+function dropBlocks(html) {
+  const open = /<(script|style|noscript|template|svg)\b/gi;
+  /** @type {Map<string, number>} */
+  const closeAt = new Map();
+  let out = "";
+  let at = 0;
+  let m;
+  while ((m = open.exec(html))) {
+    const name = (m[1] ?? "").toLowerCase();
+    let close = closeAt.get(name);
+    if (close === -1) continue;
+    if (close === undefined || close < m.index) {
+      const re = new RegExp(`</${name}>`, "gi");
+      re.lastIndex = m.index;
+      close = re.exec(html)?.index ?? -1;
+      closeAt.set(name, close);
+      if (close === -1) continue;
+    }
+    out += `${html.slice(at, m.index)} `;
+    at = close + name.length + 3;
+    open.lastIndex = at;
+  }
+  return out + html.slice(at);
+}
+
 /** A page's readable text: no script, style or markup, block ends as line breaks, the common entities decoded. */
 function textOf(/** @type {string} */ html) {
-  return html
-    .replace(/<(script|style|noscript|template|svg)\b[\s\S]*?<\/\1>/gi, " ")
+  return dropBlocks(html)
     .replace(
       /<\/?(?:p|div|li|h[1-6]|br|section|article|blockquote|tr|td|th|dd|dt)\b[^<>]*>/gi,
       "\n",

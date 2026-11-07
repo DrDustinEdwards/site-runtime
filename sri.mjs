@@ -151,10 +151,11 @@ function preloadsOf(html, pagePath, base, root) {
   return files;
 }
 
-// The clause before `from` starts on a non-space and holds at most 250 space-separated tokens, so a run of spaces or
-// of `import` words cannot be re-scanned from every start (the old lazy form took 25 s on 4,000 spaces).
+// The clause before `from` starts on a non-space and runs over space-separated tokens, none of them `import` or `export`,
+// so a run of spaces or of `import` words is scanned once and not from every start (the old lazy form took 25 s on
+// 4,000 spaces); a list of any length still matches.
 const STATIC_IMPORT =
-  /(?:^|[;\s}])(?:import|export)\s*(?:[\w$*{},]+(?:\s+[\w$*{},]+){0,250}\s*\bfrom\s*)?["']((?:\.{1,2}\/|\/)[^"']+)["']/g;
+  /(?:^|[;\s}])(?:import|export)\s*(?:(?!(?:import|export)\b)[\w$*{},]+(?:\s+(?!(?:import|export)\b)[\w$*{},]+)*\s*\bfrom\s*)?["']((?:\.{1,2}\/|\/)[^"']+)["']/g;
 
 /**
  * Every local module `entry` reaches through static imports, transitively, in order of discovery, `entry` excluded.
