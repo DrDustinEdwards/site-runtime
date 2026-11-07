@@ -1,0 +1,10 @@
+import type { RouterContext, RouterContextProvider } from "react-router";
+
+/** The bindings and execution context of one request; `Env` is the site's own (wrangler types). */
+export type CloudflareContext = { env: Env; ctx: ExecutionContext };
+export const cloudflareContext: RouterContext<CloudflareContext>;
+/** This render's Content-Security-Policy nonce, undefined where none is issued. */
+export const cspNonceContext: RouterContext<string | undefined>;
+export function getEnv(context: Readonly<RouterContextProvider>): Env;
+export function getExecutionContext(context: Readonly<RouterContextProvider>): ExecutionContext;
+export function getNonce(context: Readonly<RouterContextProvider>): string | undefined;

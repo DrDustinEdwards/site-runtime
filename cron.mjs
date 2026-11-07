@@ -320,3 +320,28 @@ export function cronCheck(db, options = {}) {
     },
   };
 }
+
+/**
+ * A site's jobs keyed by the cron that fires them, as the three things a Worker does with that list: runs the list for
+ * the cron it received, hands every job to /health and the operator's run_job, and logs a trigger with no list. Four
+ * sites each wrote the same `Object.values(cronJobs(env)).flat()` and the same `scheduled` body.
+ * @template Env
+ * @param {(env: Env, scheduledTime: Date) => Record<string, CronJob[]>} jobsFor the jobs of each cron (wrangler.jsonc triggers.crons)
+ * @returns {{
+ *   all: (env: Env) => CronJob[],
+ *   run: (db: D1Like | (() => D1Like) | null, controller: { cron: string, scheduledTime: number }, env: Env) => Promise<void>,
+ * }}
+ */
+export function cronSchedule(jobsFor) {
+  return {
+    all: (env) => Object.values(jobsFor(env, new Date())).flat(),
+    run: async (db, controller, env) => {
+      const jobs = jobsFor(env, new Date(controller.scheduledTime))[controller.cron];
+      if (!jobs) {
+        logEvent("cron_unknown", { cron: controller.cron }, { level: "warn" });
+        return;
+      }
+      await runJobs(db, jobs);
+    },
+  };
+}

@@ -38,3 +38,7 @@ export type ReceiveOptions = {
 };
 /** Receives one report request and answers it: POST 204, OPTIONS the preflight, anything else 405. */
 export function receiveCspReport(request: Request, options?: ReceiveOptions): Promise<Response>;
+/** The `allow` for a Workers Rate Limiting binding, keyed on the client address; no binding drops every report. */
+export function rateLimitAllow(
+  binding: { limit(options: { key: string }): Promise<{ success: boolean }> } | undefined,
+): (request: Request) => Promise<boolean>;
