@@ -187,6 +187,16 @@ const beaconNotStrict = {
     "buildContentSecurityPolicy refuses strictDynamic beside cloudflareWebAnalytics: 'strict-dynamic' makes a browser ignore host sources, and the edge injects the Web Analytics beacon with no nonce, and with an integrity that changes at each Cloudflare release, so neither a nonce nor a hash can let it run.",
 };
 
+// bsw's beacon is the manual one (Cloudflare does not proxy workers.dev), which the page controls, so the automatic beacon's
+// reason does not apply. 'strict-dynamic' still needs a nonce or hashes on every script, and neither fits: its pages are
+// stored at the edge and shared (a per-request nonce would be shared too), and a hash admits an external script only
+// with an `integrity` attribute, which Cloudflare says the manual beacon cannot carry (it ships unpinned, so a pinned
+// hash would block it at the next release). The policy names the two files exactly instead: 'self' and beacon.min.js.
+const bswNotStrict = {
+  reason:
+    "Pages are edge-cached and shared, so a per-request nonce cannot cover them, and a hash admits an external script only with an integrity attribute, which Cloudflare's manual Web Analytics beacon cannot carry (unpinned by design). The policy names /site.js ('self') and the one beacon file exactly, with no wildcard host.",
+};
+
 /** The doors' set: no script, nothing loaded, so each promise is met by the policy withMcpHeaders (./mcp-server) writes. */
 const doorOptIns = {
   coep: doorCoep,
@@ -422,7 +432,7 @@ export const bsw = {
     integrityPolicy: integrityStaged,
     trustedTypes: typesStaged,
   },
-  deviations: { C3: beaconNotStrict },
+  deviations: { C3: bswNotStrict },
   assets: {
     paths: {
       // The site's photographs carry a hash of their bytes in their names (app/lib/media/images.ts).
