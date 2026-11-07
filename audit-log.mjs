@@ -562,7 +562,7 @@ export function correlationId(meta) {
   return toHex(crypto.getRandomValues(new Uint8Array(16)));
 }
 
-/** `text` with the credentials `./log` recognises cut out (Stripe, Anthropic, GitHub, JWT, Bearer): ASVS 5 v16.2.5. */
+/** `text` with the credentials `./log` recognizes cut out (Stripe, Anthropic, GitHub, JWT, Bearer): ASVS 5 v16.2.5. */
 const withoutCredentials = (/** @type {string} */ text) =>
   text.replace(STRIPE_KEY_PATTERN, "[key]").replace(CREDENTIAL_PATTERN, "[key]");
 
