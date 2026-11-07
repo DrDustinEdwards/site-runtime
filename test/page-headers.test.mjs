@@ -53,6 +53,13 @@ test("a route's own policy and headers win, and plain http off loopback gets no 
   assert.equal(out.headers.get("Reporting-Endpoints"), null);
 });
 
+test("a policy returned as a string goes on as it is, with no Report-Only companion", () => {
+  const { withSecurityHeaders } = make({ policy: () => "default-src 'none'" });
+  const out = withSecurityHeaders(new Response("{}"), req());
+  assert.equal(out.headers.get("Content-Security-Policy"), "default-src 'none'");
+  assert.equal(out.headers.get("Content-Security-Policy-Report-Only"), null);
+});
+
 test("an immutable response comes back with the headers, noindex marks private paths, env and a report origin reach the policy and a route cannot loosen framing", () => {
   const { withSecurityHeaders } = make({ noindex: (path) => path.startsWith("/admin") });
   const out = withSecurityHeaders(

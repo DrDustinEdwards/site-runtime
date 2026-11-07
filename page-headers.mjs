@@ -112,20 +112,20 @@ export function pageSecurity({
     // A response a browser parses and never renders (a feed, a sitemap, JSON, a PDF) the site sends no policy for.
     const bare = !stored && unpoliced?.(response.headers.get("Content-Type")) === true;
     if (!own && !bare) {
-      const site = {
-        reportUri,
-        reportTo: group,
-        ...policy({ nonce, request, url, staged: false, env }),
-      };
-      extra["Content-Security-Policy"] = buildContentSecurityPolicy(site).value;
-      if (staged) {
-        const beside = {
+      const site = policy({ nonce, request, url, staged: false, env });
+      if (typeof site === "string") {
+        extra["Content-Security-Policy"] = site;
+      } else {
+        extra["Content-Security-Policy"] = buildContentSecurityPolicy({
           reportUri,
           reportTo: group,
-          ...policy({ nonce, request, url, staged: true, env }),
-        };
-        const companion = buildStagedPolicy(beside, staged);
-        extra[companion.name] = companion.value;
+          ...site,
+        }).value;
+        const next = staged ? policy({ nonce, request, url, staged: true, env }) : undefined;
+        if (staged && next && typeof next !== "string") {
+          const companion = buildStagedPolicy({ reportUri, reportTo: group, ...next }, staged);
+          extra[companion.name] = companion.value;
+        }
       }
     }
     if (sink.protocol === "https:" || LOOPBACK.test(sink.hostname))

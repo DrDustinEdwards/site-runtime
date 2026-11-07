@@ -15,8 +15,11 @@ export type PolicyContext<Env = unknown> = {
 export type PageSecurityOptions<Env = unknown> = {
   /** The site's header set: `buildSecurityHeaders({ site })`, plus any header of its own. */
   set: Readonly<Record<string, string>>;
-  /** The site's Content-Security-Policy for one response. report-uri and report-to are filled in when not named. */
-  policy: (context: PolicyContext<Env>) => SitePolicy;
+  /**
+   * The site's Content-Security-Policy for one response. report-uri and report-to are filled in when not named. A string
+   * is the finished policy, sent as it is with no Report-Only companion (for answers that load nothing).
+   */
+  policy: (context: PolicyContext<Env>) => SitePolicy | string;
   /** What the Report-Only companion adds (the registry entry's staging, e.g. `{ trustedTypes: true, denyUnlisted: true }`), or false for none. */
   staged: Partial<SitePolicy> | false;
   /** Default CSP_REPORT_PATH. */
