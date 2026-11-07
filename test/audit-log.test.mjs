@@ -12,6 +12,7 @@ import {
   auditLogCheck,
   exportAuditLog,
   loggedArgs,
+  loggedResult,
   verifyAuditChain,
 } from "../audit-log.mjs";
 
@@ -288,11 +289,31 @@ test("PLANT: the copy lands in R2 checked and checks on its own; only copied row
   assert.equal((await check.run()).detail, "1 call(s) with no finished row after 15 minutes");
 });
 
-test("loggedArgs keeps a string of 200 characters and stores a longer one as its length and digest prefix", async () => {
+test("loggedArgs and loggedResult cut credentials out and digest what is long, nested or not", async () => {
   const long = "x".repeat(201);
-  assert.deepEqual(await loggedArgs({ short: "y".repeat(200), long, n: 3 }), {
+  const key = "sk_live_abcdefghijklmnop";
+  const big = { rows: Array.from({ length: 200 }, (_, i) => `row-${i}`) };
+  const logged = await loggedArgs({
+    short: "y".repeat(200),
+    long,
+    n: 3,
+    auth: `Bearer ${"a".repeat(24)}`,
+    nested: { note: `token ${key}`, ok: true },
+    big,
+  });
+  assert.deepEqual(logged, {
     short: "y".repeat(200),
     long: { chars: 201, sha256: createHash("sha256").update(long).digest("hex").slice(0, 16) },
     n: 3,
+    auth: "[key]",
+    nested: { note: "token [key]", ok: true },
+    big: {
+      chars: JSON.stringify(big).length,
+      sha256: createHash("sha256").update(JSON.stringify(big)).digest("hex").slice(0, 16),
+    },
+  });
+  assert.deepEqual(loggedResult({ content: [{ text: `made ${key}` }, { text: "done" }] }), {
+    isError: false,
+    text: "made [key]\ndone",
   });
 });

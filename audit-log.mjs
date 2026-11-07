@@ -52,6 +52,7 @@
  */
 
 import { base64url, fromBase64url, sha256Hex, toHex } from "./encoding.mjs";
+import { CREDENTIAL_PATTERN, STRIPE_KEY_PATTERN } from "./log.mjs";
 
 const LONG_STRING = 200;
 /** Days a copied row stays in the log (L7). */
@@ -561,29 +562,49 @@ export function correlationId(meta) {
   return toHex(crypto.getRandomValues(new Uint8Array(16)));
 }
 
+/** `text` with the credentials `./log` recognizes cut out (Stripe, Anthropic, GitHub, JWT, Bearer): ASVS 5 v16.2.5. */
+const withoutCredentials = (/** @type {string} */ text) =>
+  text.replace(STRIPE_KEY_PATTERN, "[key]").replace(CREDENTIAL_PATTERN, "[key]");
+
 /**
- * The arguments as the log stores them: long strings become their length and a digest prefix.
+ * The arguments as the log stores them: credentials cut out, and a long string, or a structure whose JSON is long,
+ * becomes its length and a digest prefix, so one call cannot grow a row without bound.
  * @param {Record<string, unknown>} args
  */
 export async function loggedArgs(args) {
   /** @type {Record<string, unknown>} */
   const out = {};
   for (const [key, value] of Object.entries(args)) {
-    out[key] =
-      typeof value === "string" && value.length > LONG_STRING
-        ? { chars: value.length, sha256: (await sha256Hex(value)).slice(0, 16) }
-        : value;
+    const text =
+      typeof value === "string"
+        ? value
+        : value !== null && typeof value === "object"
+          ? JSON.stringify(value)
+          : null;
+    if (text === null) {
+      out[key] = value;
+    } else if (text.length > LONG_STRING * (typeof value === "string" ? 1 : 5)) {
+      out[key] = { chars: text.length, sha256: (await sha256Hex(text)).slice(0, 16) };
+    } else {
+      out[key] =
+        typeof value === "string"
+          ? withoutCredentials(value)
+          : JSON.parse(withoutCredentials(text));
+    }
   }
   return out;
 }
 
 /**
- * The result as the log stores it: whether it failed, and the start of its text.
+ * The result as the log stores it: whether it failed, and the start of its text, credentials cut out.
  * @param {{ isError?: boolean, content: Array<{ text: string }> }} output
  */
 export function loggedResult(output) {
   const text = output.content.map((c) => c.text).join("\n");
-  return { isError: output.isError === true, text: text.slice(0, RESULT_CHARS) };
+  return {
+    isError: output.isError === true,
+    text: withoutCredentials(text).slice(0, RESULT_CHARS),
+  };
 }
 
 /**
