@@ -8,6 +8,8 @@
  * a Worker applies to every response it sends, redirects and errors included, and `nonceFor(request)`, which issues the
  * request's nonce (once, on first ask) for the render to put on its scripts.
  *
+ * - A site whose answers load nothing (a JSON door) returns its policy as a string: it goes on verbatim, with no
+ *   Report-Only companion, because the builder always names script, style and image sources.
  * - A route's own header wins: the set goes on with `overwrite: false`, and the policy only when the route sent neither
  *   Content-Security-Policy nor its Report-Only form (a preview or print route that chose its own on purpose).
  * - Cross-Origin-Resource-Policy follows the type when `corp` is on (corpFor): images, fonts and feeds other sites embed
@@ -92,20 +94,24 @@ export function pageSecurity({
     /** @type {Record<string, string>} */
     const extra = {};
     if (!own) {
-      const site = {
-        reportUri: reportPath,
-        reportTo: group,
-        ...policy({ nonce, request, url, staged: false }),
-      };
-      extra["Content-Security-Policy"] = buildContentSecurityPolicy(site).value;
-      if (staged) {
-        const beside = {
+      const site = policy({ nonce, request, url, staged: false });
+      if (typeof site === "string") {
+        extra["Content-Security-Policy"] = site;
+      } else {
+        extra["Content-Security-Policy"] = buildContentSecurityPolicy({
           reportUri: reportPath,
           reportTo: group,
-          ...policy({ nonce, request, url, staged: true }),
-        };
-        const companion = buildStagedPolicy(beside, staged);
-        extra[companion.name] = companion.value;
+          ...site,
+        }).value;
+        if (staged) {
+          const beside = {
+            reportUri: reportPath,
+            reportTo: group,
+            ...policy({ nonce, request, url, staged: true }),
+          };
+          const companion = buildStagedPolicy(beside, staged);
+          extra[companion.name] = companion.value;
+        }
       }
     }
     if (url.protocol === "https:" || LOOPBACK.test(url.hostname))
