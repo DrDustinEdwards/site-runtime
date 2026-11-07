@@ -41,6 +41,7 @@ test("an address with a line break is refused before the binding is called", asy
   for (const bad of [
     { to: "alex@example.com\r\nBcc: sam@example.com" },
     { replyTo: "a@example.com\nBcc: x@example.com" },
+    { headers: { "List-Unsubscribe": "<https://example.com/u>\r\nBcc: x@example.com" } },
   ]) {
     const outcome = await sendEmail(b, { ...mail, ...bad });
     assert.equal(outcome.sent ? "" : outcome.code, "header_line_break");

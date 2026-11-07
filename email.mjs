@@ -5,7 +5,8 @@
  *
  * - It never throws. A missing binding, sender or recipient comes back as `not_configured`, a refusal as the binding's
  *   own code (E_SENDER_NOT_VERIFIED, E_RATE_LIMIT_EXCEEDED, ...), each with a message to record or show.
- * - A line break in an address would start a header of the sender's choosing, so a from, to or reply-to holding one is
+ * - A line break in an address would start a header of the sender's choosing, so a from, to or reply-to (or a custom
+ *   header's name or value) holding one is
  *   refused before the binding is called (`header_line_break`); a subject's line breaks are folded to one space.
  * - A link, token or code in the mail signs someone in, and a provider can echo the message in its error. Each of
  *   `secrets`, and every recipient, is cut out of the error before it is returned or logged.
@@ -86,8 +87,9 @@ export async function sendEmail(binding, mail, options = {}) {
   const names = [mail.from, ...to, ...(mail.replyTo ? [mail.replyTo] : [])].map((a) =>
     typeof a === "string" ? a : a.email,
   );
-  if (names.some((a) => LINE_BREAK.test(a)))
-    return refused("header_line_break", "an address holds a line break");
+  const headerText = Object.entries(mail.headers ?? {}).flat();
+  if ([...names, ...headerText].some((a) => LINE_BREAK.test(a)))
+    return refused("header_line_break", "an address or header holds a line break");
   /** @type {import("./email.d.mts").Mail} */
   const message = {
     ...mail,

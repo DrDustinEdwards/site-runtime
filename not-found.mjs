@@ -11,6 +11,9 @@
  * - React Router's data request for a page (`/x.data`, `/_.data` for the home page) counts as that page, so a client
  *   navigation and a document load of the same missing page add to one row.
  * - One upsert, so two 404s at once on one path cannot both insert or lose a hit.
+ * - A day holds at most NOT_FOUND_DAILY_ROWS distinct rows: anyone can request a missing URL, so without a cap a
+ *   scanner writes a row per made-up path. Past it a new (path, referrer) counts on one "(overflow)" row; keys already
+ *   counted that day still add. Concurrent writes may pass the cap by a few rows.
  * - Written in `ctx.waitUntil`, so the count never holds or fails the response. A failed write is logged
  *   (`not_found_count_failed`), since a count that stops in silence leaves the table empty with nobody told.
  */
@@ -62,7 +65,16 @@ DROP INDEX IF EXISTS page_404_daily_day_path_uq;
 CREATE UNIQUE INDEX IF NOT EXISTS page_404_daily_day_path_referrer_uq ON page_404_daily (day, path, referrer_host);
 `;
 
-const UPSERT = `INSERT INTO page_404_daily (id, day, path, referrer_host, kind, hit_count) VALUES (?1, ?2, ?3, ?4, ?5, 1)
+/** The most distinct rows one UTC day holds; past it a new key is folded into NOT_FOUND_OVERFLOW (OWASP ASVS 5 2.4.1). */
+export const NOT_FOUND_DAILY_ROWS = 2000;
+
+/** The path of the row that counts the 404s past the day's cap. */
+export const NOT_FOUND_OVERFLOW = "(overflow)";
+
+const UPSERT = `INSERT INTO page_404_daily (id, day, path, referrer_host, kind, hit_count)
+SELECT ?1, ?2, IIF(keep, ?3, '${NOT_FOUND_OVERFLOW}'), IIF(keep, ?4, ''), IIF(keep, ?5, 'page'), 1
+FROM (SELECT EXISTS (SELECT 1 FROM page_404_daily WHERE day = ?2 AND path = ?3 AND referrer_host = ?4)
+  OR (SELECT COUNT(*) FROM page_404_daily WHERE day = ?2) < ?6 AS keep) WHERE true
 ON CONFLICT (day, path, referrer_host) DO UPDATE SET hit_count = hit_count + 1`;
 
 /** @param {number} at */
@@ -112,7 +124,10 @@ export function referrerHost(referer) {
  */
 export async function recordNotFound(db, url, now = new Date(), referer = null) {
   const { day, path, kind } = notFoundKey(url, now);
-  await db.prepare(UPSERT).bind(crypto.randomUUID(), day, path, referrerHost(referer), kind).run();
+  await db
+    .prepare(UPSERT)
+    .bind(crypto.randomUUID(), day, path, referrerHost(referer), kind, NOT_FOUND_DAILY_ROWS)
+    .run();
 }
 
 /**

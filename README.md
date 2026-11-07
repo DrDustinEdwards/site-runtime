@@ -1083,8 +1083,10 @@ const auth = betterAuth({
   the same mail still works.
 - Session length: `session.expiresIn` is `SESSION_SECONDS` (30 days, NIST SP 800-63B-4's overall timeout at AAL1)
   with `disableSessionRefresh`, so a session ends 30 days after its sign-in however often it is used (Better Auth's
-  default is 7 days sliding forward with each use, which never ends a session in use). Admin pages are behind
-  Cloudflare Access, whose session (24 hours by default) is the admin's limit.
+  default is 7 days sliding forward with each use, which never ends a session in use). A session unused for
+  `SESSION_IDLE_SECONDS` (7 days) ends too (ASVS 5 v7.3.1): `updatedAt` moves on a read through /get-session, and any
+  request with an idle session's cookie deletes it (/get-session answers null, other routes 401 `SESSION_IDLE`).
+  Admin pages are behind Cloudflare Access, whose session (24 hours by default) is the admin's limit.
 - Fresh sign-in (A7, D6): `session.freshAge` is `FRESH_SECONDS` (10 minutes; Better Auth's default is a day). Better
   Auth 1.7.12 then answers 403 `SESSION_NOT_FRESH` unless the session was made in the last 10 minutes on: adding a
   passkey (`/passkey/generate-register-options`, `/passkey/verify-registration`), unlinking Google or Apple

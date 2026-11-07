@@ -4,7 +4,11 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 
+import { betterAuth } from "better-auth";
+import { memoryAdapter } from "better-auth/adapters/memory";
+
 import { authSpikeCheck } from "../health.mjs";
+import { SESSION_IDLE_SECONDS, signInOptions } from "../sign-in.mjs";
 import {
   AUTH_EVENTS_DEVICE_SQL,
   AUTH_EVENTS_SQL,
@@ -338,6 +342,47 @@ test("a session's last use is written at most every five minutes, at once for a 
   assert.deepEqual(
     sessionTouch({ updatedAt: new Date(now - SESSION_TOUCH_SECONDS * 1000) }, null, now),
     { updatedAt: new Date(now) },
+  );
+
+  // Idle end, against the real Better Auth: a read moves updatedAt, and an unused week ends the session on any route.
+  const mem = { user: [], session: [], account: [], verification: [], rateLimit: [] };
+  const options = await signInOptions(
+    { BETTER_AUTH_URL: "https://example.com", TURNSTILE_SITE_KEY: "k", TURNSTILE_SECRET_KEY: "s" },
+    { siteName: "Sample", sendMagicLink: async () => {} },
+  );
+  const auth = betterAuth({
+    ...options,
+    database: memoryAdapter(mem),
+    secret: "sample-secret-sample-secret-sample-secret",
+    baseURL: "https://example.com",
+    rateLimit: { enabled: false },
+    plugins: options.plugins.filter((plugin) =>
+      ["sign-in-session-touch", "sign-in-session-idle"].includes(plugin.id),
+    ),
+    emailAndPassword: { enabled: true },
+  });
+  const signUp = async (/** @type {string} */ email) => {
+    const made = await auth.api.signUpEmail({
+      body: { email, password: "sample-password-1", name: "A" },
+      asResponse: true,
+    });
+    const cookie = made.headers.getSetCookie().map((c) => c.split(";")[0]);
+    return new Headers({ cookie: cookie.join("; ") });
+  };
+  const idle = new Date(Date.now() - (SESSION_IDLE_SECONDS + 60) * 1000);
+  const headers = await signUp("a@example.com");
+  mem.session[0].updatedAt = new Date(Date.now() - 6 * 24 * 3600_000);
+  assert.ok((await auth.api.getSession({ headers }))?.session, "six days idle: still in");
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.ok(Date.now() - mem.session[0].updatedAt.getTime() < 60_000, "the read moved updatedAt");
+  mem.session[0].updatedAt = idle;
+  assert.equal(await auth.api.getSession({ headers }), null);
+  assert.equal(mem.session.length, 0, "the idle session is deleted");
+  const headersB = await signUp("b@example.com");
+  mem.session[0].updatedAt = idle;
+  await assert.rejects(
+    auth.api.listSessions({ headers: headersB }),
+    (/** @type {any} */ error) => error.body?.code === "SESSION_IDLE",
   );
 
   const db = d1();

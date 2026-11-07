@@ -80,6 +80,8 @@ export const APP_CODE_RATE_LIMIT: Readonly<{ window: 60; max: 3 }>;
 
 /** How long a session lasts from its sign-in, used or not: 30 days, in seconds (session.expiresIn, refresh off). */
 export const SESSION_SECONDS: 2592000;
+/** How long a session may sit unused before it ends: 7 days, in seconds (a request with an idle session's cookie deletes it). */
+export const SESSION_IDLE_SECONDS: 604800;
 /** Sign-in mails per address: five an hour. */
 export const LINK_EMAIL_RULES: readonly [Readonly<{ limit: 5; windowSeconds: 3600 }>];
 /** Wrong sign-in codes per address, counted across links: three an hour and ten a day. */
