@@ -114,3 +114,17 @@ export function cronCheck(
     now?: Date;
   },
 ): { name: "cron"; level: "warn"; run: () => Promise<true | { ok: false; detail: string }> };
+/**
+ * A site's jobs keyed by the cron that fires them: `all(env)` is every job (for /health's cronCheck and the operator's
+ * run_job), `run(db, controller, env)` is the body of the Worker's `scheduled` handler (a trigger with no list is logged).
+ */
+export function cronSchedule<Env>(
+  jobsFor: (env: Env, scheduledTime: Date) => Record<string, CronJob[]>,
+): {
+  all: (env: Env) => CronJob[];
+  run: (
+    db: D1Like | (() => D1Like) | null,
+    controller: { cron: string; scheduledTime: number },
+    env: Env,
+  ) => Promise<void>;
+};

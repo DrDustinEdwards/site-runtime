@@ -75,3 +75,58 @@ export function requireJson(request) {
     headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
   });
 }
+
+/**
+ * The refusal for a body over its ceiling: 413, uncacheable. Thrown by the readers below for a route to answer with.
+ * @returns {Response}
+ */
+export function payloadTooLarge() {
+  return new Response("Payload Too Large", {
+    status: 413,
+    headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+  });
+}
+
+/**
+ * The body as text. Throws the 413 Response (payloadTooLarge) when it is longer than `max`.
+ * @param {Request} request
+ * @param {number} max the ceiling in bytes
+ * @returns {Promise<string>}
+ */
+export async function readText(request, max) {
+  const text = await readCapped(request, max);
+  if (text === null) throw payloadTooLarge();
+  return text;
+}
+
+/**
+ * The body parsed as a form, read to `max` bytes as it arrives (`request.formData()` holds the whole body in memory
+ * before anything can refuse it). Over the ceiling, throws the 413; a body that is no form throws as formData() does.
+ * @param {Request} request
+ * @param {number} max the ceiling in bytes
+ * @returns {Promise<FormData>}
+ */
+export async function readForm(request, max) {
+  const bytes = await readCappedBytes(request, max);
+  if (bytes === null) throw payloadTooLarge();
+  return new Response(/** @type {Uint8Array<ArrayBuffer>} */ (bytes), {
+    headers: { "Content-Type": request.headers.get("Content-Type") ?? "" },
+  }).formData();
+}
+
+/**
+ * The body parsed as JSON, read to `max` bytes. Throws the 413 over the ceiling, and (unless `typed` is false) the 415
+ * first for a body that is not typed JSON (requireJson): a form or text/plain post is one any page can send with the
+ * session cookie and no preflight. A body that is not JSON throws as JSON.parse does.
+ * @param {Request} request
+ * @param {number} max the ceiling in bytes
+ * @param {{ typed?: boolean }} [options] `typed: false` skips the Content-Type check (a beacon that posts text/plain)
+ * @returns {Promise<unknown>}
+ */
+export async function readJson(request, max, { typed = true } = {}) {
+  if (typed) {
+    const refused = requireJson(request);
+    if (refused) throw refused;
+  }
+  return JSON.parse(await readText(request, max));
+}
