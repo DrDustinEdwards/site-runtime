@@ -117,6 +117,9 @@ test("a report is logged once per violation and answered 204, with the site's he
   assert.equal(res.headers.get("Cache-Control"), "no-store");
   assert.equal(lines.length, 1);
   assert.equal(lines[0].page, "https://site.example.com/a");
+  // PLANT: a blocked-uri that starts with https: but is no URL is still answered 204, never thrown.
+  const odd = { "csp-report": { "blocked-uri": "https://", "effective-directive": "img-src" } };
+  assert.equal((await receiveCspReport(post(odd), { log })).status, 204);
 });
 
 test("too large, unreadable, limited or empty: still 204, nothing logged", async () => {

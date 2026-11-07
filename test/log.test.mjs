@@ -11,6 +11,15 @@ test("emails, URL queries, Stripe keys, Drizzle parameters and route tokens are 
     ),
     "mail [email] via https://example.com/verify key [key] and [key]",
   );
+  const jwt = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxMjM0NTYifQ.c2lnbmF0dXJlLWJ5dGVz";
+  assert.equal(
+    scrubText(
+      `401 for sk-ant-api03-abcdefghijklmnop1234 and ghp_${"a".repeat(36)} with Bearer abcdef0123456789abcdef and ${jwt}`,
+    ),
+    "401 for [key] and [key] with [key] and [key]",
+  );
+  const plain = "no Bearer here, and a short sk-ant-x stays";
+  assert.equal(scrubText(plain), plain);
   assert.equal(
     scrubText("Failed query: insert into t values (?)\nparams: x@example.com,Ann"),
     "Failed query: insert into t values (?)\nparams: [redacted]",

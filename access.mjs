@@ -36,6 +36,13 @@ const KEYS_TIMEOUT_MS = 5_000;
 export const REFETCH_COOLDOWN_MS = 30_000;
 
 /**
+ * How long a fetched key set is trusted without a refetch: an hour. Access rotates its signing keys and drops the
+ * old one after a window; without a limit an isolate that stays warm would keep accepting a key Access has retired
+ * (ASVS 9.1.1 and 9.1.3: tokens are checked against the issuer's current keys).
+ */
+export const KEYS_MAX_AGE_MS = 60 * 60 * 1000;
+
+/**
  * The issuer Access writes, https://<team domain>, from the team domain as either site keeps it: with or without the
  * scheme, with or without a trailing slash. Null when it is missing or not a <team>.cloudflareaccess.com host.
  * @param {string | undefined} teamDomain
@@ -70,7 +77,11 @@ export function accessKeys(teamDomain) {
   const url = `${issuer}/cdn-cgi/access/certs`;
   return async (kid, fresh) => {
     let entry = cachedKeys.get(url);
-    if (!entry || (fresh && Date.now() - entry.fetchedAt >= REFETCH_COOLDOWN_MS)) {
+    if (
+      !entry ||
+      Date.now() - entry.fetchedAt >= KEYS_MAX_AGE_MS ||
+      (fresh && Date.now() - entry.fetchedAt >= REFETCH_COOLDOWN_MS)
+    ) {
       const response = await fetch(url, {
         headers: { Accept: "application/json" },
         signal: AbortSignal.timeout(KEYS_TIMEOUT_MS),

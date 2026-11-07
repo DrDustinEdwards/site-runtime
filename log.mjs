@@ -8,7 +8,7 @@
  * - email addresses, to `[email]`;
  * - a URL's query string and fragment, in free text and in a field whose name holds `url` or `path` (a query can carry a
  *   magic-link token, a reset code or an unsubscribe token);
- * - Stripe secret, restricted and webhook-signing keys, to `[key]`;
+ * - Stripe secret, restricted and webhook-signing keys, Anthropic keys, GitHub tokens, JWTs and Bearer values, to `[key]`;
  * - the bound parameters of a failed Drizzle query (`params: ...`, which can hold a whole Stripe event);
  * - with `tokenPath`, the last segment of a site's own token routes (Foxhound's `/u/<token>`), to `/<route>/[token]`.
  * Fields whose name holds `header`, `cookie`, `query` or `arguments` are dropped whole.
@@ -20,6 +20,12 @@
 export const EMAIL_PATTERN = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 /** Stripe secret, restricted and webhook-signing keys. */
 export const STRIPE_KEY_PATTERN = /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]+|\bwhsec_[A-Za-z0-9]+/g;
+/**
+ * Other credentials a failed call can echo (ASVS 16.2.5 and 14.2.4): an Anthropic key, a GitHub token, a signed JWT
+ * (a session, an Access or an ID token) and the value of a Bearer header.
+ */
+export const CREDENTIAL_PATTERN =
+  /\bsk-ant-[A-Za-z0-9_-]{16,}|\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,})|\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}|\bBearer\s+[A-Za-z0-9._~+/=-]{16,}/g;
 // DrizzleQueryError's message is "Failed query: <sql>\nparams: <values>".
 const DRIZZLE_PARAMS = /\nparams: [\s\S]*$/;
 // The query string or fragment of a full URL inside free text.
@@ -46,6 +52,7 @@ export function scrubText(text, { tokenPath } = {}) {
     .replace(DRIZZLE_PARAMS, "\nparams: [redacted]")
     .replace(TEXT_URL_QUERY, "$1")
     .replace(STRIPE_KEY_PATTERN, "[key]")
+    .replace(CREDENTIAL_PATTERN, "[key]")
     .replace(EMAIL_PATTERN, "[email]");
   return tokenPath ? cut.replace(tokenPath, "/$1/[token]") : cut;
 }

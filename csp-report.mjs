@@ -133,6 +133,21 @@ export function summarizeReport(body, type = "csp-violation") {
 }
 
 /**
+ * The origin of a blocked URL for the new-host line, or the keyword as written. A report is untrusted input: a value
+ * that starts with "https:" but is no URL ("https://") must not throw out of the receiver (ASVS 16.5.4).
+ * @param {string | undefined} blocked
+ * @returns {string | undefined}
+ */
+function blockedOrigin(blocked) {
+  if (!blocked || !/^https?:/.test(blocked)) return blocked;
+  try {
+    return new URL(blocked).origin;
+  } catch {
+    return blocked.slice(0, 64);
+  }
+}
+
+/**
  * The body as text, at most `max` bytes; null when it is longer or unreadable (a report that cannot be read is
  * dropped, never retried).
  * @param {Request} request @param {number} max
@@ -223,8 +238,7 @@ export async function receiveCspReport(
     if (raw.some((v) => typeof v === "string" && NOISE.test(v))) continue;
     const line = summarizeReport(body, type);
     log(line);
-    const blocked =
-      line.blocked && /^https?:/.test(line.blocked) ? new URL(line.blocked).origin : line.blocked;
+    const blocked = blockedOrigin(line.blocked);
     const key = `${line.directive} ${blocked}`;
     if (!seen.has(key) && seen.size < MAX_SEEN) {
       seen.add(key);

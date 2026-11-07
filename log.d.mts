@@ -4,6 +4,8 @@
 export const EMAIL_PATTERN: RegExp;
 /** Stripe secret, restricted and webhook-signing keys (global). */
 export const STRIPE_KEY_PATTERN: RegExp;
+/** An Anthropic key, a GitHub token, a JWT or a Bearer value (global). */
+export const CREDENTIAL_PATTERN: RegExp;
 /** Field names dropped whole: query, header, cookie, arguments. */
 export const DROPPED_FIELD: RegExp;
 
