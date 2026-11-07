@@ -3,6 +3,11 @@ export const MIN_TOKEN_LENGTH: 32;
 export const OPERATOR_BODY_MAX: number;
 export const OPERATOR_RULES: import("./rate-limit/core.mjs").Rule[];
 
+/** Thrown by a tool to refuse with a message the caller should read (answered 400). Any other throw is answered "The tool failed (ref ...)" and logged. */
+export class OperatorError extends Error {
+  constructor(message: string);
+}
+
 /** One tool: what GET lists, and what POST runs with the call's `args` (an object, `{}` when none was sent). */
 export interface OperatorTool {
   description: string;

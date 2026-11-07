@@ -253,7 +253,7 @@ export function turnstileSiteKey(env) {
  *   siteName: string, sendMagicLink: SendMagicLink, social?: boolean, appCode?: boolean, sendSignInCode?: SendSignInCode,
  *   confirmPath?: string, emailLimiter?: Parameters<typeof limit>[0], sendSecurityNotice?: SendSecurityNotice,
  *   eventsDb?: import("./sign-in-account.mjs").D1Like, turnstile?: typeof TURNSTILE_OFF_UNTIL_KEYS,
- *   sessionDetails?: boolean,
+ *   sessionDetails?: boolean, turnstileHostnames?: string[],
  * }} site
  */
 export async function signInOptions(
@@ -270,6 +270,7 @@ export async function signInOptions(
     eventsDb,
     turnstile,
     sessionDetails = false,
+    turnstileHostnames,
   },
 ) {
   if (turnstile !== undefined && turnstile !== TURNSTILE_OFF_UNTIL_KEYS)
@@ -339,6 +340,9 @@ export async function signInOptions(
         provider: "cloudflare-turnstile",
         secretKey: env.TURNSTILE_SECRET_KEY,
         endpoints: ["/sign-in/magic-link"],
+        // A token minted on another host is refused (ASVS 5 v13.x, Cloudflare's hostname check): the widget runs on the
+        // page that posts here, and the auth origin is that page's origin (cookies and passkeys depend on it).
+        allowedHostnames: turnstileHostnames ?? [new URL(env.BETTER_AUTH_URL).hostname],
       }),
     );
   } else plugins.push(noTurnstile(turnstile === TURNSTILE_OFF_UNTIL_KEYS));

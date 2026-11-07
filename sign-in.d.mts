@@ -164,6 +164,8 @@ export function signInOptions(
      * AUTH_EVENTS_DEVICE_SQL. The new-device notice then tells two browsers of the same make apart.
      */
     sessionDetails?: boolean;
+    /** Hostnames a Turnstile token may name; default the host of BETTER_AUTH_URL. */
+    turnstileHostnames?: string[];
   },
 ): Promise<{
   emailAndPassword: { enabled: false };
