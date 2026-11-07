@@ -2,7 +2,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { logEvent, routeNamer, scrubFields, scrubText, scrubUrl, withRequestLog } from "../log.mjs";
+import {
+  handleServerError,
+  logEvent,
+  routeNamer,
+  scrubFields,
+  scrubText,
+  scrubUrl,
+  withRequestLog,
+} from "../log.mjs";
 
 test("emails, URL queries, Stripe keys, Drizzle parameters and route tokens are cut", () => {
   assert.equal(
@@ -76,7 +84,7 @@ test("routeNamer names the most specific React Router pattern, a .data fetch as 
   assert.equal(at("/"), "/");
 });
 
-test("withRequestLog names the route, and a refused input also writes input_validation_fail", async (t) => {
+test("withRequestLog names the route and a refused input also writes input_validation_fail; handleServerError skips a route 404", async (t) => {
   /** @type {Record<string, unknown>[]} */
   const lines = [];
   for (const level of ["log", "warn", "error"])
@@ -97,5 +105,16 @@ test("withRequestLog names the route, and a refused input also writes input_vali
       { event: "input_validation_fail", route: "/form", status: 422 },
       { event: "request", route: "/ok", status: 200 },
     ],
+  );
+
+  // A route 404 (RR's no-route-match) is not logged; any other error is one scrubbed server_error line.
+  lines.length = 0;
+  const request = new Request("https://example.com/blog/robots.txt?token=abc");
+  handleServerError({ status: 404, error: new Error("No route matches URL") }, { request });
+  assert.equal(lines.length, 0);
+  handleServerError(new Error("boom"), { request });
+  assert.deepEqual(
+    lines.map(({ event, path, error }) => ({ event, path, error })),
+    [{ event: "server_error", path: "/blog/robots.txt", error: "Error: boom" }],
   );
 });

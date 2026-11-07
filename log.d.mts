@@ -68,3 +68,9 @@ export const OWASP_EVENTS: Readonly<{
   userUpdated: "user_updated";
   userDeleted: "user_deleted";
 }>;
+
+/**
+ * React Router's `handleError` export for entry.server (`export { handleServerError as handleError }`): a route 404 is
+ * not logged; any other error is one scrubbed `server_error` line at error level with the request's fields.
+ */
+export function handleServerError(error: unknown, args: { request: Request }): void;
