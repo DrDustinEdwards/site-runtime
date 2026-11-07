@@ -5,7 +5,7 @@ import test from "node:test";
 
 import { adminMcpWorker } from "../admin-mcp.mjs";
 import { mcpScopes } from "../mcp-server.mjs";
-import { germomicsMcp } from "../sites.mjs";
+import { foxingMcp } from "../sites.mjs";
 
 const ORIGIN = "https://admin-mcp.example.com";
 const SCOPES = mcpScopes("sample");
@@ -45,7 +45,7 @@ function setup(/** @type {Record<string, unknown>} */ options = {}) {
   const worker = adminMcpWorker({
     name: "Sample Admin",
     server: SERVER,
-    site: germomicsMcp,
+    site: foxingMcp,
     securityTxt: { contact: "security@example.com", expires: "2099-01-01T00:00:00Z" },
     about: "<p>Sample.</p>",
     OAuthProvider: /** @type {any} */ (FakeProvider),
