@@ -1141,7 +1141,7 @@ const auth = betterAuth({
   access, refresh and ID tokens on every account write Better Auth makes (createOAuthUser, linkAccount, updateAccount).
   Nothing in sign-in reads them, so none are stored. A site with hooks of its own merges them:
   `databaseHooks: { ...signIn.databaseHooks, user: { ... } }`.
-- Turnstile checks the email link when `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` are both set. Without both,
+- Turnstile checks the email link when `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` are both set, and refuses a token whose hostname is not the host of `BETTER_AUTH_URL` (or the site's `turnstileHostnames`). Without both,
   it fails closed: `/sign-in/magic-link` (the one request that mails the link and its code) answers 503
   `TURNSTILE_NOT_SET` and logs `turnstile_not_set`. A site whose keys are not made yet passes
   `turnstile: "off-until-keys"` (`TURNSTILE_OFF_UNTIL_KEYS`), which lets the request through unchecked and logs
@@ -1409,7 +1409,8 @@ return operatorResponse(request, {
 - Authentication comes before the rate limit (`OPERATOR_RULES`, 30 a minute, refused when the counter is unavailable),
   so an anonymous flood never spends the operator's allowance.
 - The body is read to `OPERATOR_BODY_MAX` (4 KiB). An unknown tool is a 400 naming the tools there are; a tool that
-  throws is a 500 with its message and an `operator_tool_failed` line. A tool's return is sent as `{ok: true, data}`.
+  throws `OperatorError` is a 400 with its message; any other throw is a 500 saying only `The tool failed (ref xxxxxxxx)`
+  with the error in the `operator_tool_failed` line under that ref (ASVS 16.5.1). A tool's return is sent as `{ok: true, data}`.
 - Every answer is JSON, `no-store` and `noindex`. The route is not under `/admin`, so Access does not cover it.
 
 ## The cross-site check

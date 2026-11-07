@@ -2,7 +2,7 @@
 // reaches only a named tool. PLANT tests fail if the guard they name is removed.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { operatorResponse } from "../operator.mjs";
+import { OperatorError, operatorResponse } from "../operator.mjs";
 
 const TOKEN = "t".repeat(40);
 const limiter = {
@@ -72,4 +72,36 @@ test("PLANT: an unset, short, wrong or missing token runs nothing; the right one
   });
   assert.equal(unknown.status, 400);
   assert.equal(t.ran.length, 1);
+  // A throw says only a reference; an OperatorError's words go back as they are.
+  const throwing = {
+    boom: {
+      description: "x",
+      run: () => {
+        throw new Error("SELECT * FROM secrets /srv/app.js");
+      },
+    },
+    refuse: {
+      description: "x",
+      run: () => {
+        throw new OperatorError("first-publish-requires-admin");
+      },
+    },
+  };
+  const run = (/** @type {string} */ tool) =>
+    operatorResponse(call(auth, JSON.stringify({ tool })), {
+      token: TOKEN,
+      limiter,
+      tools: throwing,
+    });
+  const boom = await run("boom");
+  assert.equal(boom.status, 500);
+  assert.match(
+    JSON.stringify(await boom.json()),
+    /^\{"ok":false,"error":"The tool failed \(ref [0-9a-f]{8}\)\."\}$/,
+  );
+  const refused = await run("refuse");
+  assert.deepEqual(
+    [refused.status, (await refused.json()).error],
+    [400, "first-publish-requires-admin"],
+  );
 });

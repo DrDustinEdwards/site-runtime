@@ -10,7 +10,9 @@
  *   bearer logs OWASP's authn_login_fail; a spent limit logs excess_rate_limit_exceeded. The limit refuses when its
  *   counter is unavailable.
  * - The body is read to a ceiling (./body). An unknown tool is a 400 that names the tools there are.
- * - A tool answers its data, sent back as `{ok: true, data}`. A tool that throws is a 500 with its message, logged.
+ * - A tool answers its data, sent back as `{ok: true, data}`. A tool that throws an OperatorError is a 400 with its
+ *   message (a refusal the caller should read). Any other throw is a 500 that says only "The tool failed" and a reference,
+ *   the error logged under that reference, so an internal message (a query, a path) never leaves (ASVS 5 v16.5.1).
  * - Every answer is JSON, `no-store` and `noindex`.
  *
  * The site decides what its tools are and what each does; this owns only the door.
@@ -26,6 +28,15 @@ export const MIN_TOKEN_LENGTH = 32;
 export const OPERATOR_BODY_MAX = 4 * 1024;
 /** The default limit: 30 calls a minute across every caller holding the token. */
 export const OPERATOR_RULES = [{ limit: 30, windowSeconds: 60 }];
+
+/** A refusal a tool means the caller to read: its message goes back as it is, with a 400. Anything else a tool throws does not. */
+export class OperatorError extends Error {
+  /** @param {string} message */
+  constructor(message) {
+    super(message);
+    this.name = "OperatorError";
+  }
+}
 
 /**
  * @param {unknown} body
@@ -133,14 +144,14 @@ export async function operatorResponse(request, options) {
     );
     return json({ ok: true, data: data ?? null });
   } catch (error) {
+    const ref = crypto.randomUUID().slice(0, 8);
     logEvent(
       "operator_tool_failed",
-      { ...requestFields(request), tool, error },
-      { level: "error" },
+      { ...requestFields(request), tool, ref, error },
+      { level: error instanceof OperatorError ? "warn" : "error" },
     );
-    return json(
-      { ok: false, error: error instanceof Error ? error.message : "The tool failed." },
-      500,
-    );
+    return error instanceof OperatorError
+      ? json({ ok: false, error: error.message }, 400)
+      : json({ ok: false, error: `The tool failed (ref ${ref}).` }, 500);
   }
 }
