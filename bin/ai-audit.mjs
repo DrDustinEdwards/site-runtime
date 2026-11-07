@@ -881,7 +881,10 @@ function judgeConformance(
 function textOf(/** @type {string} */ html) {
   return html
     .replace(/<(script|style|noscript|template|svg)\b[\s\S]*?<\/\1>/gi, " ")
-    .replace(/<\/?(?:p|div|li|h[1-6]|br|section|article|blockquote|tr|td|th|dd|dt)\b[^<>]*>/gi, "\n")
+    .replace(
+      /<\/?(?:p|div|li|h[1-6]|br|section|article|blockquote|tr|td|th|dd|dt)\b[^<>]*>/gi,
+      "\n",
+    )
     .replace(/<[^<>]+>/g, " ")
     .replace(/&nbsp;/g, " ")
     .replace(/&quot;/g, '"')
