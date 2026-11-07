@@ -12,8 +12,12 @@ import { createContext } from "react-router";
 /** The bindings and execution context of this request. */
 export const cloudflareContext = createContext();
 
-/** This render's nonce: the same value goes in the header and on every inline <script>. Undefined where none is issued. */
-export const cspNonceContext = createContext(undefined);
+/**
+ * This render's nonce: the same value goes in the header and on every inline <script>. The default is null, not
+ * undefined: React Router throws "No value found for context" for an unset context whose default is undefined, and a
+ * render path that never sets the nonce (a cached page, a static route) then answers 500. Read it with getNonce.
+ */
+export const cspNonceContext = createContext(/** @type {string | null} */ (null));
 
 /** @param {Readonly<import("react-router").RouterContextProvider>} context */
 export const getEnv = (context) => context.get(cloudflareContext).env;
@@ -22,4 +26,4 @@ export const getEnv = (context) => context.get(cloudflareContext).env;
 export const getExecutionContext = (context) => context.get(cloudflareContext).ctx;
 
 /** @param {Readonly<import("react-router").RouterContextProvider>} context */
-export const getNonce = (context) => context.get(cspNonceContext);
+export const getNonce = (context) => context.get(cspNonceContext) ?? undefined;
