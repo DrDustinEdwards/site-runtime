@@ -49,6 +49,10 @@ const beacon = (/** @type {string} */ where) => ({
   value: true,
   reason: `Cloudflare Web Analytics is on; the edge injects the beacon (${where}).`,
 });
+const beaconManual = (/** @type {string} */ where) => ({
+  value: /** @type {const} */ ("manual"),
+  reason: `Cloudflare Web Analytics is on in manual setup: the site is not proxied (workers.dev), so the page carries the beacon tag itself and it reports to cloudflareinsights.com (${where}).`,
+});
 const passkey = { value: true, reason: "The family sign-in offers a passkey (./sign-in)." };
 const STRICT_ORIGIN = "strict-origin-when-cross-origin";
 
@@ -70,7 +74,7 @@ const popupSignIn = {
 /**
  * @typedef {import("./headers.mjs").HeaderOverride} HeaderOverride
  * @typedef {{
- *   cloudflareWebAnalytics?: { value: boolean, reason: string },
+ *   cloudflareWebAnalytics?: { value: boolean | "manual", reason: string },
  *   inlineScripts?: { value: "unsafe-inline", reason: string },
  *   formTargets?: { value: readonly string[], reason: string },
  *   framedBySameOrigin?: { value: boolean, reason: string },
@@ -408,7 +412,7 @@ export const bsw = {
     reason: "The old IIS site still answers there until the domain moves to this Worker.",
   },
   optIns: {
-    cloudflareWebAnalytics: /* @__PURE__ */ beacon("workers/security-headers.ts"),
+    cloudflareWebAnalytics: /* @__PURE__ */ beaconManual("workers/security-headers.ts"),
     denyUnlisted: {
       value: true,
       reason:

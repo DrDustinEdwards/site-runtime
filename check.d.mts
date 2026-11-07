@@ -23,7 +23,7 @@ export type CheckOptions = {
   site?: string | CheckedSiteEntry;
   standard?: Readonly<Record<string, string>>;
   csp?: boolean;
-  cloudflareWebAnalytics?: boolean;
+  cloudflareWebAnalytics?: boolean | "manual";
   inlineScripts?: "unsafe-inline";
   formTargets?: readonly string[];
   framedBySameOrigin?: boolean;

@@ -546,6 +546,14 @@ test("with Cloudflare Web Analytics on, the policy must let the beacon run from 
     failed(response({ "Content-Security-Policy": `${noDefault}; connect-src 'self'` }), options),
     [],
   );
+  const manualOptions = { cloudflareWebAnalytics: /** @type {const} */ ("manual") };
+  const goodManual = `${GOOD_POLICY.replace(
+    "script-src 'self'",
+    "script-src 'self' https://static.cloudflareinsights.com/beacon.min.js",
+  )}; connect-src 'self' https://cloudflareinsights.com`;
+  assert.deepEqual(failed(response({ "Content-Security-Policy": goodManual }), manualOptions), []);
+  const noReport = goodManual.replace(" https://cloudflareinsights.com", "");
+  failure(response({ "Content-Security-Policy": noReport }), /manual beacon report/, manualOptions);
 });
 
 test("the beacon check reads default-src for scripts when script-src is absent", () => {

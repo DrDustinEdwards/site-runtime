@@ -86,7 +86,34 @@ export const CLOUDFLARE_WEB_ANALYTICS = /* @__PURE__ */ Object.freeze({
     "https://static.cloudflareinsights.com/beacon.min.js",
     "https://static.cloudflareinsights.com/beacon.min.js/",
   ]),
+  /**
+   * Manual setup, for a site Cloudflare does not proxy (a workers.dev address): the page carries the beacon tag itself
+   * (`cloudflareBeaconAttributes`) and the beacon loads from the bare file URL (the exact source below, no path prefix).
+   * It reports to cloudflareinsights.com, not the site's /cdn-cgi/rum, so connect-src names that origin
+   * (developers.cloudflare.com/web-analytics/faq, "What do I need to add to my Content Security Policy").
+   */
+  manual: Object.freeze({
+    script: Object.freeze(["https://static.cloudflareinsights.com/beacon.min.js"]),
+    connect: Object.freeze(["https://cloudflareinsights.com"]),
+  }),
 });
+
+/**
+ * The attributes of the manual-setup beacon tag, as Cloudflare documents it: a module script (older browsers skip it)
+ * with the site token in data-cf-beacon. The token is the public site tag, not a secret. Spread onto a `<script>`.
+ * @param {string} token the Web Analytics site token
+ * @returns {{ type: "module", defer: true, src: string, "data-cf-beacon": string }}
+ */
+export function cloudflareBeaconAttributes(token) {
+  if (typeof token !== "string" || !/^[a-f0-9]{32}$/.test(token))
+    throw new Error("the Web Analytics token is 32 lowercase hex characters");
+  return {
+    type: "module",
+    defer: true,
+    src: CLOUDFLARE_WEB_ANALYTICS.manual.script[0],
+    "data-cf-beacon": JSON.stringify({ token }),
+  };
+}
 
 /** One https origin: a host name (no wildcard), an optional port, no path. */
 const FORM_TARGET =
@@ -154,7 +181,7 @@ export function broadSource(source, directive = "script-src") {
  *   inlineScripts?: "unsafe-inline",
  *   strictDynamic?: boolean,
  *   styleAttributesInline?: boolean,
- *   cloudflareWebAnalytics?: boolean,
+ *   cloudflareWebAnalytics?: boolean | "manual",
  *   reportUri?: string,
  *   reportTo?: string,
  *   reportOnly?: boolean,
@@ -256,7 +283,15 @@ export function buildContentSecurityPolicy(site) {
       "strictDynamic needs a nonce or script hashes: a browser then ignores 'self' and host sources, so no script would run",
     );
   }
-  if (strictDynamic && cloudflareWebAnalytics) {
+  if (
+    cloudflareWebAnalytics !== false &&
+    cloudflareWebAnalytics !== true &&
+    cloudflareWebAnalytics !== "manual"
+  )
+    throw new Error(
+      `cloudflareWebAnalytics is true, "manual" or left out, not ${JSON.stringify(cloudflareWebAnalytics)}`,
+    );
+  if (strictDynamic && cloudflareWebAnalytics === true) {
     throw new Error(
       "strictDynamic cannot go with cloudflareWebAnalytics: 'strict-dynamic' ignores host sources, and the edge injects the beacon with no nonce, so it would be blocked",
     );
@@ -296,7 +331,8 @@ export function buildContentSecurityPolicy(site) {
   ];
   const scriptHosts = [
     ...list(sources.script, "script-src"),
-    ...(cloudflareWebAnalytics ? CLOUDFLARE_WEB_ANALYTICS.script : []),
+    ...(cloudflareWebAnalytics === true ? CLOUDFLARE_WEB_ANALYTICS.script : []),
+    ...(cloudflareWebAnalytics === "manual" ? CLOUDFLARE_WEB_ANALYTICS.manual.script : []),
   ];
   for (const host of scriptHosts) {
     // Browsers match keywords in any case.
@@ -369,8 +405,9 @@ export function buildContentSecurityPolicy(site) {
           `media-src ${["'self'", ...list(sources.media, "media-src").filter((s) => s !== "'self'")].join(" ")}`,
         ]
       : []),
-    // 'self' is always present: the Cloudflare beacon reports to /cdn-cgi/rum on the site's own origin.
-    `connect-src ${["'self'", ...list(sources.connect, "connect-src")].join(" ")}`,
+    // 'self' is always present: the automatic beacon reports to /cdn-cgi/rum on the site's own origin; the manual one to
+    // cloudflareinsights.com.
+    `connect-src ${["'self'", ...(cloudflareWebAnalytics === "manual" ? CLOUDFLARE_WEB_ANALYTICS.manual.connect : []), ...list(sources.connect, "connect-src")].join(" ")}`,
     ...(frames.length > 0
       ? [`frame-src ${["'self'", ...list(frames, "frame-src")].join(" ")}`]
       : []),
