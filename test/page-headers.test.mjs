@@ -69,11 +69,13 @@ test("a site must say what it stages", () => {
 
 test("renew: a stored page gets a fresh nonce per reader and its policy is built again for it", () => {
   // renewNonce rewrites the body with HTMLRewriter, which only a Workers runtime has; the headers are what is checked.
+  let rewrites = 0;
   /** @type {any} */ (globalThis).HTMLRewriter = class {
     on() {
       return this;
     }
     transform(/** @type {Response} */ response) {
+      rewrites++;
       return response;
     }
   };
@@ -90,7 +92,35 @@ test("renew: a stored page gets a fresh nonce per reader and its policy is built
     assert.ok(!policy.includes("STALE"));
     assert.match(policy, /'nonce-[^']+'/);
     assert.ok(policy.includes("report-uri"), "the policy is built again, not just renewed");
+    assert.equal(rewrites, 1);
+    // A fresh render carries this request's own nonce: applying the headers again leaves it alone.
+    const { withSecurityHeaders: again, nonceFor } = make({ renew: true });
+    const request = req();
+    const fresh = new Response("<p>x</p>", {
+      headers: {
+        "Content-Type": "text/html",
+        "Content-Security-Policy": `script-src 'nonce-${nonceFor(request)}' 'self'`,
+      },
+    });
+    again(fresh, request);
+    assert.equal(rewrites, 1, "a fresh render is not rewritten a second time");
   } finally {
     delete (/** @type {any} */ (globalThis).HTMLRewriter);
   }
+});
+
+test("unpoliced: a feed gets the set but no policy or companion, a page still does", () => {
+  const { withSecurityHeaders } = make({ unpoliced: (type) => !type?.includes("text/html") });
+  const feed = withSecurityHeaders(
+    new Response("<rss/>", { headers: { "Content-Type": "application/rss+xml" } }),
+    req(),
+  );
+  assert.equal(feed.headers.get("X-Content-Type-Options"), "nosniff");
+  assert.equal(feed.headers.get("Content-Security-Policy"), null);
+  assert.equal(feed.headers.get("Content-Security-Policy-Report-Only"), null);
+  const page = withSecurityHeaders(
+    new Response("<p>x</p>", { headers: { "Content-Type": "text/html" } }),
+    req(),
+  );
+  assert.ok(page.headers.get("Content-Security-Policy"));
 });

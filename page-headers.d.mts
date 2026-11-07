@@ -23,8 +23,10 @@ export type PageSecurityOptions = {
   group?: string;
   /** Cross-Origin-Resource-Policy follows the content type (corpFor). */
   corp?: boolean;
-  /** The site stores pages at the edge: an HTML page carrying a nonce gets a fresh one per reader. */
+  /** The site stores pages at the edge: an HTML page carrying a nonce other than this request's gets a fresh one per reader. */
   renew?: boolean;
+  /** True for a Content-Type the site sends no Content-Security-Policy or companion on (feeds, sitemaps, JSON, PDF); the rest of the set still goes on. */
+  unpoliced?: (contentType: string | null) => boolean;
   /** Paths that also get `X-Robots-Tag: noindex`, covering resource routes and redirects where no meta tag can go. */
   noindex?: (pathname: string) => boolean;
 };

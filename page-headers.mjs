@@ -14,8 +14,11 @@
  *   are cross-origin, pages and JSON same-origin.
  * - Reporting-Endpoints names the report sink at the request's own origin, and is left off where a browser would ignore
  *   it anyway (plain http off loopback; reportingEndpoints refuses it).
- * - `renew` (a site that stores pages at the edge): an HTML response whose policy carries a nonce is a stored page, so it
- *   gets a fresh one per reader (renewNonce) and its policy is built again for it, instead of the stored one standing.
+ * - `renew` (a site that stores pages at the edge): an HTML response whose policy carries a nonce other than this
+ *   request's is a stored page, so it gets a fresh one per reader (renewNonce) and its policy is built again for it,
+ *   instead of the stored one standing. A fresh render, carrying the request's own nonce, is left as it is.
+ * - `unpoliced(contentType)`: true sends the response the set, Reporting-Endpoints and CORP but no policy and no
+ *   companion, for the types a browser parses and never renders (a sandbox directive can break a PDF viewer).
  * - A WebSocket upgrade (101) goes through untouched (applyHeaderSet).
  */
 
@@ -49,6 +52,7 @@ export function pageSecurity({
   corp = false,
   renew = false,
   noindex,
+  unpoliced,
 }) {
   if (staged === undefined)
     throw new Error(
@@ -78,7 +82,10 @@ export function pageSecurity({
     const rendered = NONCE_IN_POLICY.exec(
       response.headers.get("Content-Security-Policy") ?? "",
     )?.[1];
-    const stored = renew && rendered !== undefined && isHtml(response.headers);
+    // A nonce that is not this request's is a stored page's. A fresh render (a site that applies its headers twice,
+    // once for the edge cache and once on the way out) carries the request's own, and is left alone.
+    const stored =
+      renew && rendered !== undefined && isHtml(response.headers) && rendered !== nonce;
     if (stored) {
       nonce = given ?? generateNonce();
       issued.set(request, nonce);
@@ -91,7 +98,9 @@ export function pageSecurity({
         response.headers.has("Content-Security-Policy-Report-Only"));
     /** @type {Record<string, string>} */
     const extra = {};
-    if (!own) {
+    // A response a browser parses and never renders (a feed, a sitemap, JSON, a PDF) the site sends no policy for.
+    const bare = !stored && unpoliced?.(response.headers.get("Content-Type")) === true;
+    if (!own && !bare) {
       const site = {
         reportUri: reportPath,
         reportTo: group,
