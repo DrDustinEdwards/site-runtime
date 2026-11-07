@@ -2223,20 +2223,43 @@ clientRegistrationCallback: ({ clientMetadata }) => {
   then `appendAudit(env, row)` before (`started`) and after (`finished`) each call, or once for a `refused` one, with
   `loggedArgs` and `loggedResult`. A string argument over 200 characters is stored as its length and a SHA-256 prefix.
   A row also carries the server's name and version, the OAuth client id and a correlation id (`correlationId(meta)`, the
-  trace id of a `_meta.traceparent` when the client sent one), and a hash chain over the rows: `verifyAuditChain(rows, key)`
-  names the first row that was changed or removed. Bind the Worker secret `AUDIT_CHAIN_KEY` before the first row and the
-  chain is HMAC-SHA-256 under it, which an editor of the table without the secret cannot recompute; without it the chain
-  is plain SHA-256 and only catches an edit nobody recomputed. Neither catches rows cut off the end. Besides the call phases, `recordAudit` writes `sign-in`,
-  `scope-challenge` and `rate-limited` rows; `loginHandler({ audit: { name, version } })` writes one per sign-in.
+  trace id of a `_meta.traceparent` when the client sent one), and a signed hash chain over the rows. Besides the call
+  phases, `recordAudit` writes `sign-in`, `scope-challenge` and `rate-limited` rows; `loginHandler({ audit: { name,
+  version } })` writes one per sign-in.
+- **The chain and its key** (the design follows AWS CloudTrail's log file validation: a keyless chain, signatures that
+  name their key, old public keys kept for checking). Each row's `hash` is SHA-256 of the row before's hash and this
+  row's values; `sig` is an Ed25519 signature of it (RFC 8032) under a key derived (HKDF-SHA-256, RFC 5869) from the
+  Worker secret `AUDIT_SIGNING_KEY`, and `key_id` names the key (`auditChainKey(secret)` gives its `id` and `publicKey`).
+  The secret is required (at least 32 characters): without it nothing is written, every tool call is refused and
+  `auditLogCheck` fails. Mint it in the deploy, `generated-secrets: AUDIT_SIGNING_KEY` (devkit worker-deploy); nobody
+  ever sees it, and only its public key leaves the Worker. It has a new name so a site can mint it before it moves to
+  0.85 (0.84 and earlier never read it); the earlier HMAC secret `AUDIT_CHAIN_KEY` is no longer read, so delete it.
+  - **Re-anchoring.** When the log starts under a key that did not sign its newest row (its first key, or a new one),
+    it first writes a `chain-key` row signed by the new key, `{ from, fromPublicKey, to, publicKey }`, whose hash covers
+    everything before it. The chain never breaks, and the new key vouches for the old one. `from: null` is the move
+    from the unsigned rows of 0.84 and earlier.
+  - **Rotating** (a suspected leak, or a scheduled change): replace the secret with a fresh value nobody sees, then let
+    the Worker start; the next start anchors. One command, from the Worker's directory:
+    `node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64url'))" | npx wrangler secret put AUDIT_SIGNING_KEY --name <worker>`.
+    Rows signed before stay checkable through the anchor and through each copy's `keys`.
+  - **Checking.** `verifyAuditChain(rows, { keys, previous })` checks every hash and, given trusted public keys
+    (base64url), every signature, and names the first row that fails with a `reason` (`hash`, `unsigned`, `unknown
+    key`, `signature`, `key change`). A key is trusted when it is given or when an anchor signed by a trusted key names
+    it; the key changes only at an anchor; an unsigned row passes only before a `from: null` anchor, so stripping the
+    signatures and recomputing the hashes fails. Nobody without the secret can forge a row; code deployed to the Worker
+    could, and the locked copies bound that to rows not yet copied. Nothing catches rows cut off the end.
 - The log leaves the Worker and does not grow for ever: `exportAuditLog(env, env.AUDIT_BUCKET, { prefix, keepDays })`,
-  run from the cron (`./cron`'s `runJobs`), copies the rows not yet copied to R2 as `tool-calls/<first>-<last>.json`
-  (`{ previous, rows }`; `verifyAuditChain(rows, key, previous)` checks a copy on its own), and only then marks them
-  copied and deletes the copied rows older than `keepDays` (`AUDIT_KEEP_DAYS`, 90). A row never copied is never deleted,
-  and the newest row always stays, since the next one chains to it. Put a bucket lock rule on the prefix, as the backups
-  have, so a copy cannot be changed or removed inside its period.
+  run from the cron (`./cron`'s `runJobs`), checks each batch with the secret's public key and the keys its anchors
+  vouch for, copies it to R2 as `tool-calls/<first>-<last>.json` (`{ previous, keys, verified, rows }`;
+  `verifyAuditChain(rows, { keys, previous })` checks a copy on its own), and only then marks the rows copied and
+  deletes the copied rows older than `keepDays` (`AUDIT_KEEP_DAYS`, 90). A batch that fails its check is still copied,
+  as evidence, and logged. A row never copied is never deleted, and the newest row always stays, since the next one
+  chains to it. Put a bucket lock rule on the prefix, as the backups have, so a copy cannot be changed or removed
+  inside its period.
 - `auditLogCheck(env)` goes in `/health`'s checks (`healthResponse({ checks: [auditLogCheck(env)] })`): level warn and
   alert, it fails when a call's `finished` row is 15 minutes late (the log stopped hearing of a call), when calls in
-  the last hour pass `spikePerHour` (600), or when rows have waited two days for a copy. The daily check reads it (L8).
+  the last hour pass `spikePerHour` (600), when rows have waited two days for a copy, when the last copy's chain check
+  failed, or when `AUDIT_SIGNING_KEY` is missing or short. The daily check reads it (L8).
 
 - **The owner page** (`./owner-page`, checklist A15 and L9). `loginHandler` serves `/owner` on every server it fronts
   (`owner: false` turns it off): the admitted person signs in through the same Access round trip and `/callback` (its
