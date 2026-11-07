@@ -1,16 +1,17 @@
 name: ci
 
+# No push to main: the merge was checked as a pull request, and nothing deploys from here (devkit README, "No second run
+# on main"). A release is release.yml's.
 on:
   pull_request:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
-# A newer push to a pull request cancels its older run; a push to the default branch never does.
+# A newer push to a pull request cancels its older run.
 concurrency:
-  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
