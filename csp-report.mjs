@@ -159,6 +159,18 @@ async function readReport(request, max) {
  */
 
 /**
+ * The `allow` for a Workers Rate Limiting binding (`ratelimits` in wrangler.jsonc), keyed on the edge-set client address,
+ * which is counted and never logged. A missing binding drops every report (still 204) rather than leaving the sink open.
+ * @param {{ limit(options: { key: string }): Promise<{ success: boolean }> } | undefined} binding
+ * @returns {(request: Request) => Promise<boolean>}
+ */
+export function rateLimitAllow(binding) {
+  return async (request) =>
+    binding !== undefined &&
+    (await binding.limit({ key: request.headers.get("CF-Connecting-IP") ?? "unknown" })).success;
+}
+
+/**
  * Receives one report request and answers it. POST is 204, OPTIONS is the preflight (204, CORS only for
  * `allowOrigin`), anything else is 405.
  * @param {Request} request
