@@ -2422,7 +2422,7 @@ const refusal = authorizeCall(env, caller, SCOPES.write, {
 
 ## The admin MCP Worker
 
-`./admin-mcp` is the whole Worker of a site's admin MCP server (Dustin Edwards Admin, Foxing Admin, Germomics Admin,
+`./admin-mcp` is the whole Worker of a site's admin MCP server (Dustin Edwards Admin, Foxing Admin,
 Foxhound Admin): the door, the OAuth provider, the sign-in, `/health` and the tool-call log's cron. A server keeps only
 what is its own: its tools, its MCP handler and its API leg.
 

@@ -26,7 +26,6 @@ export const dustinedwardsInfo: ServedSiteEntry,
   foxhoundMcp: ServedSiteEntry,
   dustinedwardsMcp: ServedSiteEntry,
   foxingMcp: ServedSiteEntry,
-  germomicsMcp: ServedSiteEntry,
   capsomer: ServedSiteEntry,
   prelum: ServedSiteEntry;
 export const SITES: readonly ServedSiteEntry[];
