@@ -13,7 +13,7 @@ resource routes (`./origin`), the trailing-slash redirect, the gone list and the
 No dependencies (`./sign-in` uses the site's own `better-auth` and
 `@better-auth/passkey`, 1.7.17 or later (the security fixes of 2026-11-03 and 04), which a site that imports it installs itself; they are not declared as peers,
 because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
-tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.89.0"`. `npm test` runs every test in `test/`. `npm run typecheck` checks the modules and bins (strict, `checkJs`, Workers and Node
+tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.92.0"`. `npm test` runs every test in `test/`. `npm run typecheck` checks the modules and bins (strict, `checkJs`, Workers and Node
 types; `tsconfig.json`) and the browser pair, `./turnstile` and `./sign-in-client` (DOM types; `tsconfig.browser.json`), against
 the hand-written `.d.mts` beside each; `better-auth`, `@better-auth/passkey` and `@cloudflare/workers-oauth-provider` are dev
 dependencies only so it can read their types. `test/` is not checked yet. `npm run lint` is Oxlint with the network's shared

@@ -73,17 +73,34 @@ export interface RedirectEntry {
 /** Checks an entry and returns it in the table's form (no trailing slash, status set); throws naming what is wrong. */
 export function redirectEntry(entry: RedirectEntry): { from: string; to: string; status: number };
 /** The lookup from a path to its entry that tableRedirect takes. */
-export type RedirectLookup = (path: string) => { to: string; status?: number } | null | undefined | Promise<{ to: string; status?: number } | null | undefined>;
+export type RedirectLookup = (
+  path: string,
+) =>
+  | { to: string; status?: number }
+  | null
+  | undefined
+  | Promise<{ to: string; status?: number } | null | undefined>;
 /**
  * The redirect for a request from the site's table (a list or a lookup), a chain followed to its end, the query kept,
  * 301/302 turned to 308/307 for a method other than GET and HEAD, sent private, no-store; null when the path is not in it.
  */
-export function tableRedirect(request: Request, table: readonly RedirectEntry[] | RedirectLookup): Promise<Response | null>;
+export function tableRedirect(
+  request: Request,
+  table: readonly RedirectEntry[] | RedirectLookup,
+): Promise<Response | null>;
 /** The lookup over the `redirects` table. */
-export function d1Redirects(db: D1Like | (() => D1Like)): (path: string) => Promise<{ to: string; status: number } | null>;
+export function d1Redirects(
+  db: D1Like | (() => D1Like),
+): (path: string) => Promise<{ to: string; status: number } | null>;
 /** Adds or replaces a redirect in one step, refusing a loop and pointing rows that led to `from` at the new target. */
-export function addRedirect(db: D1Like, entry: RedirectEntry, options?: { now?: Date }): Promise<{ from: string; to: string; status: number }>;
+export function addRedirect(
+  db: D1Like,
+  entry: RedirectEntry,
+  options?: { now?: Date },
+): Promise<{ from: string; to: string; status: number }>;
 /** Removes the redirect from a path. */
 export function removeRedirect(db: D1Like, from: string): Promise<void>;
 /** Every redirect, newest first. */
-export function listRedirects(db: D1Like): Promise<Array<{ from: string; to: string; status: number; createdAt: number }>>;
+export function listRedirects(
+  db: D1Like,
+): Promise<Array<{ from: string; to: string; status: number; createdAt: number }>>;

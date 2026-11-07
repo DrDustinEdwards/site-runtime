@@ -349,5 +349,9 @@ export const DATABASE_DOWN_STATUS_TEXT = "Database unavailable";
 export function databaseDown(error) {
   if (!isDatabaseDown(error)) return error;
   logEvent("database_down", { error }, { level: "error" });
-  return new Response(null, { status: 503, statusText: DATABASE_DOWN_STATUS_TEXT, headers: { "Retry-After": "60", "Cache-Control": "no-store" } });
+  return new Response(null, {
+    status: 503,
+    statusText: DATABASE_DOWN_STATUS_TEXT,
+    headers: { "Retry-After": "60", "Cache-Control": "no-store" },
+  });
 }

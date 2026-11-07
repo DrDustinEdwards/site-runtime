@@ -214,7 +214,8 @@ const REDIRECT_STATUSES = new Set([301, 302, 307, 308]);
 const MAX_HOPS = 10;
 
 /** A path as the table keys it: the pathname only, one leading slash, no trailing slash but on "/". @param {string} path */
-const tablePath = (path) => (path === "/" ? "/" : `/${path.replace(/^\/+/, "").replace(/\/+$/, "")}`);
+const tablePath = (path) =>
+  path === "/" ? "/" : `/${path.replace(/^\/+/, "").replace(/\/+$/, "")}`;
 
 /**
  * Checks one entry and returns it in the table's form, or throws naming what is wrong.
@@ -222,13 +223,23 @@ const tablePath = (path) => (path === "/" ? "/" : `/${path.replace(/^\/+/, "").r
  * @returns {{ from: string, to: string, status: number }}
  */
 export function redirectEntry({ from, to, status = 301 }) {
-  if (typeof from !== "string" || !from.startsWith("/") || /[?#]/.test(from)) throw new Error(`redirect: from is a path starting with "/" with no query, not ${JSON.stringify(from)}`);
-  if (!REDIRECT_STATUSES.has(status)) throw new Error(`redirect: status is 301, 302, 307 or 308, not ${status}`);
+  if (typeof from !== "string" || !from.startsWith("/") || /[?#]/.test(from))
+    throw new Error(
+      `redirect: from is a path starting with "/" with no query, not ${JSON.stringify(from)}`,
+    );
+  if (!REDIRECT_STATUSES.has(status))
+    throw new Error(`redirect: status is 301, 302, 307 or 308, not ${status}`);
   let target = to;
-  if (typeof to !== "string" || to.startsWith("//")) throw new Error(`redirect: to is a path starting with "/" or an https URL, not ${JSON.stringify(to)}`);
+  if (typeof to !== "string" || to.startsWith("//"))
+    throw new Error(
+      `redirect: to is a path starting with "/" or an https URL, not ${JSON.stringify(to)}`,
+    );
   if (/^https:\/\//i.test(to)) new URL(to);
   else if (to.startsWith("/")) target = to.length > 1 && !/[?#]/.test(to) ? tablePath(to) : to;
-  else throw new Error(`redirect: to is a path starting with "/" or an https URL, not ${JSON.stringify(to)}`);
+  else
+    throw new Error(
+      `redirect: to is a path starting with "/" or an https URL, not ${JSON.stringify(to)}`,
+    );
   const key = tablePath(from);
   if (key === target) throw new Error(`redirect: ${key} redirects to itself`);
   return { from: key, to: target, status };
@@ -265,10 +276,16 @@ export async function tableRedirect(request, table) {
     if (hops === MAX_HOPS) throw new Error(`tableRedirect: the redirects from ${path} loop`);
     hit = next;
   }
-  const target = hit.to.startsWith("/") ? new URL(`${url.origin}${hit.to.replace(/^\/+/, "/")}`) : new URL(hit.to);
+  const target = hit.to.startsWith("/")
+    ? new URL(`${url.origin}${hit.to.replace(/^\/+/, "/")}`)
+    : new URL(hit.to);
   if (!target.search && !hit.to.includes("?")) target.search = url.search;
-  if (request.method !== "GET" && request.method !== "HEAD") status = status === 301 || status === 308 ? 308 : 307;
-  return new Response(null, { status, headers: { Location: target.href, "Cache-Control": "private, no-store" } });
+  if (request.method !== "GET" && request.method !== "HEAD")
+    status = status === 301 || status === 308 ? 308 : 307;
+  return new Response(null, {
+    status,
+    headers: { Location: target.href, "Cache-Control": "private, no-store" },
+  });
 }
 
 /**
@@ -278,7 +295,10 @@ export async function tableRedirect(request, table) {
  */
 export function d1Redirects(db) {
   return async (path) => {
-    const { results } = await (typeof db === "function" ? db() : db).prepare("SELECT to_path, status FROM redirects WHERE from_path = ?1").bind(path).all();
+    const { results } = await (typeof db === "function" ? db() : db)
+      .prepare("SELECT to_path, status FROM redirects WHERE from_path = ?1")
+      .bind(path)
+      .all();
     const row = /** @type {{ to_path: string, status: number } | undefined} */ (results[0]);
     return row ? { to: row.to_path, status: Number(row.status) } : null;
   };
@@ -299,17 +319,23 @@ export async function addRedirect(db, entry, { now = new Date() } = {}) {
     const lookup = d1Redirects(db);
     let at = row.to;
     for (let hops = 0; hops <= MAX_HOPS; hops++) {
-      if (at === row.from) throw new Error(`addRedirect: ${row.from} to ${row.to} would make a loop`);
+      if (at === row.from)
+        throw new Error(`addRedirect: ${row.from} to ${row.to} would make a loop`);
       const next = await lookup(at);
       if (!next || !next.to.startsWith("/")) break;
       at = tablePath(next.to.split(/[?#]/)[0]);
     }
   }
   await db
-    .prepare("INSERT INTO redirects (from_path, to_path, status, created_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT (from_path) DO UPDATE SET to_path = excluded.to_path, status = excluded.status, created_at = excluded.created_at")
+    .prepare(
+      "INSERT INTO redirects (from_path, to_path, status, created_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT (from_path) DO UPDATE SET to_path = excluded.to_path, status = excluded.status, created_at = excluded.created_at",
+    )
     .bind(row.from, row.to, row.status, now.getTime())
     .run();
-  await db.prepare("UPDATE redirects SET to_path = ?1 WHERE to_path = ?2 AND from_path <> ?1").bind(row.to, row.from).run();
+  await db
+    .prepare("UPDATE redirects SET to_path = ?1 WHERE to_path = ?2 AND from_path <> ?1")
+    .bind(row.to, row.from)
+    .run();
   return row;
 }
 
@@ -329,6 +355,18 @@ export async function removeRedirect(db, from) {
  * @returns {Promise<Array<{ from: string, to: string, status: number, createdAt: number }>>}
  */
 export async function listRedirects(db) {
-  const { results } = await db.prepare("SELECT from_path, to_path, status, created_at FROM redirects ORDER BY created_at DESC, from_path").bind().all();
-  return /** @type {Array<{ from_path: string, to_path: string, status: number, created_at: number }>} */ (results).map((r) => ({ from: r.from_path, to: r.to_path, status: Number(r.status), createdAt: Number(r.created_at) }));
+  const { results } = await db
+    .prepare(
+      "SELECT from_path, to_path, status, created_at FROM redirects ORDER BY created_at DESC, from_path",
+    )
+    .bind()
+    .all();
+  return /** @type {Array<{ from_path: string, to_path: string, status: number, created_at: number }>} */ (
+    results
+  ).map((r) => ({
+    from: r.from_path,
+    to: r.to_path,
+    status: Number(r.status),
+    createdAt: Number(r.created_at),
+  }));
 }

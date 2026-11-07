@@ -84,7 +84,6 @@ export function aiCheck(
   ai: { run(...args: never[]): Promise<unknown> } | undefined,
 ): HealthCheck;
 
-
 /** Whether an error (or one of its causes) is D1 down or reset for a moment; a wrong query is not. */
 export function isDatabaseDown(error: unknown): boolean;
 /** "Database unavailable": the statusText Capsomer's ErrorPage reads. */

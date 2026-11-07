@@ -94,7 +94,9 @@ test("a check that hangs fails at the timeout; a warn check never makes it 503, 
 });
 
 test("a database-down error becomes a 503 the error page reads; a wrong query stays itself", () => {
-  const down = new Error("D1_ERROR", { cause: new Error("D1 DB storage operation exceeded timeout which caused object to be reset.") });
+  const down = new Error("D1_ERROR", {
+    cause: new Error("D1 DB storage operation exceeded timeout which caused object to be reset."),
+  });
   const response = databaseDown(down);
   assert.ok(response instanceof Response);
   assert.equal(response.status, 503);
