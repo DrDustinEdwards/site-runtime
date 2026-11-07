@@ -380,6 +380,11 @@ export function buildContentSecurityPolicy(site) {
     `frame-ancestors ${framedBySameOrigin ? "'self'" : "'none'"}`,
     ...(trustedTypes ? ["require-trusted-types-for 'script'"] : []),
     ...(typeNames.length > 0 ? [`trusted-types ${typeNames.join(" ")}`] : []),
+    // `default-src 'none'` would refuse the site's own web app manifest, which every page links; Chrome logs it as a CSP
+    // issue in DevTools (Lighthouse's inspector-issues audit). A site that names manifest-src itself keeps its own.
+    ...(denyUnlisted && !extraDirectives.some((e) => /^\s*manifest-src(\s|$)/i.test(e))
+      ? ["manifest-src 'self'"]
+      : []),
     ...extraDirectives,
     `report-uri ${checkSource(reportUri)}`,
     `report-to ${checkSource(reportTo)}`,

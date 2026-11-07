@@ -561,3 +561,11 @@ test("renewNonce leaves a response with no nonce as it is, and refuses to resend
   });
   assert.throws(() => renewNonce(stored), /needs HTMLRewriter/);
 });
+
+test("denyUnlisted: the site's own manifest is allowed unless the site names manifest-src itself", () => {
+  const site = { ...SINK, denyUnlisted: true };
+  assert.deepEqual(directives(site).get("manifest-src"), ["'self'"]);
+  const own = directives({ ...site, extraDirectives: ["manifest-src 'self'"] });
+  assert.deepEqual(own.get("manifest-src"), ["'self'"]);
+  assert.equal(directives({ ...SINK }).has("manifest-src"), false);
+});
