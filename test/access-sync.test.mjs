@@ -53,6 +53,12 @@ test("posts the whole list, and turns every answer into a result", async () => {
     /^Capsid answered 503: .*not set up yet at Capsid/,
   );
 
+  const words = fake(new Response("unauthorized: not scoped to this tool.", { status: 403 }));
+  assert.deepEqual(await postAccessSync({ ...base, fetch: words.fetcher }), {
+    ok: false,
+    refusal: "Capsid answered 403: unauthorized: not scoped to this tool.",
+  });
+
   const down = fake(new Error("connection refused"));
   assert.deepEqual(await postAccessSync({ ...base, fetch: down.fetcher }), {
     ok: false,

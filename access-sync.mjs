@@ -14,6 +14,9 @@ export const CAPSID_ORIGIN = "https://mcp.dustinedwards.info";
 
 const TIMEOUT_MS = 15_000;
 
+/** The words end in one full stop, whether or not they came with one. */
+const sentence = (/** @type {string} */ words) => (/[.!?]$/.test(words) ? words : `${words}.`);
+
 /**
  * Capsid's refusal in its own words: the JSON `refusal` on a 409 or 502 (Cloudflare said no), else the plain text of a
  * refusal that came before Cloudflare (401, 403, 409 with no pin, 503 with no token).
@@ -30,7 +33,7 @@ async function refusalOf(response) {
   const notSetUp = /CF_ACCESS_SYNC_TOKEN is not set/.test(text)
     ? " Access sync is not set up yet at Capsid, so nothing was changed in Cloudflare Access."
     : "";
-  return `Capsid answered ${response.status}: ${text.trim() || response.statusText || "no reason given"}.${notSetUp}`;
+  return `Capsid answered ${response.status}: ${sentence(text.trim() || response.statusText || "no reason given")}${notSetUp}`;
 }
 
 /**
@@ -79,7 +82,7 @@ export async function postAccessSync({
     if (result?.ok !== true) {
       return {
         ok: false,
-        refusal: `Capsid answered ${response.status}: ${text.trim().slice(0, 600) || "no reason given"}.`,
+        refusal: `Capsid answered ${response.status}: ${sentence(text.trim().slice(0, 600) || "no reason given")}`,
       };
     }
     return {
