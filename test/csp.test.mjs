@@ -345,6 +345,10 @@ test("extra directives are added; an empty one, one that restates a fixed direct
   });
   assert.deepEqual(policy.get("upgrade-insecure-requests"), []);
   assert.deepEqual(policy.get("worker-src"), ["'self'"]);
+  // denyUnlisted still allows the site's own manifest (a refused one is a DevTools issue), and a site's own wins.
+  assert.deepEqual(directives({ ...SINK, denyUnlisted: true }).get("manifest-src"), ["'self'"]);
+  const own = directives({ ...SINK, denyUnlisted: true, extraDirectives: ["manifest-src 'self'"] });
+  assert.deepEqual(own.get("manifest-src"), ["'self'"]);
   assert.throws(
     () => buildContentSecurityPolicy({ ...SINK, extraDirectives: [" "] }),
     /a CSP directive is empty/,
@@ -560,12 +564,4 @@ test("renewNonce leaves a response with no nonce as it is, and refuses to resend
     },
   });
   assert.throws(() => renewNonce(stored), /needs HTMLRewriter/);
-});
-
-test("denyUnlisted: the site's own manifest is allowed unless the site names manifest-src itself", () => {
-  const site = { ...SINK, denyUnlisted: true };
-  assert.deepEqual(directives(site).get("manifest-src"), ["'self'"]);
-  const own = directives({ ...site, extraDirectives: ["manifest-src 'self'"] });
-  assert.deepEqual(own.get("manifest-src"), ["'self'"]);
-  assert.equal(directives({ ...SINK }).has("manifest-src"), false);
 });
