@@ -60,7 +60,7 @@ test("a policy returned as a string goes on as it is, with no Report-Only compan
   assert.equal(out.headers.get("Content-Security-Policy-Report-Only"), null);
 });
 
-test("an immutable response comes back with the headers, and noindex marks private paths", () => {
+test("an immutable response comes back with the headers, noindex marks private paths, env and a report origin reach the policy and a route cannot loosen framing", () => {
   const { withSecurityHeaders } = make({ noindex: (path) => path.startsWith("/admin") });
   const out = withSecurityHeaders(
     Response.redirect("https://site.example.com/", 302),
@@ -76,11 +76,13 @@ test("a site must say what it stages", () => {
 
 test("renew: a stored page gets a fresh nonce per reader and its policy is built again for it", () => {
   // renewNonce rewrites the body with HTMLRewriter, which only a Workers runtime has; the headers are what is checked.
+  let rewrites = 0;
   /** @type {any} */ (globalThis).HTMLRewriter = class {
     on() {
       return this;
     }
     transform(/** @type {Response} */ response) {
+      rewrites++;
       return response;
     }
   };
@@ -97,7 +99,66 @@ test("renew: a stored page gets a fresh nonce per reader and its policy is built
     assert.ok(!policy.includes("STALE"));
     assert.match(policy, /'nonce-[^']+'/);
     assert.ok(policy.includes("report-uri"), "the policy is built again, not just renewed");
+    assert.equal(rewrites, 1);
+    // A fresh render carries this request's own nonce: applying the headers again leaves it alone.
+    const { withSecurityHeaders: again, nonceFor } = make({ renew: true });
+    const request = req();
+    const fresh = new Response("<p>x</p>", {
+      headers: {
+        "Content-Type": "text/html",
+        "Content-Security-Policy": `script-src 'nonce-${nonceFor(request)}' 'self'`,
+      },
+    });
+    again(fresh, request);
+    assert.equal(rewrites, 1, "a fresh render is not rewritten a second time");
   } finally {
     delete (/** @type {any} */ (globalThis).HTMLRewriter);
   }
+  {
+    const { withSecurityHeaders } = make({
+      set: { ...set, "X-Frame-Options": "DENY" },
+      policy: ({ nonce, env }) => ({ nonce, sources: { img: [env.img] } }),
+      reportOrigin: ({ env }) => env.door,
+    });
+    const env = { img: "https://img.example.com", door: "https://door.example.com" };
+    const html = { "Content-Type": "text/html" };
+    const page = withSecurityHeaders(new Response("x", { headers: html }), req(), undefined, env);
+    assert.match(
+      page.headers.get("Content-Security-Policy") ?? "",
+      /img-src[^;]*img\.example\.com/,
+    );
+    assert.match(
+      page.headers.get("Content-Security-Policy") ?? "",
+      /report-uri https:\/\/door\.example\.com\/csp-report/,
+    );
+    assert.equal(
+      page.headers.get("Reporting-Endpoints"),
+      'csp-endpoint="https://door.example.com/csp-report"',
+    );
+    const framed = (value) =>
+      withSecurityHeaders(
+        new Response("x", { headers: { ...html, "X-Frame-Options": value } }),
+        req(),
+        undefined,
+        env,
+      ).headers.get("X-Frame-Options");
+    assert.equal(framed("SAMEORIGIN"), "SAMEORIGIN");
+    assert.equal(framed("ALLOWALL"), "DENY");
+  }
+});
+
+test("unpoliced: a feed gets the set but no policy or companion, a page still does", () => {
+  const { withSecurityHeaders } = make({ unpoliced: (type) => !type?.includes("text/html") });
+  const feed = withSecurityHeaders(
+    new Response("<rss/>", { headers: { "Content-Type": "application/rss+xml" } }),
+    req(),
+  );
+  assert.equal(feed.headers.get("X-Content-Type-Options"), "nosniff");
+  assert.equal(feed.headers.get("Content-Security-Policy"), null);
+  assert.equal(feed.headers.get("Content-Security-Policy-Report-Only"), null);
+  const page = withSecurityHeaders(
+    new Response("<p>x</p>", { headers: { "Content-Type": "text/html" } }),
+    req(),
+  );
+  assert.ok(page.headers.get("Content-Security-Policy"));
 });

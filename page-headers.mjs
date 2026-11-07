@@ -8,16 +8,23 @@
  * a Worker applies to every response it sends, redirects and errors included, and `nonceFor(request)`, which issues the
  * request's nonce (once, on first ask) for the render to put on its scripts.
  *
- * - A site whose answers load nothing (a JSON door) returns its policy as a string: it goes on verbatim, with no
- *   Report-Only companion, because the builder always names script, style and image sources.
  * - A route's own header wins: the set goes on with `overwrite: false`, and the policy only when the route sent neither
  *   Content-Security-Policy nor its Report-Only form (a preview or print route that chose its own on purpose).
  * - Cross-Origin-Resource-Policy follows the type when `corp` is on (corpFor): images, fonts and feeds other sites embed
  *   are cross-origin, pages and JSON same-origin.
  * - Reporting-Endpoints names the report sink at the request's own origin, and is left off where a browser would ignore
  *   it anyway (plain http off loopback; reportingEndpoints refuses it).
- * - `renew` (a site that stores pages at the edge): an HTML response whose policy carries a nonce is a stored page, so it
- *   gets a fresh one per reader (renewNonce) and its policy is built again for it, instead of the stored one standing.
+ * - `renew` (a site that stores pages at the edge): an HTML response whose policy carries a nonce other than this
+ *   request's is a stored page, so it gets a fresh one per reader (renewNonce) and its policy is built again for it,
+ *   instead of the stored one standing. A fresh render, carrying the request's own nonce, is left as it is.
+ * - `env` (the fourth argument of withSecurityHeaders) is handed to `policy` and `reportOrigin`, for a site whose policy
+ *   depends on per-request bindings (image origins from config) and not on module scope.
+ * - `reportOrigin(context)` names a report sink on another origin (the AI door's, outside Access); the policy's
+ *   report-uri and Reporting-Endpoints then point there instead of at the request's own origin.
+ * - A route may be framed by its own site (X-Frame-Options SAMEORIGIN, a preview); any other value a route sets
+ *   there is replaced with the set's, so a route can never loosen framing further than that.
+ * - `unpoliced(contentType)`: true sends the response the set, Reporting-Endpoints and CORP but no policy and no
+ *   companion, for the types a browser parses and never renders (a sandbox directive can break a PDF viewer).
  * - A WebSocket upgrade (101) goes through untouched (applyHeaderSet).
  */
 
@@ -51,6 +58,8 @@ export function pageSecurity({
   corp = false,
   renew = false,
   noindex,
+  reportOrigin,
+  unpoliced,
 }) {
   if (staged === undefined)
     throw new Error(
@@ -73,14 +82,21 @@ export function pageSecurity({
    * @param {Response} response
    * @param {Request} request
    * @param {string} [given] the nonce the page was rendered with, when the caller kept it itself
+   * @param {unknown} [env] the request's bindings, for a policy or report origin that depends on them
    */
-  function withSecurityHeaders(response, request, given) {
+  function withSecurityHeaders(response, request, given, env) {
     const url = new URL(request.url);
+    const origin = reportOrigin?.({ request, url, env });
+    const sink = origin ? new URL(reportPath, origin) : new URL(reportPath, url);
+    const reportUri = origin ? sink.href : reportPath;
     let nonce = given ?? issued.get(request);
     const rendered = NONCE_IN_POLICY.exec(
       response.headers.get("Content-Security-Policy") ?? "",
     )?.[1];
-    const stored = renew && rendered !== undefined && isHtml(response.headers);
+    // A nonce that is not this request's is a stored page's. A fresh render (a site that applies its headers twice,
+    // once for the edge cache and once on the way out) carries the request's own, and is left alone.
+    const stored =
+      renew && rendered !== undefined && isHtml(response.headers) && rendered !== nonce;
     if (stored) {
       nonce = given ?? generateNonce();
       issued.set(request, nonce);
@@ -93,32 +109,37 @@ export function pageSecurity({
         response.headers.has("Content-Security-Policy-Report-Only"));
     /** @type {Record<string, string>} */
     const extra = {};
-    if (!own) {
-      const site = policy({ nonce, request, url, staged: false });
+    // A response a browser parses and never renders (a feed, a sitemap, JSON, a PDF) the site sends no policy for.
+    const bare = !stored && unpoliced?.(response.headers.get("Content-Type")) === true;
+    if (!own && !bare) {
+      const site = policy({ nonce, request, url, staged: false, env });
       if (typeof site === "string") {
         extra["Content-Security-Policy"] = site;
       } else {
         extra["Content-Security-Policy"] = buildContentSecurityPolicy({
-          reportUri: reportPath,
+          reportUri,
           reportTo: group,
           ...site,
         }).value;
-        const next = staged ? policy({ nonce, request, url, staged: true }) : undefined;
+        const next = staged ? policy({ nonce, request, url, staged: true, env }) : undefined;
         if (staged && next && typeof next !== "string") {
-          const companion = buildStagedPolicy(
-            { reportUri: reportPath, reportTo: group, ...next },
-            staged,
-          );
+          const companion = buildStagedPolicy({ reportUri, reportTo: group, ...next }, staged);
           extra[companion.name] = companion.value;
         }
       }
     }
-    if (url.protocol === "https:" || LOOPBACK.test(url.hostname))
-      extra["Reporting-Endpoints"] = reportingEndpoints(group, new URL(reportPath, url));
+    if (sink.protocol === "https:" || LOOPBACK.test(sink.hostname))
+      extra["Reporting-Endpoints"] = reportingEndpoints(group, sink);
+    const framing = response.headers.get("X-Frame-Options")?.trim().toUpperCase();
+    if (framing && framing !== "SAMEORIGIN" && framing !== "DENY" && set["X-Frame-Options"])
+      extra["X-Frame-Options"] = set["X-Frame-Options"];
     if (corp) extra["Cross-Origin-Resource-Policy"] = corpFor(response.headers.get("Content-Type"));
     if (noindex?.(url.pathname)) extra["X-Robots-Tag"] = "noindex";
     // The policy replaces a stored page's; every other header a route set keeps its value.
-    const target = stored ? applyHeaderSet(response, extra) : response;
+    const target =
+      stored || extra["X-Frame-Options"]
+        ? applyHeaderSet(response, stored ? extra : { "X-Frame-Options": extra["X-Frame-Options"] })
+        : response;
     return applyHeaderSet(target, { ...set, ...(stored ? {} : extra) }, { overwrite: false });
   }
 
