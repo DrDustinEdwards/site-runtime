@@ -47,7 +47,7 @@
  */
 
 import { anthropicRoute } from "./ai-gateway.mjs";
-import { logEvent } from "./log.mjs";
+import { logEvent, scrubText } from "./log.mjs";
 
 export const ANTHROPIC_VERSION = "2026-10-21";
 const DEFAULT_TIMEOUT_MS = 60_000;
@@ -425,7 +425,10 @@ export async function* stream(env, app, request, options = {}) {
         } else if (event === "message_stop") break;
       }
     } catch (error) {
-      broken = { kind: call.aborted() ? "aborted" : isAbort(error) ? "timeout" : "unavailable" };
+      broken = {
+        kind: call.aborted() ? "aborted" : isAbort(error) ? "timeout" : "unavailable",
+        ...thrown(error),
+      };
     } finally {
       sent.idle.stop();
     }
@@ -513,7 +516,9 @@ function prepare(env, app, request, options, streaming) {
     started,
     maxAttempts: Math.max(1, options.maxAttempts ?? DEFAULT_ATTEMPTS),
     maxPauses: Math.max(0, options.maxPauses ?? DEFAULT_PAUSES),
-    fetcher: options.fetcher ?? fetch,
+    // Wrapped: a bare `fetch` kept on this object is called with the object as `this`, which workerd refuses
+    // ("Illegal invocation"), so every call failed before leaving the Worker.
+    fetcher: options.fetcher ?? ((input, init) => fetch(input, init)),
     sleep: options.sleep ?? defaultSleep,
     signal: options.signal,
     aborted: () => options.signal?.aborted === true,
@@ -639,7 +644,7 @@ async function send(call, body) {
         if (!(await wait(call, pause))) return failure("aborted", {});
         continue;
       }
-      return failure(isAbort(error) ? "timeout" : "unavailable", {});
+      return failure(isAbort(error) ? "timeout" : "unavailable", thrown(error));
     }
     const requestId = response.headers.get("request-id") ?? parsed?.request_id ?? null;
     const gatewayLogId = response.headers.get("cf-aig-log-id");
@@ -820,6 +825,8 @@ function finish(call, result) {
     requestId: out.requestId ?? null,
     gatewayLogId: out.gatewayLogId ?? null,
     providerType: out.providerType ?? null,
+    errorName: out.errorName ?? null,
+    errorMessage: out.errorMessage ?? null,
     source: out.source ?? null,
     gatewayCode: out.gatewayCode ?? null,
     ...out.usage,
@@ -838,6 +845,21 @@ function finish(call, result) {
       );
   }
   return out;
+}
+
+/**
+ * What a thrown error says about a call that never got an answer (no status): its name and a short scrubbed message, so
+ * a failure with no status is not a mystery in the log. The message is the runtime's own (a TypeError from fetch), not
+ * the provider's, which is never logged.
+ * @param {unknown} error
+ * @returns {{ errorName: string; errorMessage: string }}
+ */
+function thrown(error) {
+  const e = /** @type {any} */ (error);
+  return {
+    errorName: String(e?.name ?? typeof error).slice(0, 64),
+    errorMessage: scrubText(String(e?.message ?? "")).slice(0, 200),
+  };
 }
 
 /** @param {unknown} error */
