@@ -5,6 +5,8 @@ export const ACCESS_JWT_HEADER: "cf-access-jwt-assertion";
 export const ACCESS_COOKIE: "CF_Authorization";
 /** How long an unknown kid waits before it may refetch the keys again. */
 export const REFETCH_COOLDOWN_MS: number;
+/** How long a fetched key set is trusted before the next verify refetches it (an hour). */
+export const KEYS_MAX_AGE_MS: number;
 
 /** https://<team domain>, from the team domain with or without scheme and trailing slash; null when missing or not a host. */
 export function accessIssuer(teamDomain: string | undefined): string | null;

@@ -10,6 +10,7 @@ import {
   ACCESS_LOGOUT_PATH,
   ADMIN_SEEN_COOKIE,
   BACKGROUND_HEADER,
+  KEYS_MAX_AGE_MS,
   REFETCH_COOLDOWN_MS,
   accessAdmin,
   adminIdle,
@@ -282,6 +283,14 @@ describe("accessKeys", () => {
     certs = () => Response.json({ keys: [publicJwk] });
     assert.equal((await source("k1", true))?.kid, "k1");
     assert.equal(fetched.length, 2);
+    // A known kid is checked against the issuer's keys again after KEYS_MAX_AGE_MS, so a retired key stops working.
+    t.mock.timers.tick(KEYS_MAX_AGE_MS - 1);
+    assert.equal((await source("k1", false))?.kid, "k1");
+    assert.equal(fetched.length, 2);
+    certs = () => Response.json({ keys: [] });
+    t.mock.timers.tick(1);
+    assert.equal(await source("k1", false), undefined);
+    assert.equal(fetched.length, 3);
   });
 
   test("a team domain that is not a host throws, since no key set can be named for it", () => {
