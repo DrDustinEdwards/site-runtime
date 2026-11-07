@@ -272,7 +272,11 @@ test("the deprecations page's table, and what the daily check flags from it", ()
     retires: "2026-12-20",
     notBefore: null,
   });
-  const problems = deprecationProblems(Object.values(MODEL_IDS), table, Date.parse("2026-11-02"));
+  const problems = deprecationProblems(
+    ["claude-haiku-4-5-20251001", MODEL_IDS.standard, MODEL_IDS.deep],
+    table,
+    Date.parse("2026-11-02"),
+  );
   assert.equal(problems.length, 2, problems.join("; "));
   assert.match(problems[0], /haiku.*deprecated, retiring 2026-12-20/);
   assert.match(problems[1], /refresh MODELS/);
