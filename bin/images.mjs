@@ -896,8 +896,12 @@ export function readImage(bytes) {
         if (!best || width * height > best.width * best.height) best = { width, height };
       }
       // An Exif item is "Exif\0\0" and a TIFF block, wherever the file stores it.
-      for (let at = bytes.indexOf(0x45); at !== -1; at = bytes.indexOf(0x45, at + 1))
-        if (ascii(at, 6) === "Exif\0\0") exif(bytes.subarray(at + 6));
+      let blocks = 0;
+      for (let at = bytes.indexOf(0x45); at !== -1 && blocks < 8; at = bytes.indexOf(0x45, at + 1))
+        if (ascii(at, 6) === "Exif\0\0") {
+          exif(bytes.subarray(at + 6));
+          blocks += 1;
+        }
       return best && file("image/avif", best.width, best.height);
     }
   } catch {
@@ -924,8 +928,20 @@ function privateExif(tiff) {
   const view = new DataView(tiff.buffer, tiff.byteOffset, tiff.byteLength);
   const little = tiff[0] === 0x49 && tiff[1] === 0x49;
   if (!little && !(tiff[0] === 0x4d && tiff[1] === 0x4d)) return [];
+  // An IFD lists at most what fits in the block, and every entry pointing at the same sub-IFD walks it once: a 64,000-entry
+  // IFD whose entries all name one 64,000-entry sub-IFD was four billion steps.
   const entries = (/** @type {number} */ ifd) =>
-    Array.from({ length: view.getUint16(ifd, little) }, (_, i) => ifd + 2 + i * 12);
+    Array.from(
+      {
+        length: Math.min(
+          view.getUint16(ifd, little),
+          Math.max(0, Math.floor((tiff.length - ifd - 2) / 12)),
+        ),
+      },
+      (_, i) => ifd + 2 + i * 12,
+    );
+  /** @type {Set<number>} */
+  const walked = new Set();
   const found = [];
   try {
     if (view.getUint16(2, little) !== 42) return [];
@@ -934,7 +950,11 @@ function privateExif(tiff) {
       if (tag === 0x8825 && view.getUint16(view.getUint32(entry + 8, little), little) > 0)
         found.push("GPS coordinates");
       if (tag === 0xc62f) found.push("a camera serial number");
-      if (tag === 0x8769)
+      if (
+        tag === 0x8769 &&
+        !walked.has(view.getUint32(entry + 8, little)) &&
+        walked.add(view.getUint32(entry + 8, little))
+      )
         for (const sub of entries(view.getUint32(entry + 8, little)))
           if (PRIVATE_TAGS[view.getUint16(sub, little)])
             found.push(PRIVATE_TAGS[view.getUint16(sub, little)]);
@@ -1002,7 +1022,7 @@ function parseTree(html) {
   /** @type {El} */
   const root = { tag: "#root", attrs: {}, children: [], parent: null };
   let node = root;
-  for (const m of html.matchAll(/<(\/?)([a-zA-Z][\w-]*)([^>]*)>|([^<]+)/g)) {
+  for (const m of html.matchAll(/<(\/?)([a-zA-Z][\w-]*)([^<>]*)>|([^<]+)/g)) {
     if (m[4] !== undefined) {
       if (m[4].trim()) node.children.push(m[4]);
       continue;

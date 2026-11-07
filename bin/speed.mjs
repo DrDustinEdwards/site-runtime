@@ -65,6 +65,8 @@ async function get(url, headers = {}) {
   try {
     const response = await fetch(url, {
       redirect: "manual",
+      // The signal covers the body too: a site that stops answering ends the read, not the run.
+      signal: AbortSignal.timeout(60_000),
       headers: { "user-agent": UA, "x-check": CHECK, "accept-encoding": ENCODINGS, ...headers },
     });
     const ttfb = performance.now() - started;
@@ -236,7 +238,12 @@ async function sitemapUrls() {
   const locs = async (/** @type {string} */ url) =>
     [
       ...(
-        await (await fetch(url, { headers: { "user-agent": UA, "x-check": CHECK } })).text()
+        await (
+          await fetch(url, {
+            headers: { "user-agent": UA, "x-check": CHECK },
+            signal: AbortSignal.timeout(60_000),
+          })
+        ).text()
       ).matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g),
     ].map((m) => m[1]);
   try {
@@ -291,7 +298,9 @@ async function pagespeed(url) {
   /** @type {Parameters<typeof speedFindings>[0]["pagespeed"]} */
   const out = {};
   for (const strategy of ["mobile", "desktop"]) {
-    const key = process.env.PSI_API_KEY ? `&key=${process.env.PSI_API_KEY}` : "";
+    const key = process.env.PSI_API_KEY
+      ? `&key=${encodeURIComponent(process.env.PSI_API_KEY)}`
+      : "";
     for (let attempt = 1; attempt <= PSI_TRIES; attempt++) {
       try {
         const r = await fetch(

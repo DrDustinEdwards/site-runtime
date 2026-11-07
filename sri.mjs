@@ -16,7 +16,8 @@ import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { integrityHash } from "./csp.mjs";
 
-const TAG = /<(script|link)\b[^>]*>/gi;
+// `[^<>]` and not `[^>]`: a run of `<script` with no `>` stays linear.
+const TAG = /<(script|link)\b[^<>]*>/gi;
 
 /**
  * Adds integrity to the tags of every .html file under `dir`. `base` is the path the folder is served at (Vite's
@@ -139,7 +140,7 @@ function localFile(url, pagePath, base, root) {
 function preloadsOf(html, pagePath, base, root) {
   /** @type {Set<string>} */
   const files = new Set();
-  for (const [tag] of html.matchAll(/<link\b[^>]*>/gi)) {
+  for (const [tag] of html.matchAll(/<link\b[^<>]*>/gi)) {
     const href = attribute(tag, "href");
     const file =
       href && /^modulepreload$/i.test(attribute(tag, "rel") ?? "")
@@ -150,8 +151,10 @@ function preloadsOf(html, pagePath, base, root) {
   return files;
 }
 
+// The clause before `from` starts on a non-space and holds at most 250 space-separated tokens, so a run of spaces or
+// of `import` words cannot be re-scanned from every start (the old lazy form took 25 s on 4,000 spaces).
 const STATIC_IMPORT =
-  /(?:^|[;\s}])(?:import|export)\s*(?:[\w$*{}\s,]*?\s*from\s*)?["']((?:\.{1,2}\/|\/)[^"']+)["']/g;
+  /(?:^|[;\s}])(?:import|export)\s*(?:[\w$*{},]+(?:\s+[\w$*{},]+){0,250}\s*\bfrom\s*)?["']((?:\.{1,2}\/|\/)[^"']+)["']/g;
 
 /**
  * Every local module `entry` reaches through static imports, transitively, in order of discovery, `entry` excluded.

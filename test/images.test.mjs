@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { annotation, auditImages } from "../bin/images.mjs";
+import { annotation, auditImages, readImage } from "../bin/images.mjs";
 
 /** A PNG's signature and header for its size, then an eXIf chunk whose TIFF points to a GPS IFD with one entry. */
 function pngWithGps(width, height) {
@@ -273,4 +273,51 @@ test("a site that sends a stranger to a sign-in elsewhere is one C1 finding, not
     ["C1"],
   );
   assert.match(findings[0].detail, /sends a stranger to team\.cloudflareaccess\.com/);
+});
+
+test("EXIF whose 40,000 entries all name one sub-IFD is read in linear time, not 40,000 squared", () => {
+  const n = 40000;
+  const tiff = new Uint8Array(10 + n * 12);
+  tiff.set([0x4d, 0x4d, 0, 42, 0, 0, 0, 8, n >> 8, n & 255]);
+  for (let i = 0; i < n; i++) tiff.set([0x87, 0x69, 0, 4, 0, 0, 0, 1, 0, 0, 0, 8], 10 + i * 12);
+  const be32 = (/** @type {number} */ v) => [v >>> 24, (v >>> 16) & 255, (v >>> 8) & 255, v & 255];
+  const png = new Uint8Array([
+    0x89,
+    0x50,
+    0x4e,
+    0x47,
+    13,
+    10,
+    26,
+    10,
+    ...be32(13),
+    ...Buffer.from("IHDR"),
+    ...be32(1),
+    ...be32(1),
+    8,
+    6,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    ...be32(tiff.length),
+    ...Buffer.from("eXIf"),
+    ...tiff,
+    0,
+    0,
+    0,
+    0,
+    ...be32(0),
+    ...Buffer.from("IEND"),
+    0,
+    0,
+    0,
+    0,
+  ]);
+  const t0 = performance.now();
+  assert.equal(readImage(png)?.type, "image/png");
+  assert.ok(performance.now() - t0 < 2500);
 });
