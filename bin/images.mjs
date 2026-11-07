@@ -524,7 +524,7 @@ async function auditPage({ url, origin, html, headers, load, probe, onSite, site
     const key = (attrs.property ?? attrs.name ?? "").toLowerCase();
     if (key && attrs.content !== undefined && !meta.has(key)) meta.set(key, attrs.content.trim());
   }
-  findings.push(...(await shareCard({ url, meta, absolute, load })));
+  findings.push(...(await auditShareCard({ url, meta, absolute, load })));
 
   const robots = [meta.get("robots"), meta.get("googlebot"), headers.get("x-robots-tag")]
     .filter(Boolean)
@@ -642,7 +642,7 @@ async function auditPage({ url, origin, html, headers, load, probe, onSite, site
  * @param {{ url: string, meta: Map<string, string>, absolute: (href: string | undefined) => string | null, load: Load }} input
  * @returns {Promise<Finding[]>}
  */
-async function shareCard({ url, meta, absolute, load }) {
+async function auditShareCard({ url, meta, absolute, load }) {
   /** @type {Finding[]} */
   const findings = [];
   const add = (

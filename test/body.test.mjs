@@ -68,3 +68,27 @@ test("an oversize clone returns null without waiting on the original, which stil
   assert.equal(verdict, null);
   assert.equal((await request.text()).length, 64);
 });
+
+test("readForm and readJson read to the ceiling and throw the refusal over it", async () => {
+  const { readForm, readJson } = await import("../body.mjs");
+  const form = new Request("https://site.example.com/", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: "a=1&b=two",
+  });
+  assert.equal((await readForm(form, 100)).get("b"), "two");
+  const big = new Request("https://site.example.com/", { method: "POST", body: "x".repeat(50) });
+  await assert.rejects(readForm(big, 10), (r) => r instanceof Response && r.status === 413);
+  const json = (/** @type {string} */ type) =>
+    new Request("https://site.example.com/", {
+      method: "POST",
+      headers: { "Content-Type": type },
+      body: '{"ok":true}',
+    });
+  assert.deepEqual(await readJson(json("application/json"), 100), { ok: true });
+  await assert.rejects(
+    readJson(json("text/plain"), 100),
+    (r) => r instanceof Response && r.status === 415,
+  );
+  assert.deepEqual(await readJson(json("text/plain"), 100, { typed: false }), { ok: true });
+});
