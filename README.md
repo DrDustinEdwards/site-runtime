@@ -8,7 +8,7 @@ servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-lo
 (`./ai-gateway`), starting a Claude Code routine (`./routine`), the check on AI-written prose with the measure of an author's voice (`./prose`), the one sign-in every site
 offers (`./sign-in`, `./sign-in-client`, `./apple-secret`), the Cloudflare Turnstile widget and its server check (`./turnstile`), the same-origin check for
 resource routes (`./origin`), the trailing-slash redirect, the gone list and the slug-rename redirect (`./url`), one structured log line and its scrubbers (`./log`), the 404 counter
-(`./not-found`) and scheduled jobs with their record and their run-now tool, `run_job` (`./cron`).
+(`./not-found`), scheduled jobs with their record, their run-now tool, `run_job`, and the Worker's `scheduled` body (`./cron`), the Worker glue for a site's security headers (`./page-headers`: set, nonce, policy, Report-Only companion, report endpoint, edge-cache nonce renewal) and the per-request bindings and nonce on React Router's context (`./context`). `./body` also reads a form or JSON to a ceiling and throws the 413.
 
 No dependencies (`./sign-in` uses the site's own `better-auth` and
 `@better-auth/passkey`, 1.7.17 or later (the security fixes of 2026-11-03 and 04), which a site that imports it installs itself; they are not declared as peers,
