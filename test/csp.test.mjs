@@ -345,6 +345,10 @@ test("extra directives are added; an empty one, one that restates a fixed direct
   });
   assert.deepEqual(policy.get("upgrade-insecure-requests"), []);
   assert.deepEqual(policy.get("worker-src"), ["'self'"]);
+  // denyUnlisted still allows the site's own manifest (a refused one is a DevTools issue), and a site's own wins.
+  assert.deepEqual(directives({ ...SINK, denyUnlisted: true }).get("manifest-src"), ["'self'"]);
+  const own = directives({ ...SINK, denyUnlisted: true, extraDirectives: ["manifest-src 'self'"] });
+  assert.deepEqual(own.get("manifest-src"), ["'self'"]);
   assert.throws(
     () => buildContentSecurityPolicy({ ...SINK, extraDirectives: [" "] }),
     /a CSP directive is empty/,
