@@ -290,11 +290,13 @@ test("the default fetch is called as a plain function, and a call that never got
   // workerd refuses a fetch called with any `this` but the global ("Illegal invocation"), which failed every call once.
   globalThis.fetch = function () {
     if (this !== undefined && this !== globalThis) throw new TypeError("Illegal invocation");
+    const message = {
+      type: "message",
+      stop_reason: "end_turn",
+      content: [{ type: "text", text: "ok" }],
+    };
     return Promise.resolve(
-      new Response(
-        JSON.stringify({ type: "message", stop_reason: "end_turn", content: [{ type: "text", text: "ok" }] }),
-        { headers: { "content-type": "application/json" } },
-      ),
+      new Response(JSON.stringify(message), { headers: { "content-type": "application/json" } }),
     );
   };
   try {
