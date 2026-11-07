@@ -53,7 +53,7 @@ test("a route's own policy and headers win, and plain http off loopback gets no 
   assert.equal(out.headers.get("Reporting-Endpoints"), null);
 });
 
-test("an immutable response comes back with the headers, and noindex marks private paths", () => {
+test("an immutable response comes back with the headers, noindex marks private paths, env and a report origin reach the policy and a route cannot loosen framing", () => {
   const { withSecurityHeaders } = make({ noindex: (path) => path.startsWith("/admin") });
   const out = withSecurityHeaders(
     Response.redirect("https://site.example.com/", 302),
@@ -106,6 +106,37 @@ test("renew: a stored page gets a fresh nonce per reader and its policy is built
     assert.equal(rewrites, 1, "a fresh render is not rewritten a second time");
   } finally {
     delete (/** @type {any} */ (globalThis).HTMLRewriter);
+  }
+  {
+    const { withSecurityHeaders } = make({
+      set: { ...set, "X-Frame-Options": "DENY" },
+      policy: ({ nonce, env }) => ({ nonce, sources: { img: [env.img] } }),
+      reportOrigin: ({ env }) => env.door,
+    });
+    const env = { img: "https://img.example.com", door: "https://door.example.com" };
+    const html = { "Content-Type": "text/html" };
+    const page = withSecurityHeaders(new Response("x", { headers: html }), req(), undefined, env);
+    assert.match(
+      page.headers.get("Content-Security-Policy") ?? "",
+      /img-src[^;]*img\.example\.com/,
+    );
+    assert.match(
+      page.headers.get("Content-Security-Policy") ?? "",
+      /report-uri https:\/\/door\.example\.com\/csp-report/,
+    );
+    assert.equal(
+      page.headers.get("Reporting-Endpoints"),
+      'csp-endpoint="https://door.example.com/csp-report"',
+    );
+    const framed = (value) =>
+      withSecurityHeaders(
+        new Response("x", { headers: { ...html, "X-Frame-Options": value } }),
+        req(),
+        undefined,
+        env,
+      ).headers.get("X-Frame-Options");
+    assert.equal(framed("SAMEORIGIN"), "SAMEORIGIN");
+    assert.equal(framed("ALLOWALL"), "DENY");
   }
 });
 
