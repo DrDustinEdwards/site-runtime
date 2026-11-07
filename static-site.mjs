@@ -7,13 +7,16 @@
  *   when the Worker has one.
  * - `/health` (`./health`), unless `health` is false: `healthResponse` with `sha` from the `DEPLOY_SHA` var, which devkit's
  *   shared deploy (worker-deploy.yml, `sha-var: DEPLOY_SHA`) sets, so its live gate can see the deploy is serving.
+ * - While the `MAINTENANCE` var is "1" or "true", every path but `/health` answers the 503 maintenance page
+ *   (`./maintenance`), so the owner turns a notice on and off with a variable, no release.
  * - The prefetch rules at `/speculation-rules.json` (`./prefetch`), unless `prefetch` is false, and the
  *   `Speculation-Rules` header on every page, so Cloudflare's generic rules (Speed Brain) are not the ones used.
  * - On a page: the preload `Link` header, which Early Hints answers with a 103 (`./preload`); `Server-Timing` for the
  *   asset read; charset=utf-8; and any header of `headers` the page's own `_headers` rules left out.
  * - A path with no file gets the site's 404 page (`notFound`, `/404` by default) with status 404 and
  *   `private, no-store`, so no browser or proxy keeps a "not found" after the page exists. A page answered to a request
- *   carrying a cookie is `private, no-store` too, as on the rendered sites (`./edge-cache` forReader).
+ *   carrying a cookie is `private, no-store` too; the 404 page's own address answers 404 as well, never a 200 a crawler
+ *   could index as a soft 404, as on the rendered sites (`./edge-cache` forReader).
  *
  * Every other file (scripts, styles, fonts, images) passes through untouched, with its `_headers` rules. In wrangler,
  * `run_worker_first` sends the Worker every page and leaves the hashed files to the asset server, such as
@@ -31,6 +34,7 @@ import { receiveCspReport } from "./csp-report.mjs";
 import { UNCACHED } from "./edge-cache.mjs";
 import { applyHeaderSet, buildSecurityHeaders, headersFile } from "./headers.mjs";
 import { healthResponse } from "./health.mjs";
+import { maintenanceOn, maintenanceResponse } from "./maintenance.mjs";
 import {
   SPECULATION_RULES_HEADER,
   SPECULATION_RULES_PATH,
@@ -45,6 +49,7 @@ import { canonicalRedirect } from "./url.mjs";
  *   ASSETS: { fetch(request: Request): Promise<Response> },
  *   CSP_REPORT_RATE_LIMIT?: { limit(options: { key: string }): Promise<{ success: boolean }> },
  *   DEPLOY_SHA?: string,
+ *   MAINTENANCE?: string,
  * }} StaticSiteEnv
  */
 
@@ -135,6 +140,7 @@ export function staticHeaders(entry, { headers = {} } = {}) {
  *   prefetch?: Parameters<typeof speculationRulesResponse>[0] | false,
  *   canonical?: Parameters<typeof canonicalRedirect>[1] | false,
  *   notFound?: string,
+ *   siteName?: string,
  *   health?: string | false,
  * }} [options]
  */
@@ -146,6 +152,7 @@ export function staticSite({
   prefetch = {},
   canonical = {},
   notFound = "/404",
+  siteName,
   health = "/health",
 } = {}) {
   const headers = site ? staticHeaders(site, { headers: extra }).set : extra;
@@ -166,6 +173,7 @@ export function staticSite({
       }
       if (health !== false && url.pathname === health)
         return applyHeaderSet(await healthResponse({ sha: env.DEPLOY_SHA }), headers);
+      if (maintenanceOn(env)) return applyHeaderSet(maintenanceResponse({ siteName }), headers);
       if (prefetch !== false && url.pathname === SPECULATION_RULES_PATH)
         return applyHeaderSet(speculationRulesResponse(prefetch, request), headers);
 
@@ -183,7 +191,12 @@ export function staticSite({
             headers: page.headers,
           });
         }
-      }
+      } else if (
+        url.pathname === notFound &&
+        response.status === 200 &&
+        (request.method === "GET" || request.method === "HEAD")
+      )
+        response = new Response(response.body, { status: 404, headers: response.headers });
       const ms = performance.now() - start;
       if (!(response.headers.get("Content-Type") ?? "").startsWith("text/html")) return response;
 
