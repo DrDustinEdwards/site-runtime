@@ -30,8 +30,22 @@ export interface CronJob {
    * runner waits for it to end before the next job starts, and its late end records no success.
    */
   holdOnTimeout?: boolean;
+  /** A backup job: one Capsid Admin's back up now runs (runJobTool's `{ backup: true }`). */
+  backup?: boolean;
   run: (signal: AbortSignal) => Promise<unknown>;
 }
+
+/** What one run came to: its own result (as JSON, cut to CRON_RESULT_MAX) on a success, the stored error on a failure. */
+export interface CronOutcome {
+  job: string;
+  status: "ok" | "skipped" | "failed";
+  ms: number;
+  result?: unknown;
+  error?: string;
+}
+
+/** The longest result a run hands back, as JSON: 4000. */
+export const CRON_RESULT_MAX: number;
 
 /**
  * Runs `jobs` in turn, each isolated and raced against its timeout (the job's `timeoutMs`, else `options.timeoutMs`,
@@ -41,10 +55,31 @@ export interface CronJob {
  * Error naming the failed jobs after the last one.
  */
 export function runJobs(
-  db: D1Like | (() => D1Like),
+  db: D1Like | (() => D1Like) | null,
   jobs: CronJob[],
   options?: { now?: () => number; timeoutMs?: number },
-): Promise<void>;
+): Promise<CronOutcome[]>;
+
+/**
+ * RUN NOW: one job by name through the same path as runJobs (its cron_runs record, its timeout). Answers the outcome,
+ * a failure included; throws only on an unknown name. Null `db` records nothing.
+ */
+export function runJobNow(
+  db: D1Like | (() => D1Like) | null,
+  jobs: CronJob[],
+  name: string,
+  options?: { now?: () => number; timeoutMs?: number },
+): Promise<CronOutcome>;
+
+/**
+ * The operator tool `run_job` (./operator): `{ job: "<name>" }` runs that job now, `{ backup: true }` every job marked
+ * backup, each through runJobNow. Answers `{ runs: CronOutcome[] }`.
+ */
+export function runJobTool(
+  db: D1Like | (() => D1Like) | null,
+  jobs: CronJob[] | (() => CronJob[]),
+  options?: { now?: () => number; timeoutMs?: number },
+): import("./operator.d.mts").OperatorTool;
 
 /** Why a job in `cron_runs` is not well, with its last success (epoch ms) or null. */
 export interface CronFinding {

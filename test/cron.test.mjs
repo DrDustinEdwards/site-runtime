@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 
-import { CRON_SKIPPED, CRON_SQL, cronCheck, cronFindings, runJobs } from "../cron.mjs";
+import { CRON_SKIPPED, CRON_SQL, cronCheck, cronFindings, runJobTool, runJobs } from "../cron.mjs";
 
 /** A D1-shaped wrapper over node:sqlite. */
 function d1() {
@@ -114,4 +114,39 @@ test("a job held on timeout is recorded failed and waited for before the next st
     await cronFindings(store, { jobs: [{ name: "money", everyMinutes: 5 }], now: new Date(t0) }),
     [{ name: "money", reason: "failed", lastOkAt: null }],
   );
+});
+
+test("run_job runs a job by name into cron_runs with its result, a failure as an outcome, and the backup jobs together", async () => {
+  const store = d1();
+  const jobs = [
+    { name: "copy", everyMinutes: 1440, run: async () => ({ verified: { ok: true } }) },
+    { name: "dump", everyMinutes: 1440, backup: true, run: async () => {} },
+    {
+      name: "files",
+      everyMinutes: 1440,
+      backup: true,
+      run: async () => {
+        throw new Error("bucket gone");
+      },
+    },
+  ];
+  const tool = runJobTool(store, () => jobs, { now: () => 1000 });
+  assert.deepEqual(await tool.run({ job: "copy" }), {
+    runs: [{ job: "copy", status: "ok", ms: 0, result: { verified: { ok: true } } }],
+  });
+  assert.equal(
+    store.db.prepare("SELECT last_ok_at FROM cron_runs WHERE name = 'copy'").get()?.last_ok_at,
+    1000,
+  );
+  const backup = /** @type {{ runs: Array<{ job: string, status: string }> }} */ (
+    await tool.run({ backup: true })
+  );
+  assert.deepEqual(
+    backup.runs.map((r) => [r.job, r.status]),
+    [
+      ["dump", "ok"],
+      ["files", "failed"],
+    ],
+  );
+  await assert.rejects(Promise.resolve(tool.run({ job: "nope" })), /Jobs: copy, dump, files/);
 });
