@@ -8,6 +8,7 @@ import {
   buildContentSecurityPolicy,
   buildPolicy,
   buildStagedPolicy,
+  cloudflareBeaconAttributes,
   generateNonce,
   renewNonce,
   reportingEndpoints,
@@ -324,6 +325,22 @@ test("cloudflareWebAnalytics lets the beacon run and report", () => {
   assert.ok(policy.get("connect-src")?.includes("'self'"));
   const without = directives(SINK);
   assert.ok(!without.get("script-src")?.some((s) => s.includes("cloudflareinsights")));
+  const manual = directives({ ...SINK, cloudflareWebAnalytics: "manual" });
+  assert.ok(
+    manual.get("script-src")?.includes("https://static.cloudflareinsights.com/beacon.min.js"),
+  );
+  assert.ok(
+    !manual.get("script-src")?.includes("https://static.cloudflareinsights.com/beacon.min.js/"),
+  );
+  assert.deepEqual(manual.get("connect-src"), ["'self'", "https://cloudflareinsights.com"]);
+  assert.throws(
+    () => buildContentSecurityPolicy({ ...SINK, cloudflareWebAnalytics: "auto" }),
+    /true, "manual"/,
+  );
+  const tag = cloudflareBeaconAttributes("82f973a0cfb6496f92a3919629cbfbd2");
+  assert.equal(tag.type, "module");
+  assert.equal(tag["data-cf-beacon"], '{"token":"82f973a0cfb6496f92a3919629cbfbd2"}');
+  assert.throws(() => cloudflareBeaconAttributes("not a token"), /32 lowercase hex/);
 });
 
 test("styleAttributesInline allows style attributes only, and only when asked", () => {

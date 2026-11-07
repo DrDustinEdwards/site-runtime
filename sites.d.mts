@@ -7,7 +7,7 @@ import type { SitePolicy } from "./csp.mjs";
 
 /** The builder options a check must accept for a site, each with the reason the site's code gives. */
 export type SiteOptIns = {
-  cloudflareWebAnalytics?: { value: boolean; reason: string };
+  cloudflareWebAnalytics?: { value: boolean | "manual"; reason: string };
   inlineScripts?: { value: "unsafe-inline"; reason: string };
   formTargets?: { value: readonly string[]; reason: string };
   framedBySameOrigin?: { value: boolean; reason: string };

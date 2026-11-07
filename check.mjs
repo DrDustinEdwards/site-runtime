@@ -142,7 +142,7 @@ function deniedFeatures(value) {
  *   site?: string,
  *   standard?: Readonly<Record<string, string>>,
  *   csp?: boolean,
- *   cloudflareWebAnalytics?: boolean,
+ *   cloudflareWebAnalytics?: boolean | "manual",
  *   inlineScripts?: "unsafe-inline",
  *   formTargets?: readonly string[],
  *   framedBySameOrigin?: boolean,
@@ -159,7 +159,9 @@ function deniedFeatures(value) {
  *   `standard`: the floor without a registry entry (default STANDARD_SECURITY_HEADERS). `csp`: grade the policy too;
  *   false for a response that carries none by design, such as a feed or an image.
  *   `cloudflareWebAnalytics`: the site is Cloudflare-proxied with Web Analytics on, so the policy must let the injected
- *   beacon run (its script path prefix) and report (connect-src with the site itself).
+ *   beacon run (its script path prefix) and report (connect-src with the site itself). `"manual"`: the site is not
+ *   proxied and carries the beacon tag itself, so script-src names the bare file and connect-src names
+ *   https://cloudflareinsights.com, where that beacon reports.
  *   `inlineScripts`: the site built its policy with the same opt-in (buildContentSecurityPolicy), so `'unsafe-inline'`
  *   is accepted on script-src alone; script-src-elem, script-src-attr and worker-src are still refused it.
  *   `formTargets`: the off-site form targets the site passed the builder, accepted after 'self' on form-action.
@@ -190,7 +192,9 @@ export function checkSecurityHeaders(headers, options = {}) {
   const {
     standard = entry ? buildSecurityHeaders({ site: entry }) : STANDARD_SECURITY_HEADERS,
     csp = true,
-    cloudflareWebAnalytics = Boolean(optIn("cloudflareWebAnalytics")),
+    cloudflareWebAnalytics = /** @type {boolean | "manual"} */ (
+      optIn("cloudflareWebAnalytics") ?? false
+    ),
     inlineScripts = /** @type {"unsafe-inline" | undefined} */ (optIn("inlineScripts")),
     formTargets = /** @type {readonly string[]} */ (optIn("formTargets") ?? []),
     framedBySameOrigin = declared("framedBySameOrigin"),
@@ -636,7 +640,24 @@ export function checkSecurityHeaders(headers, options = {}) {
         forms.slice(1).every((target) => formTargets.includes(target))),
     `got ${forms ? forms.join(" ") : "ABSENT"}`,
   );
-  if (cloudflareWebAnalytics) {
+  if (cloudflareWebAnalytics === "manual") {
+    const { script, connect: reports } = CLOUDFLARE_WEB_ANALYTICS.manual;
+    const missingScript = script.filter((source) => !(scripts ?? []).includes(source));
+    const connect = policy.get("connect-src") ?? policy.get("default-src") ?? [];
+    const missingConnect = reports.filter((source) => !connect.includes(source));
+    result(
+      "C15",
+      "the policy lets the manual Cloudflare Web Analytics beacon run: its script file",
+      missingScript.length === 0,
+      `script-src lacks ${missingScript.join(" and ")}`,
+    );
+    result(
+      "C15",
+      "the policy lets the manual beacon report: connect-src includes cloudflareinsights.com",
+      missingConnect.length === 0,
+      `connect-src is ${connect.join(" ") || "ABSENT"}, lacking ${missingConnect.join(" and ")}`,
+    );
+  } else if (cloudflareWebAnalytics) {
     const missingScript = CLOUDFLARE_WEB_ANALYTICS.script.filter(
       (source) => !(scripts ?? []).includes(source),
     );
