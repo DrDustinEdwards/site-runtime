@@ -368,7 +368,6 @@ export const germomics = {
       "/fonts/*": { "Cache-Control": "public, max-age=86400" },
     },
   },
-  signIn: { mcp: ["https://admin-mcp.germomics.com/mcp"] },
 };
 
 // workers/security-headers.ts, workers/header-set.ts
@@ -627,14 +626,6 @@ export const foxingMcp = {
   optIns: doorOptIns,
 };
 
-// germomics mcp/src/index.ts: Germomics' admin MCP, the standard exactly.
-/** @type {SiteEntry} */
-export const germomicsMcp = {
-  id: "germomics-mcp",
-  origin: "https://admin-mcp.germomics.com",
-  optIns: doorOptIns,
-};
-
 // scripts/security-headers.ts, wrangler.jsonc
 /** @type {SiteEntry} */
 export const capsomer = {
@@ -752,7 +743,6 @@ export const SITES = /* @__PURE__ */ Object.freeze([
   foxhoundMcp,
   dustinedwardsMcp,
   foxingMcp,
-  germomicsMcp,
   capsomer,
   prelum,
 ]);
