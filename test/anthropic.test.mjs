@@ -273,7 +273,7 @@ test("the deprecations page's table, and what the daily check flags from it", ()
     notBefore: null,
   });
   const problems = deprecationProblems(
-    ["claude-haiku-4-5-20251001", MODEL_IDS.standard, MODEL_IDS.deep],
+    ["claude-haiku-4-5-20251001", MODEL_IDS.standard, "claude-opus-4-8"],
     table,
     Date.parse("2026-11-02"),
   );

@@ -19,7 +19,9 @@ export type ModelEntry = Readonly<{
 export const MODELS: Readonly<
   Record<
     | "claude-sonnet-5"
+    | "claude-opus-5-5"
     | "claude-opus-4-8"
+    | "claude-haiku-5-5"
     | "claude-haiku-4-5-20251001"
     | "claude-sonnet-4-20250514",
     ModelEntry
@@ -31,7 +33,7 @@ export const MODELS_CHECKED: string;
 export const MODEL_IDS: Readonly<{
   fast: "claude-haiku-5-5";
   standard: "claude-sonnet-5";
-  deep: "claude-opus-4-8";
+  deep: "claude-opus-5-5";
 }>;
 /** The deprecations page as Markdown. */
 export const DEPRECATIONS_URL: string;

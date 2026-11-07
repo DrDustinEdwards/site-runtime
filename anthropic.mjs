@@ -75,6 +75,13 @@ export const MODELS = Object.freeze({
     notBefore: "2027-06-30",
     cacheMin: 1024,
   }),
+  "claude-opus-5-5": Object.freeze({
+    state: "active",
+    deprecated: null,
+    retires: null,
+    notBefore: "2027-09-22",
+    cacheMin: 512,
+  }),
   "claude-opus-4-8": Object.freeze({
     state: "active",
     deprecated: null,
@@ -114,7 +121,7 @@ export const MODELS_CHECKED = "2026-11-07";
 export const MODEL_IDS = Object.freeze({
   fast: "claude-haiku-5-5",
   standard: "claude-sonnet-5",
-  deep: "claude-opus-4-8",
+  deep: "claude-opus-5-5",
 });
 
 /** The deprecations page as Markdown, which the daily check reads (`parseDeprecations`). */
