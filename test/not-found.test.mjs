@@ -4,6 +4,8 @@ import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 
 import {
+  NOT_FOUND_DAILY_ROWS,
+  NOT_FOUND_OVERFLOW,
   NOT_FOUND_SQL,
   NOT_FOUND_UPGRADE_SQL,
   REDIRECTS_SQL,
@@ -14,6 +16,7 @@ import {
   notFoundKey,
   notFoundReport,
   pruneNotFound,
+  recordNotFound,
   redirectEntry,
   removeRedirect,
   tableRedirect,
@@ -61,6 +64,24 @@ test("a 404 to a GET adds to its path's row for the day; the query, a POST and a
   );
   assert.equal(rows[0]?.day, notFoundKey(new URL("https://example.com/"), new Date()).day);
   assert.equal(notFoundKey(new URL("https://example.com/_.data")).path, "/");
+  // The day's cap: fill it with made-up paths; a new path folds into "(overflow)", a counted one still adds.
+  store.db
+    .prepare(
+      `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < ?)
+       INSERT INTO page_404_daily (id, day, path, hit_count) SELECT 'f' || i, ?, '/fill-' || i, 1 FROM n`,
+    )
+    .run(NOT_FOUND_DAILY_ROWS - 1, rows[0]?.day);
+  for (const path of ["/new-a", "/new-b", "/gone"])
+    await recordNotFound(store, new URL(`https://example.com${path}`));
+  const after = Object.fromEntries(
+    store.db
+      .prepare(
+        "SELECT path, hit_count FROM page_404_daily WHERE path IN ('/gone', '/new-a', '/new-b', ?)",
+      )
+      .all(NOT_FOUND_OVERFLOW)
+      .map((r) => [r.path, r.hit_count]),
+  );
+  assert.deepEqual(after, { "/gone": 3, [NOT_FOUND_OVERFLOW]: 2 });
 });
 
 test("the upgrade takes a first-shape table to one row per referring host, probes kept apart in the report", async () => {

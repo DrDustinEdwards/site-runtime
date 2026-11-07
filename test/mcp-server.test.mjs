@@ -105,6 +105,21 @@ test("callApi: unconfigured, unreachable and malformed are ApiLegErrors; a refus
     await kind(callApi({ SITE: site(() => Response.json({})), TOKEN: token }, leg, "/api")),
     /SITE_ORIGIN is unset/,
   );
+  for (const path of ["//evil.example.net/x", "https://evil.example.net/x"])
+    assert.match(
+      await kind(
+        callApi(
+          {
+            SITE: site(() => Response.json({})),
+            SITE_ORIGIN: "https://site.example.com",
+            TOKEN: token,
+          },
+          leg,
+          path,
+        ),
+      ),
+      /leaves The operator API's origin/,
+    );
   assert.equal(sent.length, 0);
   const env = {
     SITE: site(() => new Response("<html>")),

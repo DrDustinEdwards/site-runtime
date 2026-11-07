@@ -54,11 +54,12 @@
  *   listing sessions need a sign-in in the last FRESH_SECONDS (Better Auth's freshAge, which defaults to a day, and for
  *   passkey delete and email change, which Better Auth leaves out, a before hook here). Listing and renaming passkeys
  *   do not. A site's own risky routes call requireFreshSession (`./sign-in-account.mjs`).
- * - SESSIONS END SESSION_SECONDS (30 days) after their sign-in, used or not: Better Auth's sliding refresh is off.
+ * - SESSIONS END SESSION_SECONDS (30 days) after their sign-in, used or not: Better Auth's sliding refresh is off. A
+ *   session also ends after SESSION_IDLE_SECONDS (7 days) unused (`SESSION_IDLE`): its `updatedAt` moves on every read
+ *   through /get-session, at most every SESSION_TOUCH_SECONDS, and a request with an idle session's cookie deletes it.
  * - SESSION DETAILS, when the site asks (`sessionDetails: true`, with SESSION_DETAILS_SQL's columns): each session keeps
  *   its coarse place (`coarseLocation` of request.cf) and a device id from a long-lived signed cookie (DEVICE_COOKIE),
- *   both set when it is made, and its `updatedAt` and place move when it is read through /get-session, at most every
- *   SESSION_TOUCH_SECONDS, after the answer. So the sessions list says where and when each was last used, and the
+ *   both set when it is made, and its place moves with the `updatedAt` that every site's sessions have. So the sessions list says where and when each was last used, and the
  *   new-device notice knows a second browser of the same make from the first.
  * - SIGN-OUT CLEARS THE BROWSER: Better Auth's /sign-out answers with LOGOUT_HEADERS (`./headers`, Clear-Site-Data).
  * - EVERY AUTH EVENT IS LOGGED, AND EVERY CHANGE TO HOW A PERSON SIGNS IN IS TOLD TO THEM (`./sign-in-account.mjs`):
@@ -80,6 +81,7 @@
 import { passkey } from "@better-auth/passkey";
 import { tryGetCurrentAuthEndpointContext } from "@better-auth/core/context";
 import { APIError, createAuthMiddleware, getOAuthState, getSessionFromCtx } from "better-auth/api";
+import { deleteSessionCookie } from "better-auth/cookies";
 import { captcha, emailOTP, magicLink } from "better-auth/plugins";
 
 import { appleClientSecret } from "./apple-secret.mjs";
@@ -166,6 +168,14 @@ export const APP_CODE_RATE_LIMIT = Object.freeze({ window: 60, max: 3 });
  * own session is the admin's shorter limit.
  */
 export const SESSION_SECONDS = 30 * 24 * 60 * 60;
+
+/**
+ * How long a session may sit unused before it ends: 7 days. OWASP ASVS 5 v7.3.1 (L2) asks for an inactivity timeout set
+ * by the application's risk; NIST SP 800-63B-4 sets none at AAL1 (these sign-ins are email link or passkey, one factor
+ * each) and an hour at AAL2, which Admin gets from Cloudflare Access (`ADMIN_IDLE_SECONDS`). A week keeps a reader or
+ * merchant signed in across a holiday and ends a forgotten browser well before the 30-day cap.
+ */
+export const SESSION_IDLE_SECONDS = 7 * 24 * 60 * 60;
 
 /** Sign-in mails per address: five an hour, Foxhound's limit (the link request, and the app's code request). */
 export const LINK_EMAIL_RULES = Object.freeze([
@@ -322,7 +332,7 @@ export async function signInOptions(
     SIGN_OUT_CLEARS,
     accountEvents(siteName, sendSecurityNotice, eventsDb ?? null, sessionDetails),
   ];
-  if (sessionDetails) plugins.push(SESSION_TOUCH);
+  plugins.push(sessionTouchPlugin(sessionDetails), SESSION_IDLE);
   if (turnstileSiteKey(env) && env.TURNSTILE_SECRET_KEY) {
     plugins.push(
       captcha({
@@ -412,33 +422,73 @@ const SESSION_FIELDS = Object.freeze({
 });
 
 /**
- * With `sessionDetails`, a session read through /get-session (the browser's useSession, or the site's
- * `auth.api.getSession`) moves its `updatedAt`, and fills its place, at most every SESSION_TOUCH_SECONDS (`sessionTouch`),
- * after the answer through Better Auth's `runInBackgroundOrAwait`. The place is the request's `cf`, so a site's own
- * `auth.api.getSession` passes the request as well, through `sessionLookup(request)`: `getSession(sessionLookup(request))`.
- * A failed write is logged (`session_touch_failed`) and never fails the read.
+ * A session read through /get-session (the browser's useSession, or the site's `auth.api.getSession`) moves its
+ * `updatedAt` at most every SESSION_TOUCH_SECONDS (`sessionTouch`), after the answer through Better Auth's
+ * `runInBackgroundOrAwait`; that is what SESSION_IDLE counts from. With `sessionDetails` it also fills the session's
+ * place from the request's `cf`, so a site's own `auth.api.getSession` passes the request as well, through
+ * `sessionLookup(request)`: `getSession(sessionLookup(request))`. A failed write is logged (`session_touch_failed`) and
+ * never fails the read.
+ * @param {boolean} details
  */
-const SESSION_TOUCH = {
-  id: "sign-in-session-touch",
+function sessionTouchPlugin(details) {
+  return {
+    id: "sign-in-session-touch",
+    hooks: {
+      after: [
+        {
+          /** @param {{ path?: string }} ctx */
+          matcher: (ctx) => ctx.path === "/get-session",
+          handler: createAuthMiddleware(async (ctx) => {
+            const session =
+              /** @type {{ session?: { token?: string, updatedAt?: Date, createdAt?: Date, location?: unknown } } | null} */ (
+                ctx.context.returned
+              )?.session;
+            if (!session?.token) return;
+            const update = sessionTouch(
+              session,
+              details ? coarseLocation(/** @type {any} */ (ctx.request)) : null,
+            );
+            if (!update) return;
+            const writing = ctx.context.internalAdapter.updateSession(session.token, update).then(
+              () => undefined,
+              (/** @type {unknown} */ error) =>
+                logEvent("session_touch_failed", { error }, { level: "error" }),
+            );
+            await ctx.context.runInBackgroundOrAwait(writing);
+          }),
+        },
+      ],
+    },
+  };
+}
+
+/**
+ * Ends a session unused for SESSION_IDLE_SECONDS (ASVS 5 v7.3.1): any request carrying its cookie (but a sign-out, which
+ * is the end it wants) finds it by Better Auth's own session read, deletes it and clears the cookie; /get-session then
+ * answers null, and any other route 401s with SESSION_IDLE. Runs before the route, so every route is covered, not only
+ * the page's session read.
+ */
+const SESSION_IDLE = {
+  id: "sign-in-session-idle",
   hooks: {
-    after: [
+    before: [
       {
-        /** @param {{ path?: string }} ctx */
-        matcher: (ctx) => ctx.path === "/get-session",
+        /** @param {{ path?: string, headers?: Headers }} ctx */
+        matcher: (ctx) =>
+          ctx.path !== "/sign-out" && /session_token=/.test(ctx.headers?.get("cookie") ?? ""),
         handler: createAuthMiddleware(async (ctx) => {
-          const session =
-            /** @type {{ session?: { token?: string, updatedAt?: Date, createdAt?: Date, location?: unknown } } | null} */ (
-              ctx.context.returned
-            )?.session;
-          if (!session?.token) return;
-          const update = sessionTouch(session, coarseLocation(/** @type {any} */ (ctx.request)));
-          if (!update) return;
-          const writing = ctx.context.internalAdapter.updateSession(session.token, update).then(
-            () => undefined,
-            (/** @type {unknown} */ error) =>
-              logEvent("session_touch_failed", { error }, { level: "error" }),
-          );
-          await ctx.context.runInBackgroundOrAwait(writing);
+          const found = await getSessionFromCtx(ctx);
+          if (!found?.session) return;
+          const last = new Date(found.session.updatedAt ?? found.session.createdAt).getTime();
+          if (!(Date.now() - last > SESSION_IDLE_SECONDS * 1000)) return;
+          await ctx.context.internalAdapter.deleteSession(found.session.token);
+          ctx.context.session = null;
+          deleteSessionCookie(ctx);
+          logEvent("session_idle_ended", {
+            session_age_days: Math.floor((Date.now() - last) / 86_400_000),
+          });
+          if (ctx.path === "/get-session") return ctx.json(null);
+          throw APIError.from("UNAUTHORIZED", { message: "Session idle", code: "SESSION_IDLE" });
         }),
       },
     ],

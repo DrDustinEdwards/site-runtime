@@ -208,6 +208,13 @@ export async function callApi(env, leg, path, init = {}) {
     if (typeof env[name] !== "string" || !String(env[name]).trim())
       throw unconfigured(`${name} is unset`);
 
+  // A path is the site's own: one that names another origin ("//host", "https://host") would carry the bearer there.
+  const target = new URL(path, String(env.SITE_ORIGIN));
+  if (target.origin !== new URL(String(env.SITE_ORIGIN)).origin)
+    throw new ApiLegError(
+      `The path ${path} leaves ${leg.api}'s origin, so nothing was sent.`,
+      "unconfigured",
+    );
   const headers = new Headers({
     accept: "application/json",
     "user-agent": leg.userAgent,
@@ -227,7 +234,7 @@ export async function callApi(env, leg, path, init = {}) {
     response =
       await /** @type {{ fetch: (url: string, init: RequestInit) => Promise<Response> }} */ (
         fetcher
-      ).fetch(new URL(path, String(env.SITE_ORIGIN)).toString(), {
+      ).fetch(target.toString(), {
         method: init.method ?? (init.json === undefined ? "GET" : "POST"),
         headers,
         body: init.json === undefined ? undefined : JSON.stringify(init.json),

@@ -5,6 +5,10 @@
 
 /** The longest path stored: 512. */
 export const NOT_FOUND_PATH_MAX: number;
+/** The most distinct rows one UTC day holds: 2000; later new keys count on the overflow row. */
+export const NOT_FOUND_DAILY_ROWS: number;
+/** The path of the row that counts the 404s past the day's cap: "(overflow)". */
+export const NOT_FOUND_OVERFLOW: "(overflow)";
 /** "page_404_daily". */
 export const NOT_FOUND_TABLE: "page_404_daily";
 /**
