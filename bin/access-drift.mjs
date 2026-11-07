@@ -8,7 +8,7 @@
 //
 // The site's list comes from the site itself (--admins-url, its adminListResponse route behind Access, read with an
 // Access service token's id and secret): salted hashes, so no copy of the list is kept anywhere else. For a run on your
-// own machine, ADMIN_EMAILS or --admins-file (one address per line or comma-separated, `#` comments) stand in for it.
+// own machine, ADMIN_EMAIL with CO_OWNER_EMAILS or --admins-file (one address per line or comma-separated, `#` comments) stand in for it.
 // The token needs Access: Apps and Policies Read (and Zero Trust Read when a policy uses an email list); it and the
 // service token's secret are sent only where they belong and never printed. Each difference is a GitHub annotation;
 // exit 0 when they match, 1 on drift, 2 when the check cannot run. Addresses print masked (d***@example.com), because a
@@ -17,6 +17,7 @@
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 
+import { adminEmails } from "../access.mjs";
 import {
   accessAllowed,
   accessDrift,
@@ -26,7 +27,7 @@ import {
 } from "../access-drift.mjs";
 
 const usage =
-  'usage: CLOUDFLARE_API_TOKEN=... site-runtime-access-drift --account <id> --app "<name>" (--admins-url <url> with ACCESS_CLIENT_ID and ACCESS_CLIENT_SECRET | ADMIN_EMAILS=... | --admins-file <path>) [--show-addresses]';
+  'usage: CLOUDFLARE_API_TOKEN=... site-runtime-access-drift --account <id> --app "<name>" (--admins-url <url> with ACCESS_CLIENT_ID and ACCESS_CLIENT_SECRET | ADMIN_EMAIL=... [CO_OWNER_EMAILS=...] | --admins-file <path>) [--show-addresses]';
 /** @param {string} message @returns {never} */
 const fail = (message) => {
   console.error(`site-runtime-access-drift: ${message}\n${usage}`);
@@ -81,11 +82,13 @@ try {
     site = await accessDriftHashed(found, list);
     admins = site.admins;
   } else {
-    let text = process.env.ADMIN_EMAILS ?? "";
+    let text = adminEmails(process.env).join(",");
     if (values?.["admins-file"]) text = readFileSync(values["admins-file"], "utf8");
     const list = parseAdminList(text);
     if (list.length === 0)
-      fail("no admin list: pass --admins-url, set ADMIN_EMAILS or pass --admins-file");
+      fail(
+        "no admin list: pass --admins-url, set ADMIN_EMAIL (and CO_OWNER_EMAILS) or pass --admins-file",
+      );
     const drift = accessDrift(
       await accessAllowed({
         accountId: String(accountId),

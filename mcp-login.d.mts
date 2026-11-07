@@ -67,8 +67,11 @@ export const CONSENT_STYLE: string;
 export function loginHandler<E extends LoginEnv>(
   options: LoginOptions<E>,
 ): { fetch(request: Request, env: E): Promise<Response> };
-/** Whether `user.email` is ADMIN_EMAIL, compared without case. Unset admits nobody. */
-export function isAdminUser(env: { ADMIN_EMAIL?: string }, user: { email?: unknown }): boolean;
+/** Whether `user.email` is ADMIN_EMAIL or a CO_OWNER_EMAILS entry, compared without case. Unset ADMIN_EMAIL admits nobody. */
+export function isAdminUser(
+  env: { ADMIN_EMAIL?: string; CO_OWNER_EMAILS?: string },
+  user: { email?: unknown },
+): boolean;
 /** The registration callbacks that are the same for every user: Grok's two, ChatGPT's fixed one, Gemini Enterprise's. */
 export const DCR_CALLBACKS: readonly string[];
 /** The https redirect URIs a registered client may name, from DCR_REDIRECT_URIS (commas or spaces). */

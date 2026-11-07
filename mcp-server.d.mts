@@ -154,7 +154,7 @@ export function toolsForGrant<T extends { scope?: unknown }>(
 ): T[];
 /** Null when the call may proceed, else the refusal to show the caller. A null or unknown scope is refused. */
 export function authorizeCall(
-  env: { ADMIN_EMAIL?: string },
+  env: { ADMIN_EMAIL?: string; CO_OWNER_EMAILS?: string },
   caller: McpCaller | undefined,
   scope: string | null | undefined,
   server: { site: string; scopes: { read: string; write: string } },
@@ -177,7 +177,7 @@ export type ToolText = { isError?: boolean; content: Array<{ type: "text"; text:
  * left is logged `canceled`.
  */
 export function invokeTool<O extends ToolText>(
-  env: { ADMIN_EMAIL?: string } & Partial<AuditEnv>,
+  env: { ADMIN_EMAIL?: string; CO_OWNER_EMAILS?: string } & Partial<AuditEnv>,
   server: McpServerInfo,
   call: {
     caller: McpCaller | undefined;
@@ -209,7 +209,7 @@ export function registerTools<T extends { name: string; scope?: unknown }>(
   mcp: { registerTool(name: string, config: never, callback: never): unknown },
   tools: readonly T[],
   options: {
-    env: { ADMIN_EMAIL?: string } & Partial<AuditEnv>;
+    env: { ADMIN_EMAIL?: string; CO_OWNER_EMAILS?: string } & Partial<AuditEnv>;
     server: McpServerInfo;
     caller: McpCaller | undefined;
     icons?: readonly McpIcon[];

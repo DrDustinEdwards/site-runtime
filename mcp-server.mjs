@@ -450,7 +450,7 @@ export function toolsForGrant(tools, held, scopes) {
 /**
  * Null when the call may proceed, or the refusal to show the caller. A tool with no declared scope never runs. A
  * `person` is one the server's door already verified (a server with several people), so only the grant's scopes decide.
- * @param {{ ADMIN_EMAIL?: string }} env
+ * @param {{ ADMIN_EMAIL?: string, CO_OWNER_EMAILS?: string }} env
  * @param {import("./mcp-server.d.mts").McpCaller | undefined} caller
  * @param {string | null | undefined} scope
  * @param {{ site: string, scopes: { read: string, write: string } }} server
@@ -531,7 +531,7 @@ export function toolScopeChallenge(env, server, tool) {
  * signal to pass on (`callApi`'s `signal`, or a check between two writes), and a call that ran on after the client left
  * is logged `canceled`.
  * @template {{ isError?: boolean, content: Array<{ type: "text", text: string }> }} O
- * @param {{ ADMIN_EMAIL?: string } & Partial<import("./audit-log.d.mts").AuditEnv>} env
+ * @param {{ ADMIN_EMAIL?: string, CO_OWNER_EMAILS?: string } & Partial<import("./audit-log.d.mts").AuditEnv>} env
  * @param {import("./mcp-server.d.mts").McpServerInfo} server
  * @param {{ caller: import("./mcp-server.d.mts").McpCaller | undefined, tool: { name: string, scope?: unknown }, args: Record<string, unknown>, meta?: Record<string, unknown>, signal?: AbortSignal, run: (signal?: AbortSignal) => Promise<O> }} call
  * @returns {Promise<O | { isError: true, content: Array<{ type: "text", text: string }> }>}
@@ -619,7 +619,7 @@ export async function invokeTool(env, server, { caller, tool, args, meta, signal
  * @param {{ registerTool: (name: string, config: any, callback: (args: any, ctx: any) => unknown) => unknown }} mcp
  * @param {readonly T[]} tools
  * @param {{
- *   env: { ADMIN_EMAIL?: string } & Partial<import("./audit-log.d.mts").AuditEnv>,
+ *   env: { ADMIN_EMAIL?: string, CO_OWNER_EMAILS?: string } & Partial<import("./audit-log.d.mts").AuditEnv>,
  *   server: import("./mcp-server.d.mts").McpServerInfo,
  *   caller: import("./mcp-server.d.mts").McpCaller | undefined,
  *   icons?: ReadonlyArray<{ src: string, mimeType?: string, sizes?: string[] }>,

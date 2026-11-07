@@ -1,6 +1,6 @@
 /**
  * Access drift (I2): the addresses a Cloudflare Access application lets in, read from its policies through the
- * Cloudflare API, against the admins the site itself holds (`ADMIN_EMAILS`), so a person removed from one and not the
+ * Cloudflare API, against the admins the site itself holds (`ADMIN_EMAIL` and `CO_OWNER_EMAILS`), so a person removed from one and not the
  * other is found. `bin/access-drift.mjs` runs it in a scheduled CI job.
  *
  * What an Allow policy lets in is the union of its include rules, less its exclude rules: an `email` rule is one
@@ -36,7 +36,7 @@ export const ADMIN_LIST_PATH = "/admin/access-drift";
 const normal = (email) => email.trim().toLowerCase();
 
 /**
- * The site's admin list from `ADMIN_EMAILS` (comma-separated) or a file (one address per line or comma-separated,
+ * The site's admin list from a roster (`ADMIN_EMAIL`, `CO_OWNER_EMAILS`) or a file (one address per line or comma-separated,
  * `#` starts a comment), lower-cased, blanks dropped.
  * @param {string} text
  * @returns {string[]}

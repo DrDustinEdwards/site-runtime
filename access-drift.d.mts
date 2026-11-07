@@ -7,7 +7,7 @@
 export type Allowed = { emails: Set<string>; open: string[] };
 export type Drift = { onlyInAccess: string[]; onlyInApp: string[]; open: string[] };
 
-/** `ADMIN_EMAILS` (comma-separated) or a file's text (lines or commas, `#` comments), lower-cased and deduplicated. */
+/** `ADMIN_EMAIL` plus `CO_OWNER_EMAILS` (the roster) or a file's text (lines or commas, `#` comments), lower-cased and deduplicated. */
 export function parseAdminList(text: string): string[];
 /** Reads the application named `appName` and its policies, groups and email lists through the Cloudflare API. */
 export function accessAllowed(options: {

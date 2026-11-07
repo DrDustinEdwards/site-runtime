@@ -18,6 +18,9 @@ import {
   accessKeys,
   accessToken,
   adminEmails,
+  adminRoster,
+  isAdminEmail,
+  isMainAdmin,
   verifyAccessRequest,
 } from "../access.mjs";
 import { base64url } from "../encoding.mjs";
@@ -302,7 +305,8 @@ describe("accessAdmin", () => {
   const env = {
     ACCESS_TEAM_DOMAIN: TEAM,
     ACCESS_AUD: AUD,
-    ADMIN_EMAIL: " Admin@Example.com, second@example.com",
+    ADMIN_EMAIL: " Admin@Example.com ",
+    CO_OWNER_EMAILS: " Second@example.com,,",
   };
   test("passes a listed email in any case, and nobody else", async () => {
     const token = await sign(claims({ email: "ADMIN@example.com" }));
@@ -324,10 +328,23 @@ describe("accessAdmin", () => {
       ),
       null,
     );
+    // Unset ADMIN_EMAIL closes the site to co-owners too; ADMIN_EMAILS is not a setting.
+    assert.deepEqual(adminEmails({ CO_OWNER_EMAILS: "b@example.com" }), []);
+    assert.deepEqual(adminEmails({ ADMIN_EMAILS: "a@example.com" }), []);
     assert.deepEqual(
-      adminEmails({ ADMIN_EMAILS: "A@example.com,,b@example.com ", ADMIN_EMAIL: "c@example.com" }),
-      ["a@example.com", "b@example.com"],
+      adminRoster({
+        ADMIN_EMAIL: "A@example.com",
+        CO_OWNER_EMAILS: "b@example.com, a@example.com",
+      }),
+      {
+        admin: "a@example.com",
+        coOwners: ["b@example.com"],
+        all: ["a@example.com", "b@example.com"],
+      },
     );
+    assert.equal(isMainAdmin(env, "ADMIN@example.com"), true);
+    assert.equal(isMainAdmin(env, "second@example.com"), false);
+    assert.equal(isAdminEmail(env, "second@example.com"), true);
   });
 
   test("PLANT: the development bypass opens localhost only, and keys that cannot be fetched refuse", async () => {
