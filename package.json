@@ -366,7 +366,7 @@
     "@better-auth/passkey": "1.7.17",
     "@cloudflare/workers-oauth-provider": "1.2.4",
     "@cloudflare/workers-types": "5.20261030.1",
-    "@dustinedwards/devkit": "github:DrDustinEdwards/devkit#v0.26.3",
+    "@dustinedwards/devkit": "github:DrDustinEdwards/devkit#v0.26.4",
     "@types/node": "24.19.2",
     "better-auth": "1.7.17",
     "oxfmt": "0.77.0",

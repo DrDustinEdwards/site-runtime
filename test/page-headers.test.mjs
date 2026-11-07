@@ -66,3 +66,31 @@ test("an immutable response comes back with the headers, and noindex marks priva
 test("a site must say what it stages", () => {
   assert.throws(() => pageSecurity({ set, policy: () => ({}) }), /stages/);
 });
+
+test("renew: a stored page gets a fresh nonce per reader and its policy is built again for it", () => {
+  // renewNonce rewrites the body with HTMLRewriter, which only a Workers runtime has; the headers are what is checked.
+  /** @type {any} */ (globalThis).HTMLRewriter = class {
+    on() {
+      return this;
+    }
+    transform(/** @type {Response} */ response) {
+      return response;
+    }
+  };
+  try {
+    const { withSecurityHeaders } = make({ renew: true });
+    const stored = new Response("<p>x</p>", {
+      headers: {
+        "Content-Type": "text/html",
+        "Content-Security-Policy": "script-src 'nonce-STALE' 'self'",
+      },
+    });
+    const out = withSecurityHeaders(stored, req());
+    const policy = out.headers.get("Content-Security-Policy") ?? "";
+    assert.ok(!policy.includes("STALE"));
+    assert.match(policy, /'nonce-[^']+'/);
+    assert.ok(policy.includes("report-uri"), "the policy is built again, not just renewed");
+  } finally {
+    delete (/** @type {any} */ (globalThis).HTMLRewriter);
+  }
+});
