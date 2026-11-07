@@ -84,7 +84,7 @@ test("routeNamer names the most specific React Router pattern, a .data fetch as 
   assert.equal(at("/"), "/");
 });
 
-test("withRequestLog names the route, and a refused input also writes input_validation_fail", async (t) => {
+test("withRequestLog names the route and a refused input also writes input_validation_fail; handleServerError skips a route 404", async (t) => {
   /** @type {Record<string, unknown>[]} */
   const lines = [];
   for (const level of ["log", "warn", "error"])
@@ -106,26 +106,15 @@ test("withRequestLog names the route, and a refused input also writes input_vali
       { event: "request", route: "/ok", status: 200 },
     ],
   );
-});
 
-test("handleServerError skips a route 404 and logs any other error with its request", () => {
+  // A route 404 (RR's no-route-match) is not logged; any other error is one scrubbed server_error line.
+  lines.length = 0;
   const request = new Request("https://example.com/blog/robots.txt?token=abc");
-  const lines = [];
-  const original = console.error;
-  console.error = (line) => lines.push(line);
-  try {
-    handleServerError(
-      { status: 404, statusText: "Not Found", error: new Error("No route matches URL") },
-      { request },
-    );
-    assert.equal(lines.length, 0);
-    handleServerError(new Error("boom"), { request });
-    assert.equal(lines.length, 1);
-    const line = JSON.parse(lines[0]);
-    assert.equal(line.event, "server_error");
-    assert.equal(line.path, "/blog/robots.txt");
-    assert.equal(line.error, "Error: boom");
-  } finally {
-    console.error = original;
-  }
+  handleServerError({ status: 404, error: new Error("No route matches URL") }, { request });
+  assert.equal(lines.length, 0);
+  handleServerError(new Error("boom"), { request });
+  assert.deepEqual(
+    lines.map(({ event, path, error }) => ({ event, path, error })),
+    [{ event: "server_error", path: "/blog/robots.txt", error: "Error: boom" }],
+  );
 });
