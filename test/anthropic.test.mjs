@@ -288,7 +288,7 @@ test("the deprecations page's table, and what the daily check flags from it", ()
 test("the default fetch is called as a plain function, and a call that never got an answer says why", async () => {
   const real = globalThis.fetch;
   // workerd refuses a fetch called with any `this` but the global ("Illegal invocation"), which failed every call once.
-  globalThis.fetch = function (url) {
+  globalThis.fetch = function () {
     if (this !== undefined && this !== globalThis) throw new TypeError("Illegal invocation");
     return Promise.resolve(
       new Response(
