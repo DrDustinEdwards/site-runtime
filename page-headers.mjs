@@ -103,13 +103,12 @@ export function pageSecurity({
           reportTo: group,
           ...site,
         }).value;
-        if (staged) {
-          const beside = {
-            reportUri: reportPath,
-            reportTo: group,
-            ...policy({ nonce, request, url, staged: true }),
-          };
-          const companion = buildStagedPolicy(beside, staged);
+        const next = staged ? policy({ nonce, request, url, staged: true }) : undefined;
+        if (staged && next && typeof next !== "string") {
+          const companion = buildStagedPolicy(
+            { reportUri: reportPath, reportTo: group, ...next },
+            staged,
+          );
           extra[companion.name] = companion.value;
         }
       }
