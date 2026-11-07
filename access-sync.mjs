@@ -60,38 +60,38 @@ export async function postAccessSync({
   const gone = removed
     .map((email) => email.toLowerCase())
     .filter((email) => !lower.includes(email));
-  let response;
   try {
-    response = await fetcher(`${origin.replace(/\/+$/, "")}/ops/access-sync`, {
+    const response = await fetcher(`${origin.replace(/\/+$/, "")}/ops/access-sync`, {
       method: "POST",
       headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
       body: JSON.stringify({ namespace, members: lower, removed: gone }),
       signal: AbortSignal.timeout(timeoutMs),
     });
+    if (!response.ok) return { ok: false, refusal: await refusalOf(response) };
+    const text = await response.text();
+    /** @type {{ ok?: unknown, added?: unknown, dropped?: unknown } | null} */
+    let result = null;
+    try {
+      result = JSON.parse(text);
+    } catch {
+      result = null;
+    }
+    if (result?.ok !== true) {
+      return {
+        ok: false,
+        refusal: `Capsid answered ${response.status}: ${text.trim().slice(0, 600) || "no reason given"}.`,
+      };
+    }
+    return {
+      ok: true,
+      added: Array.isArray(result.added) ? result.added.length : 0,
+      dropped: Array.isArray(result.dropped) ? result.dropped.length : 0,
+    };
   } catch (error) {
+    // The body can fail after the headers arrive (a timeout, a dropped connection), so the read is inside the try.
     return {
       ok: false,
       refusal: `Capsid could not be reached: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
-  if (!response.ok) return { ok: false, refusal: await refusalOf(response) };
-  const text = await response.text();
-  /** @type {{ ok?: unknown, added?: unknown, dropped?: unknown } | null} */
-  let result = null;
-  try {
-    result = JSON.parse(text);
-  } catch {
-    result = null;
-  }
-  if (result?.ok !== true) {
-    return {
-      ok: false,
-      refusal: `Capsid answered ${response.status}: ${text.trim().slice(0, 600) || "no reason given"}.`,
-    };
-  }
-  return {
-    ok: true,
-    added: Array.isArray(result.added) ? result.added.length : 0,
-    dropped: Array.isArray(result.dropped) ? result.dropped.length : 0,
-  };
 }

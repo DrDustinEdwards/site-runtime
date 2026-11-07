@@ -6,6 +6,7 @@ import { test } from "node:test";
 import { postAccessSync } from "../access-sync.mjs";
 
 const KEY = "sample-key";
+const base = { key: KEY, namespace: "sample", members: ["Alex@Example.com"] };
 
 /** @param {Response | Error} answer */
 function fake(answer) {
@@ -20,44 +21,32 @@ function fake(answer) {
   return { calls, fetcher };
 }
 
-test("posts the whole list, lower-cased, and frees only the people no longer on it", async () => {
-  const { calls, fetcher } = fake(Response.json({ ok: true, added: ["a"], dropped: ["b", "c"] }));
-  const result = await postAccessSync({
-    key: KEY,
-    namespace: "sample",
-    members: ["Alex@Example.com"],
+test("posts the whole list, and turns every answer into a result", async () => {
+  const ok = fake(Response.json({ ok: true, added: ["a"], dropped: ["b", "c"] }));
+  const sent = await postAccessSync({
+    ...base,
     removed: ["alex@example.com", "Sam@example.com"],
-    fetch: fetcher,
+    fetch: ok.fetcher,
   });
-  assert.deepEqual(result, { ok: true, added: 1, dropped: 2 });
-  assert.equal(calls[0]?.url, "https://mcp.dustinedwards.info/ops/access-sync");
-  assert.equal(new Headers(calls[0]?.init.headers).get("authorization"), `Bearer ${KEY}`);
-  assert.deepEqual(JSON.parse(String(calls[0]?.init.body)), {
+  assert.deepEqual(sent, { ok: true, added: 1, dropped: 2 });
+  assert.equal(ok.calls[0]?.url, "https://mcp.dustinedwards.info/ops/access-sync");
+  assert.equal(new Headers(ok.calls[0]?.init.headers).get("authorization"), `Bearer ${KEY}`);
+  assert.deepEqual(JSON.parse(String(ok.calls[0]?.init.body)), {
     namespace: "sample",
     members: ["alex@example.com"],
     removed: ["sam@example.com"],
   });
-});
 
-test("a refusal is Capsid's own words, and a network failure is a result", async () => {
   const cloudflare = fake(
-    Response.json({ ok: false, refusal: "Cloudflare refused: policy locked" }, { status: 409 }),
+    Response.json({ ok: false, refusal: "Cloudflare refused: locked" }, { status: 409 }),
   );
-  assert.deepEqual(
-    await postAccessSync({ key: KEY, namespace: "sample", members: [], fetch: cloudflare.fetcher }),
-    {
-      ok: false,
-      refusal: "Cloudflare refused: policy locked",
-    },
-  );
-
-  const plain = fake(new Response("CF_ACCESS_SYNC_TOKEN is not set", { status: 503 }));
-  const notSetUp = await postAccessSync({
-    key: KEY,
-    namespace: "sample",
-    members: [],
-    fetch: plain.fetcher,
+  assert.deepEqual(await postAccessSync({ ...base, fetch: cloudflare.fetcher }), {
+    ok: false,
+    refusal: "Cloudflare refused: locked",
   });
+
+  const unset = fake(new Response("CF_ACCESS_SYNC_TOKEN is not set", { status: 503 }));
+  const notSetUp = await postAccessSync({ ...base, fetch: unset.fetcher });
   assert.equal(notSetUp.ok, false);
   assert.match(
     notSetUp.ok ? "" : notSetUp.refusal,
@@ -65,12 +54,18 @@ test("a refusal is Capsid's own words, and a network failure is a result", async
   );
 
   const down = fake(new Error("connection refused"));
-  assert.deepEqual(
-    await postAccessSync({ key: KEY, namespace: "sample", members: [], fetch: down.fetcher }),
-    {
-      ok: false,
-      refusal: "Capsid could not be reached: connection refused",
-    },
+  assert.deepEqual(await postAccessSync({ ...base, fetch: down.fetcher }), {
+    ok: false,
+    refusal: "Capsid could not be reached: connection refused",
+  });
+
+  // The body fails after the headers arrived: still a result, not a rejection.
+  const cut = new Response(
+    new ReadableStream({ pull: (controller) => controller.error(new Error("connection reset")) }),
   );
+  assert.deepEqual(await postAccessSync({ ...base, fetch: fake(cut).fetcher }), {
+    ok: false,
+    refusal: "Capsid could not be reached: connection reset",
+  });
   assert.ok(!JSON.stringify([notSetUp]).includes(KEY));
 });
