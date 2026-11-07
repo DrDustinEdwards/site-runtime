@@ -95,7 +95,6 @@ export const dustinedwardsInfo: SiteEntry,
   foxhoundMcp: SiteEntry,
   dustinedwardsMcp: SiteEntry,
   foxingMcp: SiteEntry,
-  germomicsMcp: SiteEntry,
   capsomer: SiteEntry,
   prelum: SiteEntry;
 export const SITES: readonly SiteEntry[];

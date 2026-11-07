@@ -1,6 +1,6 @@
 /**
  * The admin MCP Worker: the whole door every site's admin MCP server had copied (Dustin Edwards Admin, Foxing Admin,
- * Germomics Admin, Foxhound Admin). A server passes what is its own (its name, its consent paragraphs, its registry
+ * Foxhound Admin). A server passes what is its own (its name, its consent paragraphs, its registry
  * entry, who is let in, the binding to its site and the MCP server that serves a verified caller) and gets back the
  * Worker's `fetch` and `scheduled`.
  *
