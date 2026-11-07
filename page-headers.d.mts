@@ -30,7 +30,11 @@ export type PageSecurityOptions<Env = unknown> = {
   /** Paths that also get `X-Robots-Tag: noindex`, covering resource routes and redirects where no meta tag can go. */
   noindex?: (pathname: string) => boolean;
   /** The origin of a report sink that is not the request's own (an AI door outside Access); reports and Reporting-Endpoints go there. */
-  reportOrigin?: (context: { request: Request; url: URL; env: Env | undefined }) => string | undefined;
+  reportOrigin?: (context: {
+    request: Request;
+    url: URL;
+    env: Env | undefined;
+  }) => string | undefined;
 };
 
 export type PageSecurity<Env = unknown> = {
