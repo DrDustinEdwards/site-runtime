@@ -2291,7 +2291,7 @@ clientRegistrationCallback: ({ clientMetadata }) => {
   `/register` in KV (five an hour per address, thirty a day in all) and answers the 429; call it before the provider.
 - `./audit-log` is the append-only tool-call log: export `ToolCallLog` as the Durable Object bound to `TOOL_CALL_LOG`,
   then `appendAudit(env, row)` before (`started`) and after (`finished`) each call, or once for a `refused` one, with
-  `loggedArgs` and `loggedResult`. A string argument over 200 characters is stored as its length and a SHA-256 prefix.
+  `loggedArgs` and `loggedResult`. A string argument over 200 characters, or a structure over 1,000 characters of JSON, is stored as its length and a SHA-256 prefix, and credentials (Stripe, Anthropic, GitHub, JWT, Bearer) are cut from the arguments and the result (ASVS 5 v16.2.5).
   A row also carries the server's name and version, the OAuth client id and a correlation id (`correlationId(meta)`, the
   trace id of a `_meta.traceparent` when the client sent one), and a signed hash chain over the rows. Besides the call
   phases, `recordAudit` writes `sign-in`, `scope-challenge` and `rate-limited` rows; `loginHandler({ audit: { name,
