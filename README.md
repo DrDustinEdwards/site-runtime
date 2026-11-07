@@ -194,6 +194,16 @@ host with a path prefix, not the bare file: `https://static.cloudflareinsights.c
 (`CLOUDFLARE_WEB_ANALYTICS.script`). It reports to the site's own `/cdn-cgi/rum`, so `connect-src` always carries `'self'`.
 The file is named and not hashed because its `integrity` changes whenever Cloudflare ships a new beacon.
 
+**The beacon, manual setup.** A site Cloudflare does not proxy (a workers.dev address) gets no injection, so its page
+carries the tag itself and `cloudflareWebAnalytics: "manual"` opens the policy for it (Cloudflare's Web Analytics docs,
+"Sites not proxied through Cloudflare" and the FAQ's CSP entry): `script-src` names the bare
+`https://static.cloudflareinsights.com/beacon.min.js` and `connect-src` adds `https://cloudflareinsights.com`, since a
+manual beacon reports there and not to `/cdn-cgi/rum`. `cloudflareBeaconAttributes(token)` returns the tag's attributes
+(`type="module"`, `defer`, `src`, `data-cf-beacon='{"token":...}'`) for the page to spread onto its `<script>`; the token
+is the public site tag. A registry entry declares it as `cloudflareWebAnalytics: { value: "manual" }` and the check grades
+C15 against the manual sources. Unlike the automatic beacon it is compatible with `strictDynamic`, since the page controls
+the tag and can give it the nonce.
+
 **Nonce or hash.** A response that is never shared-cached may carry a per-request nonce (`generateNonce`).
 An edge-cached response must not send its stored nonce again: every reader would share one for the cache lifetime. Either
 its inline scripts are trusted by hash (`scriptHash`), or it keeps the nonce and `renewNonce(response)` gives every response

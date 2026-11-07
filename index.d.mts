@@ -9,6 +9,7 @@ export {
 } from "./headers.mjs";
 export {
   CLOUDFLARE_WEB_ANALYTICS,
+  cloudflareBeaconAttributes,
   CSP_REPORT_GROUP,
   CSP_REPORT_PATH,
   broadSource,
