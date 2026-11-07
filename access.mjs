@@ -155,13 +155,46 @@ export async function verifyAccessRequest(
 }
 
 /**
- * The admin list from the environment: ADMIN_EMAILS, else ADMIN_EMAIL, split on commas, trimmed and lower-cased. Unset
- * is an empty list, which admits nobody.
- * @param {{ ADMIN_EMAILS?: string, ADMIN_EMAIL?: string }} env
+ * The network's one admin model, from the environment: `ADMIN_EMAIL` is the main admin, the one address that may change
+ * who is admin, and `CO_OWNER_EMAILS` (comma-separated) are the co-owners, who have full use and cannot change admins.
+ * Addresses are trimmed and lower-cased, blanks dropped. An unset `ADMIN_EMAIL` closes the site to everyone, co-owners
+ * included, so losing the main admin's secret never leaves a co-owner as the only way in. Both settings are set only
+ * in Cloudflare; nothing inside a site can change who is admin.
+ * @param {{ ADMIN_EMAIL?: string, CO_OWNER_EMAILS?: string }} env
+ * @returns {{ admin: string | null, coOwners: string[], all: string[] }}
+ */
+export function adminRoster(env) {
+  const [admin] = emailList(env.ADMIN_EMAIL);
+  if (!admin) return { admin: null, coOwners: [], all: [] };
+  const coOwners = [...new Set(emailList(env.CO_OWNER_EMAILS))].filter((email) => email !== admin);
+  return { admin, coOwners, all: [admin, ...coOwners] };
+}
+
+/**
+ * Every admin, the main admin first: who may use the site. Unset `ADMIN_EMAIL` is an empty list, which admits nobody.
+ * @param {{ ADMIN_EMAIL?: string, CO_OWNER_EMAILS?: string }} env
  * @returns {string[]}
  */
 export function adminEmails(env) {
-  return emailList(env.ADMIN_EMAILS ?? env.ADMIN_EMAIL);
+  return adminRoster(env).all;
+}
+
+/**
+ * Whether `email` is the main admin or a co-owner, compared in lower case. Fails closed.
+ * @param {{ ADMIN_EMAIL?: string, CO_OWNER_EMAILS?: string }} env
+ * @param {unknown} email
+ */
+export function isAdminEmail(env, email) {
+  return typeof email === "string" && adminRoster(env).all.includes(email.trim().toLowerCase());
+}
+
+/**
+ * Whether `email` is the main admin, the only one who may change who is admin. Fails closed.
+ * @param {{ ADMIN_EMAIL?: string, CO_OWNER_EMAILS?: string }} env
+ * @param {unknown} email
+ */
+export function isMainAdmin(env, email) {
+  return typeof email === "string" && adminRoster(env).admin === email.trim().toLowerCase();
 }
 
 /** @param {string | readonly string[] | undefined | null} value */
@@ -177,7 +210,7 @@ function emailList(value) {
  * `adminEmails(env)`) is who may pass; a site that checks the token against its own signed-in user passes that one
  * email. With ACCESS_DEV_BYPASS="1" on a localhost URL the first admin passes with no token.
  * @param {Request} request
- * @param {Partial<import("./access.d.mts").AccessSecrets> & { ADMIN_EMAILS?: string, ADMIN_EMAIL?: string }} env
+ * @param {Partial<import("./access.d.mts").AccessSecrets> & { ADMIN_EMAIL?: string, CO_OWNER_EMAILS?: string }} env
  * @param {{ admins?: string | readonly string[], keys?: import("./access-login.d.mts").KeySource, now?: number }} [options]
  * @returns {Promise<{ email: string } | null>}
  */
