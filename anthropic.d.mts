@@ -138,6 +138,9 @@ export type CallRecord = Usage & {
   requestId: string | null;
   gatewayLogId: string | null;
   providerType: string | null;
+  /** For a failure with no status (the call threw before any answer): the error's name and scrubbed message. */
+  errorName: string | null;
+  errorMessage: string | null;
   /** Who answered a failed call through a gateway: the gateway itself or Anthropic (G5). Null on success. */
   source: "gateway" | "anthropic" | null;
   /** The gateway's own error code (2003 rate limited, 2016 and 2017 Guardrails), when it refused. */
@@ -177,6 +180,9 @@ export type MessageFailure = Common & {
   retryAfter?: number;
   /** The provider's error type ("overloaded_error"), for logs. */
   providerType?: string;
+  /** For a failure with no status: the thrown error's name and a short scrubbed message. */
+  errorName?: string;
+  errorMessage?: string;
   /** For an HTTP failure: the gateway's own refusal (its rate or spend limit, Guardrails) or Anthropic's answer. */
   source?: "gateway" | "anthropic";
   /** The gateway's error code, from its `{ success: false, error: [{ code }] }` body. */

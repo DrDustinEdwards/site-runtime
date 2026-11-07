@@ -284,3 +284,35 @@ test("the deprecations page's table, and what the daily check flags from it", ()
     "claude-sonnet-5 is not on Anthropic's deprecations page",
   ]);
 });
+
+test("the default fetch is called as a plain function, and a call that never got an answer says why", async () => {
+  const real = globalThis.fetch;
+  // workerd refuses a fetch called with any `this` but the global ("Illegal invocation"), which failed every call once.
+  globalThis.fetch = function () {
+    if (this !== undefined && this !== globalThis) throw new TypeError("Illegal invocation");
+    const message = {
+      type: "message",
+      stop_reason: "end_turn",
+      content: [{ type: "text", text: "ok" }],
+    };
+    return Promise.resolve(
+      new Response(JSON.stringify(message), { headers: { "content-type": "application/json" } }),
+    );
+  };
+  try {
+    const ok = await messages(ENV, "sample", REQUEST, { log: false });
+    assert.equal(ok.ok, true);
+  } finally {
+    globalThis.fetch = real;
+  }
+  const failed = await messages(ENV, "sample", REQUEST, {
+    log: false,
+    sleep: async () => {},
+    fetcher: async () => {
+      throw new TypeError("connect failed");
+    },
+  });
+  assert.equal(failed.kind, "unavailable");
+  assert.equal(failed.errorName, "TypeError");
+  assert.equal(failed.errorMessage, "connect failed");
+});
