@@ -33,9 +33,10 @@ const ANSWER_MAX_CHARS = 64 * 1024;
 
 // What a session answer may name. The id's charset is wider than the documented example because a real answer failed
 // the strict one (capsid, job_a7d6f6009242).
-const SESSION_SEGMENT = /^session_[A-Za-z0-9_-]{8,128}$/;
+// Ids come as `session_...` (the documented form) and `cse_...` (what a real answer gave, carrel 2026-11-08).
+const SESSION_SEGMENT = /^(?:session|cse)_[A-Za-z0-9_-]{8,128}$/;
 const SESSION_URL =
-  /^https:\/\/(?:[a-z0-9-]+\.)*claude\.ai(?:\/[A-Za-z0-9_.-]+)*\/session_[A-Za-z0-9_-]{8,128}\/?$/;
+  /^https:\/\/(?:[a-z0-9-]+\.)*claude\.ai(?:\/[A-Za-z0-9_.-]+)*\/(?:session|cse)_[A-Za-z0-9_-]{8,128}\/?$/;
 
 // Error codes Node's fetch gives when no connection was made, so nothing reached Anthropic. Anything else (a timeout,
 // a reset, a Workers "Network connection lost") may have followed the request and is unknown.
