@@ -36,6 +36,20 @@ test("PLANT: the token is only ever paired with Anthropic's fire URL", () => {
   assert.deepEqual(routineConfig(` ${URL_OK} `, " tok "), config);
 });
 
+test("a session id in the cse_ form is read as started, not left unknown", async () => {
+  const started = await fireRoutine(
+    config,
+    "t",
+    answer(200, {
+      type: "routine_fire",
+      claude_code_session_id: "cse_01abcdefgh",
+      claude_code_session_url: "https://claude.ai/code/cse_01abcdefgh",
+    }),
+  );
+  assert.equal(started.outcome, "started");
+  assert.equal(started.sessionId, "cse_01abcdefgh");
+});
+
 test("a fire sends the documented headers and body, and reads the session, the limit and a refusal", async () => {
   let seen;
   const fetcher = async (url, init) => (
