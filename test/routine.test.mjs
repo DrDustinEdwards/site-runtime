@@ -36,20 +36,6 @@ test("PLANT: the token is only ever paired with Anthropic's fire URL", () => {
   assert.deepEqual(routineConfig(` ${URL_OK} `, " tok "), config);
 });
 
-test("a session id in the cse_ form is read as started, not left unknown", async () => {
-  const started = await fireRoutine(
-    config,
-    "t",
-    answer(200, {
-      type: "routine_fire",
-      claude_code_session_id: "cse_01abcdefgh",
-      claude_code_session_url: "https://claude.ai/code/cse_01abcdefgh",
-    }),
-  );
-  assert.equal(started.outcome, "started");
-  assert.equal(started.sessionId, "cse_01abcdefgh");
-});
-
 test("a fire sends the documented headers and body, and reads the session, the limit and a refusal", async () => {
   let seen;
   const fetcher = async (url, init) => (
@@ -63,6 +49,18 @@ test("a fire sends the documented headers and body, and reads the session, the l
     sessionId: "session_01abcdefgh",
     sessionUrl: "https://claude.ai/code/session_01abcdefgh",
   });
+  // The cse_ id form a real answer gave (carrel, 2026-11-08) is read as started, not left unknown.
+  const cse = await fireRoutine(
+    config,
+    "t",
+    answer(200, {
+      type: "routine_fire",
+      claude_code_session_id: "cse_01abcdefgh",
+      claude_code_session_url: "https://claude.ai/code/cse_01abcdefgh",
+    }),
+  );
+  assert.equal(cse.outcome, "started");
+  assert.equal(cse.sessionId, "cse_01abcdefgh");
   assert.equal(seen.init.headers.Authorization, "Bearer tok");
   assert.equal(seen.init.headers["anthropic-version"], "2023-06-01");
   assert.equal(JSON.parse(seen.init.body).text.length, 65_536);
