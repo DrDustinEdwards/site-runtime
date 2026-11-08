@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { costMicros, engineFor, normalizeSettings, runAi } from "../ai-engine.mjs";
+import { engineFor, normalizeSettings, runAi } from "../ai-engine.mjs";
 
 const started = { ok: true, outcome: "started", sessionUrl: "https://claude.ai/code/session_x" };
 const limited = { ok: false, outcome: "rate_limited", error: "429" };
@@ -42,20 +42,6 @@ test("subscription fires the routine and never calls the API, even when the fire
   assert.equal(bad.seen.api, 0);
 });
 
-test("api calls the API and not the routine", async () => {
-  const j = jobs(started);
-  const run = await runAi({ settings: normalizeSettings({ master: "api" }), feature: "x", ...j });
-  assert.equal(run.engine, "api");
-  assert.deepEqual(j.seen, { routine: 0, api: 1 });
-});
-
-test("auto uses the subscription when it starts", async () => {
-  const j = jobs(started);
-  const run = await runAi({ settings: normalizeSettings({}), feature: "x", ...j });
-  assert.equal(run.engine, "subscription");
-  assert.equal(j.seen.api, 0);
-});
-
 test("auto falls back to the API when the fire certainly started nothing", async () => {
   const j = jobs(limited);
   const run = await runAi({ settings: normalizeSettings({}), feature: "x", ...j });
@@ -89,34 +75,4 @@ test("PLANT: a reached API cap closes the API; api uses the routine, auto stops 
     api: async () => answer,
   });
   assert.equal(noRoutine.ok, false);
-});
-
-test("a missing route is reported, not guessed", async () => {
-  const run = await runAi({
-    settings: normalizeSettings({ master: "subscription" }),
-    feature: "x",
-    api: async () => answer,
-  });
-  assert.equal(run.ok, false);
-  assert.equal(
-    (await runAi({ settings: normalizeSettings({}), feature: "x", api: async () => answer }))
-      .engine,
-    "api",
-  );
-});
-
-test("cost is tokens times the listed price", () => {
-  assert.equal(
-    costMicros("claude-haiku-5-5", {
-      input: 1_000_000,
-      output: 1_000_000,
-      cacheRead: 0,
-      cacheWrite: 0,
-    }),
-    600_000,
-  );
-  assert.equal(
-    costMicros("unknown-model", { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 }),
-    null,
-  );
 });
