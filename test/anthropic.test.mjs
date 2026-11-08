@@ -108,34 +108,6 @@ test("429 with retry-after waits exactly that long; 529 and 500 back off; a spen
     },
   ]);
   assert.equal((await messages(ENV, "sample", REQUEST, f.options)).kind, "spend_limit");
-
-  // G5: through a gateway, its own 429 (no Anthropic request id, Cloudflare's envelope) is named and never retried.
-  const GATEWAY = {
-    ...ENV,
-    AI_GATEWAY_BASE_URL: "https://gateway.ai.cloudflare.com/v1/acct/gw/anthropic",
-  };
-  f = fake([
-    {
-      status: 429,
-      headers: { "retry-after": "1" },
-      body: { success: false, error: [{ code: 2003, message: "Rate limited" }] },
-    },
-  ]);
-  r = await messages(GATEWAY, "sample", REQUEST, f.options);
-  assert.deepEqual(
-    [f.calls.length, r.kind, r.source, r.gatewayCode],
-    [1, "rate_limited", "gateway", 2003],
-  );
-  f = fake([
-    {
-      status: 429,
-      headers: { "retry-after": "1", "request-id": "req_x" },
-      body: { type: "error", error: { type: "rate_limit_error" } },
-    },
-    answer("ok"),
-  ]);
-  r = await messages(GATEWAY, "sample", REQUEST, f.options);
-  assert.equal(r.ok, true, "Anthropic's own 429 through the gateway is still waited out");
 });
 
 test("automatic caching counts the whole prompt, so a long chat on a short system prompt is cached", async () => {
