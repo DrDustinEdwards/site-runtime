@@ -218,6 +218,12 @@ ${target.local ? `<p><strong>${LOCAL_REDIRECT_WARNING[0]}</strong> ${LOCAL_REDIR
     if (!accessSaas(env)) return text(NOT_CONFIGURED, 503);
     const oauth = env.OAUTH_PROVIDER;
     const authRequest = await oauth.parseAuthRequest(request);
+    // PKCE with S256 for every client (OAuth 2.1 section 7.5.2, MCP authorization "Authorization Code Protection"). The
+    // provider already requires it of a public client; a client that registers as confidential could otherwise leave it
+    // out, and a code sent to a loopback or app callback is then usable by whatever program caught it.
+    if (!authRequest.codeChallenge) {
+      return text("PKCE is required: send code_challenge with code_challenge_method=S256.", 400);
+    }
     const client = await oauth.lookupClient(authRequest.clientId);
     if (!client) return text("Unknown OAuth client.", 400);
     const consent = await oauth.beginConsent(authRequest);
@@ -434,8 +440,15 @@ export function registrationRefusal(configured, clientMetadata) {
     return "A registration must name at least one redirect URI.";
   if (asked.length > 5) return "A registration may name at most five redirect URIs.";
   for (const uri of asked) {
-    if (typeof uri !== "string" || !allowed.includes(uri))
-      return `The redirect URI ${JSON.stringify(uri)} is not allowlisted on this server.`;
+    if (typeof uri !== "string" || !allowed.includes(uri)) {
+      // Name everything the client sent, so a refusal in the log says whether one unlisted callback sank a request that
+      // also named a listed one. Only what the client chose to send, each value cut short; never a secret.
+      const sent = JSON.stringify(asked.map((one) => String(one).slice(0, 200)));
+      const method = JSON.stringify(
+        String(clientMetadata.token_endpoint_auth_method ?? "none given").slice(0, 40),
+      );
+      return `The redirect URI ${JSON.stringify(uri)} is not allowlisted on this server. The request named ${asked.length} redirect URI(s), ${sent}, with token_endpoint_auth_method ${method}.`;
+    }
   }
   return null;
 }

@@ -151,6 +151,37 @@ describe("the consent POST", () => {
   });
 });
 
+describe("the authorize GET", () => {
+  /** @param {Record<string, unknown>} request */
+  function authorizeEnv(request) {
+    const { env } = setup();
+    let consented = false;
+    env.OAUTH_PROVIDER.parseAuthRequest = async () => ({ ...AUTH_REQUEST, ...request });
+    env.OAUTH_PROVIDER.beginConsent = async () => {
+      consented = true;
+      return { handle: "h1", headers: new Headers() };
+    };
+    return { env, consented: () => consented };
+  }
+  const get = (/** @type {any} */ env) =>
+    handler.fetch(new Request(`${ORIGIN}/authorize?client_id=x`), env);
+
+  test("PLANT: a request without a PKCE challenge is refused before the consent page, whatever the client registered as", async () => {
+    const without = authorizeEnv({});
+    const res = await get(without.env);
+    assert.equal(res.status, 400);
+    assert.match(await res.text(), /PKCE is required/);
+    assert.equal(without.consented(), false);
+
+    const withChallenge = authorizeEnv({
+      codeChallenge: "c".repeat(43),
+      codeChallengeMethod: "S256",
+    });
+    assert.equal((await get(withChallenge.env)).status, 200);
+    assert.equal(withChallenge.consented(), true);
+  });
+});
+
 describe("the callback", () => {
   /** @param {any} env @param {ReturnType<typeof setup>["seen"]} seen */
   async function signIn(env, seen) {
@@ -282,6 +313,12 @@ describe("registrationRefusal", () => {
         uri,
       );
     }
+    // The refusal also says everything the request named, so the server log shows the real payload.
+    assert.match(
+      registrationRefusal(LIST, { redirect_uris: [GEMINI, "http://localhost:8787/callback"] }) ??
+        "",
+      /named 2 redirect URI\(s\), \["https:\/\/vertexaisearch[^\]]*localhost:8787\/callback"\], with token_endpoint_auth_method "none given"/,
+    );
   });
 });
 

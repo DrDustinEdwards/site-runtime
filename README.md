@@ -2309,6 +2309,9 @@ clientRegistrationCallback: ({ clientMetadata }) => {
   line saying so. `describeRedirect(uri)` is that check for a server with its own consent page: `{ host, local,
   warning }`, `host` the redirect's host (the scheme, as `cursor://`, for an app's scheme) and `warning` the line to
   show when `local`, else null.
+- `loginHandler` refuses an authorization request with no PKCE `code_challenge` (400, before the consent page), whatever the client
+  registered as: the provider requires it only of a public client, and OAuth 2.1 and MCP authorization require it of all.
+- A refused registration says what the request named (its redirect URIs and `token_endpoint_auth_method`), so the server log shows the real payload.
 - `registrationRefusal` allows a dynamic client registration only when it names one to five redirect URIs, each in the
   list exactly; the list is separated by commas or spaces and keeps only https callbacks, and an empty one refuses all. `DCR_CALLBACKS` holds the callbacks that are the same for every user (Grok, Grok
   Bot's Cursor-hosted one, ChatGPT's fixed one, Gemini Enterprise), for a server that registers them: pass
