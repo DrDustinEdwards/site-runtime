@@ -8,6 +8,7 @@
  * - `auto`: fire the routine; when it certainly started nothing (rate limited, unavailable, unreachable, refused),
  *   call the API instead. An `unknown` fire (a session may exist) never falls back, so one job is never done twice.
  * - A feature setting of `follow` uses the master.
+ * - An override ({ engine, until }) beats both until its date: "the subscription is low, use the API until Sunday".
  * - API cap: once the month's API spend reaches `apiCapMicros`, the API is closed; `api` uses the routine instead when
  *   there is one, and `auto` stops falling back. No cap (0 or unset) means no limit.
  *
@@ -36,7 +37,17 @@ export function normalizeSettings(raw) {
     if (isEngine(engine)) features[feature] = /** @type {string} */ (engine);
   }
   const cap = Number(r.apiCapMicros);
+  const o =
+    r.override !== null && typeof r.override === "object"
+      ? /** @type {Record<string, unknown>} */ (r.override)
+      : {};
+  const until = typeof o.until === "string" ? Date.parse(o.until) : NaN;
+  const override =
+    isEngine(o.engine) && Number.isFinite(until)
+      ? { engine: /** @type {string} */ (o.engine), until: new Date(until).toISOString() }
+      : null;
   return {
+    override,
     master: isEngine(r.master) ? /** @type {string} */ (r.master) : "auto",
     features,
     apiCapMicros: Number.isFinite(cap) && cap > 0 ? Math.floor(cap) : 0,
@@ -44,11 +55,14 @@ export function normalizeSettings(raw) {
 }
 
 /**
- * The engine setting that applies to a feature: its own when set, else the master.
- * @param {{ master: string, features: Record<string, string> }} settings
+ * The engine setting that applies to a feature: a standing override first, then its own setting, else the master.
+ * @param {{ master: string, features: Record<string, string>, override?: { engine: string, until: string } | null }} settings
  * @param {string} feature
+ * @param {number} [now]
  */
-export function engineFor(settings, feature) {
+export function engineFor(settings, feature, now = Date.now()) {
+  if (settings.override && Date.parse(settings.override.until) > now)
+    return settings.override.engine;
   const own = settings.features[feature];
   return isEngine(own) ? own : settings.master;
 }
@@ -96,8 +110,9 @@ const NOT_STARTED = new Set(["rate_limited", "unavailable", "unreachable", "refu
  * when the site has no such path for this job.
  *
  * @param {{
- *   settings: { master: string, features: Record<string, string>, apiCapMicros: number },
+ *   settings: { master: string, features: Record<string, string>, apiCapMicros: number, override?: { engine: string, until: string } | null },
  *   feature: string,
+ *   now?: number,
  *   spentMicros?: number,
  *   routine?: () => Promise<any>,
  *   api?: () => Promise<any>,
@@ -109,8 +124,8 @@ const NOT_STARTED = new Set(["rate_limited", "unavailable", "unreachable", "refu
  * >}
  */
 export async function runAi(job) {
-  const { settings, feature, spentMicros = 0, routine, api } = job;
-  const chosen = engineFor(settings, feature);
+  const { settings, feature, spentMicros = 0, routine, api, now = Date.now() } = job;
+  const chosen = engineFor(settings, feature, now);
   const capped = settings.apiCapMicros > 0 && spentMicros >= settings.apiCapMicros;
 
   /** @param {string | null} fellBack */

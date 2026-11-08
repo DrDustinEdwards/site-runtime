@@ -28,6 +28,13 @@ test("a feature follows the master unless it has its own setting; junk is droppe
   assert.equal(engineFor(s, "seo"), "subscription");
   assert.equal(s.apiCapMicros, 5_000_000);
   assert.equal(normalizeSettings(null).master, "auto");
+  // An override beats the rest until its date, then lapses.
+  const o = normalizeSettings({
+    master: "subscription",
+    override: { engine: "api", until: "2026-11-10T00:00:00Z" },
+  });
+  assert.equal(engineFor(o, "seo", Date.parse("2026-11-09T00:00:00Z")), "api");
+  assert.equal(engineFor(o, "seo", Date.parse("2026-11-11T00:00:00Z")), "subscription");
   assert.equal(normalizeSettings({ apiCapMicros: -1 }).apiCapMicros, 0);
 });
 

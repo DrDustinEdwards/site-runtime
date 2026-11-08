@@ -1396,7 +1396,7 @@ const run = await runAi({
 });
 ```
 
-- Settings: `master` is `subscription`, `api` or `auto` (default `auto`); `features` overrides it per feature; `apiCapMicros`
+- Settings: `override` ({ engine, until }) beats everything until its date. `master` is `subscription`, `api` or `auto` (default `auto`); `features` overrides it per feature; `apiCapMicros`
   is the month's API spend (millionths of a dollar) at which the API closes, 0 for no cap.
 - `subscription` only fires the routine. `api` only calls the API. `auto` fires the routine and, when it certainly started
   nothing (`rate_limited`, `unavailable`, `unreachable`, `refused`), calls the API; the result's `fellBack` says why. An

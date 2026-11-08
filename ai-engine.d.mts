@@ -8,6 +8,8 @@ export type EngineSettings = {
   master: Engine;
   /** A feature's own engine; a feature missing here follows the master. */
   features: Record<string, Engine>;
+  /** Beats every other setting until `until` (an ISO time): "the subscription is low, use the API until Sunday". */
+  override: { engine: Engine; until: string } | null;
   /** The month's API spend, in millionths of a dollar, at which the API closes. 0: no cap. */
   apiCapMicros: number;
 };
@@ -17,8 +19,9 @@ export function normalizeSettings(raw: unknown): EngineSettings;
 
 /** The engine a feature uses: its own setting, else the master. */
 export function engineFor(
-  settings: Pick<EngineSettings, "master" | "features">,
+  settings: Pick<EngineSettings, "master" | "features"> & { override?: EngineSettings["override"] },
   feature: string,
+  now?: number,
 ): Engine;
 
 export const PRICES_CHECKED: string;
@@ -37,6 +40,8 @@ import type { FireOnceResult, FireResult } from "./routine.mjs";
 export type AiJob<A extends { ok: boolean; error?: string } = { ok: boolean; error?: string }> = {
   settings: EngineSettings;
   feature: string;
+  /** The time to judge an override against, in ms. Default now. */
+  now?: number;
   /** The API spend so far this month, in millionths of a dollar. */
   spentMicros?: number;
   /** Fires the site's routine (fireOnce); leave out when the job has no subscription route. */
