@@ -1380,6 +1380,34 @@ const fired = await fireOnce(d1FireStore(env.DB), `newsletter:${issueId}`, confi
   Anthropic allows or allow ones it refuses. Its 429 is cheap, starts no session and carries `retryAfter`, and
   `fireOnce` frees the job key on it, so the job waits for the next tick.
 
+## Choosing subscription or API for AI work
+
+`./ai-engine` decides which engine does a job: Dustin's Claude subscription (a routine, `./routine`, async) or the Anthropic
+API (`./anthropic`, sync). The site keeps the settings; this module normalizes them and runs the job.
+
+```js
+import { normalizeSettings, runAi, costMicros } from "@dustinedwards/site-runtime/ai-engine";
+const run = await runAi({
+  settings: normalizeSettings(stored), // { master, features, apiCapMicros }
+  feature: "seo",
+  spentMicros, // the API spend this month
+  routine: () => fireOnce(d1FireStore(env.DB), jobKey, config, prompt),
+  api: () => structured(env, "carrel", request, schema, { feature: "seo" }),
+});
+```
+
+- Settings: `override` ({ engine, until }) beats everything until its date. `master` is `subscription`, `api` or `auto` (default `auto`); `features` overrides it per feature; `apiCapMicros`
+  is the month's API spend (millionths of a dollar) at which the API closes, 0 for no cap.
+- `subscription` only fires the routine. `api` only calls the API. `auto` fires the routine and, when it certainly started
+  nothing (`rate_limited`, `unavailable`, `unreachable`, `refused`), calls the API; the result's `fellBack` says why. An
+  `unknown` fire never falls back, since a session may exist.
+- At the cap, `api` uses the routine and `auto` stops falling back.
+- Subscription usage cannot be read (claude.ai/settings/usage is the only meter), so `auto` reacts to a refusal and cannot
+  see remaining quota.
+- `costMicros(model, usage)` prices a call from `PRICES` (list prices read 2026-11-08); refresh them from the pricing page.
+
+**Tests.** `test/ai-engine.test.mjs`.
+
 ## The operator API
 
 `./operator` is the door Capsid reaches a site's operations through (Capsid's `src/site-operator.ts`): `POST {tool, args}`
