@@ -440,8 +440,15 @@ export function registrationRefusal(configured, clientMetadata) {
     return "A registration must name at least one redirect URI.";
   if (asked.length > 5) return "A registration may name at most five redirect URIs.";
   for (const uri of asked) {
-    if (typeof uri !== "string" || !allowed.includes(uri))
-      return `The redirect URI ${JSON.stringify(uri)} is not allowlisted on this server.`;
+    if (typeof uri !== "string" || !allowed.includes(uri)) {
+      // Name everything the client sent, so a refusal in the log says whether one unlisted callback sank a request that
+      // also named a listed one. Only what the client chose to send, each value cut short; never a secret.
+      const sent = JSON.stringify(asked.map((one) => String(one).slice(0, 200)));
+      const method = JSON.stringify(
+        String(clientMetadata.token_endpoint_auth_method ?? "none given").slice(0, 40),
+      );
+      return `The redirect URI ${JSON.stringify(uri)} is not allowlisted on this server. The request named ${asked.length} redirect URI(s), ${sent}, with token_endpoint_auth_method ${method}.`;
+    }
   }
   return null;
 }

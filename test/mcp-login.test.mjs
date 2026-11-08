@@ -313,6 +313,12 @@ describe("registrationRefusal", () => {
         uri,
       );
     }
+    // The refusal also says everything the request named, so the server log shows the real payload.
+    assert.match(
+      registrationRefusal(LIST, { redirect_uris: [GEMINI, "http://localhost:8787/callback"] }) ??
+        "",
+      /named 2 redirect URI\(s\), \["https:\/\/vertexaisearch[^\]]*localhost:8787\/callback"\], with token_endpoint_auth_method "none given"/,
+    );
   });
 });
 
