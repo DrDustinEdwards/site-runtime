@@ -2310,8 +2310,8 @@ clientRegistrationCallback: ({ clientMetadata }) => {
   warning }`, `host` the redirect's host (the scheme, as `cursor://`, for an app's scheme) and `warning` the line to
   show when `local`, else null.
 - `registrationRefusal` allows a dynamic client registration only when it names one to five redirect URIs, each in the
-  list exactly; the list is separated by commas or spaces and keeps only https callbacks, and an empty one refuses all. `DCR_CALLBACKS` holds the callbacks that are the same for every user (Grok,
-  ChatGPT's fixed one, Gemini Enterprise), for a server that registers them: pass
+  list exactly; the list is separated by commas or spaces and keeps only https callbacks, and an empty one refuses all. `DCR_CALLBACKS` holds the callbacks that are the same for every user (Grok, Grok
+  Bot's Cursor-hosted one, ChatGPT's fixed one, Gemini Enterprise), for a server that registers them: pass
   `[...DCR_CALLBACKS, env.DCR_REDIRECT_URIS].join(",")`. `registrationLimited(request, env.OAUTH_KV)` counts each
   `/register` in KV (five an hour per address, thirty a day in all) and answers the 429; call it before the provider.
 - `./audit-log` is the append-only tool-call log: export `ToolCallLog` as the Durable Object bound to `TOOL_CALL_LOG`,
