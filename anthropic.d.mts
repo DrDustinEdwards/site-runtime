@@ -79,9 +79,6 @@ export const UNTRUSTED_DATA_RULE: string;
 
 export type AnthropicEnv = {
   ANTHROPIC_API_KEY?: string;
-  AI_GATEWAY_BASE_URL?: string;
-  AI_GATEWAY_TOKEN?: string;
-  AI_GATEWAY_ID?: string;
 };
 
 /** A Messages request body. `model` and `max_tokens` are required; `temperature`, `top_p`, `top_k` and `stream` are not allowed. */
@@ -98,7 +95,7 @@ export type MessagesRequest = {
 };
 
 export type CallOptions = {
-  /** The feature making the call, logged beside the site and sent in the gateway's metadata. */
+  /** The feature making the call, logged beside the site. */
   feature?: string;
   /** The deadline for the whole call, retries included (a stream: the longest silence). Default 60,000. */
   timeoutMs?: number;
@@ -136,15 +133,10 @@ export type CallRecord = Usage & {
   status: number | null;
   stopReason: string | null;
   requestId: string | null;
-  gatewayLogId: string | null;
   providerType: string | null;
   /** For a failure with no status (the call threw before any answer): the error's name and scrubbed message. */
   errorName: string | null;
   errorMessage: string | null;
-  /** Who answered a failed call through a gateway: the gateway itself or Anthropic (G5). Null on success. */
-  source: "gateway" | "anthropic" | null;
-  /** The gateway's own error code (2003 rate limited, 2016 and 2017 Guardrails), when it refused. */
-  gatewayCode: number | null;
   durationMs: number;
   attempts: number;
   pauses: number;
@@ -156,7 +148,6 @@ type Common = {
   attempts: number;
   pauses: number;
   requestId?: string | null;
-  gatewayLogId?: string | null;
 };
 
 export type MessageAnswer = Common & {
@@ -183,10 +174,6 @@ export type MessageFailure = Common & {
   /** For a failure with no status: the thrown error's name and a short scrubbed message. */
   errorName?: string;
   errorMessage?: string;
-  /** For an HTTP failure: the gateway's own refusal (its rate or spend limit, Guardrails) or Anthropic's answer. */
-  source?: "gateway" | "anthropic";
-  /** The gateway's error code, from its `{ success: false, error: [{ code }] }` body. */
-  gatewayCode?: number;
   stopReason?: string | null;
   /** A refusal's policy category. */
   stopDetails?: unknown;

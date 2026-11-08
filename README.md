@@ -876,16 +876,18 @@ new key first, keep the old one after it until the longest-lived link has aged o
 skipped. Give links their own key, never one that also encrypts data at rest. No key at all throws: that is a
 configuration error, not a bad link.
 
-## Where a site's Anthropic calls go
+## Where a site's model calls go
 
-`./ai-gateway` is the one decision between Cloudflare AI Gateway and Anthropic directly, so every site logs the same way.
+Claude calls go straight to Anthropic (`./anthropic`), paid from the Anthropic account's credits. `./ai-gateway` is for
+the other models: it routes Workers AI calls through Cloudflare AI Gateway so they log the same way on every site.
 
 ```js
 import { anthropicRoute } from "@dustinedwards/site-runtime/ai-gateway";
-const { baseURL, headers } = anthropicRoute(env, "example");
-const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, baseURL, defaultHeaders: headers });
-// or, without the SDK: fetch(`${baseURL}/v1/messages`, { headers: { ...headers, "x-api-key": key, ... } })
+const { gateway, gatewayId } = anthropicRoute(env, "example"); // site-api's media suggester reads the gateway id from this
 ```
+
+Claude (`./anthropic`) never uses it: those calls always go to Anthropic. The route's base URL and headers stay for a
+caller that still sends a non-Claude model through the gateway.
 
 - `AI_GATEWAY_BASE_URL` unset: Anthropic's origin and no extra header, so nothing changes until the gateway exists. Set:
   the gateway's Anthropic endpoint, `https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/anthropic`. A value
@@ -905,7 +907,7 @@ fresh output.
 
 ## The Anthropic caller
 
-`./anthropic` is the family's one Messages caller, raw fetch over `anthropicRoute`, so a site writes its prompt and
+`./anthropic` is the family's one Messages caller, raw fetch to Anthropic, so a site writes its prompt and
 nothing else.
 
 ```js
@@ -919,12 +921,7 @@ const prompt = `${UNTRUSTED_DATA_RULE}\n${untrusted("email", customerText)}`;
 
 - One deadline per call (`timeoutMs`, default 60 s), retries and their waits inside it. One retry layer, here: 429 with
   `retry-after`, 500, 504, 529 and network errors, with backoff, at most 3 attempts. A spend-cap 429, a 429 without
-  `retry-after`, the spend-limit 400 and every other 4xx are never retried. The gateway's own retries stay off, and its
-  `cf-aig-max-attempts`, `cf-aig-backoff` and `cf-aig-request-timeout` headers are not sent: two retry layers multiply
-  attempts, and the gateway cannot read `retry-after` or tell a spend cap from a rate limit.
-- Through a gateway, a failure that carries neither Anthropic's `request-id` header nor its `{"type": "error"}` body is
-  the gateway's own: `source: "gateway"` with its `gatewayCode` (2003 its rate or spend limit, 2016 and 2017
-  Guardrails), on the result and the log line, and its 429 is never retried. Anthropic's are `source: "anthropic"`.
+  `retry-after`, the spend-limit 400 and every other 4xx are never retried.
 - A stop that is not an answer is a typed failure, never text: `max_tokens` (`truncated`), `refusal`,
   `model_context_window_exceeded`, an unknown stop; `pause_turn` is resent up to `maxPauses`. `max_tokens` is required, and
   `temperature`, `top_p` and `top_k` throw: `anthropic-version` is `2026-10-21`, which refuses them.
@@ -932,7 +929,7 @@ const prompt = `${UNTRUSTED_DATA_RULE}\n${untrusted("email", customerText)}`;
   model's minimum, so a long chat on a short system prompt is cached too (`cache: false` turns it off), unless a block
   already carries its own `cache_control`: the caller's breakpoints are then sent as written. The proof is the log
   line's `cacheRead`, above 0 on a repeat call.
-- One `anthropic_call` log line per call through `./log`: model, stop reason, request id, gateway log id, tokens and
+- One `anthropic_call` log line per call through `./log`: model, stop reason, request id, tokens and
   duration, never the prompt or the answer. `onResult(record)` hands the same record to a site's meter, for a stream
   the reader left early (`aborted`) and a `structured` reply that did not parse (`invalid_output`) too.
 - `MODEL_IDS` is the one place a site takes its model from, by role: `fast`, `standard`, `deep`

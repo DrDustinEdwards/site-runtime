@@ -1,6 +1,6 @@
 /**
- * Where a site sends its Anthropic calls: Cloudflare AI Gateway when the site is configured for it, Anthropic directly
- * when it is not. One decision for every site, so the gateway's URL check, its sign-in header and the body-logging
+ * The Cloudflare AI Gateway route a site is configured for. ./anthropic does not use it: Claude calls always go to
+ * Anthropic directly. It stays for the other models (site-api's Workers AI media suggester). One decision for every site, so the gateway's URL check, its sign-in header and the body-logging
  * switch are made once and cannot drift apart per site.
  *
  * - OPT IN, BY ENVIRONMENT. With `AI_GATEWAY_BASE_URL` unset the answer is Anthropic's own origin and no extra header,

@@ -3,9 +3,9 @@
  * check. Raw fetch, no SDK. Every rule below cites the page it comes from (platform.claude.com/docs/en/..., read
  * 2026-10-30).
  *
- * - WHERE. `anthropicRoute` (./ai-gateway) decides the base URL and the gateway headers, with `feature` beside `app` in
- *   the gateway's log metadata. The site's key goes as `x-api-key`, which the gateway passes on (AI Gateway's Anthropic
- *   page); the key is never logged.
+ * - WHERE. Straight to Anthropic's own origin, never through Cloudflare AI Gateway: Claude is paid for by the
+ *   Anthropic account's credits, and the gateway is for the other models (Workers AI). The site's key goes as
+ *   `x-api-key`; the key is never logged.
  * - VERSION. `anthropic-version: 2026-10-21` (api/versioning). That version answers `temperature`, `top_p` and `top_k`
  *   with a 400 on every model (api/migration-2026-10-21), so a request carrying one throws here before it is sent. No
  *   family call to Anthropic sends one (the 0.2 in site-api's suggester goes to Workers AI).
@@ -15,17 +15,8 @@
  * - ONE RETRY LAYER, HERE. 429 with `retry-after` (waited exactly, when it fits the deadline), 500, 504, 529 and a
  *   network failure are retried with exponential backoff and jitter, at most `maxAttempts` (3) attempts (api/errors,
  *   api/rate-limits). Never retried: a spend-cap 429 (`error.details.error_code` "enforced_spend_limit_reached"), any
- *   429 without `retry-after` (the spend cap never sends one, and AI Gateway's own spend-limit 429 is not a wait-and-see
- *   either), a user-set spend limit (400 "You have reached your specified ..."), and every other 4xx. The gateway's
- *   retry headers (`cf-aig-max-attempts` and the rest) are not sent and its dashboard retries stay off: the gateway
- *   cannot read `retry-after` or tell a spend cap from a rate limit, its timeout counts only to the first byte, and a
- *   site with no gateway needs the same retries anyway. Two layers would multiply attempts (Foxhound's worst case was 9).
- *   A stream is retried only before its first byte; after that, text has reached the reader.
- * - WHO REFUSED (G5). Through a gateway, a failure is the gateway's own when it carries neither Anthropic's `request-id`
- *   header nor Anthropic's error body (`{"type": "error"}`): its rate limit or spend limit (429, error code 2003 in
- *   Cloudflare's `{"success": false, "error": [{ code, message }]}` envelope), Guardrails (424, 2016 and 2017) and its
- *   other refusals. The result and the log line say `source: "gateway"` with its `gatewayCode`, or `source: "anthropic"`,
- *   and a gateway 429 is never retried here: its limits are rules on the gateway, not a wait the caller can sit out.
+ *   429 without `retry-after` (the spend cap never sends one), a user-set spend limit (400 "You have reached your
+ *   specified ..."), and every other 4xx. A stream is retried only before its first byte; after that, text has reached the reader.
  * - STOP REASONS (build-with-claude/handling-stop-reasons). `end_turn`, `stop_sequence` and `tool_use` are answers.
  *   `max_tokens`, `model_context_window_exceeded` and `refusal` are typed failures, never a finished answer (a truncated
  *   reply stored or cached as complete is the bug this ends). `pause_turn` is resent with the content so far, at most
@@ -40,13 +31,13 @@
  * - ERRORS. A failure is `{ ok: false, kind, error }`: `kind` for code, `error` a short sentence safe to show a reader.
  *   The provider's own message is never returned or logged, since it is not written for readers.
  * - ONE LOG LINE PER CALL, `anthropic_call` (./log): app, feature, model, outcome, stop reason, the Anthropic request id,
- *   the gateway's log id, tokens (input, output, cache read, cache write), duration, attempts and pauses. Never the
+ *   tokens (input, output, cache read, cache write), duration, attempts and pauses. Never the
  *   prompt or the answer. `onResult` gets the same record, for a site that meters calls (Foxhound's ai_calls). A stream
  *   the reader leaves early is logged as `aborted` with the tokens seen so far, and `structured`'s `invalid_output` is
  *   logged as the failure it is.
  */
 
-import { anthropicRoute } from "./ai-gateway.mjs";
+const ANTHROPIC_ORIGIN = "https://api.anthropic.com";
 import { logEvent, scrubText } from "./log.mjs";
 
 export const ANTHROPIC_VERSION = "2026-10-21";
@@ -285,7 +276,7 @@ export const UNTRUSTED_DATA_RULE =
  * One Messages call, with the timeout, retries, stop_reason check, caching default and log line above. Never throws for
  * a failed call; throws only for a request that is wrong in code (no key, no `max_tokens`, a sampling parameter).
  * @param {AnthropicEnv} env
- * @param {string} app the site, as the gateway's logs and the log line name it
+ * @param {string} app the site, as the log line names it
  * @param {Record<string, any>} request the Messages body (`model`, `max_tokens`, `messages`, `system`, ...) without `stream`
  * @param {CallOptions} [options]
  * @returns {Promise<MessageResult>}
@@ -335,7 +326,6 @@ async function answer(env, app, request, options, parse) {
     return finish(call, {
       ...result,
       requestId: sent.requestId,
-      gatewayLogId: sent.gatewayLogId,
       pauses,
     });
   }
@@ -432,7 +422,7 @@ export async function* stream(env, app, request, options = {}) {
     } finally {
       sent.idle.stop();
     }
-    const ids = { requestId: sent.requestId, gatewayLogId: sent.gatewayLogId, pauses: 0 };
+    const ids = { requestId: sent.requestId, pauses: 0 };
     if (message) add(call.usage, message.usage);
     if (broken || !message) {
       yield done({ ...failure(broken?.kind ?? "unavailable", { status: 200 }), ...broken, ...ids });
@@ -445,7 +435,6 @@ export async function* stream(env, app, request, options = {}) {
       finish(call, {
         ...failure("aborted", { status: 200 }),
         requestId: sent?.requestId,
-        gatewayLogId: sent?.gatewayLogId,
       });
     }
   }
@@ -484,13 +473,11 @@ function prepare(env, app, request, options, streaming) {
     );
   if (!Array.isArray(request.messages)) throw new TypeError("The request needs messages");
 
-  const route = anthropicRoute(env, app, options.feature);
   /** @type {Record<string, string>} */
   const headers = {
     "content-type": "application/json",
     "anthropic-version": ANTHROPIC_VERSION,
     "x-api-key": key,
-    ...route.headers,
   };
   if (options.betas?.length) headers["anthropic-beta"] = options.betas.join(",");
   const { stream: _ignored, ...rest } = request;
@@ -506,8 +493,7 @@ function prepare(env, app, request, options, streaming) {
     app,
     feature: options.feature,
     model: request.model,
-    gateway: route.gateway,
-    url: `${route.baseURL}/v1/messages`,
+    url: `${ANTHROPIC_ORIGIN}/v1/messages`,
     headers,
     body,
     streaming,
@@ -647,30 +633,15 @@ async function send(call, body) {
       return failure(isAbort(error) ? "timeout" : "unavailable", thrown(error));
     }
     const requestId = response.headers.get("request-id") ?? parsed?.request_id ?? null;
-    const gatewayLogId = response.headers.get("cf-aig-log-id");
     if (response.ok) {
       if (call.streaming) {
         /** @type {any} */ (idle).touch();
-        return { ok: true, response, idle, requestId, gatewayLogId };
+        return { ok: true, response, idle, requestId };
       }
-      return { ok: true, message: parsed ?? {}, requestId, gatewayLogId };
+      return { ok: true, message: parsed ?? {}, requestId };
     }
     idle?.stop();
-    // G5: through a gateway, an answer with neither Anthropic's request id nor its error body is the gateway's own.
-    const fromGateway =
-      call.gateway && !response.headers.has("request-id") && parsed?.type !== "error";
-    const decision = fromGateway
-      ? {
-          kind:
-            response.status === 429
-              ? "rate_limited"
-              : response.status >= 500
-                ? "unavailable"
-                : "rejected",
-          retry: false,
-          waitMs: 0,
-        }
-      : retryDecision(response.status, response.headers, parsed, call.attempts);
+    const decision = retryDecision(response.status, response.headers, parsed, call.attempts);
     if (
       decision.retry &&
       call.attempts < call.maxAttempts &&
@@ -681,17 +652,11 @@ async function send(call, body) {
     }
     const providerType =
       typeof parsed?.error?.type === "string" ? parsed.error.type.slice(0, 64) : undefined;
-    const code = Array.isArray(parsed?.error) ? Number(parsed.error[0]?.code) : NaN;
-    const source = fromGateway
-      ? { source: "gateway", ...(Number.isInteger(code) ? { gatewayCode: code } : {}) }
-      : { source: "anthropic" };
     return failure(decision.kind, {
       status: response.status,
       requestId,
-      gatewayLogId,
       providerType,
       retryAfter: decision.retryAfter,
-      ...source,
     });
   }
 }
@@ -823,12 +788,9 @@ function finish(call, result) {
     status: out.status ?? (out.ok ? 200 : null),
     stopReason: out.stopReason ?? null,
     requestId: out.requestId ?? null,
-    gatewayLogId: out.gatewayLogId ?? null,
     providerType: out.providerType ?? null,
     errorName: out.errorName ?? null,
     errorMessage: out.errorMessage ?? null,
-    source: out.source ?? null,
-    gatewayCode: out.gatewayCode ?? null,
     ...out.usage,
     durationMs: Date.now() - call.started,
     attempts: out.attempts,
