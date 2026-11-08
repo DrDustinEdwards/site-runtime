@@ -32,33 +32,30 @@ export function costMicros(
   usage: { input: number; output: number; cacheRead: number; cacheWrite: number },
 ): number | null;
 
-export type AiJob = {
+import type { FireOnceResult, FireResult } from "./routine.mjs";
+
+export type AiJob<A extends { ok: boolean; error?: string } = { ok: boolean; error?: string }> = {
   settings: EngineSettings;
   feature: string;
   /** The API spend so far this month, in millionths of a dollar. */
   spentMicros?: number;
   /** Fires the site's routine (fireOnce); leave out when the job has no subscription route. */
-  routine?: () => Promise<{
-    ok: boolean;
-    outcome?: string;
-    error?: string;
-    [key: string]: unknown;
-  }>;
+  routine?: () => Promise<FireResult | FireOnceResult>;
   /** Calls the API (messages or structured); leave out when the job has no API route. */
-  api?: () => Promise<{ ok: boolean; error?: string; [key: string]: unknown }>;
+  api?: () => Promise<A>;
 };
 
-export type AiRun =
-  | { ok: true; engine: "subscription"; fire: any; fellBack: null }
-  | { ok: true; engine: "api"; result: any; fellBack: string | null }
+export type AiRun<A extends { ok: boolean; error?: string } = { ok: boolean; error?: string }> =
+  | { ok: true; engine: "subscription"; fire: FireResult | FireOnceResult; fellBack: null }
+  | { ok: true; engine: "api"; result: A; fellBack: string | null }
   | {
       ok: false;
       engine: "subscription" | "api" | null;
       error: string;
-      fire?: any;
-      result?: any;
+      fire?: FireResult | FireOnceResult;
+      result?: A;
       fellBack: string | null;
     };
 
 /** Runs a job on its feature's engine. `fellBack` names why `auto` used the API (the routine's outcome). */
-export function runAi(job: AiJob): Promise<AiRun>;
+export function runAi<A extends { ok: boolean; error?: string }>(job: AiJob<A>): Promise<AiRun<A>>;
