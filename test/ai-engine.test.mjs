@@ -82,4 +82,24 @@ test("PLANT: a reached API cap closes the API; api uses the routine, auto stops 
     api: async () => answer,
   });
   assert.equal(noRoutine.ok, false);
+  // An override in force lifts the cap until its date.
+  const until = (day) =>
+    normalizeSettings({ apiCapMicros: 1000, override: { engine: "api", until: day } });
+  const now = Date.parse("2026-11-08T00:00:00Z");
+  const lifted = await runAi({
+    settings: until("2026-11-10T00:00:00Z"),
+    feature: "x",
+    spentMicros: 5000,
+    now,
+    ...jobs(started),
+  });
+  assert.equal(lifted.ok && lifted.engine, "api");
+  const expired = await runAi({
+    settings: until("2026-11-07T00:00:00Z"),
+    feature: "x",
+    spentMicros: 5000,
+    now,
+    ...jobs(started),
+  });
+  assert.equal(expired.engine, "subscription");
 });

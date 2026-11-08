@@ -10,7 +10,8 @@
  * - A feature setting of `follow` uses the master.
  * - An override ({ engine, until }) beats both until its date: "the subscription is low, use the API until Sunday".
  * - API cap: once the month's API spend reaches `apiCapMicros`, the API is closed; `api` uses the routine instead when
- *   there is one, and `auto` stops falling back. No cap (0 or unset) means no limit.
+ *   there is one, and `auto` stops falling back. No cap (0 or unset) means no limit. An override in force lifts the cap
+ *   until its date: choosing the API for a few days is choosing to pay for it.
  *
  * Subscription usage is not readable (claude.ai/settings/usage is the only meter), so `auto` reacts to a refusal; it
  * cannot see remaining quota.
@@ -126,7 +127,8 @@ const NOT_STARTED = new Set(["rate_limited", "unavailable", "unreachable", "refu
 export async function runAi(job) {
   const { settings, feature, spentMicros = 0, routine, api, now = Date.now() } = job;
   const chosen = engineFor(settings, feature, now);
-  const capped = settings.apiCapMicros > 0 && spentMicros >= settings.apiCapMicros;
+  const overridden = settings.override ? Date.parse(settings.override.until) > now : false;
+  const capped = !overridden && settings.apiCapMicros > 0 && spentMicros >= settings.apiCapMicros;
 
   /** @param {string | null} fellBack */
   const viaApi = async (fellBack) => {
