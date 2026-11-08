@@ -218,6 +218,12 @@ ${target.local ? `<p><strong>${LOCAL_REDIRECT_WARNING[0]}</strong> ${LOCAL_REDIR
     if (!accessSaas(env)) return text(NOT_CONFIGURED, 503);
     const oauth = env.OAUTH_PROVIDER;
     const authRequest = await oauth.parseAuthRequest(request);
+    // PKCE with S256 for every client (OAuth 2.1 section 7.5.2, MCP authorization "Authorization Code Protection"). The
+    // provider already requires it of a public client; a client that registers as confidential could otherwise leave it
+    // out, and a code sent to a loopback or app callback is then usable by whatever program caught it.
+    if (!authRequest.codeChallenge) {
+      return text("PKCE is required: send code_challenge with code_challenge_method=S256.", 400);
+    }
     const client = await oauth.lookupClient(authRequest.clientId);
     if (!client) return text("Unknown OAuth client.", 400);
     const consent = await oauth.beginConsent(authRequest);
