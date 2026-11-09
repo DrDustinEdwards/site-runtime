@@ -496,7 +496,9 @@ export function toolScopeChallenge(env, server, tool) {
       scope === server.scopes.write
         ? [server.scopes.read, server.scopes.write]
         : [server.scopes.read];
-    const props = /** @type {{ email?: unknown, client?: unknown } | undefined} */ (authInfo.extra?.props);
+    const props = /** @type {{ email?: unknown, client?: unknown } | undefined} */ (
+      authInfo.extra?.props
+    );
     await recordAudit(env, {
       callId: crypto.randomUUID(),
       phase: "scope-challenge",

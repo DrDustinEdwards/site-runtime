@@ -70,7 +70,16 @@ const KEY_CHARS = 32;
 const ANCHOR = "chain-key";
 
 // The columns added after the table first shipped, each nullable, so an existing log migrates in place.
-const ADDED = ["server", "version", "client_id", "correlation_id", "client_name", "hash", "key_id", "sig"];
+const ADDED = [
+  "server",
+  "version",
+  "client_id",
+  "correlation_id",
+  "client_name",
+  "hash",
+  "key_id",
+  "sig",
+];
 // The values a row's hash covers, in this order; a signed row's hash also covers its key_id. `client_name` is not here:
 // it was added after rows existed, so rowHash covers it only when it is set (before key_id), and every older row keeps
 // the hash it was written with.
