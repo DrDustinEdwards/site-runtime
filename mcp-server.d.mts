@@ -117,7 +117,7 @@ export type McpCaller =
   | { kind: "admin"; props: { email: string } & Record<string, unknown>; scopes: readonly string[] }
   | { kind: "agent"; principal: string; scopes: readonly string[] }
   /** Someone the server's own door verified (a server with several people); only the grant's scopes are checked. */
-  | { kind: "person"; email: string; clientId?: string; scopes: readonly string[] }
+  | { kind: "person"; email: string; clientId?: string; clientName?: string; scopes: readonly string[] }
   /** The list-only test key (./agent-keys `probeCaller`): listed what a read grant is, refused every call. */
   | { kind: "probe"; principal: string; scopes: readonly string[] };
 

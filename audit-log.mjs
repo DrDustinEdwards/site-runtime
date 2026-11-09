@@ -70,8 +70,10 @@ const KEY_CHARS = 32;
 const ANCHOR = "chain-key";
 
 // The columns added after the table first shipped, each nullable, so an existing log migrates in place.
-const ADDED = ["server", "version", "client_id", "correlation_id", "hash", "key_id", "sig"];
-// The values a row's hash covers, in this order; a signed row's hash also covers its key_id.
+const ADDED = ["server", "version", "client_id", "correlation_id", "client_name", "hash", "key_id", "sig"];
+// The values a row's hash covers, in this order; a signed row's hash also covers its key_id. `client_name` is not here:
+// it was added after rows existed, so rowHash covers it only when it is set (before key_id), and every older row keeps
+// the hash it was written with.
 const HASHED = [
   "at",
   "call_id",
@@ -327,7 +329,7 @@ export class ToolCallLog {
   recent(before, limit) {
     const n = Math.min(Math.max(1, Math.floor(limit)), RECENT_MAX);
     const columns =
-      "seq, at, call_id, phase, caller, tool, args, result, server, version, client_id, correlation_id";
+      "seq, at, call_id, phase, caller, tool, args, result, server, version, client_id, client_name, correlation_id";
     return before > 0
       ? this.sql
           .exec(
@@ -396,11 +398,12 @@ export class ToolCallLog {
       version: field(full.server?.version),
       client_id: field(full.clientId),
       correlation_id: field(full.correlationId),
+      client_name: field(full.clientName),
       key_id: key.id,
     };
     const last = this.sql.exec("SELECT hash FROM calls ORDER BY seq DESC LIMIT 1").toArray()[0];
     const hash = await rowHash(/** @type {string | null} */ (last?.hash ?? null), values);
-    const columns = [...HASHED, "key_id"];
+    const columns = [...HASHED, "client_name", "key_id"];
     this.sql.exec(
       `INSERT INTO calls (${columns.join(", ")}, hash, sig) VALUES (${columns.map(() => "?").join(", ")}, ?, ?)`,
       ...columns.map((name) => values[name]),
@@ -417,6 +420,8 @@ export class ToolCallLog {
  */
 function rowHash(previous, row) {
   const values = HASHED.map((name) => row[name] ?? null);
+  // Only a row that names its client covers the name, so a row written before the column existed still verifies.
+  if (row.client_name != null) values.push(row.client_name);
   if (row.key_id != null) values.push(row.key_id);
   return sha256Hex(`${previous ?? ""}\n${JSON.stringify(values)}`);
 }
