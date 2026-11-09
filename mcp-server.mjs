@@ -496,7 +496,9 @@ export function toolScopeChallenge(env, server, tool) {
       scope === server.scopes.write
         ? [server.scopes.read, server.scopes.write]
         : [server.scopes.read];
-    const props = /** @type {{ email?: unknown } | undefined} */ (authInfo.extra?.props);
+    const props = /** @type {{ email?: unknown, client?: unknown } | undefined} */ (
+      authInfo.extra?.props
+    );
     await recordAudit(env, {
       callId: crypto.randomUUID(),
       phase: "scope-challenge",
@@ -506,6 +508,7 @@ export function toolScopeChallenge(env, server, tool) {
       result: { isError: true, text: `needs ${needed.join(" ")}` },
       server: { name: server.name, version: server.version },
       clientId: authInfo.clientId,
+      clientName: typeof props?.client === "string" ? props.client : undefined,
       correlationId: correlationId(
         /** @type {Record<string, unknown> | undefined} */ (request.params?._meta),
       ),
@@ -548,6 +551,13 @@ export async function invokeTool(env, server, { caller, tool, args, meta, signal
       : caller?.kind === "person"
         ? caller.clientId
         : undefined;
+  // The name the client was shown by at consent (props.client, set by ./mcp-login), so a row says "Grok Bot".
+  const clientName =
+    caller?.kind === "admin"
+      ? caller.props.client
+      : caller?.kind === "person"
+        ? caller.clientName
+        : undefined;
   /** @type {Omit<import("./audit-log.d.mts").AuditRow, "phase">} */
   const row = {
     callId: crypto.randomUUID(),
@@ -556,6 +566,7 @@ export async function invokeTool(env, server, { caller, tool, args, meta, signal
     args: await loggedArgs(args),
     server: { name: server.name, version: server.version },
     clientId: typeof clientId === "string" ? clientId : undefined,
+    clientName: typeof clientName === "string" && clientName ? clientName : undefined,
     correlationId: correlationId(meta),
   };
 

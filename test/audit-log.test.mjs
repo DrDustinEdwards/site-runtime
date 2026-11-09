@@ -317,3 +317,24 @@ test("loggedArgs and loggedResult cut credentials out and digest what is long, n
     text: "made [key]\ndone",
   });
 });
+
+test("PLANT: a row written before client_name and one that names its client verify in one chain, and the name cannot be edited or stripped", async () => {
+  const { db, state } = storage();
+  const log = new ToolCallLog(state, { AUDIT_SIGNING_KEY: KEY_A });
+  const base = { caller: "access:a@example.com", tool: "sample_tool", phase: "started", args: {} };
+  await append(log, { ...base, callId: "old", clientId: "client-1" });
+  await append(log, { ...base, callId: "new", clientId: "client-2", clientName: "Sample Bot" });
+  const key = await auditChainKey(KEY_A);
+  const rows = all(db);
+  assert.equal(rows[1].client_name, null); // the old format: no name, the hash it always had
+  assert.equal(rows[2].client_name, "Sample Bot");
+  assert.deepEqual(await verifyAuditChain(rows, { keys: [key.publicKey] }), {
+    ok: true,
+    hashed: 3,
+    signed: 3,
+  });
+  db.exec("UPDATE calls SET client_name = 'Other Bot' WHERE seq = 3");
+  assert.equal((await verifyAuditChain(all(db), { keys: [key.publicKey] })).reason, "hash");
+  db.exec("UPDATE calls SET client_name = NULL WHERE seq = 3");
+  assert.equal((await verifyAuditChain(all(db), { keys: [key.publicKey] })).reason, "hash");
+});

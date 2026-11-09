@@ -2320,7 +2320,7 @@ clientRegistrationCallback: ({ clientMetadata }) => {
 - `./audit-log` is the append-only tool-call log: export `ToolCallLog` as the Durable Object bound to `TOOL_CALL_LOG`,
   then `appendAudit(env, row)` before (`started`) and after (`finished`) each call, or once for a `refused` one, with
   `loggedArgs` and `loggedResult`. A string argument over 200 characters, or a structure over 1,000 characters of JSON, is stored as its length and a SHA-256 prefix, and credentials (Stripe, Anthropic, GitHub, JWT, Bearer) are cut from the arguments and the result (ASVS 5 v16.2.5).
-  A row also carries the server's name and version, the OAuth client id and a correlation id (`correlationId(meta)`, the
+  A row also carries the server's name and version, the OAuth client id and its name (`client_name`, the consent label such as "Grok Bot", from the grant's `props.client` or a person's `clientName`; the hash covers it only when it is set, so rows from before it still verify) and a correlation id (`correlationId(meta)`, the
   trace id of a `_meta.traceparent` when the client sent one), and a signed hash chain over the rows. Besides the call
   phases, `recordAudit` writes `sign-in`, `scope-challenge` and `rate-limited` rows; `loginHandler({ audit: { name,
   version } })` writes one per sign-in.
@@ -2464,7 +2464,7 @@ const refusal = authorizeCall(env, caller, SCOPES.write, {
   plain-text, `no-store`, `noindex` answer to go with it.
 - `authorizeCall` is the per-call check (rule 12.1): a caller, the administrator (`isAdminUser`) or a well-formed agent
   principal, and the scope the tool needs. A server with several people, whose door already verified the person, passes
-  `{ kind: "person", email, clientId, scopes }`, and only the grant's scopes decide. `callerName` is its audit name
+  `{ kind: "person", email, clientId, clientName, scopes }`, and only the grant's scopes decide. `callerName` is its audit name
   (`access:<email>` for an admin or a person, `agent:<name>`).
 - Each tool declares `scope: "read" | "write"` (or a function of its arguments); `toolScope` reads it and never the
   `readOnlyHint` annotation, and a tool with none is refused. `toolsForGrant` drops what a grant cannot call.

@@ -35,6 +35,8 @@ export interface AuditRow {
   server?: { name: string; version: string };
   /** The OAuth client the grant was issued to. */
   clientId?: string;
+  /** The client's name ("Grok Bot"), so a row says which AI acted, not only its id. */
+  clientName?: string;
   /** From `correlationId`: the request's trace id, or a fresh one. */
   correlationId?: string;
 }
