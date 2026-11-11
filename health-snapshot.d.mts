@@ -18,7 +18,11 @@ export type HealthTile =
 export const HEALTH_SNAPSHOT_KEY: string;
 export const HEALTH_SNAPSHOT_EVERY_MINUTES: number;
 /** The tile from a stored value; "missing" for anything uncertain, "stale" after three intervals. */
-export function healthTile(snapshot: unknown, nowMs: number, options?: { everyMinutes?: number }): HealthTile;
+export function healthTile(
+  snapshot: unknown,
+  nowMs: number,
+  options?: { everyMinutes?: number },
+): HealthTile;
 /** An age in words, minutes at the finest. */
 export function formatAge(ageSeconds: number): string;
 /** Each check's name and status from a /health body, or null when it is not one. */

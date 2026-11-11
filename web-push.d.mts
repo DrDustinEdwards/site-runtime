@@ -26,7 +26,12 @@ export function encryptPayload(
   fixed?: { privateJwk?: JsonWebKey; salt?: Uint8Array<ArrayBuffer> },
 ): Promise<Uint8Array<ArrayBuffer>>;
 /** The VAPID JWT for one push service origin, twelve hours long. */
-export function vapidJwt(vapid: VapidKey, audience: string, subject: string, now: Date): Promise<string>;
+export function vapidJwt(
+  vapid: VapidKey,
+  audience: string,
+  subject: string,
+  now: Date,
+): Promise<string>;
 /** Encrypt and send one payload; never throws on the push service's answer (a network error is status 0). */
 export function sendPush(
   vapid: VapidKey,
