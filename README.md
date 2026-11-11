@@ -1420,7 +1420,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   Spread its `disabledPaths` with the sign-in's.
 - Disposable addresses: `signInOptions` refuses a new account at a disposable domain or a subdomain of one
   (`isDisposableEmail`, `disposable_email`), from the CC0 list at disposable-email-domains, in
-  `disposable-domains.mjs`. `node update-disposable.mjs` refreshes it; never edit it by hand.
+  `disposable-domains.mjs`, plus `NETWORK_EXTRA` (domains a site blocked before that the source lacks). `node update-disposable.mjs` refreshes it; never edit it by hand.
 
 **Tests.** `test/sign-in-form.test.mjs`: the next-path escapes, a disposable subdomain, the headers and token the link
 request carries, each refusal's words, a code's cookie-only redirect, no-store, both email-change links, and the
@@ -1549,7 +1549,9 @@ const run = await runAi({
 - At the cap, `api` uses the routine and `auto` stops falling back.
 - Subscription usage cannot be read (claude.ai/settings/usage is the only meter), so `auto` reacts to a refusal and cannot
   see remaining quota.
-- `costMicros(model, usage)` prices a call from `PRICES` (list prices read 2026-11-08); refresh them from the pricing page.
+- `costMicros(model, usage)` prices a call from `PRICES` (list prices read 2026-11-11, cache writes at the five-minute
+  rate); `priceOf(model)` finds a price with or without the id's -YYYYMMDD date. This is the network's one price table:
+  a site prices its calls here, never in a copy. Every active model in `./anthropic` `MODELS` has a price (a test checks).
 
 **Tests.** `test/ai-engine.test.mjs`.
 
@@ -1871,6 +1873,34 @@ if (!(await safeEqual(presentedToken, env.OPERATOR_TOKEN)))
   bytes where it does not (Node).
 - It is async, since WebCrypto's digest is. A side that is not a string, or is empty, matches nothing, so an unset secret
   never admits an absent credential.
+
+## Money
+
+`./money` is the one money formatter, for display and for form inputs, on the server and in the browser. Amounts are
+stored as integers and only become a currency string for display.
+
+```js
+import {
+  formatMoney,
+  formatMoneyShort,
+  moneyInputValue,
+  parseMoneyInput,
+} from "@dustinedwards/site-runtime/money";
+formatMoney(4500, "usd"); // "$45.00"
+formatMoney(5000, "jpy"); // "¥5,000": JPY's minor unit is the yen
+formatMoneyShort(1060, "usd"); // "$11", for stat tiles and dense lists
+formatMoney(2_500_000, "usd", { scale: 6 }); // "$2.50" from micros
+moneyInputValue(4500, "usd"); // "45.00", an input's defaultValue
+parseMoneyInput("1,250.50", "usd"); // 125050, or null when blank, negative or not a plain figure
+```
+
+- The stored unit is the currency's minor unit as Stripe sends it (https://docs.stripe.com/currencies): a hundredth for
+  most, the whole unit for the zero-decimal currencies (JPY, KRW and the rest), a thousandth for BHD, JOD, KWD, OMR and
+  TND. ISK and UGX are sent as hundredths and shown with no decimals. `currencyExponent` is that table, and
+  `toMajorUnits`/`fromMajorUnits` convert for charts and exports.
+- `scale` names another stored unit, as a power of ten: 3 for mills, 6 for micros, 0 for whole units.
+- `digits` sets the places shown. Text is `Intl.NumberFormat` in en-US, one formatter per currency and digit count. A
+  code Intl refuses prints as "50.00 XYZ" and never throws.
 
 ## The Access request check
 
