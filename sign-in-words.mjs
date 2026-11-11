@@ -1,0 +1,75 @@
+/**
+ * The words every site's sign-in pages say, one set for the network, with no dependency so the browser can read them
+ * too: `./sign-in-form` answers with them on the server, and Capsomer's sign-in screen shows them (and the passkey's,
+ * which only the browser knows).
+ */
+import { SIGN_IN_EXPIRES_IN_WORDS } from "./sign-in-link.mjs";
+
+/** Better Auth's error code when a new account's address is at a disposable domain (refuseDisposable). */
+export const DISPOSABLE_EMAIL = "disposable_email";
+
+/** The words every site's sign-in pages say, by answer. */
+export const SIGN_IN_WORDS = Object.freeze({
+  noEmail: "Enter your email address.",
+  noCode: "Enter the six-digit code from the email.",
+  link: Object.freeze({
+    limited: "Too many sign-in requests. Wait a minute and try again.",
+    "email-limited": "Too many sign-in requests for this address. Try again later.",
+    "check-failed": "Complete the check, then send the link again.",
+    unavailable: "Sign-in links can't be sent right now. Use a passkey, or try again later.",
+    failed: "We could not send the link. Check the address and try again.",
+  }),
+  code: Object.freeze({
+    wrong:
+      "That code is not right. Check the six digits in the newest email: a code from an older email, or one already used, does not work.",
+    expired: `That code has expired: a code works for ${SIGN_IN_EXPIRES_IN_WORDS}. Send yourself a new one.`,
+    spent:
+      "That code was tried three times, so it no longer works. Use the link in the same email, or send yourself a new one.",
+    limited: "Too many tries. Wait a minute, or use the link in the email.",
+    "email-limited":
+      "Too many tries for this address. Try again later, or use the link in the email.",
+    unavailable:
+      "Codes can't be checked right now. Use the link in the email, or try again in a few minutes.",
+    disposable: "Use a real email address. Disposable email addresses are not allowed.",
+    failed: "That sign-in did not complete. Try again, or use the link in the email.",
+  }),
+  passkey: Object.freeze({
+    failed: "That passkey did not sign you in. Try again, or use another way.",
+    limited: "Too many tries. Wait a while, then try again, or use another way.",
+    unavailable: "Sign-in is busy right now. Wait a minute and try again, or use another way.",
+  }),
+});
+
+/**
+ * The words for a `?error=` code a sign-in page is sent back with (Better Auth's, from a refused Google or Apple
+ * callback, a refused link, or the site's own limit), or null for none. `settings` names where the person joins Google
+ * or Apple to the account ("Settings", "My account").
+ * @param {string | null | undefined} code
+ * @param {{ siteName: string, settings: string }} site
+ */
+export function signInErrorWords(code, { siteName, settings }) {
+  if (!code) return null;
+  if (code === DISPOSABLE_EMAIL) return SIGN_IN_WORDS.code.disposable;
+  // Accounts are joined only by a signed-in person (`./sign-in`), never by a matching email at sign-in, so this one has
+  // a way forward.
+  if (code === "account_not_linked")
+    return `That email already has a ${siteName} account. Sign in with an email link, then connect Google or Apple in ${settings}.`;
+  if (code === "rate_limited" || code === "too_many_requests") return SIGN_IN_WORDS.link.limited;
+  return "That sign-in did not complete. Try again, or use another way.";
+}
+
+export { SIGN_IN_EXPIRES_IN_WORDS, SIGN_IN_LINK_WORDS } from "./sign-in-link.mjs";
+
+/**
+ * The words for a passkey sign-in that did not sign in, from the error Better Auth's client returned, or null when the
+ * person canceled the browser's prompt (choosing another way is not a failure).
+ * @param {unknown} error
+ */
+export function passkeyErrorWords(error) {
+  const code = /** @type {{ code?: unknown } | null} */ (error)?.code;
+  if (code === "AUTH_CANCELLED") return null;
+  if (code === "RATE_LIMIT_UNAVAILABLE") return SIGN_IN_WORDS.passkey.unavailable;
+  if (code === "EMAIL_RATE_LIMITED" || code === "TOO_MANY_REQUESTS")
+    return SIGN_IN_WORDS.passkey.limited;
+  return SIGN_IN_WORDS.passkey.failed;
+}
