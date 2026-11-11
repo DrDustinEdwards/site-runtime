@@ -81,7 +81,7 @@ import {
   withPurgePages,
 } from "./edge-cache.mjs";
 import { clientIp, isWrite, textResponse } from "./http.mjs";
-import { errorMessage, logEvent, routeNamer, withRequestLog } from "./log.mjs";
+import { errorMessage, logEvent, routeNamer, scrubFields, withRequestLog } from "./log.mjs";
 import { maintenanceOn, maintenanceResponse } from "./maintenance.mjs";
 import { countNotFound } from "./not-found.mjs";
 import { operatorResponse } from "./operator.mjs";
@@ -98,6 +98,18 @@ import { canonicalRedirect } from "./url.mjs";
 
 /** A preview link's token (Carrel's /preview/<token>), cut from a logged path. */
 export const PREVIEW_TOKEN = /\/(preview)\/[^/?#\s'"]+/g;
+
+/**
+ * The pattern for a site's token routes beside the preview link: each match becomes `/<route>/[token]` in the request
+ * log and the CSP report log, where a report's page or blocked address would otherwise carry one person's token.
+ * @param {readonly string[]} [routes] path prefixes without slashes, such as "u" or "e/c"
+ * @returns {RegExp}
+ */
+export function tokenPattern(routes = []) {
+  if (routes.length === 0) return PREVIEW_TOKEN;
+  const names = ["preview", ...routes].map((route) => route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp(`\\/(${names.join("|")})\\/[^/?#\\s'"]+`, "g");
+}
 
 /** The security.txt path (RFC 9116 section 3). */
 export const SECURITY_TXT_PATH = "/.well-known/security.txt";
@@ -290,6 +302,10 @@ export function siteWorker(site) {
   const purgeAfter = options.purgeAfter ?? ["/admin"];
   const publicCookies = options.publicCookies ?? [];
   const siteName = options.name;
+  const tokenPath = tokenPattern(options.tokenRoutes);
+  // A report's page and blocked addresses are cut to origin and path; a token route's token goes too.
+  const logReport = (/** @type {Record<string, unknown>} */ line) =>
+    console.log(JSON.stringify(scrubFields(line, { tokenPath })));
 
   /**
    * @param {Request} request
@@ -341,7 +357,12 @@ export function siteWorker(site) {
       const binding = /** @type {any} */ (env).CSP_REPORT_RATE_LIMIT;
       const allow = async (/** @type {Request} */ r) =>
         binding !== undefined && (await binding.limit({ key: clientIp(r) })).success;
-      return secure(await receiveCspReport(request, { allow }), request, undefined, env);
+      return secure(
+        await receiveCspReport(request, { allow, log: logReport }),
+        request,
+        undefined,
+        env,
+      );
     }
 
     if (options.operator && url.pathname === "/api/operator") {
@@ -421,7 +442,11 @@ export function siteWorker(site) {
     try {
       response = await gateway(request, env, ctx);
     } catch (error) {
-      logEvent("gateway_error", { path, error: errorMessage(error) }, { level: "error" });
+      logEvent(
+        "gateway_error",
+        { path, error: errorMessage(error) },
+        { level: "error", tokenPath },
+      );
       return secure(
         textResponse("Something went wrong on our side. Please try again.", 500),
         request,
@@ -468,7 +493,7 @@ export function siteWorker(site) {
     ) => (await Promise.all([wrapped(request, env, ctx), site.routesReady()]))[0],
     {
       sha: (env) => options.sha?.(env) ?? /** @type {any} */ (env).DEPLOY_SHA,
-      tokenPath: PREVIEW_TOKEN,
+      tokenPath,
       route: (request) => site.routeName(request),
     },
   );

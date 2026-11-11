@@ -1002,9 +1002,13 @@ cache rule); `settleCacheHeaders` or `privateRender` still runs after it. Each r
 per reader; a 304 leaves out the policy (RFC 9111 4.3.4: the browser updates its stored headers from a 304). Every HTML
 answer carries the Speculation-Rules header; a 404 goes through `onNotFound` (site-api's tombstones) and is counted
 unless under `/api/` or `/preview/`; a gateway that throws is a plain 500 with the set and a `gateway_error` line. Around
-it: the request log (DEPLOY_SHA, preview tokens cut, the route named from the build, loaded inside the request), `wrap`,
+it: the request log (DEPLOY_SHA, the route named from the build, loaded inside the request), `wrap`,
 then each of `adminIdle`. `cron(env, scheduledTime, ctx)` names the job lists by expression (a promise is fine, so the jobs can be imported when
 the cron fires); an unknown cron warns `cron_unknown` and runs nothing; a known one is awaited through `runJobs`.
+
+A preview link's token is cut from the request log, a `gateway_error` line and every CSP report line (a report names
+the page it came from), as `/preview/[token]`; `tokenRoutes` (`["u", "e/c"]`) adds the site's own token routes, cut
+the same way (`tokenPattern(routes)` is the pattern).
 
 ## Request helpers
 
