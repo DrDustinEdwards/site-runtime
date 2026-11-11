@@ -2444,6 +2444,82 @@ row written) against $5.50 on KV; a refused request costs a request and a row re
 **Tests.** `npm test` runs `test/rate-limit.test.mjs`: window edges, a spent rule counting nothing, Retry-After, the fail-closed
 and fail-open paths, and the path matcher on an in-memory SQLite (`node:sqlite`).
 
+## Co-editing rooms
+
+`./doc-room`: the server half of live co-editing, one Durable Object per file on Cloudflare's y-partyserver over Yjs.
+It pairs with Capsomer's collab editor (`capsomer/collab-editor` and `capsomer/react/collab-editor`), whose messages and
+`RoomViewer` it speaks. No locks: the room is the shared working copy, and a save stays the app's, through its own version
+check. Moved from Carrel (the 2026-11-11 shared-code audit, item 31).
+
+```ts
+import { DocRoom as Room, type CommentStore } from "@dustinedwards/site-runtime/doc-room";
+import {
+  isSeeded,
+  loadMarkdown,
+  markSaved,
+  readMeta,
+  roomJson,
+  roomMarkdown,
+  roomSchema,
+  settle,
+  suggestionCounts,
+} from "capsomer/collab-editor";
+
+const schema = roomSchema();
+const model = {
+  metaKey: "carrel", // the Y.Map the editor keeps the version and saved text in
+  isSeeded,
+  readMeta,
+  markSaved,
+  load: loadMarkdown,
+  markdown: roomMarkdown,
+  json: roomJson,
+  settle: (json) => settle(schema, json),
+  suggestionCounts: (json) => suggestionCounts(schema, json),
+};
+
+export class DocRoom extends Room<Env> {
+  get model() {
+    return model;
+  }
+  async access(viewer) {
+    /* the person's access now, from the app's own roles; null to close them out */
+  }
+  get comments(): CommentStore {
+    /* list, find, add, edit, resolve, remove on the app's table for this.name */
+  }
+  async mirror({ markdown, version, saved }) {
+    /* the app's backup copy */
+  }
+}
+```
+
+- The door (the app's route behind its sign-in) checks the person, then forwards the WebSocket to the room's stub with
+  `viewerRequest(request, { id, name, access, deletesAny? })`, which sets `DOC_ROOM_VIEWER_HEADER`. The room trusts only
+  that header (`readViewer` refuses anything not shaped like a viewer) and closes any connection without one (4403).
+- `access: "edit"` changes anything. `"suggest"` has each change tried on a copy first (`suggestOnly`): it is taken only
+  when, with every suggestion rejected, the text is the same, the `metaKey` map is untouched and nobody else has more
+  suggestions. Otherwise the editor is sent `refused` and loads the room again.
+- While a connection is open, `access(viewer)` is asked again at most every `ROLE_RECHECK_MS` (10 seconds), before the next
+  message: null closes it (4403), a throw closes it to reconnect through the door (1011), a lower access applies at once.
+  One socket's messages are chained, so a check waiting on D1 cannot reorder them.
+- A suggester's message is capped at `MAX_SUGGESTION` (256 KiB), an editor's at `MAX_EDIT` (8 MiB, inside Cloudflare's
+  32 MiB message limit); a larger one is refused, not closed, so the provider does not resend it.
+- Comments (`applyComment`): everyone in the room comments; only the writer changes one; a thread is resolved by its starter
+  or by someone who edits; a comment is deleted by its writer or by someone with `deletesAny`, and a thread's first
+  comment takes its replies. Bodies are 1 to 10,000 characters, quotes 500, anchors 2,000.
+- The working copy is stored in the object's SQLite after every change (debounced: a second after typing stops, at least
+  every five seconds) and handed to `mirror`. Who changed it since the last save is kept, and `saved` gives them back for
+  the app's authorship record.
+- The door's calls (RPC on the stub): `status()`, `seed(input)` once, `replace(input)` with `expectedVersion` and
+  `expectedMarkdown` guards, `snapshot()` before a save, `saved(input)` after one, and `rebase(input)` after a write that
+  sent no text.
+- An app keeps its Durable Object class name (a rename needs a migration), so open rooms keep their unsaved text.
+- y-partyserver, partyserver, yjs and lib0 are the app's own dependencies.
+
+**Tests.** `test/doc-room.test.mjs`: the suggest gate, the comment rules and the viewer header. The room end to end is
+the app's integration test (Carrel's `test/coediting.test.ts`).
+
 ## Members
 
 The rules every app with staff shares (capsid docs/design/design-identity-roles.md). Each app keeps its own `members` and `member_audit` tables and its own titles; this module
