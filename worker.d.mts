@@ -12,7 +12,7 @@ export interface GatewayKit {
   url: URL;
   /** The page's route rendered in-process (a Carrel preview), with `nonce` and any extra context `set`. */
   render(request: Request, extra?: RenderExtra): Promise<Response>;
-  /** The root route's stylesheet hrefs, for a preview drawn outside React Router. */
+  /** The page stylesheet hrefs (the root's and `stylesheetRoutes`'), for a preview drawn outside React Router. */
   stylesheets(): Promise<string[]>;
   /** Purges the stored pages once a write it accepted has answered 2xx. */
   purgeAfterWrite(request: Request, response: Response, why: string): void;
@@ -92,8 +92,13 @@ export interface SiteOptions<E> {
     url: URL,
     env: E,
   ) => Promise<Parameters<typeof import("./edge-cache.mjs").publicPageHeaders>[0]>;
-  /** Preloads beyond the root stylesheets, for the Early Hints header (fonts). */
+  /** Preloads beyond the page stylesheets, for the Early Hints header (fonts). */
   preloads?: (Preload | Preconnect)[];
+  /**
+   * Route ids beyond the root whose stylesheets every page loads, such as a layout's ("routes/_site"): they join the root's
+   * in the Early Hints header and in `stylesheets()`, which a preview drawn outside React Router reads.
+   */
+  stylesheetRoutes?: readonly string[];
   /**
    * The last word on a page or a step's answer, after the security set: a site's own cache rule (Foxhound's route
    * classes, Vary: Cookie). `stored` is true in the Renderer, whose answer the Workers cache keeps (settleCacheHeaders

@@ -686,7 +686,9 @@ return withPreloadHeader(page, PRELOADS.header, preloads(rootStylesheets(await s
 ```
 
 `rootStylesheets(build)` is the root route's CSS in a React Router server build as preload entries, the stylesheet every
-page blocks on. `withPreloadHeader(response, ...headers)` appends each non-empty value to an HTML response's `Link`.
+page blocks on. `pageStylesheets(build, routes)` adds the CSS of each route id in `routes` after the root's, each
+href once: a layout every public page renders inside (germomics' `routes/_site`). `./worker`'s `stylesheetRoutes` option
+passes those ids, so the Early Hints header and the stylesheets a Carrel preview draws with name the layout's CSS too. `withPreloadHeader(response, ...headers)` appends each non-empty value to an HTML response's `Link`.
 
 A font is always fetched in anonymous CORS mode, so a font preload without `crossorigin` is a second request for the
 same file. Every `as: "font"` entry gets `crossorigin=anonymous` (in the tag and the header) unless it names
