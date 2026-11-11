@@ -106,6 +106,15 @@ function scrubValue(key, value, options, depth) {
 }
 
 /**
+ * The message of a thrown value: an Error's own message, anything else as a string.
+ * @param {unknown} error
+ * @returns {string}
+ */
+export function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
  * Writes one JSON line, `{ event, ...fields }` scrubbed, to the console: `console.error` for `level: "error"`,
  * `console.warn` for "warn", else `console.log`. A field named `event` cannot replace the event's name.
  * @param {string} event

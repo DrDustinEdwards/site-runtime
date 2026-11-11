@@ -7,17 +7,30 @@
  * under a year out, as the RFC recommends.
  */
 
+/** Where every network site's vulnerability reports go, unless a site names its own. */
+export const SECURITY_CONTACT = "security@dustinedwards.info";
+
+/** The date the network's contact is next confirmed by; moved forward, by hand, when it is confirmed again. */
+export const SECURITY_TXT_EXPIRES = "2027-09-28T00:00:00Z";
+
 /**
- * @typedef {{ origin: string, contact: string, expires: Date | string, policy?: string, languages?: string }} SecurityTxt
+ * @typedef {{ origin: string, contact?: string, expires?: Date | string, policy?: string, languages?: string }} SecurityTxt
  */
 
 /**
  * The file's text: Contact, Expires, Policy when given, Preferred-Languages and Canonical (the site's own URL for it,
- * so a copy found elsewhere is known to be one). `contact` is an email address or a URL.
+ * so a copy found elsewhere is known to be one). `contact` is an email address or a URL; it and `expires` default to
+ * the network's (SECURITY_CONTACT, SECURITY_TXT_EXPIRES).
  * @param {SecurityTxt} fields
  * @returns {string}
  */
-export function securityTxt({ origin, contact, expires, policy, languages = "en" }) {
+export function securityTxt({
+  origin,
+  contact = SECURITY_CONTACT,
+  expires = SECURITY_TXT_EXPIRES,
+  policy,
+  languages = "en",
+}) {
   const when = new Date(expires);
   if (Number.isNaN(when.getTime())) throw new TypeError("security.txt needs an Expires date");
   return [

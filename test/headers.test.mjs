@@ -7,6 +7,7 @@ import {
   applyHeaderSet,
   buildSecurityHeaders,
   hostCookie,
+  readCookie,
 } from "../headers.mjs";
 
 const REASON = "the site embeds a cross-origin player";
@@ -219,4 +220,18 @@ test("charset: true gives each static text type its charset, and subresources an
     "a share card or picture loads in another site's preview, with no charset",
   );
   assert.doesNotMatch(headersFile({ "X-Frame-Options": "deny" }), /Content-Type/);
+});
+
+test("a path-scoped cookie is __Secure-, and readCookie reads only the prefixed names", () => {
+  assert.equal(
+    hostCookie("sid", "abc", { path: "/portal", maxAge: 0 }),
+    "__Secure-sid=abc; Path=/portal; Secure; HttpOnly; SameSite=Lax; Max-Age=0",
+  );
+  assert.throws(() => hostCookie("sid", "abc", { path: "/a; Domain=evil.example" }));
+  const jar = (/** @type {string} */ cookie) =>
+    new Request("https://example.com/", { headers: { Cookie: cookie } });
+  // A bare name could have been set by a sibling subdomain or a plaintext page, so it never answers.
+  assert.equal(readCookie(jar("sid=forged"), "sid"), null);
+  assert.equal(readCookie(jar("sid=forged; __Secure-sid=b; __Host-sid=a"), "sid"), "a");
+  assert.equal(readCookie(jar("__Secure-sid=b"), "sid"), "b");
 });

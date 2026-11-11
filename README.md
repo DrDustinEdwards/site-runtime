@@ -881,24 +881,47 @@ vulnerability.
 
 ```js
 import { securityTxtResponse } from "@dustinedwards/site-runtime/security-txt";
-return securityTxtResponse({
-  origin: "https://example.com",
-  contact: "security@example.com",
-  expires: "2027-09-28T00:00:00Z",
-});
+return securityTxtResponse({ origin: "https://example.com" });
 ```
 
 `securityTxt(fields)` is the text: Contact (an address becomes a `mailto:` URI), Expires, Policy when given,
 Preferred-Languages (`en` unless given) and Canonical. `securityTxtResponse(fields, headers)` serves it as text/plain,
 cached for an hour, always as `text/plain; charset=utf-8` (it refuses a Content-Type in `headers`); `headers` adds to or
-replaces the rest. Expires is required: prefer a fixed date with a test that fails
-a month before it lapses, the prompt to confirm the address still works.
+replaces the rest. `contact` and `expires` default to the network's (`SECURITY_CONTACT`, `SECURITY_TXT_EXPIRES`), so
+every site lists the same address and moves the date in one place; a site passes its own only when it has one. Prefer a
+fixed date with a test that fails a month before it lapses, the prompt to confirm the address still works.
 
 ## Byte encodings
 
 `./encoding` is the one set of byte encodings, Web APIs only (no Buffer, no `jose`): `toHex`/`fromHex`,
 `toBase64`/`fromBase64` (whitespace ignored, as GitHub wraps it), `base64url`/`fromBase64url` (no padding) and
-`sha256Hex`. Every encoder takes bytes or a string, which is encoded as UTF-8.
+`sha256Hex`, `hmacSha256Hex(secret, payload)` and `fnv1a32` (a short fingerprint, never a security boundary). Every
+encoder takes bytes or a string, which is encoded as UTF-8.
+
+## The server entry
+
+`./react-entry` is every React site's `app/entry.server.tsx`:
+
+```ts
+export { default, handleError, streamTimeout } from "@dustinedwards/site-runtime/react-entry";
+```
+
+A HEAD gets its status and headers with no render. The page streams to people; a crawler (`isbot`) and an SPA-mode
+render wait for the whole document. The request's nonce (`./context`) goes on React's scripts, on ServerRouter and into
+`./nonce`'s `NonceContext` (read it with `useNonce()` for an inline script a component writes). The render stops at
+`streamTimeout` plus a second or when the reader leaves. An error after the shell is one `render_failed` line and a
+500; `handleError` is `./log`'s handleServerError. `reactEntry({ nonce })` builds the same entry with another nonce
+reader, for a renderer that stores pages under a placeholder nonce.
+
+## Request helpers
+
+`./http`: `clientIp(request)` (`cf-connecting-ip`, else the one shared key "unknown"), `isWrite(request)`,
+`textResponse` and `jsonResponse` (`private, no-store`), `timedFetch` (a 20 s timeout unless the caller passes a
+signal) and `fetchUntil(signal)` (also stops when a reader or tool call is canceled), `isWorkerPreview(env)` and
+`publicOrigin(env, canonical)` (`PUBLIC_ORIGIN` before a cutover, else the canonical origin). `./log` has
+`errorMessage(error)`; `./url` has `redirectStatus(method)` (301, or 308 for a form) and `isSameOriginPath(path)`;
+`./headers` has `hostCookie(name, value, { path })` (`__Secure-` on a path other than `/`) and `readCookie(request,
+name)`, which reads only the prefixed names.
 
 ## Signed links
 
