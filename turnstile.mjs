@@ -29,13 +29,36 @@ const SCRIPT_URL = `${TURNSTILE_ORIGIN}/turnstile/v0/api.js?render=explicit`;
 /** @type {Promise<Turnstile> | undefined} */
 let loading;
 
+/** @type {{ createScriptURL(url: string): unknown } | null | undefined} */
+let policy;
+
+/**
+ * The script's address as TrustedScriptURL under the `turnstile` policy (./trusted-types, TRUSTED_TYPES_NAMES), which
+ * passes this one address and nothing else. Where the browser has no Trusted Types, or the page's `trusted-types` list
+ * leaves the name out, the plain string, which that page's own policy then decides.
+ * @returns {string}
+ */
+function scriptUrl() {
+  if (policy === undefined) {
+    try {
+      policy =
+        /** @type {any} */ (globalThis).trustedTypes?.createPolicy("turnstile", {
+          createScriptURL: (/** @type {string} */ url) => (url === SCRIPT_URL ? url : null),
+        }) ?? null;
+    } catch {
+      policy = null;
+    }
+  }
+  return /** @type {string} */ (policy?.createScriptURL(SCRIPT_URL) ?? SCRIPT_URL);
+}
+
 /** @returns {Promise<Turnstile>} */
 function loadTurnstile() {
   const ready = /** @type {{ turnstile?: Turnstile }} */ (globalThis).turnstile;
   if (ready) return Promise.resolve(ready);
   loading ??= new Promise((resolve, reject) => {
     const script = document.createElement("script");
-    script.src = SCRIPT_URL;
+    script.src = scriptUrl();
     script.async = true;
     script.onload = () =>
       resolve(

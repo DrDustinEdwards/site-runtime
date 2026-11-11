@@ -6,7 +6,7 @@ The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-
 servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-log`), server scaffold (`./mcp-server`), the admin MCP Worker built from them (`./admin-mcp`) and named agent keys (`./agent-keys`), the Access request-token check
 (`./access`), the check that an Access application lets in exactly the site's admins (`./access-drift`, `site-runtime-access-drift`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the one mail send (`./email`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images and their edits (`./image`), link prefetch (`./prefetch`), preloads and Early Hints (`./preload`), the Worker in front of a static site (`./static-site`), the edge page cache (`./edge-cache`), the Server-Timing header (`./server-timing`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), the signed token behind emailed links (`./signed-token`), where a site's Anthropic calls go
 (`./ai-gateway`), starting a Claude Code routine (`./routine`), the check on AI-written prose with the measure of an author's voice (`./prose`), the one sign-in every site
-offers (`./sign-in`, `./sign-in-client`, `./apple-secret`), INP attribution in the browser (`./vitals-client`), the Cloudflare Turnstile widget and its server check (`./turnstile`), the same-origin check for
+offers (`./sign-in`, `./sign-in-client`, `./apple-secret`), INP attribution in the browser (`./vitals-client`), the page's Trusted Types default policy (`./trusted-types`), the Cloudflare Turnstile widget and its server check (`./turnstile`), the same-origin check for
 resource routes (`./origin`), the trailing-slash redirect, the gone list and the slug-rename redirect (`./url`), one structured log line and its scrubbers (`./log`, with the `handleError` that leaves a route 404 unlogged), the 404 counter, the redirect table
 (`./not-found`), scheduled jobs with their record, their run-now tool, `run_job`, and the Worker's `scheduled` body (`./cron`), the Worker glue for a site's security headers (`./page-headers`: set, nonce, policy, Report-Only companion, report endpoint, edge-cache nonce renewal) and the per-request bindings and nonce on React Router's context (`./context`). `./body` also reads a form or JSON to a ceiling and throws the 413.
 
@@ -14,7 +14,7 @@ One dependency, Google's `web-vitals` (pinned, no dependencies of its own), whic
 `@better-auth/passkey`, 1.7.17 or later (the security fixes of 2026-11-03 and 04), which a site that imports it installs itself; they are not declared as peers,
 because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
 tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.92.0"`. `npm test` runs every test in `test/`. `npm run typecheck` checks the modules and bins (strict, `checkJs`, Workers and Node
-types; `tsconfig.json`) and the browser modules, `./turnstile`, `./sign-in-client` and `./vitals-client` (DOM types; `tsconfig.browser.json`), against
+types; `tsconfig.json`) and the browser modules, `./turnstile`, `./sign-in-client`, `./vitals-client` and `./trusted-types` (DOM types; `tsconfig.browser.json`), against
 the hand-written `.d.mts` beside each; `better-auth`, `@better-auth/passkey` and `@cloudflare/workers-oauth-provider` are dev
 dependencies only so it can read their types. `test/` is not checked yet. `npm run lint` is Oxlint with the network's shared
 config (devkit's `./oxlint`, in `oxlint.config.ts`), type-aware through the same tsconfigs (`test/` through TypeScript's defaults).
@@ -264,6 +264,29 @@ CSS selector of the site's own markup. It goes to the site's own origin (`connec
 ```js
 import { reportInp } from "@dustinedwards/site-runtime/vitals-client";
 reportInp();
+```
+
+### Trusted Types: the default policy
+
+Every site enforces `require-trusted-types-for 'script'` (W3C Trusted Types; web.dev, "Prevent DOM-based cross-site
+scripting vulnerabilities with Trusted Types"). Our own code never hands a sink a plain string: markup goes through a
+named policy (Capsomer's `markup()` and `trustedHtml()`, Enarratio's parser, the Turnstile loader in `./turnstile`) or is
+built as DOM. `installTrustedTypes()` from `./trusted-types`, called first in the client entry, makes the page's
+`default` policy, the narrow gate for what a library does that we cannot change:
+
+- HTML: `<script></script>` passes as written (React 19 makes a client-rendered script element that way), and so
+  does a string with no `<`, which can make only text (React Router's JSON-LD on a client navigation). Anything else is escaped, so it shows as text and runs nothing, and is sent to `/csp-report` once per sink and
+  script as a `trusted-types-default-policy` report, so the place can be fixed.
+- Script URLs: same-origin only. Script text (eval, `new Function`, a script's text): always refused. The browser
+  reports both itself.
+
+The policy names a site's `trusted-types` directive lists are `TRUSTED_TYPES_NAMES` (`default`, `capsomer`,
+`enarratio`, `turnstile`), plus `dompurify` where a site sanitizes untrusted HTML with DOMPurify's
+`RETURN_TRUSTED_TYPE`.
+
+```js
+import { installTrustedTypes } from "@dustinedwards/site-runtime/trusted-types";
+installTrustedTypes();
 ```
 
 ```js
