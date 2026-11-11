@@ -48,5 +48,14 @@ export function rootStylesheets(build: {
   assets: { routes: Record<string, { css?: string[] } | undefined> };
 }): Preload[];
 
+/**
+ * The root route's stylesheets, then those of each route in `routes` (a layout every page renders inside), each href once,
+ * as `{ href, as: "style" }` preloads.
+ */
+export function pageStylesheets(
+  build: { assets: { routes: Record<string, { css?: string[] } | undefined> } },
+  routes?: readonly string[],
+): Preload[];
+
 /** `response` with each non-empty `Link` value appended when it is HTML (rebuilt if its headers are immutable). */
 export function withPreloadHeader(response: Response, ...values: string[]): Response;

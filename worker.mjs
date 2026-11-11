@@ -101,7 +101,7 @@ import {
   SPECULATION_RULES_PATH,
   speculationRulesResponse,
 } from "./prefetch.mjs";
-import { preloads, rootStylesheets, withPreloadHeader } from "./preload.mjs";
+import { pageStylesheets, preloads, withPreloadHeader } from "./preload.mjs";
 import { securityTxtResponse } from "./security-txt.mjs";
 import { timedRender } from "./server-timing.mjs";
 import { canonicalRedirect } from "./url.mjs";
@@ -149,12 +149,14 @@ export function defineSite(options) {
       return dev && nonce ? withViteNonce(page, nonce) : page;
     },
     async stylesheets() {
-      stylesheetHrefs ??= rootStylesheets(await build()).map((sheet) => sheet.href);
+      stylesheetHrefs ??= pageStylesheets(await build(), options.stylesheetRoutes).map(
+        (sheet) => sheet.href,
+      );
       return stylesheetHrefs;
     },
     async earlyHints(page) {
       hintHeader ??= preloads([
-        ...rootStylesheets(await build()),
+        ...pageStylesheets(await build(), options.stylesheetRoutes),
         ...(options.preloads ?? []),
       ]).header;
       return withPreloadHeader(page, hintHeader);

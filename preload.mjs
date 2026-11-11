@@ -103,6 +103,18 @@ export function rootStylesheets(build) {
 }
 
 /**
+ * The stylesheets of the root route and then of each route named in `routes` (a layout every page renders inside), in that
+ * order and each href once, as `{ href, as: "style" }` preloads.
+ * @param {{ assets: { routes: Record<string, { css?: string[] } | undefined> } }} build
+ * @param {readonly string[]} [routes] route ids beyond the root, such as "routes/_site"
+ * @returns {import("./preload.d.mts").Preload[]}
+ */
+export function pageStylesheets(build, routes = []) {
+  const hrefs = ["root", ...routes].flatMap((id) => build.assets.routes[id]?.css ?? []);
+  return [...new Set(hrefs)].map((href) => ({ href, as: "style" }));
+}
+
+/**
  * `response` with each non-empty `Link` header value appended, when it is HTML. Appended, so a route's own Link (a
  * markdown alternate, a webmention endpoint) stays; rebuilt when its headers are immutable.
  * @param {Response} response
