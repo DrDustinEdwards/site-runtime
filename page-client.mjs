@@ -11,6 +11,7 @@
  * this sets the flag on Zod's own config object, and Zod runs the probe only at its first parse, after startPage().
  */
 
+import "./zod-jitless.mjs";
 import { installTrustedTypes } from "./trusted-types.mjs";
 
 const STARTED = Symbol.for("@dustinedwards/site-runtime/page-client");
@@ -23,10 +24,6 @@ export function startPage(options = {}) {
   const g = /** @type {Record<symbol, unknown>} */ (/** @type {unknown} */ (globalThis));
   if (g[STARTED]) return false;
   g[STARTED] = true;
-  const zod = /** @type {{ __zod_globalConfig?: Record<string, unknown> }} */ (
-    /** @type {unknown} */ (globalThis)
-  );
-  (zod.__zod_globalConfig ??= {}).jitless = true;
   installTrustedTypes(options);
   // INP reporting loads after the page has: web-vitals reads the buffered entries, so it "does not need to load early"
   // and "should be deferred until after other user-impacting code has loaded" (web-vitals README, "Overview"). As its own

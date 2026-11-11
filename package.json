@@ -116,6 +116,8 @@
     "trusted-types.d.mts",
     "page-client.mjs",
     "page-client.d.mts",
+    "zod-jitless.mjs",
+    "zod-jitless.d.mts",
     "apple-secret.mjs",
     "apple-secret.d.mts",
     "email.mjs",
@@ -340,6 +342,10 @@
     "./page-client": {
       "types": "./page-client.d.mts",
       "default": "./page-client.mjs"
+    },
+    "./zod-jitless": {
+      "types": "./zod-jitless.d.mts",
+      "default": "./zod-jitless.mjs"
     },
     "./apple-secret": {
       "types": "./apple-secret.d.mts",
