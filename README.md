@@ -1346,6 +1346,62 @@ and the account security live in `sign-in-link.mjs` and `sign-in-account.mjs`, r
 tested without Better Auth installed. The rest is Better Auth's own plugins, set up; each site's tests sign in through
 it.
 
+### The sign-in page's server side
+
+`./sign-in-form` is what a site's sign-in route action does, the same on every site, for Capsomer's sign-in screen
+(`capsomer/react/sign-in`). `./sign-in-words` is its words, with no dependency, so the screen reads them in the browser. `./sign-in-passkey` is the
+browser's passkey calls (`signInWithPasskey`, the `signal*` calls, `canOfferPasskey`, and `passkeySignIn`, which signs
+in and then signals the account's passkeys), also with no dependency; `./sign-in-client` re-exports them.
+
+```ts
+import {
+  authHandler,
+  safeNextPath,
+  signInErrorWords,
+  signInFormAction,
+  startSocialSignIn,
+} from "@dustinedwards/site-runtime/sign-in-form";
+
+export async function action({ request, context }: Route.ActionArgs) {
+  const result = await signInFormAction(auth, request, await readForm(request, FORM_LIMIT), {
+    landing: (next) => `/passkey?next=${encodeURIComponent(next)}`,
+    errorLanding: CONFIRM_PATH,
+    next: { fallback: "/console" },
+  });
+  if ("location" in result) throw redirect(result.location, { headers: result.headers });
+  return data(result.state, { status: result.status });
+}
+```
+
+- `signInFormAction(auth, request, form, site)`: a post with `intent=code` signs in with the typed code
+  (`signInWithCode`); any other asks for the mail (`requestSignInLink`). Both go through `auth.handler`, never
+  `auth.api`, because only the handler runs Better Auth's limiter and the Turnstile check (Grok audit TX-4). The handler
+  gets the origin, `cf-connecting-ip` and the user agent, nothing else of the browser's; a signed-in code answers only
+  the session's `Set-Cookie`. A link request says "sent" for every address. The answer is `{ state: { sent, error,
+  codeError }, status }` for the page, or `{ location, headers }` for the redirect.
+- `SIGN_IN_WORDS` (`./sign-in-words`): one sentence per answer (link, code and passkey refusals), and
+  `signInErrorWords(code, { siteName, settings })` for a page's `?error=`, `passkeyErrorWords(error)` for a passkey that did not sign in (null when the person canceled), and
+  `emailLinkWords({ siteName, settings })` for the email-change page.
+- `safeNextPath(raw, { fallback, within })`: where a sign-in may land. A path on this site only, every check anchored
+  at the start (an OAuth `next` legitimately carries `https://` in its query); absolute, `//host`, `/\host` and any
+  character outside printable ASCII fall back. `within` limits it to those paths and below.
+- `startSocialSignIn(auth, request, { provider, callbackURL, errorCallbackURL })`: the Google or Apple start from the
+  page's form POST (`/auth/google`, `/auth/apple`), so the landing is decided on the server. Answers the provider's URL
+  and Better Auth's state cookie, or null.
+- `authHandler(auth, request)`: the `/api/auth/*` route. Better Auth's answer, `no-store` when it says nothing.
+- `accountOptions({ confirmPath, sendEmailChange, beforeDelete })`: spread beside `signInOptions`. The email change
+  takes two links, the current address first, each opening the site's confirm page (`confirmEmailLink`), each lasting
+  EMAIL_CHANGE_EXPIRES_IN_WORDS (1 hour); `sendEmailChange({ to, link, token, step, newEmail, expiresIn })` mails
+  both. Deletion runs only from the site's own route (`/delete-user` and its callback are off) after `beforeDelete`.
+  Spread its `disabledPaths` with the sign-in's.
+- Disposable addresses: `signInOptions` refuses a new account at a disposable domain or a subdomain of one
+  (`isDisposableEmail`, `disposable_email`), from the CC0 list at disposable-email-domains, in
+  `disposable-domains.mjs`. `node update-disposable.mjs` refreshes it; never edit it by hand.
+
+**Tests.** `test/sign-in-form.test.mjs`: the next-path escapes, a disposable subdomain, the headers and token the link
+request carries, each refusal's words, a code's cookie-only redirect, no-store, both email-change links, and the
+disposable refusal on the real Better Auth beside a site's own user hook.
+
 ## The live sign-in check
 
 `site-runtime-sign-in --origin https://example.com [--from https://example.workers.dev]` (`bin/sign-in.mjs`, logic in

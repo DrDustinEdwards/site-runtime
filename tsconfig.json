@@ -15,6 +15,7 @@
   "exclude": [
     "turnstile.mjs",
     "sign-in-client.mjs",
+    "sign-in-passkey.mjs",
     "vitals-client.mjs",
     "trusted-types.mjs",
     "page-client.mjs",
