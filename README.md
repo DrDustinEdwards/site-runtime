@@ -917,7 +917,7 @@ reader, for a renderer that stores pages under a placeholder nonce.
 
 `./http`: `clientIp(request)` (`cf-connecting-ip`, else the one shared key "unknown"), `isWrite(request)`,
 `textResponse` and `jsonResponse` (`private, no-store`), `timedFetch` (a 20 s timeout unless the caller passes a
-signal) and `fetchUntil(signal)` (also stops when a reader or tool call is cancelled), `isWorkerPreview(env)` and
+signal) and `fetchUntil(signal)` (also stops when a reader or tool call is canceled), `isWorkerPreview(env)` and
 `publicOrigin(env, canonical)` (`PUBLIC_ORIGIN` before a cutover, else the canonical origin). `./log` has
 `errorMessage(error)`; `./url` has `redirectStatus(method)` (301, or 308 for a form) and `isSameOriginPath(path)`;
 `./headers` has `hostCookie(name, value, { path })` (`__Secure-` on a path other than `/`) and `readCookie(request,

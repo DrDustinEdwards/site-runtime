@@ -67,7 +67,7 @@ export const timedFetch = (input, init) =>
   fetch(input, { ...init, signal: init?.signal ?? AbortSignal.timeout(OUTBOUND_TIMEOUT_MS) });
 
 /**
- * A fetch that also stops when `signal` aborts (a reader who closed the stream, an MCP call cancelled), keeping
+ * A fetch that also stops when `signal` aborts (a reader who closed the stream, an MCP call canceled), keeping
  * timedFetch's timeout. `fetcher` (default timedFetch) is the fetch underneath.
  * @param {AbortSignal | undefined} signal
  * @param {typeof fetch} [fetcher]
