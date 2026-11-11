@@ -261,7 +261,7 @@ delay), the longest script the Long Animation Frames API saw (address, function,
 it as `web_vital`, every number rounded to the millisecond, the page and script cut to origin and path, and the target a
 CSS selector of the site's own markup. It goes to the site's own origin (`connect-src 'self'`), never to a third party.
 
-A site starts it with `startPage()` (`./page-client`, below), not by calling `reportInp` itself.
+A site starts it with `startPage()` (`./page-client`, below), not by calling `reportInp` itself. `startPage()` loads it as its own chunk once the page has loaded (web-vitals reads buffered entries, and its README asks for it to be deferred), so it stays out of every page's first download.
 
 ### Trusted Types: the default policy
 
@@ -276,13 +276,22 @@ built as DOM. `installTrustedTypes()` from `./trusted-types`, called first in th
   script as a `trusted-types-default-policy` report, so the place can be fixed.
 - Script URLs: same-origin only. Script text (eval, `new Function`, a script's text): always refused. The browser
   reports both itself.
+- Whole-document parses (DOMParser's `parseFromString`): escaped like other HTML, unless the page holds
+  `allowDocumentParsing()`. A parsed document is inert (its scripts never run and it loads nothing), so a page whose
+  library must parse markup it fetched, such as Foxing's EPUB reader building each chapter's frame, holds it while that
+  library runs and calls the function it returned to let go.
+- A same-origin frame the page builds (blob: or about:blank) inherits the page's Content-Security-Policy but not its
+  policies: `installTrustedTypes({ target: frame.contentWindow })` gives it the same default policy. `allowHtml`, a
+  check matching a library's exact markup, lets that one string through where the site cannot change the library.
 
 The policy names a site's `trusted-types` directive lists are `TRUSTED_TYPES_NAMES` (`default`, `capsomer`,
 `enarratio`, `turnstile`), plus `dompurify` where a site sanitizes untrusted HTML with DOMPurify's
 `RETURN_TRUSTED_TYPE`.
 
 A client entry does not call it, or `reportInp`, by itself: `startPage()` from `./page-client` is the first line of
-every client entry (a React Router `entry.client`, a plain site script, each island) and does both. A page with several
+every client entry (a React Router `entry.client`, a plain site script, each island) and does both. It also sets Zod's
+`jitless` flag (the config `z.config()` writes), so a site's client Zod never probes `new Function`, which every site's
+policy refuses and reports. A page with several
 entries calls it in each; only the first does anything.
 
 ```js
