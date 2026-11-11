@@ -91,7 +91,7 @@ export function normalizeQuestion(question) {
 }
 
 /**
- * The key a question's answer is cached under: `prefix` and the SHA-256 of the normalised question, so a prefix scan
+ * The key a question's answer is cached under: `prefix` and the SHA-256 of the normalized question, so a prefix scan
  * (KV list) can drop every cached answer at once.
  * @param {string} question
  * @param {string} [prefix] default `ask:answer:`

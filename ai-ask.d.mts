@@ -15,7 +15,7 @@ export function answerDelta(data: unknown): string | undefined;
 export function finishReason(data: unknown): string | undefined;
 /** Lowercased, whitespace collapsed, trailing punctuation dropped. */
 export function normalizeQuestion(question: string): string;
-/** `prefix` (default `ask:answer:`) and the SHA-256 hex of the normalised question. */
+/** `prefix` (default `ask:answer:`) and the SHA-256 hex of the normalized question. */
 export function answerKey(question: string, prefix?: string): Promise<string>;
 /** A cached answer as the frames a live one sends. */
 export function replayFrames(cached: { answer: string; chunks: unknown[] }): string[];
