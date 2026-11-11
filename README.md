@@ -480,6 +480,17 @@ return healthResponse({
   minutes by default; 0 reads every time), because listing the R2 bucket is a billed Class A operation and the route is
   public.
 
+### The health tile and the change mail
+
+`./health-snapshot` keeps /health's verdict in KV for a page to show without running the checks. The site's scheduled
+job calls `storeHealthSnapshot({ kv, answer })` and is the only writer, so the snapshot's age is that job's liveness.
+`readHealthTile({ kv })` answers fresh, stale (after three intervals), missing or unreadable, and `formatAge` words the
+age.
+
+`./health-alert` mails a person once when a check changes state: `notifyOnChange({ db, results, send, site })` compares
+the results with D1 `health_state` (`HEALTH_STATE_SQL`), mails when a check flipped (a new one only when failing), and
+records the new states only after the mail went, so a failed mail is tried again.
+
 ## Responsive images
 
 `./image` is a site's images end to end: the attributes a page writes and the route that serves each size from the one
@@ -2037,6 +2048,19 @@ async scheduled(controller, env, ctx) {
 
 **Tests.** `test/cron.test.mjs` (on an in-memory SQLite with `CRON_SQL`) and `test/health.test.mjs`.
 
+### A job under a lease, and the alarm ticker
+
+`./cron-lock` keeps two firings of one job from running at once. The Worker exports `CronLock`
+(`./cron-lock/durable-object`, a SQLite-backed Durable Object) and binds it; `withLease(env.CRON_LOCK, name, leaseMs, fn)`
+takes the job's lease, runs `fn` and releases only its own token. A held lease resolves to `CRON_SKIPPED`, so runJobs
+logs the job skipped. The lease is fenced: an overrunning run's late release cannot free the next run's lease.
+`lockHealth(heldUntil, now)` says idle, running or not-released for an operations page.
+
+Cloudflare stopped firing Foxhound's `*/5` trigger on 2026-10-23 while it still listed it. `CronTicker`
+(`./cron-lock/durable-object`) runs a site's sub-hourly jobs from a Durable Object alarm instead: extend it with
+`run()`, export and bind it, and call `ensureTickerArmed(env.CRON_TICKER, name)` from `scheduled()` and `queue()`. The
+alarm re-arms before it runs, so a run that throws or is cut off leaves the chain alive.
+
 ## Sending mail
 
 `./email` is the one call that hands a mail to Cloudflare Email Service's `send_email` binding
@@ -2063,6 +2087,32 @@ if (!outcome.sent) throw new Error(`Email not sent (${outcome.code}).`);
 - A failure writes one `email_send_failed` line (`./log`) with the code and the cut error, never the body.
 
 The `emailCheck` in `./health` checks the binding is present without sending.
+
+## A secret at rest
+
+`./secret-box` seals a secret (an OAuth token, a webhook URL) with AES-256-GCM under a keyring that rotates.
+`keyringFromEnv(env)` reads `ENCRYPTION_KEY` (64 hex digits, or base64 of 32 bytes), `ENCRYPTION_KEY_ID` (default `k1`)
+and decrypt-only `ENCRYPTION_KEYS_OLD` (`id:key,id:key`); other names can be passed. `seal(ring, text)` writes
+`v1:<keyId>:<ivHex>:<cipherHex>`, `open(ring, sealed)` reads it, `keyIdOf(sealed)` names its key, and `reseal(ring,
+sealed)` moves a value onto the active key or answers null when it is already there. To rotate: move the active key
+into the old list, set the new key and id, deploy, reseal every stored value, then drop the old list. Every failure
+throws with a message that names the fix and never the plaintext.
+
+## Web Push
+
+`./web-push` sends one payload to one browser subscription from the Worker: RFC 8291 encryption (aes128gcm) and an RFC
+8292 VAPID signature, on WebCrypto. `readVapidKey(secret)` reads a P-256 private JWK (or says why it cannot),
+`subscriptionProblem(sub)` refuses an endpoint that is not https on a known push service, and `sendPush(vapid, subject,
+sub, payload, now)` answers `{ status, gone }`, `gone` meaning stop sending to it (404 or 410).
+
+## PDFs
+
+`./print-pdf` turns HTML into a PDF with Browser Rendering. `quickPdf(env.BROWSER, html, { pdfOptions })` uses the quick
+action, for a page that is ready on load. `pagedPdf(puppeteer, env.BROWSER, html, { origin })` drives a full browser
+through the site's own `@cloudflare/puppeteer` for a page Paged.js lays out after load: it waits for the fonts and
+Paged.js's completion mark, then prints at the page's `@page` size. `pagedScripts({ path, integrity })` writes the
+config and the self-hosted polyfill's tag. Both check that the answer is a PDF. `./health` adds `browserCheck(name,
+env.BROWSER)`, which opens no browser.
 
 ## A constant-time secret compare
 
