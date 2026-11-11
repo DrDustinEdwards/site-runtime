@@ -1396,7 +1396,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   Spread its `disabledPaths` with the sign-in's.
 - Disposable addresses: `signInOptions` refuses a new account at a disposable domain or a subdomain of one
   (`isDisposableEmail`, `disposable_email`), from the CC0 list at disposable-email-domains, in
-  `disposable-domains.mjs`. `node update-disposable.mjs` refreshes it; never edit it by hand.
+  `disposable-domains.mjs`, plus `NETWORK_EXTRA` (domains a site blocked before that the source lacks). `node update-disposable.mjs` refreshes it; never edit it by hand.
 
 **Tests.** `test/sign-in-form.test.mjs`: the next-path escapes, a disposable subdomain, the headers and token the link
 request carries, each refusal's words, a code's cookie-only redirect, no-store, both email-change links, and the
