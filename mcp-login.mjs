@@ -124,24 +124,24 @@ function clientLabel(client, clientId) {
  * page: the 460px card, the muted text, the write grant's box and Allow and Deny side by side.
  */
 export const CONSENT_STYLE = `
-  :root { color-scheme: light dark; --muted: color-mix(in srgb, CanvasText 62%, Canvas); --line: color-mix(in srgb, CanvasText 16%, Canvas); }
+  :root { color-scheme: light dark; --consent-muted: color-mix(in srgb, CanvasText 62%, Canvas); --consent-line: color-mix(in srgb, CanvasText 16%, Canvas); }
   body { margin: 0; font: 16px/1.6 system-ui, sans-serif; background: color-mix(in srgb, CanvasText 3%, Canvas); color: CanvasText; }
   .cap-consent { box-sizing: border-box; display: grid; align-content: center; min-height: 100vh; width: 100%; max-width: calc(460px + 48px); margin: 0 auto; padding: 24px; }
   .cap-consent:focus { outline: none; }
-  .cap-panel { background: Canvas; border: 1px solid var(--line); border-radius: 10px; }
+  .cap-panel { background: Canvas; border: 1px solid var(--consent-line); border-radius: 10px; }
   .cap-consent-body { display: grid; gap: 16px; padding: 48px 24px; }
   .cap-consent-title { margin: 0; font-size: 1.125rem; font-weight: 500; line-height: 1.3; }
-  .cap-consent-text, .cap-consent-body > p { margin: 0; color: var(--muted); font-size: .8125rem; }
+  .cap-consent-text, .cap-consent-body > p { margin: 0; color: var(--consent-muted); font-size: .8125rem; }
   .cap-consent-text strong { color: CanvasText; font-weight: 500; }
   .cap-alert { padding: 8px 12px; border: 1px solid; border-radius: 6px; font-size: .8125rem; }
   .cap-consent-form { display: grid; gap: 20px; }
-  .cap-consent-box { padding: 12px 16px; border: 1px solid var(--line); border-radius: 10px; }
+  .cap-consent-box { padding: 12px 16px; border: 1px solid var(--consent-line); border-radius: 10px; }
   .cap-check { display: inline-flex; align-items: flex-start; gap: 12px; min-height: 24px; cursor: pointer; }
   .cap-check input { margin: .3em 0 0; }
-  .cap-consent-line { display: block; margin-top: 2px; color: var(--muted); font-size: .8125rem; }
+  .cap-consent-line { display: block; margin-top: 2px; color: var(--consent-muted); font-size: .8125rem; }
   .cap-consent-mono { font-family: ui-monospace, monospace; font-size: .75rem; }
   .cap-consent-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .cap-btn { font: inherit; font-size: .9375rem; min-height: 40px; padding: 0 16px; border: 1px solid var(--line); border-radius: 6px; background: Canvas; color: CanvasText; cursor: pointer; }
+  .cap-btn { font: inherit; font-size: .9375rem; min-height: 40px; padding: 0 16px; border: 1px solid var(--consent-line); border-radius: 6px; background: Canvas; color: CanvasText; cursor: pointer; }
   .cap-btn[data-variant="primary"] { background: CanvasText; border-color: CanvasText; color: Canvas; }
   .cap-btn:focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }
 `;
