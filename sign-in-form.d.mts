@@ -5,6 +5,7 @@ export {
   SIGN_IN_WORDS,
   emailLinkWords,
   passkeyErrorWords,
+  securityHistoryWords,
   signInErrorWords,
 } from "./sign-in-words.mjs";
 

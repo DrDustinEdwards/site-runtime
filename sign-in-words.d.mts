@@ -63,3 +63,6 @@ export function emailLinkWords(site: {
     Words
   >
 >;
+
+/** One row of a person's security history in words: "Signed in with a passkey", "Google connected". */
+export function securityHistoryWords(entry: { kind: string; via: string | null }): string;

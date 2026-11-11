@@ -124,3 +124,40 @@ export function emailLinkWords({ siteName, settings }) {
     }),
   });
 }
+
+const WAY_IN = Object.freeze({
+  link: "an email link",
+  code: "an email code",
+  passkey: "a passkey",
+  google: "Google",
+  apple: "Apple",
+});
+const PROVIDER = Object.freeze({ google: "Google", apple: "Apple" });
+
+/**
+ * One row of a person's security history (`securityHistory`) in words: "Signed in with a passkey", "Google connected".
+ * @param {{ kind: string, via: string | null }} entry
+ */
+export function securityHistoryWords({ kind, via }) {
+  const way = via ? WAY_IN[/** @type {keyof typeof WAY_IN} */ (via)] : undefined;
+  const provider =
+    (via && PROVIDER[/** @type {keyof typeof PROVIDER} */ (via)]) ?? "A sign-in method";
+  switch (kind) {
+    case "sign-in":
+      return way ? `Signed in with ${way}` : "Signed in";
+    case "passkey-added":
+      return "Passkey added";
+    case "passkey-removed":
+      return "Passkey removed";
+    case "sign-in-linked":
+      return `${provider} connected`;
+    case "sign-in-unlinked":
+      return `${provider} disconnected`;
+    case "email-changed":
+      return "Email address changed";
+    case "recovery":
+      return "Signed in by email with no passkey left; other devices signed out";
+    default:
+      return "Account change";
+  }
+}
