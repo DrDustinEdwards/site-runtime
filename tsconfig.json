@@ -17,6 +17,7 @@
     "sign-in-client.mjs",
     "vitals-client.mjs",
     "trusted-types.mjs",
+    "page-client.mjs",
     "sites-values.mjs"
   ]
 }
