@@ -242,6 +242,64 @@ export function runJobTool(db, jobs, options = {}) {
 }
 
 /**
+ * The operator tool `backup_status` (./operator): the backup state read now, uncached, the same read /health's backup
+ * field keeps for an hour. `files` names the site's file passes beside the D1 dump (media, audio, evidence), so the
+ * description says what the answer covers. Every site's Capsid Admin reads it the same way.
+ * @param {() => unknown} status the site's backup read (d1-dump's backupHealth over its bucket, as /health's `backup`)
+ * @param {{ files?: string[] }} [options]
+ * @returns {import("./operator.d.mts").OperatorTool}
+ */
+export function backupStatusTool(status, { files = [] } = {}) {
+  const covers =
+    files.length === 0
+      ? ", and a warning when it is past 26 hours"
+      : `${files.length === 1 ? ` and the ${files[0]} files pass` : ` and each files pass (${files.join(", ")})`}` +
+        `, with when each last completed, and a warning when ${files.length === 1 ? "either" : "any"} is past 26 hours`;
+  return {
+    description: `Reads the backup state now, uncached: the newest complete D1 dump's age${covers}. The same read as /health's backup field.`,
+    run: () => status(),
+  };
+}
+
+/**
+ * The two operator tools every site's scheduled jobs answer through: `backup_status` (backupStatusTool) and `run_job`
+ * (runJobTool), for a site's operatorResponse `tools`.
+ * @param {{ db: D1Like | (() => D1Like) | null, jobs: CronJob[] | (() => CronJob[]), backupStatus: () => unknown, files?: string[] }} options
+ * @returns {{ backup_status: import("./operator.d.mts").OperatorTool, run_job: import("./operator.d.mts").OperatorTool }}
+ */
+export function operatorJobTools({ db, jobs, backupStatus, files }) {
+  return {
+    backup_status: backupStatusTool(backupStatus, { files }),
+    run_job: runJobTool(db, jobs),
+  };
+}
+
+/** The 24 hours a nightly job's interval is, in minutes. */
+export const DAILY_MINUTES = 1440;
+
+/**
+ * The every-minute job that makes Carrel's scheduled changes go live (site-api's schedules), named "carrel-schedules"
+ * on every site. 50 seconds by default, so a hung run never runs into the next minute's.
+ * @param {(signal: AbortSignal) => Promise<unknown>} run
+ * @param {{ timeoutMs?: number }} [options]
+ * @returns {CronJob}
+ */
+export function carrelSchedulesJob(run, { timeoutMs = 50_000 } = {}) {
+  return { name: "carrel-schedules", everyMinutes: 1, timeoutMs, run };
+}
+
+/**
+ * The nightly D1 dump, named "backup" and marked `backup` (Capsid Admin's back up now runs it). Five minutes by
+ * default, inside a scheduled invocation's 15 beside the files passes.
+ * @param {(signal: AbortSignal) => Promise<unknown>} run
+ * @param {{ name?: string, timeoutMs?: number }} [options] `name` for a files pass ("media-backup")
+ * @returns {CronJob}
+ */
+export function backupJob(run, { name = "backup", timeoutMs = 5 * 60_000 } = {}) {
+  return { name, backup: true, everyMinutes: DAILY_MINUTES, timeoutMs, run };
+}
+
+/**
  * Each job in `cron_runs` that is not well, as data: the reason is "failed" (its last run failed), "stale" (its last
  * success is older than its interval plus the grace), "never succeeded" (first started longer ago than that, no
  * success) or "never ran" (given `jobs`, no row once its window has passed since `deployedAt`, at once without it).

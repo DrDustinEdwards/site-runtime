@@ -134,6 +134,8 @@ export function authEventCounts(
 ): Promise<{ failures: number; mails: number }>;
 /** Deletes rows with no user after 30 days and every row after a year: a daily job. */
 export function pruneAuthEvents(db: D1Like, now?: number): Promise<void>;
+/** The nightly "prune-auth-events" job: pruneAuthEvents, one minute. */
+export function pruneAuthEventsJob(db: D1Like): import("./cron.d.mts").CronJob;
 
 /** "Safari on iPhone", "Chrome on Windows", one of the two alone, or null. */
 export function deviceName(userAgent: string | null | undefined): string | null;

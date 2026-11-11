@@ -171,6 +171,21 @@ export async function pruneNotFound(db, { days = 90, now = new Date() } = {}) {
 }
 
 /**
+ * The nightly job that runs pruneNotFound, named "prune-404" on every site (one minute).
+ * @param {D1Like} db
+ * @param {{ days?: number }} [options]
+ * @returns {import("./cron.d.mts").CronJob}
+ */
+export function pruneNotFoundJob(db, { days = 90 } = {}) {
+  return {
+    name: "prune-404",
+    everyMinutes: 1440,
+    timeoutMs: 60_000,
+    run: () => pruneNotFound(db, { days }),
+  };
+}
+
+/**
  * The most-hit missing paths of the last `days` UTC days, for an admin screen: each with its kind, its hits and the
  * hosts that linked to it ("" is no referrer), most hits first. Probes are left out unless `includeProbes`; a row
  * counted before the kind column existed is classed by its path.

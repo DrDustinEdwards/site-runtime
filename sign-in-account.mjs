@@ -839,6 +839,20 @@ export async function pruneAuthEvents(db, now = Date.now()) {
     .run();
 }
 
+/**
+ * The nightly job that runs pruneAuthEvents, named "prune-auth-events" on every site (one minute).
+ * @param {D1Like} db
+ * @returns {import("./cron.d.mts").CronJob}
+ */
+export function pruneAuthEventsJob(db) {
+  return {
+    name: "prune-auth-events",
+    everyMinutes: 1440,
+    timeoutMs: 60_000,
+    run: () => pruneAuthEvents(db),
+  };
+}
+
 // ---- security notices -------------------------------------------------------------------------------
 
 const PROVIDER_NAMES = /** @type {Record<string, string>} */ ({ google: "Google", apple: "Apple" });

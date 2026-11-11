@@ -1999,10 +1999,18 @@ async scheduled(controller, env, ctx) {
 - Pass `jobs` (the same list runJobs gets; `run` is not called) and the check reads only those, with their own
   intervals: a removed job's old row is ignored, and a job with no row at all fails as "never ran" (a trigger that never
   fires it, a misspelt cron key). `deployedAt` (such as `new Date(env.CF_VERSION_METADATA.timestamp)`) holds that back
-  until the job's window has passed since the deploy; without it a job that has not run yet warns at once. Without
+  until the job's window has passed since the deploy (`deployedAt(env)` from `./deploy` reads it); without it a job that has not run yet warns at once. Without
   `jobs`, a removed job keeps its row, which goes stale: delete the row with the job.
 - `cronFindings(db, options)` is the same judgment as data, `[{ name, reason, lastOkAt }]` with reason `failed`,
   `stale`, `never succeeded` or `never ran`, for a site that mails its own alert from it (Foxhound's stale-cron email).
+- The jobs every site runs have one name and one shape each, so Capsid Admin's `run_job` and the job table read them
+  the same everywhere: `carrelSchedulesJob(run)` ("carrel-schedules", every minute, 50 s), `backupJob(run, { name,
+  timeoutMs })` (the nightly "backup", or a files pass such as "media-backup", marked `backup`, 5 minutes by default),
+  `pruneNotFoundJob(db, { days })` ("prune-404", `./not-found`) and `pruneAuthEventsJob(db)` ("prune-auth-events",
+  `./sign-in`). `DAILY_MINUTES` is 1440.
+- `operatorJobTools({ db, jobs, backupStatus, files })` is the operator's two job tools: `backup_status`
+  (`backupStatusTool(status, { files })`, the backup read now, uncached, its description naming the files passes) and
+  `run_job`.
 
 **Tests.** `test/cron.test.mjs` (on an in-memory SQLite with `CRON_SQL`) and `test/health.test.mjs`.
 

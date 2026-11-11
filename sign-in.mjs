@@ -147,6 +147,7 @@ export {
   passkeyProvider,
   passkeyRows,
   pruneAuthEvents,
+  pruneAuthEventsJob,
   requireFreshSession,
   revokeSessionById,
   securityHistory,

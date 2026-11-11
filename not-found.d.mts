@@ -52,6 +52,11 @@ export function countNotFound(
 ): void;
 /** Deletes the rows from before the last `days` UTC days (default 90, today included). */
 export function pruneNotFound(db: D1Like, options?: { days?: number; now?: Date }): Promise<void>;
+/** The nightly "prune-404" job: pruneNotFound for `days` (90), one minute. */
+export function pruneNotFoundJob(
+  db: D1Like,
+  options?: { days?: number },
+): import("./cron.d.mts").CronJob;
 
 /** One missing path in the report: "" as a referrer host is no referrer. */
 export interface NotFoundReportRow {
