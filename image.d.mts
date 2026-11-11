@@ -34,6 +34,9 @@ export function originalKey(key: string, request: Request | URL | string): strin
 /** A focal point as written in a URL, or null. */
 export function focusOf(value: unknown): string | null;
 
+/** A focal point as CSS `object-position` ("37.5% 60%"), each axis to a tenth of a percent; undefined when not one. */
+export function focalPosition(value: unknown): string | undefined;
+
 /** Astro's widths for a layout, never wider than the original. */
 export function imageWidths(options: {
   layout: ImageLayout;
@@ -172,21 +175,21 @@ export interface PictureProps {
     loading: "eager" | "lazy";
     fetchPriority: "high" | undefined;
     decoding: "async";
-    /** The placeholder background while it loads; spread a site's own style over it. */
-    style: { background: string } | undefined;
+    /** The placeholder background while it loads, and the focal point as objectPosition; spread a site's own style over it. */
+    style: { background?: string; objectPosition?: string } | undefined;
   };
 }
 
 /** What a `<picture>` for `attributes()` holds, with JSX's prop names (undefined where unset). No React needed. */
 export function pictureProps(
   attrs: ImageAttributes,
-  options: { alt: string; priority?: boolean; className?: string },
+  options: { alt: string; priority?: boolean; className?: string; focus?: unknown },
 ): PictureProps;
 
 /** `<picture>` markup for `attributes()`: `pictureProps` written out, escaped with the site's attribute escape. */
 export function pictureHtml(
   attrs: ImageAttributes,
-  options: { alt: string; priority?: boolean; className?: string },
+  options: { alt: string; priority?: boolean; className?: string; focus?: unknown },
   escape: (value: string) => string,
 ): string;
 

@@ -336,6 +336,12 @@ if (text === null) return new Response("too large", { status: 413 });
 `requireJson(request)` is `null` for an `application/json` (or `+json`) body and otherwise a 415, `no-store`, so a JSON
 route never parses a form a cross-site page could post without a preflight.
 
+`readMultipart(request, max)` reads a multipart/form-data upload one part at a time as it arrives, so a large file goes on
+to R2 without the whole body in memory (`readForm` and `request.formData()` buffer it). Each part is `{ name, filename,
+type, chunks() }`; read a part's `chunks()` before asking for the next, and what is left unread is skipped. Over `max`
+in all it throws the 413; a body that is not multipart or does not parse throws a 400. `partText(part, max?)` reads a
+text field (64 KiB by default). `multipartBoundary(contentType)` is the boundary or null.
+
 ## HTML escaping
 
 `./html` is the one `escapeHtml`.
@@ -430,12 +436,12 @@ field optional, with `{ status, ok, alerts, db, backup, sha, time, checks: [{ na
 `no-store` and `noindex`.
 
 ```js
-import { healthResponse, r2Check } from "@dustinedwards/site-runtime/health";
+import { deployedSha, healthResponse, r2Check } from "@dustinedwards/site-runtime/health";
 import { cronCheck } from "@dustinedwards/site-runtime/cron";
 return healthResponse({
   ping: () => env.DB.prepare("SELECT 1").first(),
   backup: () => backupHealth(env.BACKUPS),
-  sha: env.DEPLOY_SHA,
+  sha: deployedSha(env),
   checks: [
     r2Check("media", env.MEDIA),
     cronCheck(env.DB),
@@ -539,20 +545,25 @@ original. An SVG is only ever served as an attachment. Without the binding (a ch
 `wrangler.jsonc`) the route serves the original and says so in `x-image`; a failed transform serves the original for five
 minutes and logs `image-transform-failed`.
 
-A page that renders JSX takes the same picture as props: `pictureProps(attrs, { alt, priority, className })` returns
+A page that renders JSX takes the same picture as props: `pictureProps(attrs, { alt, priority, className, focus })` returns
 `{ sources: [{ type, srcSet, sizes, media }], img: { src, srcSet, sizes, width, height, alt, className, loading,
 fetchPriority, decoding, style } }`, plain objects with no React import, and `pictureHtml` is those props written out, so the
 two never differ. An unset prop is `undefined`, which JSX leaves out; with no `sources` the page writes the `<img>`
-alone (germomics' `Picture` falling back to the original). A site adds its own props beside them, as julieedwards.info's
-`object-position` from the focal point:
+alone (germomics' `Picture` falling back to the original). `focus`, the file's focal point, sets `img.style`'s
+`objectPosition` (`object-position` in `pictureHtml`), so a box that crops the picture with object-fit: cover keeps its
+subject; `focalPosition(focus)` is the same value alone ("37.5% 60%", undefined for no focal point). A site adds its own
+props beside them:
 
 ```jsx
-const { sources, img } = pictureProps(images.attributes(photo, "content"), { alt: photo.alt });
+const { sources, img } = pictureProps(images.attributes(photo, "content"), {
+  alt: photo.alt,
+  focus: photo.focus,
+});
 <picture>
   {sources.map((s) => (
     <source key={s.type + (s.media ?? "")} {...s} />
   ))}
-  <img {...img} style={{ ...img.style, objectPosition: objectPosition(photo.focus) }} />
+  <img {...img} />
 </picture>;
 ```
 
@@ -1046,6 +1057,29 @@ for hand-written SQL, so `%` and `_` match themselves. A newest-first page goes 
 row's millisecond. Sites with Drizzle only: it imports `drizzle-orm`.
 
 ## CSV
+
+`./deploy`: `deployedSha(env, { fallback? })` is the deployed commit from the DEPLOY_SHA var devkit's worker-deploy
+sets (trimmed, lowercased, 7 to 40 hex, else `fallback`, undefined by default), and `deployedAt(env)` is when this
+version was deployed, from the CF_VERSION_METADATA binding (cronCheck's `deployedAt`). `./health` re-exports both. The
+shared Worker's request log, the MCP doors and the static site read the sha through it.
+
+`./health-read`: reading another Worker's /health answer, the same way everywhere. `parseHealth(text)` and
+`healthOf(value)` give `{ status: "ok" | "degraded" | "down" | null, sha, problem }`, taking the family format, the
+older `ok` + `backup.warning` bodies and Capsid's own; a 200 that admits a problem reads as degraded.
+`failingCheckNames(checks)` names the warn and fail checks. `healthChecks(body)` gives the rows fail closed (no status
+the format names is a fail), with a drift check's "present of expected" counts.
+
+`./inbox-report`: `reportInbox({ namespace, items, key, origin?, fetcher? })` sends an app's present state to Capsid's
+inbox (POST /ops/inbox/report, the app's own agent key as the bearer). A report replaces the last one whole and expires
+after 6 hours, so a cron sends it every run, with no items when nothing waits. Items are cut to the receiver's limits
+(`MAX_REPORT_ITEMS`, `MAX_REPORT_TITLE`). Skipped without a key; a failure is logged and returned, never thrown.
+`capsidOrigin(env)` reads the CAPSID_ORIGIN var.
+
+`./redact`: `redact(text)` gives `{ text, redactions }` with every secret-shaped value replaced by `[REDACTED:<kind>]`
+(private keys, Anthropic and Stripe keys, JWTs, GitHub and Slack tokens, AWS key ids, Authorization values,
+secret-named assignments and long random runs after a secret word); `redactText(text)` the text alone. For text a
+Worker relays from outside (a CI log handed to an agent). It over-redacts on purpose; a site's own log lines go through
+`./log`'s scrubText, whose credential pattern now also covers private key blocks, Slack tokens and AWS key ids.
 
 `./confirm`: `confirmationSatisfied(form, word?)` and `confirmationRequired()`, the server half of a destructive action's confirmation. The page asks (Capsomer's confirm dialog or confirm page) and posts `confirmed=1`, plus the typed word as `confirm` where it asks for one; the action refuses what is not confirmed with a 400. devkit-destructive finds the call by name inside each destructive intent's branch.
 

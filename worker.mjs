@@ -105,6 +105,7 @@ import { preloads, rootStylesheets, withPreloadHeader } from "./preload.mjs";
 import { securityTxtResponse } from "./security-txt.mjs";
 import { timedRender } from "./server-timing.mjs";
 import { canonicalRedirect } from "./url.mjs";
+import { deployedSha } from "./deploy.mjs";
 
 /** The security.txt path (RFC 9116 section 3). */
 export const SECURITY_TXT_PATH = "/.well-known/security.txt";
@@ -487,7 +488,7 @@ export function siteWorker(site) {
       /** @type {ExecutionContext} */ ctx,
     ) => (await Promise.all([wrapped(request, env, ctx), site.routesReady()]))[0],
     {
-      sha: (env) => options.sha?.(env) ?? /** @type {any} */ (env).DEPLOY_SHA,
+      sha: (env) => options.sha?.(env) ?? deployedSha(env),
       tokenPath,
       route: (request) => site.routeName(request),
     },

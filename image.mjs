@@ -146,6 +146,22 @@ export function focusOf(value) {
 }
 
 /**
+ * A focal point as CSS `object-position` ("37.5% 60%"), for a picture its box crops (object-fit: cover), so the crop
+ * keeps the subject in view. Each axis is rounded to a tenth of a percent. Undefined when `value` is not a focal point,
+ * which leaves the browser's default, the middle.
+ * @param {unknown} value
+ * @returns {string | undefined}
+ */
+export function focalPosition(value) {
+  const point = focusOf(value);
+  if (!point) return undefined;
+  return point
+    .split("x")
+    .map((n) => `${Math.round(Number(n) * 1000) / 10}%`)
+    .join(" ");
+}
+
+/**
  * The widths an image is offered at, by Astro's rules: full-width takes every screen width up to the original;
  * fixed takes 1x and 2x; constrained takes 1x, 2x and every screen width up to 2x. Never wider than the original.
  * @param {{ layout: "constrained" | "fixed" | "full-width", width?: number, originalWidth?: number, breakpoints?: number[] }} options
@@ -510,12 +526,20 @@ export function defineImages({
  * What a `<picture>` for `attributes()` holds, as plain objects with JSX's prop names, for a page that renders JSX:
  * `sources` for the `<source>` elements and `img` for the `<img>`. `alt` is required: an image with nothing to say
  * passes "". Lazy by default; the page's first large image passes `priority`. An unset prop is undefined, which JSX
- * leaves out. With no `sources` the page writes the `<img>` alone.
+ * leaves out. With no `sources` the page writes the `<img>` alone. `focus` (the file's focal point) sets the `<img>`'s
+ * `objectPosition`, for a box that crops it with object-fit: cover.
  * @param {import("./image.mjs").ImageAttributes} attrs
- * @param {{ alt: string, priority?: boolean, className?: string }} options
+ * @param {{ alt: string, priority?: boolean, className?: string, focus?: unknown }} options
  */
-export function pictureProps(attrs, { alt, priority = false, className }) {
-  const style = attrs.background ? { background: attrs.background } : undefined;
+export function pictureProps(attrs, { alt, priority = false, className, focus }) {
+  const objectPosition = focalPosition(focus);
+  const style =
+    attrs.background || objectPosition
+      ? {
+          ...(attrs.background ? { background: attrs.background } : {}),
+          ...(objectPosition ? { objectPosition } : {}),
+        }
+      : undefined;
   return {
     sources: attrs.sources.map((s) => ({
       type: s.type,
@@ -577,11 +601,19 @@ export function pictureHtml(attrs, options, escape) {
       .filter(([, value]) => value !== undefined && value !== null)
       .map(
         ([prop, value]) =>
-          ` ${HTML_NAMES[prop] ?? prop}="${escape(prop === "style" ? `background:${/** @type {{ background: string }} */ (value).background}` : String(value))}"`,
+          ` ${HTML_NAMES[prop] ?? prop}="${escape(prop === "style" ? styleText(/** @type {{ background?: string, objectPosition?: string }} */ (value)) : String(value))}"`,
       )
       .join("")}>`;
   if (sources.length === 0) return tag("img", img);
   return `<picture>${sources.map((s) => tag("source", s)).join("")}${tag("img", img)}</picture>`;
+}
+
+/** @param {{ background?: string, objectPosition?: string }} style */
+function styleText({ background, objectPosition }) {
+  return [
+    ...(background ? [`background:${background}`] : []),
+    ...(objectPosition ? [`object-position:${objectPosition}`] : []),
+  ].join(";");
 }
 
 const EDIT_FORMATS = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);

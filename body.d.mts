@@ -18,3 +18,20 @@ export function readJson(
   max: number,
   options?: { typed?: boolean },
 ): Promise<unknown>;
+
+/** One part of a multipart/form-data body, as readMultipart yields it. */
+export interface MultipartPart {
+  name: string;
+  /** The file name for a file part ("" when the picker was left empty), null for a text field. */
+  filename: string | null;
+  /** The part's Content-Type, lowercased, without parameters ("" when it has none). */
+  type: string;
+  /** The part's bytes. Each call goes on from where the last stopped, so a reader may break out and call again. */
+  chunks(): AsyncGenerator<Uint8Array>;
+}
+/** The boundary from a multipart/form-data Content-Type, or null for any other type. */
+export function multipartBoundary(contentType: string | null): string | null;
+/** A multipart body one part at a time as it arrives; throws the 413 over `max` in all, a 400 Response when it does not parse. */
+export function readMultipart(request: Request, max: number): AsyncGenerator<MultipartPart>;
+/** A text part's value, read to `max` bytes (64 KiB); longer throws a 400 Response naming the field. */
+export function partText(part: MultipartPart, max?: number): Promise<string>;
