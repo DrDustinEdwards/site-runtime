@@ -44,6 +44,7 @@
     "owasp-headers.d.mts",
     "update-owasp.mjs",
     "rate-limit",
+    "cron-lock",
     "doc-room",
     "members",
     "access-login.mjs",
@@ -533,6 +534,14 @@
     "./web-push": {
       "types": "./web-push.d.mts",
       "default": "./web-push.mjs"
+    },
+    "./cron-lock": {
+      "types": "./cron-lock/index.d.mts",
+      "default": "./cron-lock/index.mjs"
+    },
+    "./cron-lock/durable-object": {
+      "types": "./cron-lock/durable-object.d.mts",
+      "default": "./cron-lock/durable-object.mjs"
     }
   },
   "scripts": {
