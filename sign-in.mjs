@@ -42,6 +42,9 @@
  * - NO OAUTH TOKENS: with `social: true` the options carry `databaseHooks.account`, which blank Google's and Apple's
  *   tokens on every account write Better Auth makes (createOAuthUser, linkAccount, updateAccount). Sign-in reads none of
  *   them, so none are stored. A site with hooks of its own merges them: `databaseHooks: { ...signIn.databaseHooks, user }`.
+ * - NO DISPOSABLE ADDRESSES: a plugin's user create hook refuses a new account at a disposable domain, whichever way it
+ *   is made (`./sign-in-form`, isDisposableEmail, from a maintained CC0 list), as BAD_REQUEST `disposable_email`. An
+ *   existing account keeps working. A plugin's hook, so a site's own `databaseHooks.user` runs beside it.
  * - TURNSTILE on the email link when TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY are both set (a key without its secret
  *   would show a widget nothing checks; a secret without its key would refuse everyone). The link is the one endpoint
  *   that mails a stranger. Without both, the link request is refused (503 TURNSTILE_NOT_SET): it fails closed. A site
@@ -109,6 +112,7 @@ import {
   signedInDevices,
 } from "./sign-in-account.mjs";
 import { CONFIRM_PATH, SIGN_IN_EXPIRES_IN_SECONDS, confirmLinkURL } from "./sign-in-link.mjs";
+import { refuseDisposable } from "./sign-in-form.mjs";
 
 export {
   CONFIRM_PATH,
@@ -331,6 +335,7 @@ export async function signInOptions(
       },
     }),
     SIGN_OUT_CLEARS,
+    NO_DISPOSABLE,
     accountEvents(siteName, sendSecurityNotice, eventsDb ?? null, sessionDetails),
   ];
   plugins.push(sessionTouchPlugin(sessionDetails), sessionIdlePlugin());
@@ -396,6 +401,12 @@ export async function signInOptions(
     trustedOrigins: socialProviders.apple ? ["https://appleid.apple.com"] : [],
   };
 }
+
+/** Refuses a new account at a disposable address (`./sign-in-form`, refuseDisposable). */
+const NO_DISPOSABLE = {
+  id: "no-disposable-email",
+  init: () => ({ options: { databaseHooks: { user: { create: { before: refuseDisposable } } } } }),
+};
 
 /**
  * Better Auth's /sign-out answers with Clear-Site-Data. A plugin's after hook rather than the options' `hooks.after`,
