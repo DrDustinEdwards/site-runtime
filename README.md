@@ -1047,6 +1047,8 @@ row's millisecond. Sites with Drizzle only: it imports `drizzle-orm`.
 
 ## CSV
 
+`./confirm`: `confirmationSatisfied(form, word?)` and `confirmationRequired()`, the server half of a destructive action's confirmation. The page asks (Capsomer's confirm dialog or confirm page) and posts `confirmed=1`, plus the typed word as `confirm` where it asks for one; the action refuses what is not confirmed with a 400. devkit-destructive finds the call by name inside each destructive intent's branch.
+
 `./csv`: `toCsv(header, rows)`, `recordsCsv(records, columns?)`, `csvRow(cells)` and `csvCell(value)` write RFC 4180
 (CRLF after every record, a field quoted when it holds a comma, quote or line break; a list joined with "; "). A text cell
 starting `=`, `+`, `-`, `@`, a tab, CR or LF, or the full-width ＝ ＋ － ＠, gets an apostrophe first, so a spreadsheet opens
