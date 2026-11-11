@@ -44,6 +44,28 @@ export const SIGN_IN_WORDS = Object.freeze({
   }),
 });
 
+/** The words every site's account page says, by answer (`./sign-in-form` accountFormAction). */
+export const ACCOUNT_WORDS = Object.freeze({
+  noEmail: "Enter an email address.",
+  sameEmail: "That is already your email address.",
+  disposable: "Use a real email address. Disposable email addresses are not allowed.",
+  unverified: "Sign in with an email link first, then change your address.",
+  emailFailed: "The email was not sent. Try again in a minute.",
+  /** The current address the first email-change link went to, and the time both links last. */
+  emailSent: (/** @type {string} */ to) =>
+    `We sent a link to ${to}. Open it within ${EMAIL_CHANGE_EXPIRES_IN_WORDS} to approve the change; we then send one to the new address to confirm it.`,
+  stale: Object.freeze({
+    "change-email": "Changing your email needs a recent sign-in. Sign in again, then change it.",
+    "sign-out-device":
+      "Seeing and signing out your devices needs a recent sign-in. Sign in again first.",
+    "delete-account":
+      "Deleting your account needs a recent sign-in. Sign in again, then delete it.",
+  }),
+  deviceFailed: "That device was not signed out. Try again.",
+  noConfirm: "Tick the box to confirm, then delete your account.",
+  deleteFailed: "The account was not deleted. Try again.",
+});
+
 /**
  * The words for a `?error=` code a sign-in page is sent back with (Better Auth's, from a refused Google or Apple
  * callback, a refused link, or the site's own limit), or null for none. `settings` names where the person joins Google

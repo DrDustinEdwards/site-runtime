@@ -1,4 +1,5 @@
 export {
+  ACCOUNT_WORDS,
   DISPOSABLE_EMAIL,
   EMAIL_CHANGE_EXPIRES_IN_SECONDS,
   EMAIL_CHANGE_EXPIRES_IN_WORDS,
@@ -152,3 +153,53 @@ export function accountOptions(site: {
     }) => Promise<void>;
   };
 };
+
+/** The account page's posts `accountFormAction` answers, by their `intent` field. */
+export const ACCOUNT_INTENTS: readonly ["change-email", "sign-out-device", "delete-account"];
+
+/** What the account page shows after one of its posts. */
+export type AccountFormState = {
+  intent: string;
+  ok: boolean;
+  error: string | null;
+  /** The post needs a sign-in from the last FRESH_SECONDS first. */
+  stale: boolean;
+  /** The current address the first email-change link went to. */
+  sentTo: string | null;
+};
+
+export type AccountUser = { id: string; email: string; emailVerified?: boolean };
+
+/** The part of Better Auth's `auth.api` the account page's posts use. */
+export type AccountApi = {
+  getSession(o: {
+    headers: Headers;
+    query?: unknown;
+    asResponse: false;
+  }): Promise<{ session: { createdAt: Date | string; token: string }; user: AccountUser } | null>;
+  listSessions(o: { headers: Headers }): Promise<import("./sign-in-account.mjs").SessionRow[]>;
+  revokeSession(o: { headers: Headers; body: { token: string } }): Promise<unknown>;
+  changeEmail(o: { headers: Headers; body: { newEmail: string } }): Promise<unknown>;
+  deleteUser(o: {
+    headers: Headers;
+    body: Record<string, never>;
+    asResponse: true;
+  }): Promise<Response>;
+};
+
+/**
+ * The account page's posts, the same on every site: `intent=change-email` (`newEmail`), `intent=sign-out-device`
+ * (`session`, an id) and `intent=delete-account` (`confirm`). Null for any other intent, for the site's own posts.
+ * `beforeDelete` is the site's own step before Better Auth deletes the person; a string it returns is the refusal.
+ */
+export function accountFormAction(
+  auth: { api: AccountApi },
+  request: Request,
+  form: FormData,
+  site: {
+    deletedLanding: string;
+    beforeDelete?: (user: AccountUser, form: FormData) => Promise<string | null | undefined>;
+  },
+): Promise<
+  { location: string; headers: Headers } | { state: AccountFormState; status: number } | null
+>;

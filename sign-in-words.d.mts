@@ -30,6 +30,20 @@ export const SIGN_IN_WORDS: Readonly<{
   passkey: Readonly<Record<"failed" | "limited" | "unavailable", string>>;
 }>;
 
+/** The words every site's account page says, by answer (`./sign-in-form` accountFormAction). */
+export const ACCOUNT_WORDS: Readonly<{
+  noEmail: string;
+  sameEmail: string;
+  disposable: string;
+  unverified: string;
+  emailFailed: string;
+  emailSent: (to: string) => string;
+  stale: Readonly<Record<"change-email" | "sign-out-device" | "delete-account", string>>;
+  deviceFailed: string;
+  noConfirm: string;
+  deleteFailed: string;
+}>;
+
 /**
  * The words for a `?error=` code a sign-in page is sent back with, or null for none. `settings` names where the person
  * joins Google or Apple to the account ("Settings", "My account").
