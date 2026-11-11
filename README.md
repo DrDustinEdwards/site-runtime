@@ -1850,6 +1850,34 @@ if (!(await safeEqual(presentedToken, env.OPERATOR_TOKEN)))
 - It is async, since WebCrypto's digest is. A side that is not a string, or is empty, matches nothing, so an unset secret
   never admits an absent credential.
 
+## Money
+
+`./money` is the one money formatter, for display and for form inputs, on the server and in the browser. Amounts are
+stored as integers and only become a currency string for display.
+
+```js
+import {
+  formatMoney,
+  formatMoneyShort,
+  moneyInputValue,
+  parseMoneyInput,
+} from "@dustinedwards/site-runtime/money";
+formatMoney(4500, "usd"); // "$45.00"
+formatMoney(5000, "jpy"); // "¥5,000": JPY's minor unit is the yen
+formatMoneyShort(1060, "usd"); // "$11", for stat tiles and dense lists
+formatMoney(2_500_000, "usd", { scale: 6 }); // "$2.50" from micros
+moneyInputValue(4500, "usd"); // "45.00", an input's defaultValue
+parseMoneyInput("1,250.50", "usd"); // 125050, or null when blank, negative or not a plain figure
+```
+
+- The stored unit is the currency's minor unit as Stripe sends it (https://docs.stripe.com/currencies): a hundredth for
+  most, the whole unit for the zero-decimal currencies (JPY, KRW and the rest), a thousandth for BHD, JOD, KWD, OMR and
+  TND. ISK and UGX are sent as hundredths and shown with no decimals. `currencyExponent` is that table, and
+  `toMajorUnits`/`fromMajorUnits` convert for charts and exports.
+- `scale` names another stored unit, as a power of ten: 3 for mills, 6 for micros, 0 for whole units.
+- `digits` sets the places shown. Text is `Intl.NumberFormat` in en-US, one formatter per currency and digit count. A
+  code Intl refuses prints as "50.00 XYZ" and never throws.
+
 ## The Access request check
 
 `./access` checks the token Cloudflare Access signs for each request it lets through. It verifies with `./access-login`'s
