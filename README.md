@@ -6,15 +6,15 @@ The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-
 servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-log`), server scaffold (`./mcp-server`), the admin MCP Worker built from them (`./admin-mcp`) and named agent keys (`./agent-keys`), the Access request-token check
 (`./access`), the check that an Access application lets in exactly the site's admins (`./access-drift`, `site-runtime-access-drift`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the one mail send (`./email`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images and their edits (`./image`), link prefetch (`./prefetch`), preloads and Early Hints (`./preload`), the Worker in front of a static site (`./static-site`), the edge page cache (`./edge-cache`), the Server-Timing header (`./server-timing`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), the signed token behind emailed links (`./signed-token`), where a site's Anthropic calls go
 (`./ai-gateway`), starting a Claude Code routine (`./routine`), the check on AI-written prose with the measure of an author's voice (`./prose`), the one sign-in every site
-offers (`./sign-in`, `./sign-in-client`, `./apple-secret`), the Cloudflare Turnstile widget and its server check (`./turnstile`), the same-origin check for
+offers (`./sign-in`, `./sign-in-client`, `./apple-secret`), INP attribution in the browser (`./vitals-client`), the Cloudflare Turnstile widget and its server check (`./turnstile`), the same-origin check for
 resource routes (`./origin`), the trailing-slash redirect, the gone list and the slug-rename redirect (`./url`), one structured log line and its scrubbers (`./log`, with the `handleError` that leaves a route 404 unlogged), the 404 counter, the redirect table
 (`./not-found`), scheduled jobs with their record, their run-now tool, `run_job`, and the Worker's `scheduled` body (`./cron`), the Worker glue for a site's security headers (`./page-headers`: set, nonce, policy, Report-Only companion, report endpoint, edge-cache nonce renewal) and the per-request bindings and nonce on React Router's context (`./context`). `./body` also reads a form or JSON to a ceiling and throws the 413.
 
-No dependencies (`./sign-in` uses the site's own `better-auth` and
+One dependency, Google's `web-vitals` (pinned, no dependencies of its own), which only `./vitals-client` imports, so a Worker bundle never carries it (`./sign-in` uses the site's own `better-auth` and
 `@better-auth/passkey`, 1.7.17 or later (the security fixes of 2026-11-03 and 04), which a site that imports it installs itself; they are not declared as peers,
 because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
 tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.92.0"`. `npm test` runs every test in `test/`. `npm run typecheck` checks the modules and bins (strict, `checkJs`, Workers and Node
-types; `tsconfig.json`) and the browser pair, `./turnstile` and `./sign-in-client` (DOM types; `tsconfig.browser.json`), against
+types; `tsconfig.json`) and the browser modules, `./turnstile`, `./sign-in-client` and `./vitals-client` (DOM types; `tsconfig.browser.json`), against
 the hand-written `.d.mts` beside each; `better-auth`, `@better-auth/passkey` and `@cloudflare/workers-oauth-provider` are dev
 dependencies only so it can read their types. `test/` is not checked yet. `npm run lint` is Oxlint with the network's shared
 config (devkit's `./oxlint`, in `oxlint.config.ts`), type-aware through the same tsconfigs (`test/` through TypeScript's defaults).
@@ -249,7 +249,22 @@ consent page) is written with `buildPolicy`; the page builder does not take opti
 
 Every policy needs both sinks, and every site receives its reports with the same function (`./csp-report`), not its own,
 at `/csp-report`. It keeps the three kinds a site's headers ask for: CSP violations, Integrity-Policy's
-`integrity-violation` and COEP's `coep`; other Reporting API types (deprecation, intervention) are dropped.
+`integrity-violation` and COEP's `coep`; other Reporting API types (deprecation, intervention) are dropped. A Trusted
+Types violation's line also names the sink (`sink`, such as `Element innerHTML`: the sample's part before `|`; its text,
+which can be the page's own words, is never logged) and the `column`, so a one-line bundle still names the place.
+
+It also takes the page's own INP report. `reportInp()` from `./vitals-client`, called once in the site's client entry,
+measures the slowest interaction with web-vitals' attribution build and sends it with `navigator.sendBeacon` to
+`/csp-report` as a `web-vital` entry: the value and rating, the three subparts (input delay, processing, presentation
+delay), the longest script the Long Animation Frames API saw (address, function, invoker) and the style and layout time
+(web.dev, "Find slow interactions in the field"; Chrome's Modern Web Guidance, `identify-inp-causes`). The receiver logs
+it as `web_vital`, every number rounded to the millisecond, the page and script cut to origin and path, and the target a
+CSS selector of the site's own markup. It goes to the site's own origin (`connect-src 'self'`), never to a third party.
+
+```js
+import { reportInp } from "@dustinedwards/site-runtime/vitals-client";
+reportInp();
+```
 
 ```js
 import { receiveCspReport } from "@dustinedwards/site-runtime/csp-report";

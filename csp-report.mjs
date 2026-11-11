@@ -21,6 +21,17 @@
  * Both wire formats are read: report-uri's `{"csp-report": {...}}` (application/csp-report) and the Reporting API's
  * array of `{type, body}` (application/reports+json), of the three types above; any other type (deprecation,
  * intervention) is dropped.
+ *
+ * A Trusted Types violation also logs the sink (`sink`, the part of the report's sample before "|", such as
+ * "Element innerHTML"; the text after it can be the page's own words and is never logged) and the column, so a minified
+ * one-line bundle names the place.
+ *
+ * The same receiver takes the page's own `web-vital` entry, which `reportInp` (./vitals-client) sends with
+ * navigator.sendBeacon in the Reporting API's shape: the slowest interaction's INP, its three subparts and the longest
+ * script the Long Animation Frames API saw (web.dev, "Find slow interactions in the field"; Chrome's Modern Web Guidance,
+ * identify-inp-causes). It logs `web_vital` with numbers rounded to the millisecond, the page and script cut to origin
+ * and path, and the interaction's target as a CSS selector of the page's own markup: nothing a visitor typed and nothing
+ * that names them.
  */
 
 import { readCapped } from "./body.mjs";
@@ -60,8 +71,46 @@ export function trimReportUrl(value) {
   }
 }
 
-/** The Reporting API types the receiver keeps: what the policy, Integrity-Policy and COEP report. */
-const KEPT = new Set(["csp-violation", "integrity-violation", "coep"]);
+/** The Reporting API types the receiver keeps: what the policy, Integrity-Policy and COEP report, and our own INP beacon. */
+const KEPT = new Set(["csp-violation", "integrity-violation", "coep", "web-vital"]);
+
+/** A number from a report rounded to the millisecond, or nothing. */
+const ms = (/** @type {unknown} */ v) =>
+  typeof v === "number" && Number.isFinite(v) && v >= 0 && v < 600_000 ? Math.round(v) : undefined;
+/** A short string from a report, cut, or nothing. */
+const short = (/** @type {unknown} */ v, /** @type {number} */ max) =>
+  typeof v === "string" && v !== "" ? v.slice(0, max) : undefined;
+
+/**
+ * The `web-vital` entry as the line the receiver logs: INP only (Cloudflare Web Analytics already reports LCP and CLS),
+ * its value and rating, the three subparts, the longest script and the style and layout work. Anything else is null.
+ * @param {Record<string, unknown>} body
+ */
+export function summarizeVital(body) {
+  if (body.name !== "INP" || ms(body.value) === undefined) return null;
+  const rating = ["good", "needs-improvement", "poor"].includes(String(body.rating))
+    ? String(body.rating)
+    : undefined;
+  return {
+    event: "web_vital",
+    name: "INP",
+    value: ms(body.value),
+    rating,
+    page: trimReportUrl(body.page),
+    target: short(body.target, 160),
+    input_delay: ms(body.inputDelay),
+    processing: ms(body.processingDuration),
+    presentation: ms(body.presentationDelay),
+    script: trimReportUrl(body.sourceURL),
+    script_function: short(body.sourceFunctionName, 80),
+    script_char: ms(body.sourceCharPosition),
+    invoker: short(body.invokerType, 32),
+    script_subpart: short(body.subpart, 32),
+    script_overlap: ms(body.intersectingDuration),
+    forced_style_layout: ms(body.forcedStyleAndLayoutDuration),
+    style_layout: ms(body.totalStyleAndLayoutDuration),
+  };
+}
 
 /**
  * The reports in a parsed body, in either format, each with its type: the Reporting API's csp-violation,
@@ -115,6 +164,12 @@ export function summarizeReport(body, type = "csp-violation") {
             "violated-directive",
           );
   const destination = field("destination");
+  const column = field("columnNumber", "column-number");
+  const sample = field("sample", "script-sample");
+  const sink =
+    String(refusedBy ?? "").includes("trusted-types") && typeof sample === "string"
+      ? sample.split("|")[0].trim().slice(0, 48) || undefined
+      : undefined;
   return {
     event: type,
     directive: String(refusedBy ?? "").slice(0, 64) || undefined,
@@ -122,6 +177,8 @@ export function summarizeReport(body, type = "csp-violation") {
     page: trimReportUrl(field("documentURL", "document-uri")),
     source: trimReportUrl(field("sourceFile", "source-file")),
     line: typeof line === "number" ? line : undefined,
+    ...(typeof column === "number" ? { column } : {}),
+    ...(sink ? { sink } : {}),
     ...(typeof destination === "string" ? { destination: destination.slice(0, 32) } : {}),
     disposition:
       disposition === "enforce" || body.reportOnly === false
@@ -236,6 +293,11 @@ export async function receiveCspReport(
   for (const { type, body } of reportBodies(parsed).slice(0, MAX_REPORTS)) {
     const raw = ["blockedURL", "blocked-uri", "sourceFile", "source-file"].map((n) => body[n]);
     if (raw.some((v) => typeof v === "string" && NOISE.test(v))) continue;
+    if (type === "web-vital") {
+      const vital = summarizeVital(body);
+      if (vital) log(vital);
+      continue;
+    }
     const line = summarizeReport(body, type);
     log(line);
     const blocked = blockedOrigin(line.blocked);

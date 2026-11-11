@@ -12,5 +12,5 @@
     "types": ["node", "@cloudflare/workers-types"]
   },
   "include": ["*.mjs", "members/*.mjs", "rate-limit/*.mjs", "bin/*.mjs"],
-  "exclude": ["turnstile.mjs", "sign-in-client.mjs", "sites-values.mjs"]
+  "exclude": ["turnstile.mjs", "sign-in-client.mjs", "vitals-client.mjs", "sites-values.mjs"]
 }
