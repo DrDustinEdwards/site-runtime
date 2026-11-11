@@ -129,29 +129,50 @@ export function logEvent(event, fields = {}, { level = "log", ...scrub } = {}) {
   else console.log(line);
 }
 
+/** A preview link's token (Carrel's /preview/<token>), cut from a logged path. */
+export const PREVIEW_TOKEN = /\/(preview)\/[^/?#\s'"]+/g;
+
+/**
+ * The pattern for a site's token routes beside the preview link: each match becomes `/<route>/[token]` in a log line,
+ * where a page's address would otherwise carry one person's token.
+ * @param {readonly string[]} [routes] path prefixes without slashes, such as "u" or "e/c"
+ * @returns {RegExp}
+ */
+export function tokenPattern(routes = []) {
+  if (routes.length === 0) return PREVIEW_TOKEN;
+  const names = ["preview", ...routes].map((route) => route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp(`\\/(${names.join("|")})\\/[^/?#\\s'"]+`, "g");
+}
+
 /**
  * React Router's `handleError` export for entry.server: the framework's default prints every route error to the
  * console, including the "No route matches URL" error of each scanner's 404, an error-level stack trace with no
  * request on it. A 404 is not a failure (the 404 counter in `./not-found` keeps count), so it is not logged here; any
- * other error is one scrubbed `server_error` line at error level with the request's fields.
- * @param {unknown} error
- * @param {{ request: Request }} args
+ * other error is one scrubbed `server_error` line at error level with the request's fields, a token route's token cut
+ * (`tokenPath`, as tokenPattern builds it; the preview link's by default).
+ * @param {ScrubOptions} [options]
+ * @returns {(error: unknown, args: { request: Request }) => void}
  */
-export function handleServerError(error, { request }) {
-  if (request.signal.aborted) return;
-  // A route error response (a thrown 404 Response, or RR's own no-route-match), not an Error instance.
-  if (
-    !(error instanceof Error) &&
-    /** @type {{ status?: unknown } | null} */ (error)?.status === 404
-  )
-    return;
-  const cause = /** @type {{ error?: unknown } | null} */ (error)?.error;
-  logEvent(
-    "server_error",
-    { ...requestFields(request), error: cause ?? error },
-    { level: "error" },
-  );
+export function serverErrorHandler({ tokenPath = PREVIEW_TOKEN } = {}) {
+  return (error, { request }) => {
+    if (request.signal.aborted) return;
+    // A route error response (a thrown 404 Response, or RR's own no-route-match), not an Error instance.
+    if (
+      !(error instanceof Error) &&
+      /** @type {{ status?: unknown } | null} */ (error)?.status === 404
+    )
+      return;
+    const cause = /** @type {{ error?: unknown } | null} */ (error)?.error;
+    logEvent(
+      "server_error",
+      { ...requestFields(request, { tokenPath }), error: cause ?? error },
+      { level: "error", tokenPath },
+    );
+  };
 }
+
+/** serverErrorHandler with the preview link's token cut. */
+export const handleServerError = serverErrorHandler();
 
 /**
  * The fields that tie a log line to its request, for a site to spread into its lines: `request_id` (the `cf-ray`

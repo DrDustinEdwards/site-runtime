@@ -3,8 +3,7 @@ import type { CronJob } from "./cron.mjs";
 import type { OperatorTool } from "./operator.mjs";
 import type { Preconnect, Preload } from "./preload.mjs";
 
-/** A preview link's token (Carrel's /preview/<token>), cut from a logged path. */
-export const PREVIEW_TOKEN: RegExp;
+export { PREVIEW_TOKEN, tokenPattern } from "./log.mjs";
 /** "/.well-known/security.txt", answered by every site's gateway. */
 export const SECURITY_TXT_PATH: "/.well-known/security.txt";
 
@@ -128,6 +127,11 @@ export interface SiteOptions<E> {
   ) => Record<string, CronJob[] | undefined> | Promise<Record<string, CronJob[] | undefined>>;
   /** The deployed commit; default env.DEPLOY_SHA. */
   sha?: (env: E) => string | undefined;
+  /**
+   * The site's token routes beside /preview/, as path prefixes without slashes ("u", "e/c"): the token after one is cut
+   * from the request log and from CSP reports (a report names the page it came from).
+   */
+  tokenRoutes?: readonly string[];
   /** Log route names for paths a site step answers. */
   routeName?: (path: string) => string | undefined;
 }

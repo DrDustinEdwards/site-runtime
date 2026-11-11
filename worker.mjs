@@ -81,7 +81,17 @@ import {
   withPurgePages,
 } from "./edge-cache.mjs";
 import { clientIp, isWrite, textResponse } from "./http.mjs";
-import { errorMessage, logEvent, routeNamer, withRequestLog } from "./log.mjs";
+import {
+  PREVIEW_TOKEN,
+  errorMessage,
+  logEvent,
+  routeNamer,
+  scrubFields,
+  tokenPattern,
+  withRequestLog,
+} from "./log.mjs";
+
+export { PREVIEW_TOKEN, tokenPattern };
 import { maintenanceOn, maintenanceResponse } from "./maintenance.mjs";
 import { countNotFound } from "./not-found.mjs";
 import { operatorResponse } from "./operator.mjs";
@@ -95,9 +105,6 @@ import { preloads, rootStylesheets, withPreloadHeader } from "./preload.mjs";
 import { securityTxtResponse } from "./security-txt.mjs";
 import { timedRender } from "./server-timing.mjs";
 import { canonicalRedirect } from "./url.mjs";
-
-/** A preview link's token (Carrel's /preview/<token>), cut from a logged path. */
-export const PREVIEW_TOKEN = /\/(preview)\/[^/?#\s'"]+/g;
 
 /** The security.txt path (RFC 9116 section 3). */
 export const SECURITY_TXT_PATH = "/.well-known/security.txt";
@@ -290,6 +297,10 @@ export function siteWorker(site) {
   const purgeAfter = options.purgeAfter ?? ["/admin"];
   const publicCookies = options.publicCookies ?? [];
   const siteName = options.name;
+  const tokenPath = tokenPattern(options.tokenRoutes);
+  // A report's page and blocked addresses are cut to origin and path; a token route's token goes too.
+  const logReport = (/** @type {Record<string, unknown>} */ line) =>
+    console.log(JSON.stringify(scrubFields(line, { tokenPath })));
 
   /**
    * @param {Request} request
@@ -341,7 +352,12 @@ export function siteWorker(site) {
       const binding = /** @type {any} */ (env).CSP_REPORT_RATE_LIMIT;
       const allow = async (/** @type {Request} */ r) =>
         binding !== undefined && (await binding.limit({ key: clientIp(r) })).success;
-      return secure(await receiveCspReport(request, { allow }), request, undefined, env);
+      return secure(
+        await receiveCspReport(request, { allow, log: logReport }),
+        request,
+        undefined,
+        env,
+      );
     }
 
     if (options.operator && url.pathname === "/api/operator") {
@@ -421,7 +437,11 @@ export function siteWorker(site) {
     try {
       response = await gateway(request, env, ctx);
     } catch (error) {
-      logEvent("gateway_error", { path, error: errorMessage(error) }, { level: "error" });
+      logEvent(
+        "gateway_error",
+        { path, error: errorMessage(error) },
+        { level: "error", tokenPath },
+      );
       return secure(
         textResponse("Something went wrong on our side. Please try again.", 500),
         request,
@@ -468,7 +488,7 @@ export function siteWorker(site) {
     ) => (await Promise.all([wrapped(request, env, ctx), site.routesReady()]))[0],
     {
       sha: (env) => options.sha?.(env) ?? /** @type {any} */ (env).DEPLOY_SHA,
-      tokenPath: PREVIEW_TOKEN,
+      tokenPath,
       route: (request) => site.routeName(request),
     },
   );

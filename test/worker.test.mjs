@@ -118,3 +118,43 @@ test("a site step answers first, gets the set, then the site's respond; a cron's
   await worker.scheduled(/** @type {any} */ ({ cron: "1 2 * * *", scheduledTime: 0 }), env, ctx);
   assert.deepEqual(crons, ["ctx"]);
 });
+
+test("a CSP report and the request log cut a token route's token, the preview link's included", async () => {
+  const lines = [];
+  const { log, warn, error } = console;
+  console.log =
+    console.warn =
+    console.error =
+      (/** @type {string} */ line) => void lines.push(line);
+  try {
+    const { worker } = harness({ tokenRoutes: ["u", "e/c"] });
+    const env = /** @type {any} */ ({
+      CSP_REPORT_RATE_LIMIT: { limit: async () => ({ success: true }) },
+    });
+    const report = {
+      "csp-report": {
+        "document-uri": "https://example.com/u/secret-one?x=1",
+        "blocked-uri": "https://example.com/e/c/secret-two",
+        "violated-directive": "img-src",
+      },
+    };
+    const ctx = /** @type {any} */ ({ waitUntil() {} });
+    await worker.fetch(
+      new Request("https://example.com/csp-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/csp-report" },
+        body: JSON.stringify(report),
+      }),
+      env,
+      ctx,
+    );
+    await worker.fetch(new Request("https://example.com/preview/secret-three"), env, ctx);
+  } finally {
+    Object.assign(console, { log, warn, error });
+  }
+  const all = lines.join("\n");
+  assert.doesNotMatch(all, /secret-/);
+  assert.match(all, /\/u\/\[token\]/);
+  assert.match(all, /\/e\/c\/\[token\]/);
+  assert.match(all, /\/preview\/\[token\]/);
+});

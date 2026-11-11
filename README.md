@@ -919,8 +919,10 @@ A HEAD gets its status and headers with no render. The page streams to people; a
 render wait for the whole document. The request's nonce (`./context`) goes on React's scripts, on ServerRouter and into
 `./nonce`'s `NonceContext` (read it with `useNonce()` for an inline script a component writes). The render stops at
 `streamTimeout` plus a second or when the reader leaves. An error after the shell is one `render_failed` line and a
-500; `handleError` is `./log`'s handleServerError. `reactEntry({ nonce })` builds the same entry with another nonce
-reader, for a renderer that stores pages under a placeholder nonce.
+500; `handleError` is `./log`'s handleServerError, which cuts a preview link's token from the path; a site with token
+routes of its own exports `serverErrorHandler({ tokenPath: tokenPattern(["u", "e/c"]) })` as `handleError` instead.
+`reactEntry({ nonce })` builds the same entry with another nonce reader, for a renderer that stores pages under a
+placeholder nonce.
 
 ## Hydrate on intent
 
@@ -1002,9 +1004,22 @@ cache rule); `settleCacheHeaders` or `privateRender` still runs after it. Each r
 per reader; a 304 leaves out the policy (RFC 9111 4.3.4: the browser updates its stored headers from a 304). Every HTML
 answer carries the Speculation-Rules header; a 404 goes through `onNotFound` (site-api's tombstones) and is counted
 unless under `/api/` or `/preview/`; a gateway that throws is a plain 500 with the set and a `gateway_error` line. Around
-it: the request log (DEPLOY_SHA, preview tokens cut, the route named from the build, loaded inside the request), `wrap`,
+it: the request log (DEPLOY_SHA, the route named from the build, loaded inside the request), `wrap`,
 then each of `adminIdle`. `cron(env, scheduledTime, ctx)` names the job lists by expression (a promise is fine, so the jobs can be imported when
 the cron fires); an unknown cron warns `cron_unknown` and runs nothing; a known one is awaited through `runJobs`.
+
+A preview link's token is cut from the request log, a `gateway_error` line and every CSP report line (a report names
+the page it came from), as `/preview/[token]`; `tokenRoutes` (`["u", "e/c"]`) adds the site's own token routes, cut
+the same way (`tokenPattern(routes)` in ./log is the pattern; a route error's `server_error` line is entry.server's
+`handleError`, under Server entry).
+
+## KV read-through
+
+`./kv-cache`'s `kvCached(kv, key, { ttl, valid, keep }, read)` keeps a rarely changing read in a KV namespace: a hit
+is a kept value `valid` accepts (default anything but null); a miss runs `read` and keeps what it returns for `ttl`
+seconds (at least KV's 60) unless `keep` refuses it. A KV fault on either side never fails the read; a `read` that
+throws keeps nothing and throws on. With no namespace it reads straight through. KV is eventually consistent, so drop
+an entry a write made stale with `kv.delete(key)`, and never use it for what a person just wrote and expects to see.
 
 ## Request helpers
 
