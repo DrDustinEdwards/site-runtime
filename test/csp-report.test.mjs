@@ -5,6 +5,7 @@ import {
   receiveCspReport,
   reportBodies,
   summarizeReport,
+  summarizeVital,
   trimReportUrl,
 } from "../csp-report.mjs";
 
@@ -104,6 +105,35 @@ test("a logged line carries no query string, and keywords are kept", () => {
     disposition: "enforce",
   });
   assert.doesNotMatch(JSON.stringify(line), /secret|q=1/);
+  // A Trusted Types report keeps the sink and the column, never the sample's text after "|".
+  const types = summarizeReport({
+    effectiveDirective: "require-trusted-types-for",
+    blockedURL: "trusted-types-sink",
+    sample: "Element innerHTML|<p>Dear Jane, your code is 1234",
+    columnNumber: 9120,
+  });
+  assert.equal(types.sink, "Element innerHTML");
+  assert.equal(types.column, 9120);
+  assert.doesNotMatch(JSON.stringify(types), /Jane|1234/);
+  // The INP beacon: rounded timings, the page and script cut to origin and path, anything but INP dropped.
+  const vital = summarizeVital({
+    name: "INP",
+    value: 312.4,
+    rating: "poor",
+    page: "https://site.example.com/a?token=secret",
+    target: "main>button.cap-btn",
+    inputDelay: 20.2,
+    processingDuration: 250.6,
+    presentationDelay: 41.6,
+    sourceURL: "https://site.example.com/assets/app.js?v=1",
+  });
+  assert.equal(vital?.value, 312);
+  assert.equal(vital?.page, "https://site.example.com/a");
+  assert.equal(vital?.script, "https://site.example.com/assets/app.js");
+  assert.equal(vital?.processing, 251);
+  assert.doesNotMatch(JSON.stringify(vital), /secret|v=1/);
+  assert.equal(summarizeVital({ name: "LCP", value: 1 }), null);
+  assert.equal(summarizeVital({ name: "INP", value: "fast" }), null);
 });
 
 test("a report is logged once per violation and answered 204, with the site's headers", async () => {

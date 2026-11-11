@@ -12,7 +12,15 @@
 /** Stored at the edge, never in a browser: a purge cannot reach a browser, so max-age stays 0. */
 export const SHARED_CACHE_CONTROL = "public, max-age=0";
 
-/** The default for anything a route does not mark shared. Omitting Cache-Control is not opting out: the platform caches heuristically. */
+/**
+ * The default for anything a route does not mark shared. Omitting Cache-Control is not opting out: the platform caches
+ * heuristically. A signed-in page keeps it on purpose, though `no-store` costs the back/forward cache in Firefox and
+ * Safari ("DON'T use Cache-Control: no-store for non-sensitive resources", Chrome's Modern Web Guidance, performance):
+ * such a page is private data, and OWASP ASVS 5.0 (14.3.2) asks that sensitive data not be stored in a browser cache.
+ * Chrome stores no-store pages in its back/forward cache since its 2025 rollout, for 3 minutes, evicting one when a
+ * cookie changes, so signing out still drops it (developer.chrome.com/docs/web-platform/bfcache-ccns). Public pages
+ * are never no-store: publicPageHeaders sends `public, max-age=0`, which every browser's back/forward cache keeps.
+ */
 export const UNCACHED = "private, no-store";
 
 /** Outranks Cache-Control at Cloudflare's edge, so it goes only on a response marked shared. */

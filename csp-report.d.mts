@@ -9,7 +9,7 @@ export const MAX_REPORT_BYTES: 16384;
 export const MAX_REPORTS: 10;
 /** A URL cut to its origin and path; a keyword such as "inline" is kept, to 64 characters. */
 export function trimReportUrl(value: unknown): string | undefined;
-/** The reports in a parsed body, in either format, each with its type: csp-violation, integrity-violation or coep. */
+/** The reports in a parsed body, in either format, each with its type: csp-violation, integrity-violation, coep or web-vital. */
 export function reportBodies(parsed: unknown): { type: string; body: Record<string, unknown> }[];
 /** One report as the line the receiver logs; `directive` is the CSP directive, `blocked-destinations` or the COEP check. */
 export function summarizeReport(
@@ -22,9 +22,32 @@ export function summarizeReport(
   page: string | undefined;
   source: string | undefined;
   line: number | undefined;
+  column?: number;
+  /** A Trusted Types violation's sink ("Element innerHTML"), never the sample text after it. */
+  sink?: string;
   destination?: string;
   disposition: "enforce" | "report" | undefined;
 };
+/** The `web-vital` entry reportInp (./vitals-client) sends, as the `web_vital` line: INP only, else null. */
+export function summarizeVital(body: Record<string, unknown>): {
+  event: "web_vital";
+  name: "INP";
+  value: number | undefined;
+  rating: string | undefined;
+  page: string | undefined;
+  target: string | undefined;
+  input_delay: number | undefined;
+  processing: number | undefined;
+  presentation: number | undefined;
+  script: string | undefined;
+  script_function: string | undefined;
+  script_char: number | undefined;
+  invoker: string | undefined;
+  script_subpart: string | undefined;
+  script_overlap: number | undefined;
+  forced_style_layout: number | undefined;
+  style_layout: number | undefined;
+} | null;
 /**
  * `allow`: the site's rate limiter; false drops the report, still with 204. Without it, one `csp_report_unlimited` warning per isolate. `allowOrigin`: the one origin whose
  * pages report here from another host; it gets the Reporting API's CORS preflight. `headers`: the site's security
