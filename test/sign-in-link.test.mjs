@@ -107,7 +107,7 @@ test("the form's fields stand in for a URL without the token, and a missing call
   assert.equal(empty.status, 400);
 });
 
-test("a failed link reads as used or expired by its send time, invalid without one, missing without a token", () => {
+test("a failed link reads as used or expired by its send time, invalid without one, missing without a token, disposable by its code", () => {
   const page = (query) => `https://example.com/sign-in/confirm?${query}`;
   const late = SENT + SIGN_IN_EXPIRES_IN_SECONDS * 1000 + 1;
   assert.equal(
@@ -125,6 +125,7 @@ test("a failed link reads as used or expired by its send time, invalid without o
   );
   assert.equal(signInLinkProblem(page("error=INVALID_TOKEN")), "invalid");
   assert.equal(signInLinkProblem(page("error=failed_to_create_user")), "failed");
+  assert.equal(signInLinkProblem(page("error=disposable_email")), "disposable");
   assert.equal(
     signInLinkProblem(page(`error=INVALID_TOKEN&sent=${SENT}`), { signedIn: true }),
     "signed-in",
