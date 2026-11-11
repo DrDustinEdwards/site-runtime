@@ -188,7 +188,9 @@
     "redact.mjs",
     "redact.d.mts",
     "r2-object.mjs",
-    "r2-object.d.mts"
+    "r2-object.d.mts",
+    "jwt.mjs",
+    "jwt.d.mts"
   ],
   "type": "module",
   "exports": {
@@ -295,6 +297,10 @@
     "./encoding": {
       "types": "./encoding.d.mts",
       "default": "./encoding.mjs"
+    },
+    "./jwt": {
+      "types": "./jwt.d.mts",
+      "default": "./jwt.mjs"
     },
     "./signed-token": {
       "types": "./signed-token.d.mts",

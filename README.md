@@ -1084,6 +1084,12 @@ after 6 hours, so a cron sends it every run, with no items when nothing waits. I
 (`MAX_REPORT_ITEMS`, `MAX_REPORT_TITLE`). Skipped without a key; a failure is logged and returned, never thrown.
 `capsidOrigin(env)` reads the CAPSID_ORIGIN var.
 
+`./jwt`: `signJwt({ alg: "RS256" | "ES256", key, claims, header, ttlSeconds, now })` is the one JWT signer, on
+WebCrypto with no dependency. `key` is a PEM (PKCS#8, or PKCS#1 as GitHub hands out App keys, wrapped by
+`pkcs8FromPem`; literal "\n" sequences read as newlines), a private JWK or a CryptoKey. `githubAppJwt(appId, key)` is
+the App's token request JWT (issued a minute back, nine minutes long). Sign in with Apple's client secret
+(`./apple-secret`) signs through it.
+
 `./r2-object`: `r2ObjectResponse(request, bucket, key, { cacheControl, contentType, disposition, filename, noindex,
 tags })` answers with one stored file the way a static file server does: HEAD from `bucket.head`, byte ranges (206,
 suffix ranges too; 416 with the size for one past the end), If-None-Match (304, keeping Cache-Control and Cache-Tag),
