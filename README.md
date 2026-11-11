@@ -913,6 +913,49 @@ render wait for the whole document. The request's nonce (`./context`) goes on Re
 500; `handleError` is `./log`'s handleServerError. `reactEntry({ nonce })` builds the same entry with another nonce
 reader, for a renderer that stores pages under a placeholder nonce.
 
+## The Worker
+
+`./worker` is every React Router site's `workers/app.ts`: the gateway, the Renderer the Workers cache stores pages
+from, the request log and the cron handler. A site names what is its own and nothing else:
+
+```ts
+import { WorkerEntrypoint } from "cloudflare:workers";
+import { defineSite, siteRenderer, siteWorker } from "@dustinedwards/site-runtime/worker";
+
+const site = defineSite<Env>({
+  name: "Sample",
+  serverBuild: () => import("virtual:react-router/server-build"),
+  mode: import.meta.env.MODE,
+  withSecurityHeaders, // pageSecurity's
+  canonical: { host: "example.com" },
+  files: standardFiles({ origin: SITE_URL, manifest }), // Prelum ./files
+  speculationExclude: ["/admin"],
+  operator: (env) => ({ backup_status: { description: "...", run: () => backupStatus(env) } }),
+  steps: [mediaStep, carrelStep], // (request, env, ctx, kit) => Response | undefined
+  preloads: FONT_PRELOADS,
+  wrap: (handler) => markdownCopies(handler, { origin: SITE_URL, siteMarkdown: false }),
+  cron: cronJobs,
+});
+export class Renderer extends siteRenderer(WorkerEntrypoint, site) {}
+export default siteWorker(site);
+```
+
+The gateway runs, in order: the canonical move (first, with the set built for where it points), maintenance,
+`/.well-known/security.txt`, the standard files, the speculation rules file, CSP reports (per `clientIp` through
+`CSP_REPORT_RATE_LIMIT`; no binding drops them), the operator API, the site's steps, the cross-site write refusal (all
+but `crossSiteExempt`, default `/api/auth/`), then the page. A read with no cookie but `publicCookies` that `cacheable` does not
+refuse goes to the Renderer, which the edge keeps only when it is shared (anything else carries an edge `no-store`), keyed on path, query (tracking
+parameters dropped), host and each public cookie; every other request is rendered live with its own nonce and leaves
+`private, no-store` unless its route set a policy of its own. A route marks its page shared (`publicPageHeaders`); a site whose routes name
+no Cache-Control passes `publicPages(url, env)` instead, and the Renderer stores each such 200 under the tags it
+returns. Every render gets a nonce; a policy that names it is renewed
+per reader; a 304 leaves out the policy (RFC 9111 4.3.4: the browser updates its stored headers from a 304). Every HTML
+answer carries the Speculation-Rules header; a 404 goes through `onNotFound` (site-api's tombstones) and is counted
+unless under `/api/` or `/preview/`; a gateway that throws is a plain 500 with the set and a `gateway_error` line. Around
+it: the request log (DEPLOY_SHA, preview tokens cut, the route named from the build, loaded inside the request), `wrap`,
+then each of `adminIdle`. An unknown cron warns `cron_unknown` and runs nothing; a known one is awaited through
+`runJobs`.
+
 ## Request helpers
 
 `./http`: `clientIp(request)` (`cf-connecting-ip`, else the one shared key "unknown"), `isWrite(request)`,
