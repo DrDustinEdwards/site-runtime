@@ -12,12 +12,11 @@
  */
 
 import { installTrustedTypes } from "./trusted-types.mjs";
-import { reportInp } from "./vitals-client.mjs";
 
 const STARTED = Symbol.for("@dustinedwards/site-runtime/page-client");
 
 /**
- * Starts the page: the default policy, then INP reporting. Returns false when this page had already started.
+ * Starts the page: the default policy now, INP reporting once the page has loaded. Returns false when this page had already started.
  * @param {{ endpoint?: string }} [options] the report receiver: CSP_REPORT_PATH (/csp-report) unless the site's is elsewhere
  */
 export function startPage(options = {}) {
@@ -29,6 +28,16 @@ export function startPage(options = {}) {
   );
   (zod.__zod_globalConfig ??= {}).jitless = true;
   installTrustedTypes(options);
-  reportInp(options);
+  // INP reporting loads after the page has: web-vitals reads the buffered entries, so it "does not need to load early"
+  // and "should be deferred until after other user-impacting code has loaded" (web-vitals README, "Overview"). As its own
+  // chunk it stays out of every page's first download (about 4 KB gzip). A chunk that fails to load costs only the report.
+  const inp = () => {
+    import("./vitals-client.mjs").then(
+      ({ reportInp }) => reportInp(options),
+      () => {},
+    );
+  };
+  if (document.readyState === "complete") inp();
+  else addEventListener("load", inp, { once: true });
   return true;
 }

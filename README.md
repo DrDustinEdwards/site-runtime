@@ -261,7 +261,7 @@ delay), the longest script the Long Animation Frames API saw (address, function,
 it as `web_vital`, every number rounded to the millisecond, the page and script cut to origin and path, and the target a
 CSS selector of the site's own markup. It goes to the site's own origin (`connect-src 'self'`), never to a third party.
 
-A site starts it with `startPage()` (`./page-client`, below), not by calling `reportInp` itself.
+A site starts it with `startPage()` (`./page-client`, below), not by calling `reportInp` itself. `startPage()` loads it as its own chunk once the page has loaded (web-vitals reads buffered entries, and its README asks for it to be deferred), so it stays out of every page's first download.
 
 ### Trusted Types: the default policy
 
