@@ -18,6 +18,16 @@
  * - RUN NOW: runJobNow runs one job by name through the same path, and runJobTool serves it as the operator tool
  *   `run_job`, so a job is never run by hand through a second copy of its work (Dustin 2026-11-07, "can you just run
  *   them now"). A job marked `backup` is one Capsid Admin's back up now runs.
+ * - HISTORY (opt in, `runJobs(db, jobs, { history })`): beside the one `cron_runs` row per job, each run that came to
+ *   something is appended to `cron_run_log` (CRON_LOG_SQL) with its outcome and a one-line reason, the newest few
+ *   kept per job and nothing older than the retention. A job may then resolve `{ outcome: "ok" | "refused" |
+ *   "skipped", reason }`: `ok` records the reason ("swept 3, found 0": what a sweep that found nothing says apart from
+ *   one that never looked), `refused` records the run failed without throwing, `skipped` records nothing, as
+ *   CRON_SKIPPED does. readCronRuns reads the newest runs back and cronStates decides each job's flag (failing, quiet,
+ *   never), from Capsid's task ledger (src/task-runs.ts) and Foxhound's `cron_run_history`. Without `history` nothing
+ *   here changes.
+ * - EVENT JOBS: `everyMinutes: null` is a job whose runs come and go with the work (a watcher, a sweep that acts only
+ *   when something changed). It has no stale window, so it is flagged only by a failure inside the last day.
  * - `cronCheck` is the /health check (level warn) that fails when a job's last run failed, its last success is older than
  *   its own interval plus a grace (the larger of 10 minutes and a tenth of the interval), or, given the site's jobs, a job
  *   has never run at all (a trigger that never fires it), so an outside probe of /health notices a cron that stopped.
@@ -43,11 +53,32 @@ export const CRON_SQL = `CREATE TABLE IF NOT EXISTS cron_runs (
 );
 `;
 
+/** The migration for the opt-in history (`runJobs(..., { history })`): one row per recorded run. Times are epoch milliseconds. */
+export const CRON_LOG_SQL = `CREATE TABLE IF NOT EXISTS cron_run_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  started_at INTEGER NOT NULL,
+  finished_at INTEGER NOT NULL,
+  outcome TEXT NOT NULL,
+  reason TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS cron_run_log_name ON cron_run_log (name, id);
+`;
+
+/** The longest reason kept, one line. */
+export const CRON_REASON_MAX = 300;
+
+/** How long a failure of an event job (`everyMinutes: null`) counts as current: a day. */
+export const CRON_EVENT_WINDOW_MS = 24 * 60 * 60_000;
+
 /** What a job's run resolves to when its own gate skipped it: no success is recorded. */
 export const CRON_SKIPPED = Symbol.for("site-runtime.cron.skipped");
 
 const STARTED = `INSERT INTO cron_runs (name, every_minutes, first_started_at, last_started_at) VALUES (?1, ?2, ?3, ?3)
 ON CONFLICT (name) DO UPDATE SET every_minutes = excluded.every_minutes, last_started_at = excluded.last_started_at`;
+const LOGGED = `INSERT INTO cron_run_log (name, started_at, finished_at, outcome, reason) VALUES (?1, ?2, ?3, ?4, ?5)`;
+const PRUNED = `DELETE FROM cron_run_log WHERE name = ?1 AND (finished_at < ?2
+  OR id NOT IN (SELECT id FROM cron_run_log WHERE name = ?1 ORDER BY id DESC LIMIT ?3))`;
 const OK = `INSERT INTO cron_runs (name, every_minutes, last_ok_at) VALUES (?1, ?2, ?3)
 ON CONFLICT (name) DO UPDATE SET last_ok_at = excluded.last_ok_at, last_error = NULL`;
 const FAILED = `INSERT INTO cron_runs (name, every_minutes, last_failed_at, last_error) VALUES (?1, ?2, ?3, ?4)
@@ -55,9 +86,42 @@ ON CONFLICT (name) DO UPDATE SET last_failed_at = excluded.last_failed_at, last_
 
 /**
  * @typedef {{ prepare(sql: string): { bind(...values: unknown[]): { run(): Promise<unknown>, all(): Promise<{ results: unknown[] }> } } }} D1Like
- * @typedef {{ name: string, everyMinutes: number, timeoutMs?: number, holdOnTimeout?: boolean, backup?: boolean, run: (signal: AbortSignal) => Promise<unknown> }} CronJob
- * @typedef {{ job: string, status: "ok" | "skipped" | "failed", ms: number, result?: unknown, error?: string }} CronOutcome
+ * @typedef {{ name: string, everyMinutes: number | null, timeoutMs?: number, holdOnTimeout?: boolean, backup?: boolean, run: (signal: AbortSignal) => Promise<unknown> }} CronJob
+ * @typedef {{ job: string, status: "ok" | "skipped" | "failed" | "refused", ms: number, result?: unknown, reason?: string, error?: string }} CronOutcome
+ * @typedef {{ keep?: number, retentionDays?: number }} CronHistory
+ * @typedef {{ now?: () => number, timeoutMs?: number, history?: boolean | CronHistory }} CronOptions
  */
+
+/** @param {string} text */
+function oneLine(text) {
+  const line = scrubText(text.replace(/\s+/g, " ").trim());
+  return line.length > CRON_REASON_MAX ? `${line.slice(0, CRON_REASON_MAX - 1)}…` : line;
+}
+
+/**
+ * What a run resolved to, once history is on: `{ outcome, reason }` from a job that says what it did, else a plain ok.
+ * @param {unknown} value
+ * @returns {{ outcome: "ok" | "refused" | "skipped", reason: string, told: boolean }} `told`: the job said it itself
+ */
+function verdictOf(value) {
+  if (value === CRON_SKIPPED) return { outcome: "skipped", reason: "", told: true };
+  if (typeof value === "object" && value !== null && "outcome" in value) {
+    const { outcome, reason } = /** @type {{ outcome: unknown, reason?: unknown }} */ (value);
+    if (outcome === "ok" || outcome === "refused" || outcome === "skipped")
+      return { outcome, reason: typeof reason === "string" ? oneLine(reason) : "", told: true };
+  }
+  return { outcome: "ok", reason: "", told: false };
+}
+
+/**
+ * @param {boolean | CronHistory | undefined} history
+ * @returns {{ keep: number, retentionDays: number } | null}
+ */
+function historyOf(history) {
+  if (!history) return null;
+  const { keep = 5, retentionDays = 14 } = history === true ? {} : history;
+  return { keep, retentionDays };
+}
 
 /**
  * The writer runJob records through: `db` resolved once, on the first write, so a missing binding is logged and the
@@ -105,16 +169,28 @@ function resultOf(value) {
  * (cut to CRON_RESULT_MAX as JSON) on a success and the stored error on a failure.
  * @param {(sql: string, ...values: unknown[]) => Promise<void>} write
  * @param {CronJob} job
- * @param {{ now: () => number, timeoutMs: number }} options
+ * @param {{ now: () => number, timeoutMs: number, history: { keep: number, retentionDays: number } | null }} options
  * @returns {Promise<CronOutcome>}
  */
 async function runOne(
   write,
   { name, everyMinutes, run, timeoutMs: own, holdOnTimeout },
-  { now, timeoutMs },
+  { now, timeoutMs, history },
 ) {
   const started = now();
-  await write(STARTED, name, everyMinutes, started);
+  const every = everyMinutes ?? 0;
+  await write(STARTED, name, every, started);
+  /**
+   * The history row and its bounded prune, when history is on.
+   * @param {number} at
+   * @param {string} outcome
+   * @param {string} reason
+   */
+  const log = async (at, outcome, reason) => {
+    if (!history) return;
+    await write(LOGGED, name, started, at, outcome, reason);
+    await write(PRUNED, name, at - history.retentionDays * 86_400_000, history.keep);
+  };
   const limit = own ?? timeoutMs;
   const controller = new AbortController();
   /** @type {ReturnType<typeof setTimeout> | undefined} */
@@ -130,17 +206,36 @@ async function runOne(
     });
     const value = await Promise.race([work, timeout]);
     const at = now();
-    if (value === CRON_SKIPPED) {
-      logEvent("cron_job_skipped", { name, ms: at - started });
+    const verdict = history
+      ? verdictOf(value)
+      : { outcome: value === CRON_SKIPPED ? "skipped" : "ok", reason: "", told: false };
+    if (verdict.outcome === "skipped") {
+      logEvent("cron_job_skipped", {
+        name,
+        ms: at - started,
+        ...(verdict.reason ? { reason: verdict.reason } : {}),
+      });
       return { job: name, status: "skipped", ms: at - started };
     }
+    if (verdict.outcome === "refused") {
+      logEvent(
+        "cron_job_refused",
+        { name, ms: at - started, reason: verdict.reason },
+        { level: "warn" },
+      );
+      await write(FAILED, name, every, at, verdict.reason);
+      await log(at, "refused", verdict.reason);
+      return { job: name, status: "refused", ms: at - started, reason: verdict.reason };
+    }
     logEvent("cron_job_ok", { name, ms: at - started });
-    await write(OK, name, everyMinutes, at);
-    const result = resultOf(value);
+    await write(OK, name, every, at);
+    await log(at, "ok", verdict.reason);
+    const result = verdict.told ? undefined : resultOf(value);
     return {
       job: name,
       status: "ok",
       ms: at - started,
+      ...(verdict.reason ? { reason: verdict.reason } : {}),
       ...(result === undefined ? {} : { result }),
     };
   } catch (error) {
@@ -148,7 +243,8 @@ async function runOne(
     logEvent("cron_job_failed", { name, ms: at - started, error }, { level: "error" });
     const text = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
     const stored = scrubText(text).slice(0, CRON_ERROR_MAX);
-    await write(FAILED, name, everyMinutes, at, stored);
+    await write(FAILED, name, every, at, stored);
+    await log(at, "failed", oneLine(stored));
     // Held past its timeout: recorded failed above, and waited for here, whatever it ends with.
     if (holdOnTimeout && controller.signal.aborted) {
       await work.catch(() => undefined);
@@ -165,17 +261,25 @@ async function runOne(
  * `db` may be a function, called once, so a missing binding is logged and the jobs still run, or null to record nothing.
  * @param {D1Like | (() => D1Like) | null} db
  * @param {CronJob[]} jobs
- * @param {{ now?: () => number, timeoutMs?: number }} [options] the clock in epoch ms (default Date.now), and each job's
- *   timeout unless the job sets its own (default CRON_TIMEOUT_MS)
+ * @param {CronOptions & { rethrow?: boolean }} [options] the clock in epoch ms (default Date.now), each job's timeout
+ *   unless the job sets its own (default CRON_TIMEOUT_MS), `history` (true, or `{ keep: 5, retentionDays: 14 }`) to
+ *   also keep each run in `cron_run_log`, and `rethrow: false` for a step inside a larger run, whose failures are
+ *   in the outcomes and the record and do not throw (default true)
  * @returns {Promise<CronOutcome[]>} what each run came to, when none failed
  */
-export async function runJobs(db, jobs, { now = Date.now, timeoutMs = CRON_TIMEOUT_MS } = {}) {
+export async function runJobs(
+  db,
+  jobs,
+  { now = Date.now, timeoutMs = CRON_TIMEOUT_MS, history, rethrow = true } = {},
+) {
   const write = recorder(db);
+  const keeping = historyOf(history);
   /** @type {CronOutcome[]} */
   const outcomes = [];
-  for (const job of jobs) outcomes.push(await runOne(write, job, { now, timeoutMs }));
+  for (const job of jobs)
+    outcomes.push(await runOne(write, job, { now, timeoutMs, history: keeping }));
   const failed = outcomes.filter((o) => o.status === "failed").map((o) => o.job);
-  if (failed.length) throw new Error(`cron jobs failed: ${failed.join(", ")}`);
+  if (failed.length && rethrow) throw new Error(`cron jobs failed: ${failed.join(", ")}`);
   return outcomes;
 }
 
@@ -186,14 +290,14 @@ export async function runJobs(db, jobs, { now = Date.now, timeoutMs = CRON_TIMEO
  * @param {D1Like | (() => D1Like) | null} db
  * @param {CronJob[]} jobs every job the site's triggers run
  * @param {string} name
- * @param {{ now?: () => number, timeoutMs?: number }} [options]
+ * @param {CronOptions} [options]
  * @returns {Promise<CronOutcome>}
  */
 export async function runJobNow(
   db,
   jobs,
   name,
-  { now = Date.now, timeoutMs = CRON_TIMEOUT_MS } = {},
+  { now = Date.now, timeoutMs = CRON_TIMEOUT_MS, history } = {},
 ) {
   const job = jobs.find((j) => j.name === name);
   if (!job)
@@ -201,7 +305,7 @@ export async function runJobNow(
       `No job named '${name}'. Jobs: ${jobs.map((j) => j.name).join(", ") || "none"}.`,
     );
   logEvent("cron_job_run_now", { name });
-  return runOne(recorder(db), job, { now, timeoutMs });
+  return runOne(recorder(db), job, { now, timeoutMs, history: historyOf(history) });
 }
 
 /**
@@ -211,7 +315,7 @@ export async function runJobNow(
  * not a thrown error, so its message reaches the caller whole.
  * @param {D1Like | (() => D1Like) | null} db
  * @param {CronJob[] | (() => CronJob[])} jobs every job the site's triggers run, or a function giving them (called per call)
- * @param {{ now?: () => number, timeoutMs?: number }} [options]
+ * @param {CronOptions} [options]
  * @returns {import("./operator.d.mts").OperatorTool}
  */
 export function runJobTool(db, jobs, options = {}) {
@@ -306,7 +410,7 @@ export function backupJob(run, { name = "backup", timeoutMs = 5 * 60_000 } = {})
  * `lastOkAt` is the last success in epoch ms, or null. The grace is `graceMinutes` when given, else the larger of
  * 10 minutes and a tenth of the interval. cronCheck is built on it; a site that mails its own alert reads it.
  * @param {D1Like | (() => D1Like)} db
- * @param {{ graceMinutes?: number, jobs?: Array<{ name: string, everyMinutes: number }>, deployedAt?: Date, now?: Date }} [options]
+ * @param {{ graceMinutes?: number, jobs?: Array<{ name: string, everyMinutes: number | null }>, deployedAt?: Date, now?: Date }} [options]
  * @returns {Promise<Array<{ name: string, reason: "failed" | "stale" | "never succeeded" | "never ran", lastOkAt: number | null }>>}
  */
 export async function cronFindings(db, { graceMinutes, jobs, deployedAt, now } = {}) {
@@ -329,13 +433,25 @@ export async function cronFindings(db, { graceMinutes, jobs, deployedAt, now } =
     jobs ??
     [...rows.values()].map((row) => ({
       name: String(row.name),
-      everyMinutes: Number(row.every_minutes),
+      everyMinutes: Number(row.every_minutes) || null,
     }));
   /** @type {Array<{ name: string, reason: "failed" | "stale" | "never succeeded" | "never ran", lastOkAt: number | null }>} */
   const found = [];
   for (const { name, everyMinutes } of expected) {
-    const limit = windowMs(everyMinutes);
     const row = rows.get(name);
+    if (everyMinutes === null) {
+      // An event job: no window to go stale in, only a failure inside the last day.
+      const failedAt = row?.last_failed_at ?? null;
+      const ok = row?.last_ok_at ?? null;
+      if (
+        failedAt !== null &&
+        (ok === null || failedAt > ok) &&
+        at - Number(failedAt) <= CRON_EVENT_WINDOW_MS
+      )
+        found.push({ name, reason: "failed", lastOkAt: ok === null ? null : Number(ok) });
+      continue;
+    }
+    const limit = windowMs(everyMinutes);
     if (!row) {
       if (deployedAt === undefined || at - deployedAt.getTime() > limit)
         found.push({ name, reason: "never ran", lastOkAt: null });
@@ -363,7 +479,7 @@ export async function cronFindings(db, { graceMinutes, jobs, deployedAt, now } =
  * those, with their own intervals, so a removed job's old row is ignored, and a job with no row at all fails as
  * "never ran" once its window has passed since `deployedAt` (at once when that is not given).
  * @param {D1Like | (() => D1Like)} db
- * @param {{ graceMinutes?: number, jobs?: Array<{ name: string, everyMinutes: number }>, deployedAt?: Date, now?: Date }} [options]
+ * @param {{ graceMinutes?: number, jobs?: Array<{ name: string, everyMinutes: number | null }>, deployedAt?: Date, now?: Date }} [options]
  * @returns {{ name: "cron", level: "warn", run: () => Promise<true | { ok: false, detail: string }> }}
  */
 export function cronCheck(db, options = {}) {
@@ -377,6 +493,78 @@ export function cronCheck(db, options = {}) {
         : true;
     },
   };
+}
+
+/**
+ * @typedef {{ startedAt: number, finishedAt: number, outcome: "ok" | "refused" | "failed", reason: string }} CronRun
+ */
+
+/**
+ * The newest runs of each job from `cron_run_log` (runJobs' `history`), newest first, in one read: epoch ms and the
+ * outcome ("ok", "refused" or "failed") with its one-line reason. Every name asked for is in the map, empty when it
+ * has no run. Without `names`, every job with a run.
+ * @param {D1Like | (() => D1Like)} db
+ * @param {string[]} [names]
+ * @param {number} [per] runs per job (default 5)
+ * @returns {Promise<Map<string, CronRun[]>>}
+ */
+export async function readCronRuns(db, names, per = 5) {
+  const { results } = await (typeof db === "function" ? db() : db)
+    .prepare(
+      `SELECT name, started_at, finished_at, outcome, reason FROM (
+         SELECT *, ROW_NUMBER() OVER (PARTITION BY name ORDER BY id DESC) AS rank FROM cron_run_log
+       ) WHERE rank <= ?1 ORDER BY name, rank`,
+    )
+    .bind(per)
+    .all();
+  /** @type {Map<string, CronRun[]>} */
+  const runs = new Map((names ?? []).map((name) => [name, []]));
+  for (const row of /** @type {Array<Record<string, number | string>>} */ (results)) {
+    const name = String(row.name);
+    if (names && !runs.has(name)) continue;
+    const list = runs.get(name) ?? [];
+    list.push({
+      startedAt: Number(row.started_at),
+      finishedAt: Number(row.finished_at),
+      outcome: /** @type {CronRun["outcome"]} */ (row.outcome),
+      reason: String(row.reason),
+    });
+    runs.set(name, list);
+  }
+  return runs;
+}
+
+/**
+ * Each job with its newest runs and its flag at `now`, for a page that lists them (Capsid's Portal):
+ * - `failing`: the newest run failed or was refused. For an event job (`everyMinutes: null`) only inside
+ *   CRON_EVENT_WINDOW_MS, since no later run may ever come to clear it; a periodic job's next run is its retry, so its
+ *   failure stands until then.
+ * - `quiet`: a periodic job whose newest run finished more than `quietPeriods` (default 2) of its periods ago: one
+ *   missed run is normal, and a flag on it teaches the reader to ignore the flag.
+ * - `never`: no run on record, a notice and not a fault.
+ * @param {Array<{ name: string, everyMinutes: number | null }>} jobs
+ * @param {Map<string, CronRun[]>} runs readCronRuns' answer
+ * @param {Date} now
+ * @param {{ quietPeriods?: number }} [options]
+ * @returns {Array<{ name: string, everyMinutes: number | null, flag: "failing" | "quiet" | "never" | null, recent: CronRun[] }>}
+ */
+export function cronStates(jobs, runs, now, { quietPeriods = 2 } = {}) {
+  return jobs.map(({ name, everyMinutes }) => {
+    const recent = runs.get(name) ?? [];
+    const last = recent[0];
+    /** @type {"failing" | "quiet" | "never" | null} */
+    let flag = null;
+    if (!last) flag = "never";
+    else if (last.outcome !== "ok") {
+      if (everyMinutes !== null || now.getTime() - last.finishedAt <= CRON_EVENT_WINDOW_MS)
+        flag = "failing";
+    } else if (
+      everyMinutes !== null &&
+      now.getTime() - last.finishedAt > quietPeriods * everyMinutes * 60_000
+    )
+      flag = "quiet";
+    return { name, everyMinutes, flag, recent };
+  });
 }
 
 /**

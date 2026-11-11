@@ -4,6 +4,12 @@
 export const CRON_ERROR_MAX: number;
 /** How long a job may run before it is recorded failed and the next starts: 300000 (five minutes). */
 export const CRON_TIMEOUT_MS: number;
+/** The migration for the opt-in history: `cron_run_log` (name, started_at, finished_at, outcome, reason; epoch ms), indexed by name. */
+export const CRON_LOG_SQL: string;
+/** The longest reason kept: 300 characters, one line. */
+export const CRON_REASON_MAX: number;
+/** How long the failure of an event job (`everyMinutes: null`) counts as current: 86400000 (a day). */
+export const CRON_EVENT_WINDOW_MS: number;
 /** The migration: `cron_runs` (name, every_minutes, first_started_at, last_started_at, last_ok_at, last_failed_at, last_error; epoch ms). */
 export const CRON_SQL: string;
 
@@ -18,12 +24,13 @@ export interface D1Like {
 }
 
 /**
- * One job: `everyMinutes` is how often its trigger fires; `timeoutMs` overrides runJobs' timeout for it. `run` gets a
+ * One job: `everyMinutes` is how often its trigger fires, or null for an event job (runs come and go with the work: no
+ * stale window, flagged only by a failure inside the last day); `timeoutMs` overrides runJobs' timeout for it. `run` gets a
  * signal that is aborted when the job times out.
  */
 export interface CronJob {
   name: string;
-  everyMinutes: number;
+  everyMinutes: number | null;
   timeoutMs?: number;
   /**
    * For a job holding a lock or moving money: past its timeout it is recorded failed and its signal aborted, but the
@@ -38,10 +45,38 @@ export interface CronJob {
 /** What one run came to: its own result (as JSON, cut to CRON_RESULT_MAX) on a success, the stored error on a failure. */
 export interface CronOutcome {
   job: string;
-  status: "ok" | "skipped" | "failed";
+  status: "ok" | "skipped" | "failed" | "refused";
   ms: number;
   result?: unknown;
+  /** The one-line reason a job gave (`history` on): what an ok run did, why a run was refused. */
+  reason?: string;
   error?: string;
+}
+
+/** Keep each run in `cron_run_log`: `keep` newest per job (default 5) and none older than `retentionDays` (default 14). */
+export interface CronHistory {
+  keep?: number;
+  retentionDays?: number;
+}
+
+/** Options shared by runJobs, runJobNow and runJobTool. */
+export interface CronOptions {
+  now?: () => number;
+  timeoutMs?: number;
+  /**
+   * Opt in to the run history. A job may then resolve `{ outcome: "ok" | "refused" | "skipped", reason }`: ok records the
+   * reason, refused records the run failed (cron_runs and /health too) without throwing, skipped records nothing, as
+   * CRON_SKIPPED does. Without it, runs are recorded as before.
+   */
+  history?: boolean | CronHistory;
+}
+
+/** One recorded run: epoch ms, its outcome and its one-line reason. */
+export interface CronRun {
+  startedAt: number;
+  finishedAt: number;
+  outcome: "ok" | "refused" | "failed";
+  reason: string;
 }
 
 /** The longest result a run hands back, as JSON: 4000. */
@@ -57,7 +92,7 @@ export const CRON_RESULT_MAX: number;
 export function runJobs(
   db: D1Like | (() => D1Like) | null,
   jobs: CronJob[],
-  options?: { now?: () => number; timeoutMs?: number },
+  options?: CronOptions & { rethrow?: boolean },
 ): Promise<CronOutcome[]>;
 
 /**
@@ -68,7 +103,7 @@ export function runJobNow(
   db: D1Like | (() => D1Like) | null,
   jobs: CronJob[],
   name: string,
-  options?: { now?: () => number; timeoutMs?: number },
+  options?: CronOptions,
 ): Promise<CronOutcome>;
 
 /**
@@ -78,7 +113,7 @@ export function runJobNow(
 export function runJobTool(
   db: D1Like | (() => D1Like) | null,
   jobs: CronJob[] | (() => CronJob[]),
-  options?: { now?: () => number; timeoutMs?: number },
+  options?: CronOptions,
 ): import("./operator.d.mts").OperatorTool;
 
 /** The operator tool `backup_status`: the backup read now, uncached; `files` names the files passes beside the dump. */
@@ -116,16 +151,46 @@ export interface CronFinding {
   lastOkAt: number | null;
 }
 
+/** What cronFindings and cronCheck read: the grace, the site's own list of jobs, when it was deployed, the clock. */
+export interface CronFindingsOptions {
+  graceMinutes?: number;
+  jobs?: Array<{ name: string; everyMinutes: number | null }>;
+  deployedAt?: Date;
+  now?: Date;
+}
+
 /** The jobs cronCheck would name, as data, for a site that mails its own alert. Same options as cronCheck. */
 export function cronFindings(
   db: D1Like | (() => D1Like),
-  options?: {
-    graceMinutes?: number;
-    jobs?: Array<{ name: string; everyMinutes: number }>;
-    deployedAt?: Date;
-    now?: Date;
-  },
+  options?: CronFindingsOptions,
 ): Promise<CronFinding[]>;
+
+/**
+ * The newest runs of each job from `cron_run_log` (runJobs' `history`), newest first, in one read. Every name asked for
+ * is in the map (empty without a run); without `names`, every job with a run.
+ */
+export function readCronRuns(
+  db: D1Like | (() => D1Like),
+  names?: string[],
+  per?: number,
+): Promise<Map<string, CronRun[]>>;
+
+/**
+ * Each job with its newest runs and its flag at `now`: `failing` (the newest run failed or was refused; an event job only
+ * inside CRON_EVENT_WINDOW_MS), `quiet` (a periodic job whose newest run finished over `quietPeriods`, default 2, periods
+ * ago), `never` (no run on record, a notice and not a fault).
+ */
+export function cronStates(
+  jobs: Array<{ name: string; everyMinutes: number | null }>,
+  runs: Map<string, CronRun[]>,
+  now: Date,
+  options?: { quietPeriods?: number },
+): Array<{
+  name: string;
+  everyMinutes: number | null;
+  flag: "failing" | "quiet" | "never" | null;
+  recent: CronRun[];
+}>;
 
 /**
  * The /health check (name "cron", level warn): fails, naming the jobs, when a job's last run failed, its last success is
@@ -135,12 +200,7 @@ export function cronFindings(
  */
 export function cronCheck(
   db: D1Like | (() => D1Like),
-  options?: {
-    graceMinutes?: number;
-    jobs?: Array<{ name: string; everyMinutes: number }>;
-    deployedAt?: Date;
-    now?: Date;
-  },
+  options?: CronFindingsOptions,
 ): { name: "cron"; level: "warn"; run: () => Promise<true | { ok: false; detail: string }> };
 /**
  * A site's jobs keyed by the cron that fires them: `all(env)` is every job (for /health's cronCheck and the operator's
