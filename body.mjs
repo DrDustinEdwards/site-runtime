@@ -1,3 +1,5 @@
+import { errors, schemaIssues } from "./http-errors.mjs";
+
 /**
  * A request body read to a byte ceiling, counted as the chunks arrive. The declared Content-Length can be absent or
  * understated, and `request.text()` holds the whole body in memory before any check can run, so neither is a cap.
@@ -129,6 +131,44 @@ export async function readJson(request, max, { typed = true } = {}) {
     if (refused) throw refused;
   }
   return JSON.parse(await readText(request, max));
+}
+
+/**
+ * The body read to `max` bytes and checked by a schema, for a JSON API that answers in problem details
+ * (./http-errors): over the ceiling throws AppError 413 `too_large`, a body that is not typed JSON 415
+ * `unsupported_type` (unless `typed` is false), one that does not parse or fails the schema 422 `validation` with the
+ * issues as `errors`. An empty body is validated as `empty` when given (an optional body), else refused as not JSON.
+ * The schema is anything with zod's `safeParse` (zod 3 or 4); nothing here imports zod.
+ * @template T
+ * @param {Request} request
+ * @param {{ safeParse(value: unknown): { success: true, data: T } | { success: false, error: { issues: unknown[] } } }} schema
+ * @param {{ max: number, typed?: boolean, empty?: unknown }} options
+ * @returns {Promise<T>}
+ */
+export async function readJsonWith(request, schema, { max, typed = true, empty }) {
+  const text = await readCapped(request, max);
+  if (text === null) throw errors.tooLarge();
+  if (text === "" && empty !== undefined) return check(schema, empty);
+  if (typed && requireJson(request)) throw errors.unsupportedType();
+  let value;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw errors.validation([{ path: "", message: "Expected a JSON body." }]);
+  }
+  return check(schema, value);
+}
+
+/**
+ * @template T
+ * @param {{ safeParse(value: unknown): { success: true, data: T } | { success: false, error: { issues: unknown[] } } }} schema
+ * @param {unknown} value
+ * @returns {T}
+ */
+function check(schema, value) {
+  const result = schema.safeParse(value);
+  if (result.success) return result.data;
+  throw errors.validation(schemaIssues(result.error.issues));
 }
 
 const CRLF2 = new Uint8Array([13, 10, 13, 10]);

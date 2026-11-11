@@ -35,3 +35,14 @@ export function multipartBoundary(contentType: string | null): string | null;
 export function readMultipart(request: Request, max: number): AsyncGenerator<MultipartPart>;
 /** A text part's value, read to `max` bytes (64 KiB); longer throws a 400 Response naming the field. */
 export function partText(part: MultipartPart, max?: number): Promise<string>;
+
+/** The body read to `max`, checked by a zod-shaped schema; throws AppError 413, 415 or 422 (./http-errors). */
+export function readJsonWith<T>(
+  request: Request,
+  schema: {
+    safeParse(
+      value: unknown,
+    ): { success: true; data: T } | { success: false; error: { issues: unknown[] } };
+  },
+  options: { max: number; typed?: boolean; empty?: unknown },
+): Promise<T>;

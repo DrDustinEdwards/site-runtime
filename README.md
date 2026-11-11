@@ -2114,6 +2114,37 @@ Paged.js's completion mark, then prints at the page's `@page` size. `pagedScript
 config and the self-hosted polyfill's tag. Both check that the answer is a PDF. `./health` adds `browserCheck(name,
 env.BROWSER)`, which opens no browser.
 
+## API errors
+
+`./http-errors` is the one error answer every site's JSON API gives: RFC 9457 problem details
+(`application/problem+json`), `{ type, title, status, detail, code, ...extensions }`, `code` being the stable name a
+client branches on and `detail` the sentence it shows. `type` is `about:blank` (and `title` the status phrase) unless a
+site passes `typeBase`, a page that explains each code. A route throws `new AppError(status, code, message,
+extensions)` or one of `errors.*` (`unauthorized`, `forbidden`, `notFound`, `conflict`, `tooLarge`, `unsupportedType`,
+`validation(issues)`, `rateLimited`, `serviceUnavailable` and the rest), and `errorResponse(error, { requestId })`
+answers anything thrown: an error with a numeric `status` and string `code` as it says, a schema error with `issues`
+(zod, Valibot) as 422 `validation` with `errors: [{ path, message }]`, a thrown Response as it is, and the rest logged as
+`api_unhandled` and answered 500 `internal`. `honoErrorHandler()` is the same for Hono's `app.onError`, and
+`readProblem(body, fallback)` is the client's side. `./body` adds `readJsonWith(request, schema, { max, typed, empty })`,
+which throws these errors (413, 415, 422) for a body over its ceiling, of the wrong type or failing the schema.
+
+## Confirmation tokens
+
+`./confirm-token` is the preview-then-perform step. `mintConfirm({ keys, claims, ttlSeconds })` signs any claims (who
+acts, on what, the arguments) with ./signed-token's rotating hex keys, with an expiry (default ten minutes) and a
+one-time id. `redeemConfirm({ keys, token, expect, kv })` checks the signature, that every `expect` member equals the
+signed claim (as canonical JSON), and the expiry, and with `kv` spends the token on its first redeem. It answers `{ ok:
+true, claims }` or `{ ok: false, status, reason }`: 403 malformed, unverified or issued for another action, 409 already
+used, 410 expired. Claims are readable by whoever holds the token, so they carry ids, never a secret.
+
+## Hono doors
+
+`./hono` has the middleware a Hono API shares, with no Hono import. `operatorBearer({ token, actorHeader, resolveActor,
+onActor })` is the operator door: a request with no Authorization header passes, a bearer is compared in constant time,
+the acting admin named in `actorHeader` is read by the site and set by `onActor`, and every refusal is logged under
+OWASP's names and never with the token. `honoRateLimit({ limiter, bucket, rules, who, onUnavailable })` counts on the
+RateLimiter Durable Object per user (`who`) or edge address. Both throw ./http-errors' AppError.
+
 ## A constant-time secret compare
 
 `./compare` is the one comparison of a presented secret with the expected one.
