@@ -75,11 +75,15 @@ test("any other cookie, a write or a refused path never reaches the Renderer", a
 });
 
 test("the canonical move, security.txt and a cross-site write are answered before the page", async () => {
-  const { fetch, stored } = harness({ canonical: { host: "example.com" } });
+  const { fetch, stored } = harness({
+    canonical: { host: "example.com", keep: (/** @type {URL} */ url) => url.pathname === "/old/" },
+  });
   const moved = await fetch(new Request("http://www.example.com/a/"));
   assert.equal(moved.status, 301);
   assert.equal(moved.headers.get("Location"), "https://example.com/a");
   assert.equal(moved.headers.get("X-Set"), "1");
+  const kept = await fetch(new Request("http://example.com/old/"));
+  assert.equal(kept.headers.get("Location"), "https://example.com/old/");
   const txt = await fetch(new Request("https://example.com/.well-known/security.txt"));
   assert.match(await txt.text(), /^Contact: /m);
   const refused = await fetch(

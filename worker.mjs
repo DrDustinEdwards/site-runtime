@@ -8,7 +8,8 @@
  *
  * 1. Canonical address (./url canonicalRedirect): first, before anything reads the request, so an http request never
  *    gets a policy whose report endpoint is http. The move carries the security set built for where it points.
- *    `canonical.before` is a site's own earlier move (dei's WordPress addresses), answered the same way.
+ *    `canonical.before` is a site's own earlier move (dei's WordPress addresses), answered the same way, and
+ *    `canonical.keep(url)` keeps an address's trailing slash (dei's removed WordPress addresses answer 410 as they were).
  * 2. Maintenance (./maintenance): every path but /health answers 503 while MAINTENANCE is on.
  * 3. /.well-known/security.txt (./security-txt, RFC 9116) on every site, with the network's contact.
  * 4. The standard files (Prelum's standardFiles: robots.txt, ai.txt, site.webmanifest, the IndexNow key, ownership
@@ -301,7 +302,13 @@ export function siteWorker(site) {
     const canonical = options.canonical === false ? null : (options.canonical ?? {});
     const moved =
       canonical &&
-      ((await canonical.before?.(request, env)) ?? canonicalRedirect(request, canonical));
+      ((await canonical.before?.(request, env)) ??
+        canonicalRedirect(
+          request,
+          canonical.keep?.(url)
+            ? { ...canonical, except: [...(canonical.except ?? []), url.pathname] }
+            : canonical,
+        ));
     if (moved)
       return secure(
         moved,

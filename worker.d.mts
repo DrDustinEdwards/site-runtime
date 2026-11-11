@@ -53,7 +53,10 @@ export interface SiteOptions<E> {
   mode?: string;
   /** The site's security set: pageSecurity's withSecurityHeaders. */
   withSecurityHeaders: (response: Response, request: Request, nonce?: string, env?: E) => Response;
-  /** canonicalRedirect's options (`host`, `except`), plus `before`, a site's own earlier move; false for none. */
+  /**
+   * canonicalRedirect's options (`host`, `except`), plus `before`, a site's own earlier move, and `keep`, a test for an
+   * address whose slash stays; false for none.
+   */
   canonical?:
     | false
     | {
@@ -63,6 +66,8 @@ export interface SiteOptions<E> {
           request: Request,
           env: E,
         ) => Response | null | undefined | Promise<Response | null | undefined>;
+        /** True keeps this address's trailing slash, as `except` does for a fixed path; https still applies. */
+        keep?: (url: URL) => boolean;
       };
   /** Prelum's standardFiles handler (robots.txt, ai.txt, site.webmanifest, IndexNow key, ownership files). */
   files?: (request: Request, env: E) => Promise<Response | null> | Response | null;
