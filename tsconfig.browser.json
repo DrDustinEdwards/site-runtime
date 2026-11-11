@@ -4,6 +4,6 @@
     "lib": ["es2022", "dom", "dom.iterable"],
     "types": []
   },
-  "include": ["turnstile.mjs", "sign-in-client.mjs", "vitals-client.mjs"],
+  "include": ["turnstile.mjs", "sign-in-client.mjs", "vitals-client.mjs", "trusted-types.mjs"],
   "exclude": []
 }

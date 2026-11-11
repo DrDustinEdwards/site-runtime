@@ -8,6 +8,7 @@ import {
   summarizeVital,
   trimReportUrl,
 } from "../csp-report.mjs";
+import { callerScript, defaultRules, escapedReport, REACT_SCRIPT_STUB } from "../trusted-types.mjs";
 
 const URL_ = "https://site.example.com/csp-report";
 const legacy = {
@@ -243,4 +244,54 @@ test("an extension's or the browser's own violation is dropped; a new (directive
   } finally {
     console.warn = warn;
   }
+});
+
+test("PLANT: the Trusted Types default policy passes only React's script stub and text, escapes other HTML and reports it as a sink and script, never its text; foreign scripts and script text are refused", () => {
+  /** @type {string[]} */
+  const reported = [];
+  const rules = defaultRules((sink) => reported.push(sink), "https://example.com");
+  assert.equal(
+    rules.createHTML(REACT_SCRIPT_STUB, "TrustedHTML", "Element innerHTML"),
+    REACT_SCRIPT_STUB,
+  );
+  assert.equal(
+    rules.createHTML('<img src=x onerror="alert(1)">', "TrustedHTML", "Element innerHTML"),
+    "&lt;img src=x onerror=&quot;alert(1)&quot;&gt;",
+  );
+  assert.equal(
+    rules.createHTML('{"name":"a \\u003cb\\u003e"}', "TrustedHTML", "Element innerHTML"),
+    '{"name":"a \\u003cb\\u003e"}',
+  );
+  assert.deepEqual(reported, ["Element innerHTML"]);
+  assert.equal(rules.createScriptURL("/assets/a.js"), "/assets/a.js");
+  assert.equal(
+    rules.createScriptURL("https://example.com/assets/a.js"),
+    "https://example.com/assets/a.js",
+  );
+  assert.equal(rules.createScriptURL("https://evil.example/a.js"), null);
+  assert.equal(rules.createScriptURL("//evil.example/a.js"), null);
+  assert.equal(rules.createScript(), null);
+
+  const stack = [
+    "Error",
+    "    at report (https://example.com/assets/entry-1.js:1:100)",
+    "    at Object.createHTML (https://example.com/assets/entry-1.js:1:200)",
+    "    at set (https://example.com/assets/chunk-2.js:3:45)",
+  ].join("\n");
+  const caller = callerScript(stack);
+  assert.deepEqual(caller, { url: "https://example.com/assets/chunk-2.js", line: 3, column: 45 });
+  const [{ type, body }] = reportBodies(
+    escapedReport("Element innerHTML", "https://example.com/a?q=1", caller),
+  );
+  assert.deepEqual(summarizeReport(body, type), {
+    event: "csp-violation",
+    directive: "trusted-types-default-policy",
+    blocked: "trusted-types-sink",
+    page: "https://example.com/a",
+    source: "https://example.com/assets/chunk-2.js",
+    line: 3,
+    column: 45,
+    sink: "Element innerHTML",
+    disposition: "report",
+  });
 });
