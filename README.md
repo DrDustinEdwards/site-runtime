@@ -966,6 +966,30 @@ signal) and `fetchUntil(signal)` (also stops when a reader or tool call is cance
 `./headers` has `hostCookie(name, value, { path })` (`__Secure-` on a path other than `/`) and `readCookie(request,
 name)`, which reads only the prefixed names.
 
+## D1 statement limits
+
+`./d1`: D1 refuses a statement with more than 100 bound parameters ([limits](https://developers.cloudflare.com/d1/platform/limits/)),
+so an IN list or a multi-row insert built from data goes through here. `inList(column, values)` and
+`notInList(column, values)` bind the whole list as one JSON parameter (`IN (SELECT value FROM json_each(?))`,
+[JSON functions](https://developers.cloudflare.com/d1/sql-api/query-json/)): any length, one statement, so an UPDATE
+or DELETE stays atomic; an empty list matches nothing (inList) or everything (notInList). For inserts and loops: `chunked(items, size = IN_LIST_CHUNK)` (90,
+room for the statement's other parameters), `inChunks(items, (part) => query)` (one slice after another, rows in
+order, nothing run for an empty list) and `rowsPerInsert(columns)`. A LIKE pattern from what someone typed goes through
+`likeContains(column, text)` or `likeStartsWith(column, text)` (Drizzle SQL ending `ESCAPE '\'`), or `escapeLike(text)`
+for hand-written SQL, so `%` and `_` match themselves. A newest-first page goes by `encodeCursor(at, id)`, `decodeCursor(text)` and
+`olderThan(atColumn, idColumn, at, id)` (order by both, descending): a time alone skips the rows that share the last
+row's millisecond. Sites with Drizzle only: it imports `drizzle-orm`.
+
+## CSV
+
+`./csv`: `toCsv(header, rows)`, `recordsCsv(records, columns?)`, `csvRow(cells)` and `csvCell(value)` write RFC 4180
+(CRLF after every record, a field quoted when it holds a comma, quote or line break; a list joined with "; "). A text cell
+starting `=`, `+`, `-`, `@`, a tab, CR or LF, or the full-width ＝ ＋ － ＠, gets an apostrophe first, so a spreadsheet opens
+it as text ([OWASP CSV Injection](https://owasp.org/www-community/attacks/CSV_Injection)); a number, a date, or text
+that is only a number stays as it is. `parseCsv(text)` reads it back (BOM, CRLF, LF or CR, quoted fields).
+`csvResponse(csv, filename, init?)` is the download answer (`CSV_CONTENT_TYPE` and an RFC 6266 attachment name), and
+`./csv-client` `downloadCsv(filename, csv)` saves one in the browser.
+
 ## Signed links
 
 `./signed-token` is the one stateless token behind links a site emails (unsubscribe, card update, an open pixel):

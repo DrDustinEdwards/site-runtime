@@ -10,7 +10,8 @@
     "sign-in-passkey.mjs",
     "vitals-client.mjs",
     "trusted-types.mjs",
-    "page-client.mjs"
+    "page-client.mjs",
+    "csv-client.mjs"
   ],
   "exclude": []
 }
