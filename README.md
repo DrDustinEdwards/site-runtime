@@ -923,6 +923,22 @@ signal) and `fetchUntil(signal)` (also stops when a reader or tool call is cance
 `./headers` has `hostCookie(name, value, { path })` (`__Secure-` on a path other than `/`) and `readCookie(request,
 name)`, which reads only the prefixed names.
 
+## D1 statement limits
+
+`./d1`: D1 refuses a statement with more than 100 bound parameters ([limits](https://developers.cloudflare.com/d1/platform/limits/)),
+so an IN list or a multi-row insert built from data goes through here. `chunked(items, size = IN_LIST_CHUNK)` (90,
+room for the statement's other parameters), `inChunks(items, (part) => query)` (one slice after another, rows in
+order, nothing run for an empty list) and `rowsPerInsert(columns)`. A LIKE pattern from what someone typed goes through
+`likeContains(column, text)` or `likeStartsWith(column, text)` (Drizzle SQL ending `ESCAPE '\'`), or `escapeLike(text)`
+for hand-written SQL, so `%` and `_` match themselves. Sites with Drizzle only: it imports `drizzle-orm`.
+
+## CSV exports
+
+`./csv`: `toCsv(header, rows)`, `csvRow(cells)` and `csvCell(value)` write RFC 4180 (CRLF lines, a field quoted when it
+holds a comma, quote or line break). A text cell starting `=`, `+`, `-`, `@`, a tab or a CR gets an apostrophe first, so a
+spreadsheet opens it as text ([OWASP CSV Injection](https://owasp.org/www-community/attacks/CSV_Injection)); a
+number, or text that is only a number, stays a number. `CSV_CONTENT_TYPE` is `text/csv; charset=utf-8`.
+
 ## Signed links
 
 `./signed-token` is the one stateless token behind links a site emails (unsubscribe, card update, an open pixel):
