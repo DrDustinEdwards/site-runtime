@@ -1590,6 +1590,23 @@ if (refused) return refused;
   domain alike.
 - `originRefusal(headers)` is the 403: `ORIGIN_REFUSAL` as plain text, `no-store`, saying nothing about the route.
 
+## Who may see a draft
+
+`draftGate(row, canSeeDrafts, { isDraft? })` (`./draft-gate`) is the one check a loader makes before it renders a row
+that may not be public yet. A missing row and a draft the viewer may not see are the same 404 (a thrown `Response`,
+`no-store`), so a visitor cannot tell a draft from nothing. `canSeeDrafts` (the site's admin check) runs only for a
+draft, so a public page never verifies an Access token. A draft is `status === "draft"` unless `isDraft` says otherwise.
+
+```js
+import { draftGate, draftRobots } from "@dustinedwards/site-runtime/draft-gate";
+const { row: page, draft } = await draftGate(await getPage(db, slug), () =>
+  isAdminViewer(env, request),
+);
+// render <DraftNotice show={draft} /> (capsomer/react/draft-notice); meta: [...draftRobots(draft)]
+```
+
+`draftRobots(draft)` is the `noindex` robots meta a draft page carries, or nothing.
+
 ## One address per page
 
 `slashRedirect(request, { except })` (`./url`) sends `/x/` to `/x` with its query, so a page is not indexed, cached and
