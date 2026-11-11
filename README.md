@@ -986,7 +986,8 @@ export class Renderer extends siteRenderer(WorkerEntrypoint, site) {}
 export default siteWorker(site);
 ```
 
-The gateway runs, in order: the canonical move (first, with the set built for where it points), maintenance,
+The gateway runs, in order: the canonical move (first, with the set built for where it points; `canonical.before` is
+a site's own earlier move and `canonical.keep(url)` keeps an address's slash), maintenance,
 `/.well-known/security.txt`, the standard files, the speculation rules file, CSP reports (per `clientIp` through
 `CSP_REPORT_RATE_LIMIT`; no binding drops them), the operator API, the site's steps, the cross-site write refusal (all
 but `crossSiteExempt`, default `/api/auth/`), then the page. A read with no cookie but `publicCookies` that `cacheable` does not
@@ -994,13 +995,16 @@ refuse goes to the Renderer, which the edge keeps only when it is shared (anythi
 parameters dropped), host and each public cookie; every other request is rendered live with its own nonce and leaves
 `private, no-store` unless its route set a policy of its own. A route marks its page shared (`publicPageHeaders`); a site whose routes name
 no Cache-Control passes `publicPages(url, env)` instead, and the Renderer stores each such 200 under the tags it
-returns. Every render gets a nonce; a policy that names it is renewed
+returns; a page marked shared with no edge lifetime of its own is stored for publicPageHeaders' day. A site's
+`respond(response, request, env, { stored })` gets the last word on each page and step answer after the set (a route-class
+cache rule); `settleCacheHeaders` or `privateRender` still runs after it. Each render sets `serverTimingContext` (./context;
+`timed(getTimings(context), name, fn)` in a loader adds a mark to the page's Server-Timing). Every render gets a nonce; a policy that names it is renewed
 per reader; a 304 leaves out the policy (RFC 9111 4.3.4: the browser updates its stored headers from a 304). Every HTML
 answer carries the Speculation-Rules header; a 404 goes through `onNotFound` (site-api's tombstones) and is counted
 unless under `/api/` or `/preview/`; a gateway that throws is a plain 500 with the set and a `gateway_error` line. Around
 it: the request log (DEPLOY_SHA, preview tokens cut, the route named from the build, loaded inside the request), `wrap`,
-then each of `adminIdle`. An unknown cron warns `cron_unknown` and runs nothing; a known one is awaited through
-`runJobs`.
+then each of `adminIdle`. `cron(env, scheduledTime, ctx)` names the job lists by expression (a promise is fine, so the jobs can be imported when
+the cron fires); an unknown cron warns `cron_unknown` and runs nothing; a known one is awaited through `runJobs`.
 
 ## Request helpers
 

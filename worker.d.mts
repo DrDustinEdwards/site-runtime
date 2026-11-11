@@ -53,7 +53,10 @@ export interface SiteOptions<E> {
   mode?: string;
   /** The site's security set: pageSecurity's withSecurityHeaders. */
   withSecurityHeaders: (response: Response, request: Request, nonce?: string, env?: E) => Response;
-  /** canonicalRedirect's options (`host`, `except`), plus `before`, a site's own earlier move; false for none. */
+  /**
+   * canonicalRedirect's options (`host`, `except`), plus `before`, a site's own earlier move, and `keep`, a test for an
+   * address whose slash stays; false for none.
+   */
   canonical?:
     | false
     | {
@@ -63,6 +66,8 @@ export interface SiteOptions<E> {
           request: Request,
           env: E,
         ) => Response | null | undefined | Promise<Response | null | undefined>;
+        /** True keeps this address's trailing slash, as `except` does for a fixed path; https still applies. */
+        keep?: (url: URL) => boolean;
       };
   /** Prelum's standardFiles handler (robots.txt, ai.txt, site.webmanifest, IndexNow key, ownership files). */
   files?: (request: Request, env: E) => Promise<Response | null> | Response | null;
@@ -90,6 +95,17 @@ export interface SiteOptions<E> {
   ) => Promise<Parameters<typeof import("./edge-cache.mjs").publicPageHeaders>[0]>;
   /** Preloads beyond the root stylesheets, for the Early Hints header (fonts). */
   preloads?: (Preload | Preconnect)[];
+  /**
+   * The last word on a page or a step's answer, after the security set: a site's own cache rule (Foxhound's route
+   * classes, Vary: Cookie). `stored` is true in the Renderer, whose answer the Workers cache keeps (settleCacheHeaders
+   * still runs after it); false for a step's answer or a page rendered for one reader (privateRender still runs after).
+   */
+  respond?: (
+    response: Response,
+    request: Request,
+    env: E,
+    where: { stored: boolean },
+  ) => Response | Promise<Response>;
   /** Sets the site's own context keys on every render. cloudflareContext and cspNonceContext are set already. */
   context?: (context: RouterContextProvider, env: E, ctx: ExecutionContext) => void;
   /** The KV that keeps the last failed purge, for purgeCheck. */
@@ -104,8 +120,12 @@ export interface SiteOptions<E> {
   wrap?: (handler: FetchHandler<E>) => FetchHandler<E>;
   /** Admin idle sign-outs (./access withAdminIdle), outermost first. */
   adminIdle?: { prefixes?: string[]; cookieName?: string; secret: (env: E) => string }[];
-  /** The job lists by cron expression. */
-  cron?: (env: E, scheduledTime: Date) => Record<string, CronJob[] | undefined>;
+  /** The job lists by cron expression, for the firing at `scheduledTime`. */
+  cron?: (
+    env: E,
+    scheduledTime: Date,
+    ctx: ExecutionContext,
+  ) => Record<string, CronJob[] | undefined> | Promise<Record<string, CronJob[] | undefined>>;
   /** The deployed commit; default env.DEPLOY_SHA. */
   sha?: (env: E) => string | undefined;
   /** Log route names for paths a site step answers. */
@@ -140,5 +160,5 @@ export function siteRenderer<T extends abstract new (...args: any[]) => object>(
 /** The Worker's default export. */
 export function siteWorker<E>(site: Site<E>): {
   fetch: FetchHandler<E>;
-  scheduled(controller: ScheduledController, env: E): Promise<void>;
+  scheduled(controller: ScheduledController, env: E, ctx: ExecutionContext): Promise<void>;
 };
