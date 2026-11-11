@@ -2151,7 +2151,10 @@ sub, payload, now)` answers `{ status, gone }`, `gone` meaning stop sending to i
 action, for a page that is ready on load. `pagedPdf(puppeteer, env.BROWSER, html, { origin })` drives a full browser
 through the site's own `@cloudflare/puppeteer` for a page Paged.js lays out after load: it waits for the fonts and
 Paged.js's completion mark, then prints at the page's `@page` size. `pagedScripts({ path, integrity })` writes the
-config and the self-hosted polyfill's tag. Both check that the answer is a PDF. `./health` adds `browserCheck(name,
+config and the self-hosted polyfill's tag. The config also installs the page's Trusted Types default policy, which
+passes only Paged.js 0.4.3's page frame (`PAGED_JS_PAGE_TEMPLATE`) and the empty string; wrap the content in
+`pagedContent(html)` so Paged.js never copies the body through innerHTML, and list `PAGED_JS_TRUSTED_TYPES` in the page's
+`trustedTypes` to enforce `require-trusted-types-for 'script'`. Both check that the answer is a PDF. `./health` adds `browserCheck(name,
 env.BROWSER)`, which opens no browser.
 
 ## API errors
