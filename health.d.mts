@@ -92,3 +92,5 @@ export function isDatabaseDown(error: unknown): boolean;
 export const DATABASE_DOWN_STATUS_TEXT: "Database unavailable";
 /** A database-down error as a 503 Response (statusText "Database unavailable", Retry-After 60) to throw; any other error unchanged. */
 export function databaseDown(error: unknown): unknown;
+
+export { deployedAt, deployedSha } from "./deploy.mjs";

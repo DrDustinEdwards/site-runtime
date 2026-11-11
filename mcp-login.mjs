@@ -25,6 +25,7 @@ import { accessSaas, authorizationUrl, finishSignIn, newSignIn } from "./access-
 import { correlationId, recordAudit } from "./audit-log.mjs";
 import { readCapped } from "./body.mjs";
 import { healthResponse } from "./health.mjs";
+import { deployedSha } from "./deploy.mjs";
 import { escapeHtml as escape } from "./html.mjs";
 import { ownerPage } from "./owner-page.mjs";
 import { ipKey } from "./rate-limit/limit.mjs";
@@ -151,7 +152,7 @@ export function loginHandler({
     refusal: `This account is not the administrator of ${name}.`,
   },
   wantsWrite = (requested) => requested.includes(scopes.write),
-  health = (env) => healthResponse({ sha: env.DEPLOY_SHA }),
+  health = (env) => healthResponse({ sha: deployedSha(env) }),
   audit,
   revokeExistingGrants = true,
   owner = true,

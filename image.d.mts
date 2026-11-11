@@ -34,6 +34,21 @@ export function originalKey(key: string, request: Request | URL | string): strin
 /** A focal point as written in a URL, or null. */
 export function focusOf(value: unknown): string | null;
 
+/** "public, max-age=31536000, immutable": a stored file at a versioned address. */
+export const IMMUTABLE_CACHE: string;
+/** A /media cache policy: IMMUTABLE_CACHE when the address carries `v`, else `plain` (a day). */
+export function versionedCache(options?: { plain?: string }): (file: { url: URL }) => string;
+/** A static asset (public/) through the ASSETS binding, in the shape `serve` reads from R2; null when there is none. */
+export function assetsObject(
+  assets: { fetch(request: Request): Promise<Response> },
+  key: string,
+): Promise<R2ObjectLike | null>;
+/** The stored key a /media path names, or null: safe segments only, under `within` when given. */
+export function mediaKey(path: string, within?: string): string | null;
+
+/** A focal point as CSS `object-position` ("37.5% 60%"), each axis to a tenth of a percent; undefined when not one. */
+export function focalPosition(value: unknown): string | undefined;
+
 /** Astro's widths for a layout, never wider than the original. */
 export function imageWidths(options: {
   layout: ImageLayout;
@@ -151,6 +166,31 @@ export function defineImages<U extends string>(config: {
       reread?: () => Promise<R2ObjectLike | null>;
     },
   ): Promise<Response>;
+  /**
+   * The /media route around `respond`: GET and HEAD only (405), the key from the path after `prefix` ("/media/"),
+   * `keyPrefix` put before it, refused (404) unless every segment is safe and it starts with `within`; `read(key)` reads
+   * (and rereads) it; `cacheControl` (default versionedCache()) is a string or a function of the file. Every answer,
+   * refusals too, carries UPLOAD_HEADERS.
+   */
+  serve(
+    request: Request,
+    options: {
+      read: (key: string) => Promise<R2ObjectLike | null>;
+      images?: ImagesLike;
+      cache?: Cache;
+      prefix?: string;
+      keyPrefix?: string;
+      within?: string;
+      cacheControl?:
+        | string
+        | ((file: {
+            request: Request;
+            url: URL;
+            key: string;
+            object: R2ObjectLike;
+          }) => string | undefined | Promise<string | undefined>);
+    },
+  ): Promise<Response>;
 };
 
 export interface PictureProps {
@@ -172,21 +212,21 @@ export interface PictureProps {
     loading: "eager" | "lazy";
     fetchPriority: "high" | undefined;
     decoding: "async";
-    /** The placeholder background while it loads; spread a site's own style over it. */
-    style: { background: string } | undefined;
+    /** The placeholder background while it loads, and the focal point as objectPosition; spread a site's own style over it. */
+    style: { background?: string; objectPosition?: string } | undefined;
   };
 }
 
 /** What a `<picture>` for `attributes()` holds, with JSX's prop names (undefined where unset). No React needed. */
 export function pictureProps(
   attrs: ImageAttributes,
-  options: { alt: string; priority?: boolean; className?: string },
+  options: { alt: string; priority?: boolean; className?: string; focus?: unknown },
 ): PictureProps;
 
 /** `<picture>` markup for `attributes()`: `pictureProps` written out, escaped with the site's attribute escape. */
 export function pictureHtml(
   attrs: ImageAttributes,
-  options: { alt: string; priority?: boolean; className?: string },
+  options: { alt: string; priority?: boolean; className?: string; focus?: unknown },
   escape: (value: string) => string,
 ): string;
 

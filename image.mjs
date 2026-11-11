@@ -49,7 +49,7 @@
  *   SOFTWARE.
  */
 
-import { corpFor, UPLOAD_HEADERS } from "./headers.mjs";
+import { applyHeaderSet, corpFor, UPLOAD_HEADERS } from "./headers.mjs";
 
 /**
  * Astro's "limited" screen widths, the set it uses for images it generates ahead of time. A site's closed set starts
@@ -143,6 +143,73 @@ export function focusOf(value) {
   if (typeof value !== "string") return null;
   const m = FOCUS.exec(value.trim());
   return m ? `${Number(m[1])}x${Number(m[2])}` : null;
+}
+
+/**
+ * A focal point as CSS `object-position` ("37.5% 60%"), for a picture its box crops (object-fit: cover), so the crop
+ * keeps the subject in view. Each axis is rounded to a tenth of a percent. Undefined when `value` is not a focal point,
+ * which leaves the browser's default, the middle.
+ * @param {unknown} value
+ * @returns {string | undefined}
+ */
+export function focalPosition(value) {
+  const point = focusOf(value);
+  if (!point) return undefined;
+  return point
+    .split("x")
+    .map((n) => `${Math.round(Number(n) * 1000) / 10}%`)
+    .join(" ");
+}
+
+/** The cache a stored file gets when its address carries the file's version. */
+export const IMMUTABLE_CACHE = "public, max-age=31536000, immutable";
+
+/**
+ * The cache policy for a /media address: a page's addresses carry the file's version (`v`), so one with it is cached
+ * for good; without it (an address a person copied), `plain`, so a replaced file shows through within it.
+ * @param {{ plain?: string }} [options] `plain` defaults to a day
+ * @returns {(file: { url: URL }) => string}
+ */
+export function versionedCache({ plain = "public, max-age=86400" } = {}) {
+  return ({ url }) => (url.searchParams.has("v") ? IMMUTABLE_CACHE : plain);
+}
+
+/**
+ * A file the Worker's static assets hold (public/), in the shape `respond` and `serve` read from R2, or null when there
+ * is none: for a site's brand photos, served at /media/ beside its library. The ASSETS binding matches the pathname
+ * alone, so the host is a placeholder.
+ * @param {{ fetch(request: Request): Promise<Response> }} assets the ASSETS binding
+ * @param {string} key the file's path under public/
+ * @returns {Promise<R2ObjectLike | null>}
+ */
+export async function assetsObject(assets, key) {
+  const response = await assets.fetch(new Request(`https://assets.local/${key}`));
+  if (!response.ok || !response.body) return null;
+  const contentType = response.headers.get("content-type") ?? "application/octet-stream";
+  return {
+    body: response.body,
+    httpEtag: response.headers.get("etag") ?? `"${key}"`,
+    httpMetadata: { contentType },
+    writeHttpMetadata: (headers) => headers.set("content-type", contentType),
+  };
+}
+
+const KEY_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._ ()+,=@~-]*$/;
+
+/**
+ * A stored key from a /media path, or null: every segment non-empty, never "." or "..", starting with a letter or digit
+ * and holding nothing a key never does (no backslash, percent sign or control character), and the whole key under
+ * `within` when given.
+ * @param {string} path the path after the route's prefix
+ * @param {string} [within] the prefix every served key has ("uploads/"), "" for any
+ * @returns {string | null}
+ */
+export function mediaKey(path, within = "") {
+  const key = path.replace(/^\/+/, "");
+  if (!key || !key.startsWith(within)) return null;
+  return key.split("/").every((part) => KEY_SEGMENT.test(part) && part !== "." && part !== "..")
+    ? key
+    : null;
 }
 
 /**
@@ -495,6 +562,62 @@ export function defineImages({
     return out;
   }
 
+  /**
+   * The site's /media route around `respond`: the method gate, the key from the path (a size URL's suffix cut), the
+   * key refused unless every segment is safe and it starts with `within`, the stored file read (and reread for a
+   * transform), its cache policy, and every answer, refusals too, under UPLOAD_HEADERS so no file runs script.
+   * @param {Request} request
+   * @param {{ read: (key: string) => Promise<R2ObjectLike | null>, images?: ImagesLike, cache?: Cache, prefix?: string, keyPrefix?: string, within?: string, cacheControl?: string | ((file: { request: Request, url: URL, key: string, object: R2ObjectLike }) => string | undefined | Promise<string | undefined>) }} options
+   * @returns {Promise<Response>}
+   */
+  async function serve(
+    request,
+    {
+      read,
+      images,
+      cache,
+      prefix = "/media/",
+      keyPrefix = "",
+      within = "",
+      cacheControl = versionedCache(),
+    },
+  ) {
+    const guarded = (/** @type {Response} */ response) => {
+      const headers = new Headers(response.headers);
+      applyHeaderSet(headers, UPLOAD_HEADERS);
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      });
+    };
+    if (request.method !== "GET" && request.method !== "HEAD")
+      return guarded(
+        new Response("Method not allowed", { status: 405, headers: { allow: "GET, HEAD" } }),
+      );
+    const url = new URL(request.url);
+    const key = url.pathname.startsWith(prefix)
+      ? mediaKey(keyPrefix + originalKey(url.pathname.slice(prefix.length), url), within)
+      : null;
+    if (!key) return guarded(new Response("Not found", { status: 404 }));
+    const object = await read(key);
+    const policy =
+      object && typeof cacheControl === "function"
+        ? await cacheControl({ request, url, key, object })
+        : typeof cacheControl === "string"
+          ? cacheControl
+          : undefined;
+    return guarded(
+      await respond(request, {
+        object,
+        images,
+        cache,
+        ...(policy ? { cacheControl: policy } : {}),
+        reread: () => read(key),
+      }),
+    );
+  }
+
   return {
     widths: [...widths].sort((a, b) => a - b),
     ratios: [...ratios],
@@ -503,6 +626,7 @@ export function defineImages({
     shareImage,
     articleImages,
     respond,
+    serve,
   };
 }
 
@@ -510,12 +634,20 @@ export function defineImages({
  * What a `<picture>` for `attributes()` holds, as plain objects with JSX's prop names, for a page that renders JSX:
  * `sources` for the `<source>` elements and `img` for the `<img>`. `alt` is required: an image with nothing to say
  * passes "". Lazy by default; the page's first large image passes `priority`. An unset prop is undefined, which JSX
- * leaves out. With no `sources` the page writes the `<img>` alone.
+ * leaves out. With no `sources` the page writes the `<img>` alone. `focus` (the file's focal point) sets the `<img>`'s
+ * `objectPosition`, for a box that crops it with object-fit: cover.
  * @param {import("./image.mjs").ImageAttributes} attrs
- * @param {{ alt: string, priority?: boolean, className?: string }} options
+ * @param {{ alt: string, priority?: boolean, className?: string, focus?: unknown }} options
  */
-export function pictureProps(attrs, { alt, priority = false, className }) {
-  const style = attrs.background ? { background: attrs.background } : undefined;
+export function pictureProps(attrs, { alt, priority = false, className, focus }) {
+  const objectPosition = focalPosition(focus);
+  const style =
+    attrs.background || objectPosition
+      ? {
+          ...(attrs.background ? { background: attrs.background } : {}),
+          ...(objectPosition ? { objectPosition } : {}),
+        }
+      : undefined;
   return {
     sources: attrs.sources.map((s) => ({
       type: s.type,
@@ -577,11 +709,19 @@ export function pictureHtml(attrs, options, escape) {
       .filter(([, value]) => value !== undefined && value !== null)
       .map(
         ([prop, value]) =>
-          ` ${HTML_NAMES[prop] ?? prop}="${escape(prop === "style" ? `background:${/** @type {{ background: string }} */ (value).background}` : String(value))}"`,
+          ` ${HTML_NAMES[prop] ?? prop}="${escape(prop === "style" ? styleText(/** @type {{ background?: string, objectPosition?: string }} */ (value)) : String(value))}"`,
       )
       .join("")}>`;
   if (sources.length === 0) return tag("img", img);
   return `<picture>${sources.map((s) => tag("source", s)).join("")}${tag("img", img)}</picture>`;
+}
+
+/** @param {{ background?: string, objectPosition?: string }} style */
+function styleText({ background, objectPosition }) {
+  return [
+    ...(background ? [`background:${background}`] : []),
+    ...(objectPosition ? [`object-position:${objectPosition}`] : []),
+  ].join(";");
 }
 
 const EDIT_FORMATS = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);

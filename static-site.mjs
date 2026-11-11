@@ -34,6 +34,7 @@ import { receiveCspReport } from "./csp-report.mjs";
 import { UNCACHED } from "./edge-cache.mjs";
 import { applyHeaderSet, buildSecurityHeaders, headersFile } from "./headers.mjs";
 import { healthResponse } from "./health.mjs";
+import { deployedSha } from "./deploy.mjs";
 import { maintenanceOn, maintenanceResponse } from "./maintenance.mjs";
 import {
   SPECULATION_RULES_HEADER,
@@ -172,7 +173,7 @@ export function staticSite({
         return receiveCspReport(request, { headers, allow });
       }
       if (health !== false && url.pathname === health)
-        return applyHeaderSet(await healthResponse({ sha: env.DEPLOY_SHA }), headers);
+        return applyHeaderSet(await healthResponse({ sha: deployedSha(env) }), headers);
       if (maintenanceOn(env)) return applyHeaderSet(maintenanceResponse({ siteName }), headers);
       if (prefetch !== false && url.pathname === SPECULATION_RULES_PATH)
         return applyHeaderSet(speculationRulesResponse(prefetch, request), headers);

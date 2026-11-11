@@ -81,6 +81,34 @@ export function runJobTool(
   options?: { now?: () => number; timeoutMs?: number },
 ): import("./operator.d.mts").OperatorTool;
 
+/** The operator tool `backup_status`: the backup read now, uncached; `files` names the files passes beside the dump. */
+export function backupStatusTool(
+  status: () => unknown,
+  options?: { files?: string[] },
+): import("./operator.d.mts").OperatorTool;
+/** `backup_status` and `run_job` together, for a site's operatorResponse tools. */
+export function operatorJobTools(options: {
+  db: D1Like | (() => D1Like) | null;
+  jobs: CronJob[] | (() => CronJob[]);
+  backupStatus: () => unknown;
+  files?: string[];
+}): {
+  backup_status: import("./operator.d.mts").OperatorTool;
+  run_job: import("./operator.d.mts").OperatorTool;
+};
+/** 1440: a nightly job's interval in minutes. */
+export const DAILY_MINUTES: number;
+/** "carrel-schedules", every minute, 50 s by default. */
+export function carrelSchedulesJob(
+  run: (signal: AbortSignal) => Promise<unknown>,
+  options?: { timeoutMs?: number },
+): CronJob;
+/** The nightly dump "backup" (or a files pass by `name`), marked backup, 5 minutes by default. */
+export function backupJob(
+  run: (signal: AbortSignal) => Promise<unknown>,
+  options?: { name?: string; timeoutMs?: number },
+): CronJob;
+
 /** Why a job in `cron_runs` is not well, with its last success (epoch ms) or null. */
 export interface CronFinding {
   name: string;

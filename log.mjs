@@ -22,10 +22,12 @@ export const EMAIL_PATTERN = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 export const STRIPE_KEY_PATTERN = /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]+|\bwhsec_[A-Za-z0-9]+/g;
 /**
  * Other credentials a failed call can echo (ASVS 16.2.5 and 14.2.4): an Anthropic key, a GitHub token, a signed JWT
- * (a session, an Access or an ID token) and the value of a Bearer header.
+ * (a session, an Access or an ID token), the value of a Bearer header, a PEM or PGP private key block (to the end of
+ * the text when it is cut off), a Slack token or webhook URL and an AWS access key id. redact.mjs is the stricter
+ * reader for text relayed from outside.
  */
 export const CREDENTIAL_PATTERN =
-  /\bsk-ant-[A-Za-z0-9_-]{16,}|\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,})|\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}|\bBearer\s+[A-Za-z0-9._~+/=-]{16,}/g;
+  /\bsk-ant-[A-Za-z0-9_-]{16,}|\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,})|\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}|\bBearer\s+[A-Za-z0-9._~+/=-]{16,}|-----BEGIN ([A-Z0-9 ]*?)PRIVATE KEY( BLOCK)?-----[\s\S]*?(?:-----END \1PRIVATE KEY\2-----|$)|\bxox[abposr]-[A-Za-z0-9-]{10,}|https:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9/_-]+|\b(?:AKIA|ASIA|ABIA|ACCA|AGPA|AIDA|AIPA|ANPA|ANVA|AROA)[A-Z0-9]{16}\b/g;
 // DrizzleQueryError's message is "Failed query: <sql>\nparams: <values>".
 const DRIZZLE_PARAMS = /\nparams: [\s\S]*$/;
 // The query string or fragment of a full URL inside free text.

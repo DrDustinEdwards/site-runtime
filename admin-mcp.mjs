@@ -28,6 +28,7 @@ import { agentPrincipal, agentScopes } from "./agent-keys.mjs";
 import { auditLogCheck, exportAuditLog, recordAudit } from "./audit-log.mjs";
 import { runJobTool, runJobs } from "./cron.mjs";
 import { durableObjectCheck, healthResponse, kvCheck, r2Check } from "./health.mjs";
+import { deployedSha } from "./deploy.mjs";
 import { logEvent, withRequestLog } from "./log.mjs";
 import { operatorResponse } from "./operator.mjs";
 import {
@@ -243,7 +244,7 @@ export function adminMcpWorker({
     // CI's deploy (devkit's worker-deploy.yml) passes DEPLOY_SHA and waits for /health to report it.
     health: (env) =>
       healthResponse({
-        sha: env.DEPLOY_SHA,
+        sha: deployedSha(env),
         checks: healthChecks(/** @type {E} */ (/** @type {unknown} */ (env))),
       }),
   });
@@ -401,7 +402,7 @@ export function adminMcpWorker({
         env,
         ctx,
       ) => door(request, env, ctx),
-      { sha: (env) => env.DEPLOY_SHA },
+      { sha: (env) => deployedSha(env) },
     ),
     /**
      * The server's jobs (adminMcpJobs), through ./cron's runJobs as on every site: isolated, timed out, logged, and a

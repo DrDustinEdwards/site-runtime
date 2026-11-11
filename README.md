@@ -336,6 +336,12 @@ if (text === null) return new Response("too large", { status: 413 });
 `requireJson(request)` is `null` for an `application/json` (or `+json`) body and otherwise a 415, `no-store`, so a JSON
 route never parses a form a cross-site page could post without a preflight.
 
+`readMultipart(request, max)` reads a multipart/form-data upload one part at a time as it arrives, so a large file goes on
+to R2 without the whole body in memory (`readForm` and `request.formData()` buffer it). Each part is `{ name, filename,
+type, chunks() }`; read a part's `chunks()` before asking for the next, and what is left unread is skipped. Over `max`
+in all it throws the 413; a body that is not multipart or does not parse throws a 400. `partText(part, max?)` reads a
+text field (64 KiB by default). `multipartBoundary(contentType)` is the boundary or null.
+
 ## HTML escaping
 
 `./html` is the one `escapeHtml`.
@@ -430,12 +436,12 @@ field optional, with `{ status, ok, alerts, db, backup, sha, time, checks: [{ na
 `no-store` and `noindex`.
 
 ```js
-import { healthResponse, r2Check } from "@dustinedwards/site-runtime/health";
+import { deployedSha, healthResponse, r2Check } from "@dustinedwards/site-runtime/health";
 import { cronCheck } from "@dustinedwards/site-runtime/cron";
 return healthResponse({
   ping: () => env.DB.prepare("SELECT 1").first(),
   backup: () => backupHealth(env.BACKUPS),
-  sha: env.DEPLOY_SHA,
+  sha: deployedSha(env),
   checks: [
     r2Check("media", env.MEDIA),
     cronCheck(env.DB),
@@ -498,15 +504,24 @@ const attrs = images.attributes(
 );
 const html = pictureHtml(attrs, { alt: "The lab bench", priority: true }, escapeHtml);
 
-// The route, /media/*: the original, or one size for ?w=. originalKey turns photo.jpg.webp back into photo.jpg.
-const key = originalKey(params["*"], request);
-return images.respond(request, {
-  object: await env.MEDIA.get(key),
+// The route, /media/*: the original, or one size for ?w=.
+return images.serve(request, {
+  read: (key) => env.MEDIA.get(key),
   images: env.IMAGES,
   cache: caches.default,
-  reread: () => env.MEDIA.get(key),
+  within: "uploads/",
 });
 ```
+
+`serve` is the whole route around `respond`, the same on every site: GET and HEAD only (405), the key from the path after
+`prefix` ("/media/" by default; a size URL's suffix cut by `originalKey`, `keyPrefix` put before it for a site that
+stores under a folder the address leaves out), 404 unless every segment is safe and the key starts with `within`
+(`mediaKey`), the file read with `read(key)` and reread for a transform, and every answer, refusals too, under
+UPLOAD_HEADERS. `read` picks the bucket, so a site with several (covers and journal pictures, brand photos from ASSETS)
+routes by key there; `assetsObject(env.ASSETS, key)` reads a file the Worker's static assets hold (bsw's brand photos). `cacheControl` is a string or a function of `{ request, url, key, object }` (async, for a version
+checked against a database row); the default, `versionedCache()`, is `IMMUTABLE_CACHE` for an address with `v` and a
+day for one without (an address a person copied), so a replaced file shows through within a day. A site that needs
+`respond` alone still has it.
 
 The widths and the three layouts are Astro's (MIT, credited in `image.mjs`): `constrained` offers the use's width, twice
 it and every screen width between (`SCREEN_WIDTHS`), `fixed` offers 1x and 2x, `full-width` every screen width, and none is
@@ -539,20 +554,25 @@ original. An SVG is only ever served as an attachment. Without the binding (a ch
 `wrangler.jsonc`) the route serves the original and says so in `x-image`; a failed transform serves the original for five
 minutes and logs `image-transform-failed`.
 
-A page that renders JSX takes the same picture as props: `pictureProps(attrs, { alt, priority, className })` returns
+A page that renders JSX takes the same picture as props: `pictureProps(attrs, { alt, priority, className, focus })` returns
 `{ sources: [{ type, srcSet, sizes, media }], img: { src, srcSet, sizes, width, height, alt, className, loading,
 fetchPriority, decoding, style } }`, plain objects with no React import, and `pictureHtml` is those props written out, so the
 two never differ. An unset prop is `undefined`, which JSX leaves out; with no `sources` the page writes the `<img>`
-alone (germomics' `Picture` falling back to the original). A site adds its own props beside them, as julieedwards.info's
-`object-position` from the focal point:
+alone (germomics' `Picture` falling back to the original). `focus`, the file's focal point, sets `img.style`'s
+`objectPosition` (`object-position` in `pictureHtml`), so a box that crops the picture with object-fit: cover keeps its
+subject; `focalPosition(focus)` is the same value alone ("37.5% 60%", undefined for no focal point). A site adds its own
+props beside them:
 
 ```jsx
-const { sources, img } = pictureProps(images.attributes(photo, "content"), { alt: photo.alt });
+const { sources, img } = pictureProps(images.attributes(photo, "content"), {
+  alt: photo.alt,
+  focus: photo.focus,
+});
 <picture>
   {sources.map((s) => (
     <source key={s.type + (s.media ?? "")} {...s} />
   ))}
-  <img {...img} style={{ ...img.style, objectPosition: objectPosition(photo.focus) }} />
+  <img {...img} />
 </picture>;
 ```
 
@@ -1046,6 +1066,43 @@ for hand-written SQL, so `%` and `_` match themselves. A newest-first page goes 
 row's millisecond. Sites with Drizzle only: it imports `drizzle-orm`.
 
 ## CSV
+
+`./deploy`: `deployedSha(env, { fallback? })` is the deployed commit from the DEPLOY_SHA var devkit's worker-deploy
+sets (trimmed, lowercased, 7 to 40 hex, else `fallback`, undefined by default), and `deployedAt(env)` is when this
+version was deployed, from the CF_VERSION_METADATA binding (cronCheck's `deployedAt`). `./health` re-exports both. The
+shared Worker's request log, the MCP doors and the static site read the sha through it.
+
+`./health-read`: reading another Worker's /health answer, the same way everywhere. `parseHealth(text)` and
+`healthOf(value)` give `{ status: "ok" | "degraded" | "down" | null, sha, problem }`, taking the family format, the
+older `ok` + `backup.warning` bodies and Capsid's own; a 200 that admits a problem reads as degraded.
+`failingCheckNames(checks)` names the warn and fail checks. `healthChecks(body)` gives the rows fail closed (no status
+the format names is a fail), with a drift check's "present of expected" counts.
+
+`./inbox-report`: `reportInbox({ namespace, items, key, origin?, fetcher? })` sends an app's present state to Capsid's
+inbox (POST /ops/inbox/report, the app's own agent key as the bearer). A report replaces the last one whole and expires
+after 6 hours, so a cron sends it every run, with no items when nothing waits. Items are cut to the receiver's limits
+(`MAX_REPORT_ITEMS`, `MAX_REPORT_TITLE`). Skipped without a key; a failure is logged and returned, never thrown.
+`capsidOrigin(env)` reads the CAPSID_ORIGIN var.
+
+`./jwt`: `signJwt({ alg: "RS256" | "ES256", key, claims, header, ttlSeconds, now })` is the one JWT signer, on
+WebCrypto with no dependency. `key` is a PEM (PKCS#8, or PKCS#1 as GitHub hands out App keys, wrapped by
+`pkcs8FromPem`; literal "\n" sequences read as newlines), a private JWK or a CryptoKey. `githubAppJwt(appId, key)` is
+the App's token request JWT (issued a minute back, nine minutes long). Sign in with Apple's client secret
+(`./apple-secret`) signs through it.
+
+`./r2-object`: `r2ObjectResponse(request, bucket, key, { cacheControl, contentType, disposition, filename, noindex,
+tags })` answers with one stored file the way a static file server does: HEAD from `bucket.head`, byte ranges (206,
+suffix ranges too; 416 with the size for one past the end), If-None-Match (304, keeping Cache-Control and Cache-Tag),
+ETag, Accept-Ranges, Content-Length and nosniff. For a file a site serves whole from R2: a CV's PDF, a book's download,
+game assets, an EPUB's parts (`noindex` for a copy of a page's text). `contentDisposition(disposition, filename)`
+writes RFC 6266's `filename`, plus RFC 8187's `filename*` when the name is not plain ASCII; `attachmentResponse(body,
+{ filename, type })` is a generated export as a download (no-store). Pictures go through `./image`'s `serve`.
+
+`./redact`: `redact(text)` gives `{ text, redactions }` with every secret-shaped value replaced by `[REDACTED:<kind>]`
+(private keys, Anthropic and Stripe keys, JWTs, GitHub and Slack tokens, AWS key ids, Authorization values,
+secret-named assignments and long random runs after a secret word); `redactText(text)` the text alone. For text a
+Worker relays from outside (a CI log handed to an agent). It over-redacts on purpose; a site's own log lines go through
+`./log`'s scrubText, whose credential pattern now also covers private key blocks, Slack tokens and AWS key ids.
 
 `./confirm`: `confirmationSatisfied(form, word?)` and `confirmationRequired()`, the server half of a destructive action's confirmation. The page asks (Capsomer's confirm dialog or confirm page) and posts `confirmed=1`, plus the typed word as `confirm` where it asks for one; the action refuses what is not confirmed with a 400. devkit-destructive finds the call by name inside each destructive intent's branch.
 
@@ -1965,10 +2022,18 @@ async scheduled(controller, env, ctx) {
 - Pass `jobs` (the same list runJobs gets; `run` is not called) and the check reads only those, with their own
   intervals: a removed job's old row is ignored, and a job with no row at all fails as "never ran" (a trigger that never
   fires it, a misspelt cron key). `deployedAt` (such as `new Date(env.CF_VERSION_METADATA.timestamp)`) holds that back
-  until the job's window has passed since the deploy; without it a job that has not run yet warns at once. Without
+  until the job's window has passed since the deploy (`deployedAt(env)` from `./deploy` reads it); without it a job that has not run yet warns at once. Without
   `jobs`, a removed job keeps its row, which goes stale: delete the row with the job.
 - `cronFindings(db, options)` is the same judgment as data, `[{ name, reason, lastOkAt }]` with reason `failed`,
   `stale`, `never succeeded` or `never ran`, for a site that mails its own alert from it (Foxhound's stale-cron email).
+- The jobs every site runs have one name and one shape each, so Capsid Admin's `run_job` and the job table read them
+  the same everywhere: `carrelSchedulesJob(run)` ("carrel-schedules", every minute, 50 s), `backupJob(run, { name,
+  timeoutMs })` (the nightly "backup", or a files pass such as "media-backup", marked `backup`, 5 minutes by default),
+  `pruneNotFoundJob(db, { days })` ("prune-404", `./not-found`) and `pruneAuthEventsJob(db)` ("prune-auth-events",
+  `./sign-in`). `DAILY_MINUTES` is 1440.
+- `operatorJobTools({ db, jobs, backupStatus, files })` is the operator's two job tools: `backup_status`
+  (`backupStatusTool(status, { files })`, the backup read now, uncached, its description naming the files passes) and
+  `run_job`.
 
 **Tests.** `test/cron.test.mjs` (on an in-memory SQLite with `CRON_SQL`) and `test/health.test.mjs`.
 

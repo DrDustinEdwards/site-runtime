@@ -130,3 +130,165 @@ export async function readJson(request, max, { typed = true } = {}) {
   }
   return JSON.parse(await readText(request, max));
 }
+
+const CRLF2 = new Uint8Array([13, 10, 13, 10]);
+// The longest a part's headers (or the preamble before the first boundary) may run before the body is refused.
+const PART_HEADER_LIMIT = 16 * 1024;
+
+/**
+ * The refusal for a multipart body that does not parse: 400, uncacheable.
+ * @param {string} [message]
+ * @returns {Response}
+ */
+function malformedUpload(message = "Could not read the upload. Try again.") {
+  return new Response(message, {
+    status: 400,
+    headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+  });
+}
+
+/**
+ * Where `needle` first starts in `haystack`, or -1. The native indexOf jumps to each candidate first byte, so a large
+ * file is scanned at native speed.
+ * @param {Uint8Array} haystack
+ * @param {Uint8Array} needle
+ */
+function bytesIndexOf(haystack, needle) {
+  const last = haystack.length - needle.length;
+  for (
+    let i = haystack.indexOf(needle[0]);
+    i !== -1 && i <= last;
+    i = haystack.indexOf(needle[0], i + 1)
+  ) {
+    let j = 1;
+    while (j < needle.length && haystack[i + j] === needle[j]) j++;
+    if (j === needle.length) return i;
+  }
+  return -1;
+}
+
+/**
+ * @param {Uint8Array} a
+ * @param {Uint8Array} b
+ */
+function joinBytes(a, b) {
+  const out = new Uint8Array(a.length + b.length);
+  out.set(a);
+  out.set(b, a.length);
+  return out;
+}
+
+/**
+ * The boundary from a multipart/form-data Content-Type, or null for any other type.
+ * @param {string | null} contentType
+ * @returns {string | null}
+ */
+export function multipartBoundary(contentType) {
+  if (!contentType || !/^multipart\/form-data\s*;/i.test(contentType)) return null;
+  const match = /;\s*boundary=(?:"([^"]+)"|([^;\s]+))/i.exec(contentType);
+  return match ? (match[1] ?? match[2] ?? null) : null;
+}
+
+/**
+ * A multipart/form-data body read as it arrives, one part at a time, so a large file goes on to R2 without the whole
+ * request held in memory (`request.formData()` and `readForm` buffer every byte). Read each part's body before asking
+ * for the next; what is left of a part is skipped. Over `max` bytes in all, throws the 413 (payloadTooLarge); a body
+ * that is not multipart, or does not parse, throws a 400 Response. `readForm` stays the reader for small forms.
+ * @param {Request} request
+ * @param {number} max the ceiling in bytes, for the whole body
+ * @returns {AsyncGenerator<import("./body.mjs").MultipartPart>}
+ */
+export async function* readMultipart(request, max) {
+  if (!Number.isInteger(max) || max < 0)
+    throw new RangeError(`the ceiling must be a whole number of bytes, got ${max}`);
+  const boundary = multipartBoundary(request.headers.get("Content-Type"));
+  if (!boundary || !request.body) throw malformedUpload();
+  const reader = request.body.getReader();
+  const delimiter = new TextEncoder().encode(`\r\n--${boundary}`);
+  // A leading CRLF lets the first boundary match the same delimiter as the rest.
+  /** @type {Uint8Array} */
+  let buf = new Uint8Array([13, 10]);
+  let total = 0;
+
+  async function more() {
+    const { done, value } = await reader.read();
+    if (done) throw malformedUpload();
+    total += value.length;
+    if (total > max) {
+      void reader.cancel().catch(() => {});
+      throw payloadTooLarge();
+    }
+    buf = buf.length ? joinBytes(buf, value) : value;
+  }
+
+  /** @param {Uint8Array} needle */
+  async function find(needle) {
+    for (;;) {
+      const at = bytesIndexOf(buf, needle);
+      if (at >= 0) return at;
+      if (buf.length > PART_HEADER_LIMIT) throw malformedUpload();
+      await more();
+    }
+  }
+
+  try {
+    const first = await find(delimiter); // before reading buf: find may grow it
+    buf = buf.subarray(first + delimiter.length);
+    for (;;) {
+      while (buf.length < 2) await more();
+      if (buf[0] === 45 && buf[1] === 45) return; // "--": the closing boundary
+      const end = await find(CRLF2);
+      const headers = new TextDecoder().decode(buf.subarray(2, Math.max(2, end)));
+      buf = buf.subarray(end + 4);
+      const disposition = /^content-disposition:(.*)$/im.exec(headers)?.[1] ?? "";
+      const name = /\bname="([^"]*)"/i.exec(disposition)?.[1];
+      if (name === undefined) throw malformedUpload();
+      const filename = /\bfilename="([^"]*)"/i.exec(disposition)?.[1] ?? null;
+      const type = /^content-type:\s*([^;\r\n]*)/im.exec(headers)?.[1]?.trim().toLowerCase() ?? "";
+
+      let finished = false;
+      // Bytes go out as they come, all but a delimiter's length, which may be the start of the next boundary.
+      const chunks = async function* () {
+        while (!finished) {
+          const at = bytesIndexOf(buf, delimiter);
+          if (at >= 0) {
+            const last = buf.subarray(0, at);
+            buf = buf.subarray(at + delimiter.length);
+            finished = true;
+            if (last.length) yield last;
+            return;
+          }
+          const keep = delimiter.length - 1;
+          if (buf.length > keep) {
+            const out = buf.subarray(0, buf.length - keep);
+            buf = buf.slice(buf.length - keep);
+            yield out;
+          }
+          await more();
+        }
+      };
+      yield { name, filename, type, chunks };
+      for await (const _ of chunks()) {
+        // skip what the caller left unread
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+/**
+ * A text field's value, read to at most `max` bytes (64 KiB by default); longer throws a 400 Response naming the field.
+ * @param {import("./body.mjs").MultipartPart} part
+ * @param {number} [max]
+ * @returns {Promise<string>}
+ */
+export async function partText(part, max = 64 * 1024) {
+  /** @type {Uint8Array} */
+  let bytes = new Uint8Array(0);
+  for await (const chunk of part.chunks()) {
+    bytes = joinBytes(bytes, chunk);
+    if (bytes.length > max) throw malformedUpload(`The ${part.name} field is too long.`);
+  }
+  return new TextDecoder().decode(bytes);
+}
