@@ -11,6 +11,8 @@
     "vitals-client.mjs",
     "trusted-types.mjs",
     "page-client.mjs",
+    "hydrate-on-intent.mjs",
+    "deferred-scripts.mjs",
     "csv-client.mjs"
   ],
   "exclude": []
