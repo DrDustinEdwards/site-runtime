@@ -7,6 +7,8 @@
  * Importing this module sets the flag. Import it before any module that builds a Zod schema when that module can run
  * ahead of `startPage()` (an island chunk that evaluates before the site script has). `startPage()` imports it too.
  */
-(/** @type {{ __zod_globalConfig?: Record<string, unknown> }} */ (/** @type {unknown} */ (globalThis)).__zod_globalConfig ??= {}).jitless = true;
+(/** @type {{ __zod_globalConfig?: Record<string, unknown> }} */ (
+  /** @type {unknown} */ (globalThis)
+).__zod_globalConfig ??= {}).jitless = true;
 
 export {};
