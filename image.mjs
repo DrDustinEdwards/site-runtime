@@ -49,7 +49,7 @@
  *   SOFTWARE.
  */
 
-import { corpFor, UPLOAD_HEADERS } from "./headers.mjs";
+import { applyHeaderSet, corpFor, UPLOAD_HEADERS } from "./headers.mjs";
 
 /**
  * Astro's "limited" screen widths, the set it uses for images it generates ahead of time. A site's closed set starts
@@ -159,6 +159,37 @@ export function focalPosition(value) {
     .split("x")
     .map((n) => `${Math.round(Number(n) * 1000) / 10}%`)
     .join(" ");
+}
+
+/** The cache a stored file gets when its address carries the file's version. */
+export const IMMUTABLE_CACHE = "public, max-age=31536000, immutable";
+
+/**
+ * The cache policy for a /media address: a page's addresses carry the file's version (`v`), so one with it is cached
+ * for good; without it (an address a person copied), `plain`, so a replaced file shows through within it.
+ * @param {{ plain?: string }} [options] `plain` defaults to a day
+ * @returns {(file: { url: URL }) => string}
+ */
+export function versionedCache({ plain = "public, max-age=86400" } = {}) {
+  return ({ url }) => (url.searchParams.has("v") ? IMMUTABLE_CACHE : plain);
+}
+
+const KEY_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._ ()+,=@~-]*$/;
+
+/**
+ * A stored key from a /media path, or null: every segment non-empty, never "." or "..", starting with a letter or digit
+ * and holding nothing a key never does (no backslash, percent sign or control character), and the whole key under
+ * `within` when given.
+ * @param {string} path the path after the route's prefix
+ * @param {string} [within] the prefix every served key has ("uploads/"), "" for any
+ * @returns {string | null}
+ */
+export function mediaKey(path, within = "") {
+  const key = path.replace(/^\/+/, "");
+  if (!key || !key.startsWith(within)) return null;
+  return key.split("/").every((part) => KEY_SEGMENT.test(part) && part !== "." && part !== "..")
+    ? key
+    : null;
 }
 
 /**
@@ -511,6 +542,62 @@ export function defineImages({
     return out;
   }
 
+  /**
+   * The site's /media route around `respond`: the method gate, the key from the path (a size URL's suffix cut), the
+   * key refused unless every segment is safe and it starts with `within`, the stored file read (and reread for a
+   * transform), its cache policy, and every answer, refusals too, under UPLOAD_HEADERS so no file runs script.
+   * @param {Request} request
+   * @param {{ read: (key: string) => Promise<R2ObjectLike | null>, images?: ImagesLike, cache?: Cache, prefix?: string, keyPrefix?: string, within?: string, cacheControl?: string | ((file: { request: Request, url: URL, key: string, object: R2ObjectLike }) => string | undefined | Promise<string | undefined>) }} options
+   * @returns {Promise<Response>}
+   */
+  async function serve(
+    request,
+    {
+      read,
+      images,
+      cache,
+      prefix = "/media/",
+      keyPrefix = "",
+      within = "",
+      cacheControl = versionedCache(),
+    },
+  ) {
+    const guarded = (/** @type {Response} */ response) => {
+      const headers = new Headers(response.headers);
+      applyHeaderSet(headers, UPLOAD_HEADERS);
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      });
+    };
+    if (request.method !== "GET" && request.method !== "HEAD")
+      return guarded(
+        new Response("Method not allowed", { status: 405, headers: { allow: "GET, HEAD" } }),
+      );
+    const url = new URL(request.url);
+    const key = url.pathname.startsWith(prefix)
+      ? mediaKey(keyPrefix + originalKey(url.pathname.slice(prefix.length), url), within)
+      : null;
+    if (!key) return guarded(new Response("Not found", { status: 404 }));
+    const object = await read(key);
+    const policy =
+      object && typeof cacheControl === "function"
+        ? await cacheControl({ request, url, key, object })
+        : typeof cacheControl === "string"
+          ? cacheControl
+          : undefined;
+    return guarded(
+      await respond(request, {
+        object,
+        images,
+        cache,
+        ...(policy ? { cacheControl: policy } : {}),
+        reread: () => read(key),
+      }),
+    );
+  }
+
   return {
     widths: [...widths].sort((a, b) => a - b),
     ratios: [...ratios],
@@ -519,6 +606,7 @@ export function defineImages({
     shareImage,
     articleImages,
     respond,
+    serve,
   };
 }
 

@@ -504,15 +504,24 @@ const attrs = images.attributes(
 );
 const html = pictureHtml(attrs, { alt: "The lab bench", priority: true }, escapeHtml);
 
-// The route, /media/*: the original, or one size for ?w=. originalKey turns photo.jpg.webp back into photo.jpg.
-const key = originalKey(params["*"], request);
-return images.respond(request, {
-  object: await env.MEDIA.get(key),
+// The route, /media/*: the original, or one size for ?w=.
+return images.serve(request, {
+  read: (key) => env.MEDIA.get(key),
   images: env.IMAGES,
   cache: caches.default,
-  reread: () => env.MEDIA.get(key),
+  within: "uploads/",
 });
 ```
+
+`serve` is the whole route around `respond`, the same on every site: GET and HEAD only (405), the key from the path after
+`prefix` ("/media/" by default; a size URL's suffix cut by `originalKey`, `keyPrefix` put before it for a site that
+stores under a folder the address leaves out), 404 unless every segment is safe and the key starts with `within`
+(`mediaKey`), the file read with `read(key)` and reread for a transform, and every answer, refusals too, under
+UPLOAD_HEADERS. `read` picks the bucket, so a site with several (covers and journal pictures, brand photos from ASSETS)
+routes by key there. `cacheControl` is a string or a function of `{ request, url, key, object }` (async, for a version
+checked against a database row); the default, `versionedCache()`, is `IMMUTABLE_CACHE` for an address with `v` and a
+day for one without (an address a person copied), so a replaced file shows through within a day. A site that needs
+`respond` alone still has it.
 
 The widths and the three layouts are Astro's (MIT, credited in `image.mjs`): `constrained` offers the use's width, twice
 it and every screen width between (`SCREEN_WIDTHS`), `fixed` offers 1x and 2x, `full-width` every screen width, and none is
@@ -1074,6 +1083,14 @@ inbox (POST /ops/inbox/report, the app's own agent key as the bearer). A report 
 after 6 hours, so a cron sends it every run, with no items when nothing waits. Items are cut to the receiver's limits
 (`MAX_REPORT_ITEMS`, `MAX_REPORT_TITLE`). Skipped without a key; a failure is logged and returned, never thrown.
 `capsidOrigin(env)` reads the CAPSID_ORIGIN var.
+
+`./r2-object`: `r2ObjectResponse(request, bucket, key, { cacheControl, contentType, disposition, filename, noindex,
+tags })` answers with one stored file the way a static file server does: HEAD from `bucket.head`, byte ranges (206,
+suffix ranges too; 416 with the size for one past the end), If-None-Match (304, keeping Cache-Control and Cache-Tag),
+ETag, Accept-Ranges, Content-Length and nosniff. For a file a site serves whole from R2: a CV's PDF, a book's download,
+game assets, an EPUB's parts (`noindex` for a copy of a page's text). `contentDisposition(disposition, filename)`
+writes RFC 6266's `filename`, plus RFC 8187's `filename*` when the name is not plain ASCII; `attachmentResponse(body,
+{ filename, type })` is a generated export as a download (no-store). Pictures go through `./image`'s `serve`.
 
 `./redact`: `redact(text)` gives `{ text, redactions }` with every secret-shaped value replaced by `[REDACTED:<kind>]`
 (private keys, Anthropic and Stripe keys, JWTs, GitHub and Slack tokens, AWS key ids, Authorization values,

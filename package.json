@@ -186,7 +186,9 @@
     "inbox-report.mjs",
     "inbox-report.d.mts",
     "redact.mjs",
-    "redact.d.mts"
+    "redact.d.mts",
+    "r2-object.mjs",
+    "r2-object.d.mts"
   ],
   "type": "module",
   "exports": {
@@ -245,6 +247,10 @@
     "./image": {
       "types": "./image.d.mts",
       "default": "./image.mjs"
+    },
+    "./r2-object": {
+      "types": "./r2-object.d.mts",
+      "default": "./r2-object.mjs"
     },
     "./prefetch": {
       "types": "./prefetch.d.mts",

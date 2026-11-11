@@ -516,3 +516,18 @@ test("a size cached under one Cache-Control never answers under another (the sit
   });
   assert.equal(res.headers.get("cache-control"), "public, max-age=31536000, immutable");
 });
+
+test("mediaKey refuses a path that climbs out, an empty segment or a key outside `within`", async () => {
+  const { mediaKey } = await import("../image.mjs");
+  assert.equal(mediaKey("uploads/a/photo.jpg", "uploads/"), "uploads/a/photo.jpg");
+  for (const bad of [
+    "uploads/../secret",
+    "uploads//a.jpg",
+    "uploads/./a.jpg",
+    "uploads/%2e%2e/a",
+    "history/a.jpg",
+    "uploads/a\\b.jpg",
+    "",
+  ])
+    assert.equal(mediaKey(bad, "uploads/"), null, bad);
+});
