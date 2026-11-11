@@ -8,14 +8,42 @@
 export const OUTBOUND_TIMEOUT_MS = 20_000;
 
 /**
- * The caller's address as Cloudflare's edge saw it (`cf-connecting-ip`, set by the edge and never taken from the
- * client), for a rate-limit key. Without it (local dev, a test) every caller shares the one key "unknown", so a
- * request with no address fails closed into one bucket rather than minting a fresh identity each time.
+ * The caller as a rate-limit key: Cloudflare's edge address (`cf-connecting-ip`, set by the edge and never taken from
+ * the client), an IPv4 address as it is and an IPv6 one by its /64 (`2001-db8-0-1/64`), since one host is handed a
+ * whole /64 and would otherwise get a fresh bucket per address. Without the header (local dev, a test) every caller
+ * shares the one key "unknown", so a request with no address fails closed into one bucket rather than minting a fresh
+ * identity each time. Not for Turnstile's `remoteip` or anything that needs the address itself.
  * @param {Request} request
  * @returns {string}
  */
 export function clientIp(request) {
-  return request.headers.get("cf-connecting-ip") ?? "unknown";
+  const ip = request.headers.get("cf-connecting-ip")?.trim();
+  return ip ? ipBucket(ip) : "unknown";
+}
+
+/**
+ * An IPv4 address as it is; an IPv6 one as its first four groups (`::` expanded, leading zeros dropped) and `/64`,
+ * and an IPv4-mapped one (`::ffff:192.0.2.1`) as its IPv4 address. Written with `-`, so a log scrubber that drops
+ * `prefix:ip` drops all of it.
+ * @param {string} ip
+ * @returns {string}
+ */
+export function ipBucket(ip) {
+  const address = ip.toLowerCase().split("%")[0] ?? "";
+  if (!address.includes(":")) return address;
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(address);
+  if (mapped) return /** @type {string} */ (mapped[1]);
+  const [head = "", tail] = address.split("::");
+  const front = head ? head.split(":") : [];
+  const back = tail ? tail.split(":") : [];
+  const groups =
+    tail === undefined
+      ? front
+      : [...front, ...Array(Math.max(0, 8 - front.length - back.length)).fill("0"), ...back];
+  return `${groups
+    .slice(0, 4)
+    .map((g) => (Number.parseInt(g, 16) || 0).toString(16))
+    .join("-")}/64`;
 }
 
 /**

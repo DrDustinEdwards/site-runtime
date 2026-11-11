@@ -967,7 +967,7 @@ then each of `adminIdle`. An unknown cron warns `cron_unknown` and runs nothing;
 
 ## Request helpers
 
-`./http`: `clientIp(request)` (`cf-connecting-ip`, else the one shared key "unknown"), `isWrite(request)`,
+`./http`: `clientIp(request)` (the rate-limit key: `cf-connecting-ip` as IPv4 or its IPv6 /64, else the one shared key "unknown"), `ipBucket(ip)`, `isWrite(request)`,
 `textResponse` and `jsonResponse` (`private, no-store`), `timedFetch` (a 20 s timeout unless the caller passes a
 signal) and `fetchUntil(signal)` (also stops when a reader or tool call is canceled), `isWorkerPreview(env)` and
 `publicOrigin(env, canonical)` (`PUBLIC_ORIGIN` before a cutover, else the canonical origin). `./log` has
