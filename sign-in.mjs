@@ -408,6 +408,9 @@ export async function signInOptions(
  * new address asked for on Better Auth's own /change-email, so a direct call is refused as the account page's
  * accountFormAction refuses it.
  */
+// `@__PURE__` on the module-level createAuthMiddleware calls (it only wraps the handler): without it a bundler keeps
+// these objects in every client chunk that imports a constant from here, and with NO_DISPOSABLE the 168 KB
+// disposable-domain list (0.121.0 added 60 KB gzip to Foxing's sign-in pages).
 const NO_DISPOSABLE = {
   id: "no-disposable-email",
   init: () => ({ options: { databaseHooks: { user: { create: { before: refuseDisposable } } } } }),
@@ -416,7 +419,7 @@ const NO_DISPOSABLE = {
       {
         /** @param {{ path?: string }} ctx */
         matcher: (ctx) => ctx.path === "/change-email",
-        handler: createAuthMiddleware(async (ctx) => {
+        handler: /* @__PURE__ */ createAuthMiddleware(async (ctx) => {
           const newEmail = /** @type {{ newEmail?: unknown } | undefined} */ (ctx.body)?.newEmail;
           if (typeof newEmail === "string") await refuseDisposable({ email: newEmail });
         }),
@@ -436,7 +439,7 @@ const SIGN_OUT_CLEARS = {
       {
         /** @param {{ path?: string }} ctx */
         matcher: (ctx) => ctx.path === "/sign-out",
-        handler: createAuthMiddleware(async (ctx) => {
+        handler: /* @__PURE__ */ createAuthMiddleware(async (ctx) => {
           for (const [name, value] of Object.entries(LOGOUT_HEADERS)) ctx.setHeader(name, value);
         }),
       },
