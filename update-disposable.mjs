@@ -40,8 +40,8 @@ const read = new Date().toISOString().slice(0, 10);
 await writeFile(
   join(import.meta.dirname, "disposable-domains.mjs"),
   `// Written by update-disposable.mjs on ${read} from ${REPO} (CC0 1.0), plus its NETWORK_EXTRA. Never edited by hand: run the script.
-// ${domains.length} domains.
-export const DISPOSABLE_DOMAINS = new Set(${JSON.stringify(domains)});
+// ${domains.length} domains. Pure, so a client bundle that imports sign-in-form for a helper drops the list.
+export const DISPOSABLE_DOMAINS = /* @__PURE__ */ new Set(${JSON.stringify(domains)});
 `,
 );
 console.log(`disposable-domains.mjs: ${domains.length} domains, read ${read}`);

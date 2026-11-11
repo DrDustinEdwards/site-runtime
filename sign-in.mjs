@@ -416,7 +416,8 @@ const NO_DISPOSABLE = {
       {
         /** @param {{ path?: string }} ctx */
         matcher: (ctx) => ctx.path === "/change-email",
-        handler: createAuthMiddleware(async (ctx) => {
+        // Pure: a client bundle that imports this module for a word list drops these plugins (and the disposable list).
+        handler: /* @__PURE__ */ createAuthMiddleware(async (ctx) => {
           const newEmail = /** @type {{ newEmail?: unknown } | undefined} */ (ctx.body)?.newEmail;
           if (typeof newEmail === "string") await refuseDisposable({ email: newEmail });
         }),
@@ -436,7 +437,8 @@ const SIGN_OUT_CLEARS = {
       {
         /** @param {{ path?: string }} ctx */
         matcher: (ctx) => ctx.path === "/sign-out",
-        handler: createAuthMiddleware(async (ctx) => {
+        // Pure: a client bundle that imports this module for a word list drops these plugins (and the disposable list).
+        handler: /* @__PURE__ */ createAuthMiddleware(async (ctx) => {
           for (const [name, value] of Object.entries(LOGOUT_HEADERS)) ctx.setHeader(name, value);
         }),
       },
