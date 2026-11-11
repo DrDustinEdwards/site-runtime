@@ -900,6 +900,15 @@ default is same-origin), keeps the PNG under `cacheKey`, and answers a failed re
 `no-store`), never an empty image. `html` and `fonts` may be values or functions, so a cache hit builds no HTML and
 fetches no font. A route that wants another fallback (Foxing redirects to the book's cover) keeps `renderShareCard`.
 
+`cardLayout({ brand, title, description, kicker, footer, mark, colors, fontFamily })` is the card most sites want, so a
+site passes its tokens and a mark (html it wrote: a logo, an svg) and not a layout of its own: the kicker and mark
+above, the title in the largest of three sizes it fits (72, 54 or 42 px by length: `CARD_TITLE_SIZES`, `titleFontSize`),
+a two-line description and a band at the foot. `clampTitle(text, max)` cuts at a word, because Satori's line clamp does
+nothing; `cardLayout` applies it (150 and 132 characters), and `titleFontSize` throws for a title past the last rung
+rather than fall back. `cardKey({ slug, parts, version, prefix })` is `og/<slug>-<hash>.png` over what the card draws, for
+a cache key or a stored object that changes when the picture would; bump `version` when the template changes. All from
+dustinedwards.info's build-time cards. A bespoke card still passes its own html.
+
 ## Maintenance page
 
 `./maintenance` is the one maintenance page: a 503 with `Retry-After` (an hour unless given), `Cache-Control: private,
@@ -2063,6 +2072,29 @@ Cloudflare stopped firing Foxhound's `*/5` trigger on 2026-10-23 while it still 
 `run()`, export and bind it, and call `ensureTickerArmed(env.CRON_TICKER, name)` from `scheduled()` and `queue()`. The
 alarm re-arms before it runs, so a run that throws or is cut off leaves the chain alive.
 
+### A history, event jobs and a daily mail
+
+`runJobs(db, jobs, { history, rethrow })` is opt-in and changes nothing without it. A site adds `CRON_LOG_SQL`
+(`cron_run_log`: name, started, finished, outcome, reason, in epoch milliseconds) as a migration, and each run that came
+to something is appended to it, the newest `keep` per job (5) and none older than `retentionDays` (14). A job may then
+resolve `{ outcome: "ok" | "refused" | "skipped", reason }`: `ok` keeps the reason ("swept 3, found none" says what a
+sweep that found nothing did, which "ok" alone cannot), `refused` records the run failed (in `cron_runs` too, so
+/health warns) without throwing, and `skipped` records nothing, as `CRON_SKIPPED` does. `rethrow: false` is for a step in
+a larger run: its failures are in the outcomes and the record and do not throw. `everyMinutes: null` is an event job, one
+whose runs come and go with the work: it has no stale window and is flagged only by a failure inside the last day
+(`CRON_EVENT_WINDOW_MS`).
+
+`readCronRuns(db, names, per)` reads the newest runs back in one query, and `cronStates(jobs, runs, now)` says which job
+is `failing` (its newest run failed or was refused), `quiet` (a periodic job with no run for two of its periods: one missed
+run is normal) or `never` (a notice, not a fault), for a page that lists them. From Capsid's task ledger and Foxhound's
+`cron_run_history`, which kept a second ledger beside `cron_runs`.
+
+`./cron-alert` mails what `cronFindings` names. `cronAlert({ db, mail, from, to, site, jobs, deployedAt, now })` sends
+one message for the jobs that are new today, and a `cron_alerts` row per job, kind (`failure` or `stale`) and UTC day
+(`CRON_ALERTS_SQL`) is both the record and the dedupe, claimed before the mail so two invocations cannot both send. A mail
+that fails gives its claims back; the alert never throws, so it cannot take down the cron it watches. Foxhound keeps its
+enable switch, admin page and dead-letter alert.
+
 ## Sending mail
 
 `./email` is the one call that hands a mail to Cloudflare Email Service's `send_email` binding
@@ -2146,6 +2178,43 @@ onActor })` is the operator door: a request with no Authorization header passes,
 the acting admin named in `actorHeader` is read by the site and set by `onActor`, and every refusal is logged under
 OWASP's names and never with the token. `honoRateLimit({ limiter, bucket, rules, who, onUnavailable })` counts on the
 RateLimiter Durable Object per user (`who`) or edge address. Both throw ./http-errors' AppError.
+
+## AI caps
+
+`./ai-caps` keeps an AI feature's bill bounded, split by where the count lives. The exact cap is a Durable Object:
+`DailyBudget` (`./ai-caps/durable-object`) counts one site-wide window and refuses the use past `limit`. `consume(limit,
+"day" | "month")` and `peek()` are synchronous SQL inside, so a race cannot over-spend (not the `ratelimit` binding, which
+is eventually consistent, or KV, which races). A Worker that already has a class, as dustinedwards.info's extends the
+rate limiter, calls the same functions (`consume(sql, windowKey("day", now), limit)`) from its own methods. A cap that
+is only a courtesy is `kvCounter(kv, "ai:cap:", cap, { window })`: `exceeded()` before the call, `record()` after, a
+documented soft cap whose read-modify-write can lose one use. `reserveSettle({ reserve, settle })` is for a cost only
+known when the call ends (Foxing's companion, per reader per day): it reserves the worst case in one atomic statement,
+runs, and settles to the real cost; a call that throws keeps its reservation, since the model may have been billed.
+`pacedAllowance(dailyLimit, burst, now)` turns a flat daily ceiling into a share of the day, so a flood is refused for
+minutes and not until midnight, and `secondsPerPacedUnit` is its honest Retry-After. Prices are not here: `PRICES` and
+`costMicros` in `./ai-engine` are the one table, so a site stops copying its own.
+
+## An ask box
+
+`./ai-ask` is what sits between the model and the reader of a public ask box, from dustinedwards.info's Ask.
+`takeSseFrames(buffer)` splits an event stream into parsed frames and the unfinished rest, with `answerDelta` and
+`finishReason` reading a completion frame (OpenAI's shape, which AI Search streams). `answerKey(question)` is the cache key
+of an answer, the SHA-256 of the lowercased, whitespace-collapsed question with no stemming, so differently worded
+questions never share one. `guardAnswerStream(upstream, { resolveVisible, citedSlugs, noAnswerText })` shows the answer a
+paragraph at a time, each checked whole with `checkProse` first. An empty, unreadable or missing `chunks` frame, or one
+citing what a reader may not see, refuses the whole answer, and so does a paragraph with a high-severity finding; an answer
+the model did not finish is shown as far as it got, then a `cut` event. `onRefused` and `onCut` say which answers must
+not be cached. The site keeps its prompt, its retrieval, and what a citation means.
+
+## Newsletter
+
+`./newsletter` is a double opt-in list, from Germomics. `newsletter({ store, keys, send, origin })` answers `request(email)`
+(mails a link; an address already on the list, or one mailed in the last ten minutes, gets the same "sent", so the form
+reveals nothing), `check(token)` (read only, for the page's GET, because mail scanners open every link), `confirm(token)`
+(the POST) and `unsubscribe(token)`. The link is a signed token over the address and the row's `confirm_sent_at`, so it
+works once, a newer link voids an older, and a used link cannot undo a later unsubscribe. A signup never resubscribes an
+unsubscribed address without the confirmation. The site writes the four store functions over `SUBSCRIBERS_SQL`'s table and
+renders the mail in its own words.
 
 ## A constant-time secret compare
 
