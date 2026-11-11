@@ -937,12 +937,15 @@ for hand-written SQL, so `%` and `_` match themselves. A newest-first page goes 
 `olderThan(atColumn, idColumn, at, id)` (order by both, descending): a time alone skips the rows that share the last
 row's millisecond. Sites with Drizzle only: it imports `drizzle-orm`.
 
-## CSV exports
+## CSV
 
-`./csv`: `toCsv(header, rows)`, `csvRow(cells)` and `csvCell(value)` write RFC 4180 (CRLF lines, a field quoted when it
-holds a comma, quote or line break). A text cell starting `=`, `+`, `-`, `@`, a tab or a CR gets an apostrophe first, so a
-spreadsheet opens it as text ([OWASP CSV Injection](https://owasp.org/www-community/attacks/CSV_Injection)); a
-number, or text that is only a number, stays a number. `CSV_CONTENT_TYPE` is `text/csv; charset=utf-8`.
+`./csv`: `toCsv(header, rows)`, `recordsCsv(records, columns?)`, `csvRow(cells)` and `csvCell(value)` write RFC 4180
+(CRLF after every record, a field quoted when it holds a comma, quote or line break; a list joined with "; "). A text cell
+starting `=`, `+`, `-`, `@`, a tab, CR or LF, or the full-width ＝ ＋ － ＠, gets an apostrophe first, so a spreadsheet opens
+it as text ([OWASP CSV Injection](https://owasp.org/www-community/attacks/CSV_Injection)); a number, a date, or text
+that is only a number stays as it is. `parseCsv(text)` reads it back (BOM, CRLF, LF or CR, quoted fields).
+`csvResponse(csv, filename, init?)` is the download answer (`CSV_CONTENT_TYPE` and an RFC 6266 attachment name), and
+`./csv-client` `downloadCsv(filename, csv)` saves one in the browser.
 
 ## Signed links
 
