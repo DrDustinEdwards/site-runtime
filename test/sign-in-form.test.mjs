@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  ACCOUNT_WORDS,
   SIGN_IN_WORDS,
+  accountFormAction,
   accountOptions,
   authHandler,
   isDisposableEmail,
@@ -244,4 +246,101 @@ test("a new account at a disposable address is refused by the real Better Auth, 
     ["b@example.com"],
   );
   assert.ok(siteHook.includes("b@example.com"), "the site's own hook still ran");
+});
+
+test("the account page's posts on the real Better Auth: email change, delete, and a stale sign-in", async () => {
+  const { betterAuth } = await import("better-auth");
+  const { memoryAdapter } = await import("better-auth/adapters/memory");
+  const mails = [];
+  const options = accountOptions({
+    confirmPath: "/email/confirm",
+    sendEmailChange: async (mail) => void mails.push(mail),
+    beforeDelete: async () => {},
+    afterDelete: async (user) => void afterDeleted.push(user.email),
+  });
+  const afterDeleted = [];
+  const { signInOptions } = await import("../sign-in.mjs");
+  const signIn = await signInOptions(
+    { BETTER_AUTH_URL: "https://example.com", TURNSTILE_SITE_KEY: "k", TURNSTILE_SECRET_KEY: "s" },
+    { siteName: "Sample", sendMagicLink: async () => {} },
+  );
+  const mem = { user: [], session: [], account: [], verification: [] };
+  const auth = betterAuth({
+    ...options,
+    plugins: signIn.plugins.filter((plugin) => plugin.id === "no-disposable-email"),
+    database: memoryAdapter(mem),
+    secret: "sample-secret-sample-secret-sample-secret",
+    baseURL: "https://example.com",
+    rateLimit: { enabled: false },
+    emailAndPassword: { enabled: true },
+    databaseHooks: {
+      user: { create: { before: async (user) => ({ data: { ...user, emailVerified: true } }) } },
+    },
+  });
+  const signedUp = await auth.api.signUpEmail({
+    body: { email: "a@example.com", password: "sample-password-1", name: "A" },
+    asResponse: true,
+  });
+  const cookie = signedUp.headers
+    .getSetCookie()
+    .map((c) => c.split(";")[0])
+    .join("; ");
+  const post = (fields) =>
+    accountFormAction(
+      auth,
+      new Request("https://example.com/account", {
+        method: "POST",
+        headers: { Cookie: cookie, Origin: "https://example.com" },
+      }),
+      page(fields),
+      {
+        deletedLanding: "/signin?deleted=1",
+        beforeDelete: async (_user, form) =>
+          form.get("handover") === "none" ? "Hand it over first." : null,
+      },
+    );
+
+  assert.equal(await post({ intent: "profile" }), null, "a site's own post is left to it");
+  for (const [newEmail, words] of [
+    ["a@example.com", ACCOUNT_WORDS.sameEmail],
+    ["b@mailinator.com", ACCOUNT_WORDS.disposable],
+    ["not-an-address", ACCOUNT_WORDS.noEmail],
+  ])
+    assert.equal((await post({ intent: "change-email", newEmail })).state.error, words, newEmail);
+  // Better Auth's own /change-email, called past the page: the same refusal.
+  await assert.rejects(
+    auth.api.changeEmail({
+      body: { newEmail: "c@mailinator.com" },
+      headers: new Headers({ Cookie: cookie }),
+    }),
+    (error) => error.body?.code === "disposable_email",
+  );
+  assert.equal(mails.length, 0);
+  const sent = await post({ intent: "change-email", newEmail: "B@example.com" });
+  assert.deepEqual([sent.status, sent.state.sentTo], [200, "a@example.com"]);
+  assert.deepEqual(
+    mails.map((m) => [m.to, m.step, m.newEmail]),
+    [["a@example.com", "current", "b@example.com"]],
+    "the current address approves first",
+  );
+
+  assert.equal((await post({ intent: "delete-account" })).state.error, ACCOUNT_WORDS.noConfirm);
+  assert.equal(
+    (await post({ intent: "delete-account", confirm: "on", handover: "none" })).state.error,
+    "Hand it over first.",
+  );
+  assert.equal(mem.user.length, 1);
+
+  // A sign-in older than FRESH_SECONDS: each post asks for a new one, and nothing is deleted.
+  for (const session of mem.session) session.createdAt = new Date(Date.now() - 11 * 60 * 1000);
+  const stale = await post({ intent: "delete-account", confirm: "on" });
+  assert.deepEqual([stale.status, stale.state.stale], [403, true]);
+  assert.equal(mem.user.length, 1);
+
+  for (const session of mem.session) session.createdAt = new Date();
+  const deleted = await post({ intent: "delete-account", confirm: "on" });
+  assert.equal(deleted.location, "/signin?deleted=1");
+  assert.ok(deleted.headers.getSetCookie().length > 0, "the cookies are cleared");
+  assert.deepEqual([mem.user.length, mem.session.length], [0, 0]);
+  assert.deepEqual(afterDeleted, ["a@example.com"], "the site's afterDelete ran");
 });

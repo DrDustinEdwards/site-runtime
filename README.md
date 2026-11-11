@@ -1155,7 +1155,7 @@ const auth = betterAuth({
   `confirmSignInLink` carries it to `errorCallbackURL` (the confirm page itself when the site names none), txasm's way.
   The page's loader calls `signInLinkProblem(request.url, { signedIn })`: null (show the button), `"used"` (within
   `SIGN_IN_EXPIRES_IN_SECONDS` of the mail), `"expired"` (after), `"invalid"` (no send time: a link cut or edited, or
-  mailed before 0.59.0), `"missing"` (no token: cut short when copied), `"failed"` (any other error), or `"signed-in"`
+  mailed before 0.59.0), `"missing"` (no token: cut short when copied), `"disposable"` (a new account at a disposable address), `"failed"` (any other error), or `"signed-in"`
   (this browser is signed in, so nothing more to do). `SIGN_IN_LINK_WORDS[problem]` is `{ title, text }` in the
   network's words; a site may use its own.
 - The email change's links open a page too (E1). Better Auth's `/verify-email` link acts on a GET (it approves the
@@ -1465,18 +1465,30 @@ export async function action({ request, context }: Route.ActionArgs) {
   page's form POST (`/auth/google`, `/auth/apple`), so the landing is decided on the server. Answers the provider's URL
   and Better Auth's state cookie, or null.
 - `authHandler(auth, request)`: the `/api/auth/*` route. Better Auth's answer, `no-store` when it says nothing.
-- `accountOptions({ confirmPath, sendEmailChange, beforeDelete })`: spread beside `signInOptions`. The email change
+- `accountOptions({ confirmPath, sendEmailChange, beforeDelete, afterDelete })`: spread beside `signInOptions`. The email change
   takes two links, the current address first, each opening the site's confirm page (`confirmEmailLink`), each lasting
   EMAIL_CHANGE_EXPIRES_IN_WORDS (1 hour); `sendEmailChange({ to, link, token, step, newEmail, expiresIn })` mails
-  both. Deletion runs only from the site's own route (`/delete-user` and its callback are off) after `beforeDelete`.
-  Spread its `disabledPaths` with the sign-in's.
+  both. Deletion runs only from the site's own route (`/delete-user` and its callback are off) after `beforeDelete`;
+  `afterDelete`, when given, runs once Better Auth has removed the account (clean-up outside the database). A
+  disposable new address is refused on Better Auth's own `/change-email` too (`signInOptions`' plugin). Spread its
+  `disabledPaths` with the sign-in's.
+- `accountFormAction(auth, request, form, { deletedLanding, beforeDelete })`: the account page's three posts, for
+  Capsomer's account settings (`capsomer/react/sign-in-settings`): `intent=change-email` (`newEmail`; refused when
+  malformed, unchanged, disposable or on an address never confirmed, then Better Auth's two-link change),
+  `intent=sign-out-device` (`session`, an id, so no token reaches the page) and `intent=delete-account` (`confirm`, the
+  ticked box; the site's `beforeDelete(user, form)` runs first and a string it returns is the refusal, then
+  `auth.api.deleteUser` and `{ location: deletedLanding, headers }` with the cleared cookies). Each needs a sign-in from
+  the last FRESH_SECONDS; without one the state says `stale`. Any other intent answers null, for the site's own posts.
+  The words are `ACCOUNT_WORDS`.
 - Disposable addresses: `signInOptions` refuses a new account at a disposable domain or a subdomain of one
   (`isDisposableEmail`, `disposable_email`), from the CC0 list at disposable-email-domains, in
   `disposable-domains.mjs`, plus `NETWORK_EXTRA` (domains a site blocked before that the source lacks). `node update-disposable.mjs` refreshes it; never edit it by hand.
 
 **Tests.** `test/sign-in-form.test.mjs`: the next-path escapes, a disposable subdomain, the headers and token the link
-request carries, each refusal's words, a code's cookie-only redirect, no-store, both email-change links, and the
-disposable refusal on the real Better Auth beside a site's own user hook.
+request carries, each refusal's words, a code's cookie-only redirect, no-store, both email-change links, the
+disposable refusal on the real Better Auth beside a site's own user hook, and the account page's posts on the real
+Better Auth (the email change's refusals and its first link, the delete's box and the site's refusal, a stale sign-in,
+and the delete clearing the cookies).
 
 ## The live sign-in check
 

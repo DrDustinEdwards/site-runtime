@@ -28,7 +28,16 @@ export function confirmSignInLink(
   request: Request,
 ): Promise<Response>;
 
-export type SignInLinkProblem = "signed-in" | "used" | "expired" | "invalid" | "missing" | "failed";
+export type SignInLinkProblem =
+  | "signed-in"
+  | "used"
+  | "expired"
+  | "invalid"
+  | "missing"
+  | "disposable"
+  | "failed";
+/** Better Auth's error code for a disposable address (refuseDisposable). */
+export const DISPOSABLE_EMAIL: "disposable_email";
 /** What went wrong with a sign-in link, from the confirm page's URL (`error`, `sent`, `token`), or null for the button. */
 export function signInLinkProblem(
   url: string | URL,
