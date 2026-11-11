@@ -16,6 +16,12 @@
  * - Script URLs: same-origin only (the site's own bundles). Any other origin is refused, and the browser reports it.
  * - Script text (eval, new Function, a script's text): always refused, and the browser reports it.
  *
+ * - Parsing a whole document (DOMParser's parseFromString): escaped like any HTML, except while a page holds
+ *   `allowDocumentParsing()`. A parsed document is inert (no browsing context: its scripts never run and it loads
+ *   nothing; HTML, "DOMParser"), so only code that later moves its nodes into the page can do harm. A page whose library
+ *   must parse markup it fetched, such as an EPUB reader building each chapter's frame, holds it for as long as that
+ *   library runs. Nothing else is opened by it.
+ *
  * Call `installTrustedTypes()` first in the client entry, before anything renders. Without Trusted Types in the
  * browser (Firefox before 148, Safari before 26) it does nothing. A page that already has a default policy keeps it.
  * The names a site's Content-Security-Policy lists are TRUSTED_TYPES_NAMES plus any of its own.
@@ -26,6 +32,33 @@ import { escapeHtml } from "./html.mjs";
 
 /** The string React 19 assigns to make a script element on the client. */
 export const REACT_SCRIPT_STUB = "<script></script>";
+
+/** The sink name the browser gives the default policy for DOMParser's parseFromString (Trusted Types, "DOMParser"). */
+export const DOCUMENT_PARSE_SINK = "DOMParser parseFromString";
+
+const PARSING = Symbol.for("@dustinedwards/site-runtime/trusted-types:document-parsing");
+
+/** @returns {{ holds: number }} */
+function parsing() {
+  const g = /** @type {Record<symbol, { holds: number }>} */ (/** @type {unknown} */ (globalThis));
+  return (g[PARSING] ??= { holds: 0 });
+}
+
+/**
+ * Lets the default policy pass whole-document parses (DOMParser's parseFromString) unchanged until the returned
+ * function is called. Holds stack: each caller releases its own, and releasing twice does nothing.
+ * @returns {() => void}
+ */
+export function allowDocumentParsing() {
+  const state = parsing();
+  state.holds += 1;
+  let held = true;
+  return () => {
+    if (!held) return;
+    held = false;
+    state.holds -= 1;
+  };
+}
 
 /**
  * The policy names every site allows: this module's default, Capsomer's, Enarratio's and Turnstile's loader. A site
@@ -74,14 +107,17 @@ export function escapedReport(sink, page, caller) {
  * The rules of the default policy. Exported for the test; a page uses `installTrustedTypes`.
  * @param {(sink: string) => void} report called with the sink when HTML is escaped
  * @param {string} origin the page's origin
+ * @param {(html: string, sink: string) => boolean} [allowHtml] the exact strings a library writes that a site lets pass
  */
-export function defaultRules(report, origin) {
+export function defaultRules(report, origin, allowHtml) {
   return {
     /** @param {string} html @param {unknown} _type @param {string} sink */
     createHTML(html, _type, sink) {
       // Markup with no "<" can make only text (the fragment parser starts an element only at "<"), so it is inert as
       // written: React Router's JSON-LD (escaped to \u003c) and plain text.
       if (html === REACT_SCRIPT_STUB || !html.includes("<")) return html;
+      if (sink === DOCUMENT_PARSE_SINK && parsing().holds > 0) return html;
+      if (allowHtml?.(html, sink)) return html;
       report(sink || "unknown sink");
       return escapeHtml(html);
     },
@@ -99,11 +135,20 @@ export function defaultRules(report, origin) {
 
 /**
  * Creates the page's "default" policy. Returns false when the browser has no Trusted Types or the page already has one.
- * @param {{ endpoint?: string }} [options] where escaped strings are reported: CSP_REPORT_PATH (/csp-report) unless the
- *   site's receiver is elsewhere.
+ * @param {{ endpoint?: string, target?: Window, allowHtml?: (html: string, sink: string) => boolean }} [options]
+ *   `endpoint`: where escaped strings are reported,
+ *   CSP_REPORT_PATH (/csp-report) unless the site's receiver is elsewhere. `target`: the window to give the policy, this
+ *   one unless it is a same-origin frame the page builds (a blob: or about:blank frame inherits the page's
+ *   Content-Security-Policy, so it needs a default policy of its own); its reports name the frame's page. `allowHtml`:
+ *   the markup a library writes that may pass unescaped, matched exactly (a pattern with no room for an attribute or
+ *   element of its own), for a frame or page whose library the site cannot change.
  */
-export function installTrustedTypes({ endpoint = CSP_REPORT_PATH } = {}) {
-  const factory = /** @type {any} */ (globalThis).trustedTypes;
+export function installTrustedTypes({
+  endpoint = CSP_REPORT_PATH,
+  target = globalThis.window,
+  allowHtml,
+} = {}) {
+  const factory = /** @type {any} */ (target ?? globalThis).trustedTypes;
   if (!factory || factory.defaultPolicy) return false;
   /** @type {Set<string>} */
   const sent = new Set();
@@ -112,9 +157,12 @@ export function installTrustedTypes({ endpoint = CSP_REPORT_PATH } = {}) {
     const key = `${sink} ${caller?.url ?? ""}`;
     if (sent.has(key) || sent.size >= 20) return;
     sent.add(key);
-    const body = JSON.stringify(escapedReport(sink, location.href, caller));
+    const body = JSON.stringify(escapedReport(sink, (target ?? globalThis).location.href, caller));
     navigator.sendBeacon(endpoint, new Blob([body], { type: "application/reports+json" }));
   };
-  factory.createPolicy("default", defaultRules(report, location.origin));
+  factory.createPolicy(
+    "default",
+    defaultRules(report, (target ?? globalThis).location.origin, allowHtml),
+  );
   return true;
 }
