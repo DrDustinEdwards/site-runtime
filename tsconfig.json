@@ -17,6 +17,7 @@
     "rate-limit/*.mjs",
     "doc-room/*.mjs",
     "cron-lock/*.mjs",
+    "ai-caps/*.mjs",
     "bin/*.mjs"
   ],
   "exclude": [
