@@ -121,7 +121,18 @@ export type CallOptions = {
   onResult?: (record: CallRecord) => void | Promise<void>;
 };
 
-export type Usage = { input: number; output: number; cacheRead: number; cacheWrite: number };
+/** Token counts: `cacheWrite` is five-minute cache writes, `cacheWrite1h` one-hour ones. */
+export type TokenCounts = {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  cacheWrite1h: number;
+};
+
+/** A call's totals over every request it sent; `long` is the part from requests whose prompt passed the model's
+ * long-prompt line (ai-engine PRICES `long.above`), all zeros for a model without one. */
+export type Usage = TokenCounts & { long: TokenCounts };
 
 export type CallRecord = Usage & {
   app: string;

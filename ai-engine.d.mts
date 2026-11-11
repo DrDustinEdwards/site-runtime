@@ -25,20 +25,35 @@ export function engineFor(
 ): Engine;
 
 export const PRICES_CHECKED: string;
-export const PRICES: Readonly<
-  Record<string, Readonly<{ input: number; output: number; cacheWrite: number; cacheRead: number }>>
->;
+
+/** US dollars per million tokens; `cacheWrite` is the five-minute write, `cacheWrite1h` the one-hour write. */
+export type Rates = {
+  input: number;
+  output: number;
+  cacheWrite: number;
+  cacheWrite1h: number;
+  cacheRead: number;
+};
+
+/** A model's price; `long` is what a request pays once its whole prompt passes `long.above` tokens. */
+export type Price = Readonly<Rates & { long?: Readonly<Rates & { above: number }> }>;
+
+export const PRICES: Readonly<Record<string, Price>>;
 
 /** A model's listed price: exact id, else the same model with or without its -YYYYMMDD snapshot date; null when unlisted. */
-export function priceOf(
-  model: string,
-): Readonly<{ input: number; output: number; cacheWrite: number; cacheRead: number }> | null;
+export function priceOf(model: string): Price | null;
 
-/** What one call cost in millionths of a dollar, or null for a model with no listed price. */
-export function costMicros(
-  model: string,
-  usage: { input: number; output: number; cacheRead: number; cacheWrite: number },
-): number | null;
+export type CostCounts = {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  cacheWrite1h?: number;
+};
+
+/** What one call cost in millionths of a dollar, or null for a model with no listed price. With `long` (anthropic.mjs
+ * Usage), that part is priced at the model's long-prompt rate; without it, the usage is one request. */
+export function costMicros(model: string, usage: CostCounts & { long?: CostCounts }): number | null;
 
 import type { FireOnceResult, FireResult } from "./routine.mjs";
 
