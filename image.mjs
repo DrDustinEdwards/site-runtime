@@ -174,6 +174,26 @@ export function versionedCache({ plain = "public, max-age=86400" } = {}) {
   return ({ url }) => (url.searchParams.has("v") ? IMMUTABLE_CACHE : plain);
 }
 
+/**
+ * A file the Worker's static assets hold (public/), in the shape `respond` and `serve` read from R2, or null when there
+ * is none: for a site's brand photos, served at /media/ beside its library. The ASSETS binding matches the pathname
+ * alone, so the host is a placeholder.
+ * @param {{ fetch(request: Request): Promise<Response> }} assets the ASSETS binding
+ * @param {string} key the file's path under public/
+ * @returns {Promise<R2ObjectLike | null>}
+ */
+export async function assetsObject(assets, key) {
+  const response = await assets.fetch(new Request(`https://assets.local/${key}`));
+  if (!response.ok || !response.body) return null;
+  const contentType = response.headers.get("content-type") ?? "application/octet-stream";
+  return {
+    body: response.body,
+    httpEtag: response.headers.get("etag") ?? `"${key}"`,
+    httpMetadata: { contentType },
+    writeHttpMetadata: (headers) => headers.set("content-type", contentType),
+  };
+}
+
 const KEY_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._ ()+,=@~-]*$/;
 
 /**

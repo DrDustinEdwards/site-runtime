@@ -38,6 +38,11 @@ export function focusOf(value: unknown): string | null;
 export const IMMUTABLE_CACHE: string;
 /** A /media cache policy: IMMUTABLE_CACHE when the address carries `v`, else `plain` (a day). */
 export function versionedCache(options?: { plain?: string }): (file: { url: URL }) => string;
+/** A static asset (public/) through the ASSETS binding, in the shape `serve` reads from R2; null when there is none. */
+export function assetsObject(
+  assets: { fetch(request: Request): Promise<Response> },
+  key: string,
+): Promise<R2ObjectLike | null>;
 /** The stored key a /media path names, or null: safe segments only, under `within` when given. */
 export function mediaKey(path: string, within?: string): string | null;
 

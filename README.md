@@ -518,7 +518,7 @@ return images.serve(request, {
 stores under a folder the address leaves out), 404 unless every segment is safe and the key starts with `within`
 (`mediaKey`), the file read with `read(key)` and reread for a transform, and every answer, refusals too, under
 UPLOAD_HEADERS. `read` picks the bucket, so a site with several (covers and journal pictures, brand photos from ASSETS)
-routes by key there. `cacheControl` is a string or a function of `{ request, url, key, object }` (async, for a version
+routes by key there; `assetsObject(env.ASSETS, key)` reads a file the Worker's static assets hold (bsw's brand photos). `cacheControl` is a string or a function of `{ request, url, key, object }` (async, for a version
 checked against a database row); the default, `versionedCache()`, is `IMMUTABLE_CACHE` for an address with `v` and a
 day for one without (an address a person copied), so a replaced file shows through within a day. A site that needs
 `respond` alone still has it.
