@@ -448,7 +448,7 @@ const isNotFresh = (error) =>
 /**
  * @typedef {{ id: string, email: string, emailVerified?: boolean }} AccountUser
  * @typedef {{
- *   getSession(o: { headers: Headers, query?: unknown, asResponse: false }): Promise<{ session: { createdAt: Date | string, token: string }, user: AccountUser } | null>,
+ *   getSession(o: import("./sign-in-account.mjs").SessionLookup): Promise<{ session: { createdAt: Date | string, token: string }, user: AccountUser } | null>,
  *   listSessions(o: { headers: Headers }): Promise<import("./sign-in-account.mjs").SessionRow[]>,
  *   revokeSession(o: { headers: Headers, body: { token: string } }): Promise<unknown>,
  *   changeEmail(o: { headers: Headers, body: { newEmail: string } }): Promise<unknown>,

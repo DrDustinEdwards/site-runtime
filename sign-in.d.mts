@@ -42,6 +42,7 @@ export {
   requireFreshSession,
   revokeSessionById,
   securityHistory,
+  sessionIsFresh,
   sessionLookup,
   sessionRows,
   sessionTouch,
