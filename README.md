@@ -291,7 +291,9 @@ The policy names a site's `trusted-types` directive lists are `TRUSTED_TYPES_NAM
 A client entry does not call it, or `reportInp`, by itself: `startPage()` from `./page-client` is the first line of
 every client entry (a React Router `entry.client`, a plain site script, each island) and does both. It also sets Zod's
 `jitless` flag (the config `z.config()` writes), so a site's client Zod never probes `new Function`, which every site's
-policy refuses and reports. A page with several
+policy refuses and reports. Zod makes the probe when a schema is created, so a module that builds a schema at load and
+can run before `startPage()` (an island chunk) imports `@dustinedwards/site-runtime/zod-jitless` first; the import
+sets the same flag. A page with several
 entries calls it in each; only the first does anything.
 
 ```js
