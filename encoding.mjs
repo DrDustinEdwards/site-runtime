@@ -77,3 +77,35 @@ export function fromBase64url(text) {
 export async function sha256Hex(input) {
   return toHex(await crypto.subtle.digest("SHA-256", bytesOf(input)));
 }
+
+/**
+ * HMAC-SHA-256 of `payload` under the UTF-8 bytes of `secret`, as lowercase hex.
+ * @param {string} secret
+ * @param {Uint8Array | ArrayBuffer | string} payload
+ * @returns {Promise<string>}
+ */
+export async function hmacSha256Hex(secret, payload) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  return toHex(await crypto.subtle.sign("HMAC", key, bytesOf(payload)));
+}
+
+/**
+ * FNV-1a, 32 bits, over UTF-16 code units: a short stable fingerprint (a cache-busting version, an id from a string),
+ * never a security boundary.
+ * @param {string} input
+ * @returns {string} eight lowercase hex digits
+ */
+export function fnv1a32(input) {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}

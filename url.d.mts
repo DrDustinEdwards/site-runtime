@@ -1,5 +1,11 @@
 /** One address per page (url.mjs). */
 
+/** 301 for GET and HEAD, 308 for any other method, so a form body survives a permanent redirect. */
+export function redirectStatus(method: string): 301 | 308;
+
+/** A path a Location may hold on this origin: one leading slash, not `//`, no backslash. */
+export function isSameOriginPath(path: string): boolean;
+
 /**
  * A 301 (308 for a method other than GET and HEAD) from `/x/` to `/x` on the request's own origin, query kept; null for
  * "/", a path without a trailing slash, or one in `except` (exact, or a prefix ending in `*`).
