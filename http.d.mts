@@ -1,7 +1,9 @@
 /** How long an outbound call may take before timedFetch aborts it (ms). */
 export const OUTBOUND_TIMEOUT_MS: number;
-/** `cf-connecting-ip`, or "unknown" (one shared bucket) when the edge set none. */
+/** The caller as a rate-limit key: an IPv4 address, an IPv6 one by its /64, or "unknown" without the header. */
 export function clientIp(request: Request): string;
+/** An IPv4 address as it is, an IPv6 one as `a-b-c-d/64`, an IPv4-mapped one as its IPv4 address. */
+export function ipBucket(ip: string): string;
 /** Any method but GET, HEAD and OPTIONS. */
 export function isWrite(request: Request): boolean;
 /** A plain-text answer, `private, no-store`; `headers` adds or overrides. */
