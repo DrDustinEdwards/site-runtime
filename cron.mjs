@@ -407,15 +407,21 @@ export function backupJob(run, { name = "backup", timeoutMs = 5 * 60_000 } = {})
  * Each job in `cron_runs` that is not well, as data: the reason is "failed" (its last run failed), "stale" (its last
  * success is older than its interval plus the grace), "never succeeded" (first started longer ago than that, no
  * success) or "never ran" (given `jobs`, no row once its window has passed since `deployedAt`, at once without it).
- * `lastOkAt` is the last success in epoch ms, or null. The grace is `graceMinutes` when given, else the larger of
- * 10 minutes and a tenth of the interval. cronCheck is built on it; a site that mails its own alert reads it.
+ * `lastOkAt` is the last success in epoch ms, or null. The grace is `graceMinutes` when given (minutes, or a function of
+ * the job's interval in minutes: `(every) => every` allows a whole missed period), else the larger of 10 minutes and a
+ * tenth of the interval. cronCheck is built on it; a site that mails its own alert reads it.
  * @param {D1Like | (() => D1Like)} db
- * @param {{ graceMinutes?: number, jobs?: Array<{ name: string, everyMinutes: number | null }>, deployedAt?: Date, now?: Date }} [options]
+ * @param {{ graceMinutes?: number | ((everyMinutes: number) => number), jobs?: Array<{ name: string, everyMinutes: number | null }>, deployedAt?: Date, now?: Date }} [options]
  * @returns {Promise<Array<{ name: string, reason: "failed" | "stale" | "never succeeded" | "never ran", lastOkAt: number | null }>>}
  */
 export async function cronFindings(db, { graceMinutes, jobs, deployedAt, now } = {}) {
   /** @param {number} every */
-  const windowMs = (every) => (every + (graceMinutes ?? Math.max(10, every / 10))) * 60_000;
+  const windowMs = (every) =>
+    (every +
+      (typeof graceMinutes === "function"
+        ? graceMinutes(every)
+        : (graceMinutes ?? Math.max(10, every / 10)))) *
+    60_000;
   const at = now?.getTime() ?? Date.now();
   const { results } = await (typeof db === "function" ? db() : db)
     .prepare(
@@ -479,7 +485,7 @@ export async function cronFindings(db, { graceMinutes, jobs, deployedAt, now } =
  * those, with their own intervals, so a removed job's old row is ignored, and a job with no row at all fails as
  * "never ran" once its window has passed since `deployedAt` (at once when that is not given).
  * @param {D1Like | (() => D1Like)} db
- * @param {{ graceMinutes?: number, jobs?: Array<{ name: string, everyMinutes: number | null }>, deployedAt?: Date, now?: Date }} [options]
+ * @param {{ graceMinutes?: number | ((everyMinutes: number) => number), jobs?: Array<{ name: string, everyMinutes: number | null }>, deployedAt?: Date, now?: Date }} [options]
  * @returns {{ name: "cron", level: "warn", run: () => Promise<true | { ok: false, detail: string }> }}
  */
 export function cronCheck(db, options = {}) {

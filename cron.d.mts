@@ -153,7 +153,8 @@ export interface CronFinding {
 
 /** What cronFindings and cronCheck read: the grace, the site's own list of jobs, when it was deployed, the clock. */
 export interface CronFindingsOptions {
-  graceMinutes?: number;
+  /** Minutes past a job's interval, or a function of the interval in minutes. */
+  graceMinutes?: number | ((everyMinutes: number) => number);
   jobs?: Array<{ name: string; everyMinutes: number | null }>;
   deployedAt?: Date;
   now?: Date;

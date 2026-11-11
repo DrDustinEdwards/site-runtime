@@ -1,8 +1,12 @@
 /**
- * Tell a person once a day about each job that is not well: cronFindings (./cron) says which, and a `cron_alerts` row per
- * job, kind and UTC day is both the record and the dedupe, claimed before the mail so two invocations racing cannot
- * both send. From Foxhound's cron alerts (app/lib/cron/alerts.server.ts); what stays Foxhound's is its enable switch,
- * its admin page and its dead-letter alert.
+ * Tell a person once a day about each job that is not well: cronFindings (./cron) says which, and an `alerts_sent` row
+ * per key, kind and UTC day is both the record and the dedupe, claimed before the mail so two invocations racing cannot
+ * both send. From Foxhound's cron alerts (app/lib/cron/alerts.server.ts).
+ *
+ * - cronAlert mails the findings as one message through the send_email binding, or hands them to the site's own `send`
+ *   (its mail templates, its sender), all at once or `each` on its own.
+ * - alertOnce is the claim, send and give-back for any other alert a site raises at most once a day: a failure the
+ *   moment it happens, a dead-letter queue that filled.
  *
  * Fail-open: the alert never takes down the cron it watches. A failed mail gives its claims back so the next run
  * tries again; a claim that fails for any reason but "already claimed" sends anyway, since the alert exists to
@@ -13,21 +17,22 @@ import { cronFindings } from "./cron.mjs";
 import { sendEmail } from "./email.mjs";
 import { logEvent } from "./log.mjs";
 
-/** The migration: a D1 site adds it as its next file. `day` is the UTC date, YYYY-MM-DD. */
-export const CRON_ALERTS_SQL = `CREATE TABLE IF NOT EXISTS cron_alerts (
-  job TEXT NOT NULL,
+/** The migration: a D1 site adds it as its next file. `key` is what the alert is about (a job's name, a queue), `day`
+ *  the UTC date, YYYY-MM-DD. */
+export const ALERTS_SQL = `CREATE TABLE IF NOT EXISTS alerts_sent (
+  key TEXT NOT NULL,
   kind TEXT NOT NULL,
   day TEXT NOT NULL,
   detail TEXT,
   created_at INTEGER NOT NULL,
-  PRIMARY KEY (job, kind, day)
+  PRIMARY KEY (key, kind, day)
 );
 `;
 
-const CLAIM = `INSERT INTO cron_alerts (job, kind, day, detail, created_at) VALUES (?1, ?2, ?3, ?4, ?5)
-ON CONFLICT (job, kind, day) DO NOTHING`;
-const RELEASE = "DELETE FROM cron_alerts WHERE job = ?1 AND kind = ?2 AND day = ?3";
-const PRUNE = "DELETE FROM cron_alerts WHERE day < ?1";
+const CLAIM = `INSERT INTO alerts_sent (key, kind, day, detail, created_at) VALUES (?1, ?2, ?3, ?4, ?5)
+ON CONFLICT (key, kind, day) DO NOTHING`;
+const RELEASE = "DELETE FROM alerts_sent WHERE key = ?1 AND kind = ?2 AND day = ?3";
+const PRUNE = "DELETE FROM alerts_sent WHERE day < ?1";
 
 /** How many days of alerts are kept. */
 const KEEP_DAYS = 30;
@@ -45,43 +50,105 @@ export function describeAge(ms) {
 }
 
 /**
- * Mail the jobs cronFindings names, each at most once per kind per UTC day, as one message. Never throws.
+ * @typedef {{ name: string, kind: "failure" | "stale", reason: "failed" | "stale" | "never succeeded" | "never ran", lastOkAt: number | null, line: string }} CronAlertItem
+ * @typedef {{ sent: true } | { sent: false, reason: "deduped" } | { sent: false, reason: "send_failed", error: string }} AlertOutcome
+ */
+
+/**
+ * Raise one alert at most once per key, kind and UTC day: claim the day's slot, `send`, and give the slot back when the
+ * send did not go, so the next try sends. `send` resolves true (or `{ sent: true }`) when it went. Never throws.
  * @param {{
  *   db: import("./cron.d.mts").D1Like,
- *   mail: import("./email.d.mts").EmailBinding | null | undefined,
- *   from: import("./email.d.mts").MailAddress,
- *   to: import("./email.d.mts").MailAddress | import("./email.d.mts").MailAddress[],
- *   site: string,
- *   jobs?: Array<{ name: string, everyMinutes: number | null }>,
- *   deployedAt?: Date,
- *   graceMinutes?: number,
+ *   key: string,
+ *   kind: string,
+ *   detail?: string,
  *   now?: Date,
- * }} options `mail` is the send_email binding; `site` names the site in the subject; `jobs`, `deployedAt` and
- *   `graceMinutes` are cronFindings' own
- * @returns {Promise<{ alerted: string[], deduped: string[], mailed: boolean }>}
+ *   send: () => Promise<boolean | { sent: boolean, error?: string }>,
+ * }} options
+ * @returns {Promise<AlertOutcome>}
  */
-export async function cronAlert({ db, mail, from, to, site, jobs, deployedAt, graceMinutes, now }) {
+export async function alertOnce({ db, key, kind, detail, now, send }) {
   const at = now ?? new Date();
   const day = at.toISOString().slice(0, 10);
-  /** @type {string[]} */
-  const deduped = [];
-  /** @type {Array<{ name: string, kind: string, line: string }>} */
-  const fresh = [];
+  if (!(await claim(db, key, kind, day, detail ?? null, at.getTime())))
+    return { sent: false, reason: "deduped" };
+  /** @type {string} */
+  let error;
   try {
-    const found = await cronFindings(db, { jobs, deployedAt, graceMinutes, now: at });
-    for (const { name, reason, lastOkAt } of found) {
-      const kind = reason === "failed" ? "failure" : "stale";
-      const line = `${name}: ${reason}, ${
-        lastOkAt === null
-          ? "no success on record"
-          : `last succeeded ${describeAge(at.getTime() - lastOkAt)}`
-      }`;
-      if (await claim(db, name, kind, day, line, at.getTime())) fresh.push({ name, kind, line });
-      else deduped.push(name);
-    }
+    const outcome = await send();
+    if (outcome === true || (typeof outcome === "object" && outcome?.sent)) return { sent: true };
+    error = (typeof outcome === "object" && outcome?.error) || "not sent";
+  } catch (thrown) {
+    error = thrown instanceof Error ? thrown.message : "send failed";
+  }
+  await release(db, key, kind, day);
+  return { sent: false, reason: "send_failed", error };
+}
+
+/**
+ * Mail the jobs cronFindings names, each at most once per kind per UTC day. By default as one message through the
+ * send_email binding (`mail`, `from`, `to`, `site`); with `send`, the site sends instead, given the new alerts all at once
+ * or, with `each`, one alert per call. Never throws.
+ * @param {{
+ *   db: import("./cron.d.mts").D1Like,
+ *   mail?: import("./email.d.mts").EmailBinding | null | undefined,
+ *   from?: import("./email.d.mts").MailAddress,
+ *   to?: import("./email.d.mts").MailAddress | import("./email.d.mts").MailAddress[],
+ *   site?: string,
+ *   send?: (alerts: CronAlertItem[]) => Promise<boolean | { sent: boolean, error?: string }>,
+ *   each?: boolean,
+ *   jobs?: Array<{ name: string, everyMinutes: number | null }>,
+ *   deployedAt?: Date,
+ *   graceMinutes?: number | ((everyMinutes: number) => number),
+ *   now?: Date,
+ * }} options `jobs`, `deployedAt` and `graceMinutes` are cronFindings' own
+ * @returns {Promise<{ found: CronAlertItem[], alerted: string[], deduped: string[], mailed: boolean }>}
+ */
+export async function cronAlert({
+  db,
+  mail,
+  from,
+  to,
+  site,
+  send,
+  each = false,
+  jobs,
+  deployedAt,
+  graceMinutes,
+  now,
+}) {
+  const at = now ?? new Date();
+  const day = at.toISOString().slice(0, 10);
+  const deliver =
+    send ??
+    (async (/** @type {CronAlertItem[]} */ alerts) =>
+      (
+        await sendEmail(mail, {
+          from: /** @type {import("./email.d.mts").MailAddress} */ (from),
+          to: /** @type {import("./email.d.mts").MailAddress} */ (to),
+          subject: `${site}: ${alerts.length === 1 ? `cron ${alerts[0].kind} (${alerts[0].name})` : `${alerts.length} cron jobs not well`}`,
+          text: `${alerts.map((a) => a.line).join("\n")}\n\nEach job is mailed once per day until it is well.`,
+        })
+      ).sent);
+  /** @type {CronAlertItem[]} */
+  let found;
+  try {
+    found = (await cronFindings(db, { jobs, deployedAt, graceMinutes, now: at })).map(
+      ({ name, reason, lastOkAt }) => ({
+        name,
+        kind: reason === "failed" ? "failure" : "stale",
+        reason,
+        lastOkAt,
+        line: `${name}: ${reason}, ${
+          lastOkAt === null
+            ? "no success on record"
+            : `last succeeded ${describeAge(at.getTime() - lastOkAt)}`
+        }`,
+      }),
+    );
   } catch (error) {
     logEvent("cron_alert_failed", { error }, { level: "error" });
-    return { alerted: [], deduped, mailed: false };
+    return { found: [], alerted: [], deduped: [], mailed: false };
   }
   try {
     await db
@@ -91,42 +158,78 @@ export async function cronAlert({ db, mail, from, to, site, jobs, deployedAt, gr
   } catch {
     // Housekeeping only.
   }
-  if (fresh.length === 0) return { alerted: [], deduped, mailed: false };
-  const outcome = await sendEmail(mail, {
-    from,
-    to,
-    subject: `${site}: ${fresh.length === 1 ? `cron ${fresh[0].kind} (${fresh[0].name})` : `${fresh.length} cron jobs not well`}`,
-    text: `${fresh.map((f) => f.line).join("\n")}\n\nEach job is mailed once per day until it is well.`,
-  });
-  if (!outcome.sent) {
-    for (const { name, kind } of fresh)
-      await db
-        .prepare(RELEASE)
-        .bind(name, kind, day)
-        .run()
-        .catch(() => undefined);
-    return { alerted: [], deduped, mailed: false };
+  /** @type {string[]} */
+  const deduped = [];
+  /** @type {string[]} */
+  const alerted = [];
+  if (each) {
+    for (const item of found) {
+      const outcome = await alertOnce({
+        db,
+        key: item.name,
+        kind: item.kind,
+        detail: item.line,
+        now: at,
+        send: () => deliver([item]),
+      });
+      if (outcome.sent) alerted.push(item.name);
+      else if (outcome.reason === "deduped") deduped.push(item.name);
+    }
+    return { found, alerted, deduped, mailed: alerted.length > 0 };
   }
-  return { alerted: fresh.map((f) => f.name), deduped, mailed: true };
+  /** @type {CronAlertItem[]} */
+  const fresh = [];
+  for (const item of found) {
+    if (await claim(db, item.name, item.kind, day, item.line, at.getTime())) fresh.push(item);
+    else deduped.push(item.name);
+  }
+  if (fresh.length === 0) return { found, alerted, deduped, mailed: false };
+  let sent = false;
+  try {
+    const outcome = await deliver(fresh);
+    sent = outcome === true || (typeof outcome === "object" && outcome?.sent === true);
+  } catch (error) {
+    logEvent("cron_alert_send_failed", { error }, { level: "error" });
+  }
+  if (!sent) {
+    for (const { name, kind } of fresh) await release(db, name, kind, day);
+    return { found, alerted, deduped, mailed: false };
+  }
+  return { found, alerted: fresh.map((f) => f.name), deduped, mailed: true };
 }
 
 /**
- * Claim the one slot per job, kind and day: true means this caller may mail it.
+ * Claim the one slot per key, kind and day: true means this caller may send it.
  * @param {import("./cron.d.mts").D1Like} db
- * @param {string} name
+ * @param {string} key
  * @param {string} kind
  * @param {string} day
- * @param {string} detail
+ * @param {string | null} detail
  * @param {number} at
  */
-async function claim(db, name, kind, day, detail, at) {
+async function claim(db, key, kind, day, detail, at) {
   try {
     const result = /** @type {{ meta?: { changes?: number } } | undefined} */ (
-      await db.prepare(CLAIM).bind(name, kind, day, detail, at).run()
+      await db.prepare(CLAIM).bind(key, kind, day, detail, at).run()
     );
     return result?.meta?.changes !== 0;
   } catch (error) {
-    logEvent("cron_alert_claim_failed", { name, error }, { level: "error" });
+    logEvent("alert_claim_failed", { key, error }, { level: "error" });
     return true;
   }
+}
+
+/**
+ * Give a claimed slot back after a send that did not go.
+ * @param {import("./cron.d.mts").D1Like} db
+ * @param {string} key
+ * @param {string} kind
+ * @param {string} day
+ */
+async function release(db, key, kind, day) {
+  await db
+    .prepare(RELEASE)
+    .bind(key, kind, day)
+    .run()
+    .catch(() => undefined);
 }
