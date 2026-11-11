@@ -1155,7 +1155,7 @@ const auth = betterAuth({
   `confirmSignInLink` carries it to `errorCallbackURL` (the confirm page itself when the site names none), txasm's way.
   The page's loader calls `signInLinkProblem(request.url, { signedIn })`: null (show the button), `"used"` (within
   `SIGN_IN_EXPIRES_IN_SECONDS` of the mail), `"expired"` (after), `"invalid"` (no send time: a link cut or edited, or
-  mailed before 0.59.0), `"missing"` (no token: cut short when copied), `"failed"` (any other error), or `"signed-in"`
+  mailed before 0.59.0), `"missing"` (no token: cut short when copied), `"disposable"` (a new account at a disposable address), `"failed"` (any other error), or `"signed-in"`
   (this browser is signed in, so nothing more to do). `SIGN_IN_LINK_WORDS[problem]` is `{ title, text }` in the
   network's words; a site may use its own.
 - The email change's links open a page too (E1). Better Auth's `/verify-email` link acts on a GET (it approves the

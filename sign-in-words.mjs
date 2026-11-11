@@ -3,14 +3,11 @@
  * too: `./sign-in-form` answers with them on the server, and Capsomer's sign-in screen shows them (and the passkey's,
  * which only the browser knows).
  */
-import { SIGN_IN_EXPIRES_IN_WORDS } from "./sign-in-link.mjs";
+import { DISPOSABLE_EMAIL, SIGN_IN_EXPIRES_IN_WORDS } from "./sign-in-link.mjs";
 
 /** How long each email-change link works: an hour, Better Auth's default, and the words the mails say. */
 export const EMAIL_CHANGE_EXPIRES_IN_SECONDS = 60 * 60;
 export const EMAIL_CHANGE_EXPIRES_IN_WORDS = "1 hour";
-
-/** Better Auth's error code when a new account's address is at a disposable domain (refuseDisposable). */
-export const DISPOSABLE_EMAIL = "disposable_email";
 
 /** The words every site's sign-in pages say, by answer. */
 export const SIGN_IN_WORDS = Object.freeze({
@@ -92,7 +89,7 @@ export function signInErrorWords(code, { siteName, settings }) {
   return "That sign-in did not complete. Try again, or use another way.";
 }
 
-export { SIGN_IN_EXPIRES_IN_WORDS, SIGN_IN_LINK_WORDS } from "./sign-in-link.mjs";
+export { DISPOSABLE_EMAIL, SIGN_IN_EXPIRES_IN_WORDS, SIGN_IN_LINK_WORDS } from "./sign-in-link.mjs";
 
 /**
  * The words for a passkey sign-in that did not sign in, from the error Better Auth's client returned, or null when the
