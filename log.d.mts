@@ -69,9 +69,21 @@ export const OWASP_EVENTS: Readonly<{
   userDeleted: "user_deleted";
 }>;
 
+/** A preview link's token (Carrel's /preview/<token>), cut from a logged path. */
+export const PREVIEW_TOKEN: RegExp;
+/** PREVIEW_TOKEN with the site's token routes ("u", "e/c"): each match is logged as `/<route>/[token]`. */
+export function tokenPattern(routes?: readonly string[]): RegExp;
 /**
- * React Router's `handleError` export for entry.server (`export { handleServerError as handleError }`): a route 404 is
- * not logged; any other error is one scrubbed `server_error` line at error level with the request's fields.
+ * React Router's `handleError` for entry.server: a route 404 is not logged; any other error is one scrubbed
+ * `server_error` line at error level with the request's fields, the token of a `tokenPath` route cut (preview's by
+ * default).
+ */
+export function serverErrorHandler(
+  options?: ScrubOptions,
+): (error: unknown, args: { request: Request }) => void;
+/**
+ * React Router's `handleError` export for entry.server (`export { handleServerError as handleError }`):
+ * serverErrorHandler with the preview link's token cut.
  */
 export function handleServerError(error: unknown, args: { request: Request }): void;
 /** The message of a thrown value: an Error's own message, anything else as a string. */
