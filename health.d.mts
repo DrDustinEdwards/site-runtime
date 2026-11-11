@@ -80,6 +80,11 @@ export function emailCheck(
   name: string,
   email: { send(message: unknown): Promise<unknown> } | undefined,
 ): HealthCheck;
+/** A check that a Browser Rendering binding is present; opens no browser. Level warn. */
+export function browserCheck(
+  name: string,
+  browser: { fetch(...args: never[]): Promise<unknown> } | undefined,
+): HealthCheck;
 /** The Workers AI binding is present; no model is run (every call is billed). Level warn. */
 export function aiCheck(
   name: string,

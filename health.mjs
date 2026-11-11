@@ -331,6 +331,16 @@ export function emailCheck(name, email) {
   return bindingCheck(name, typeof email?.send === "function");
 }
 
+/**
+ * A check that a Browser Rendering binding is present. It opens no browser: a session is billed. Level warn.
+ * @param {string} name
+ * @param {{ fetch(...args: never[]): Promise<unknown> } | undefined} browser
+ * @returns {HealthCheck}
+ */
+export function browserCheck(name, browser) {
+  return bindingCheck(name, typeof browser?.fetch === "function");
+}
+
 /** @param {string} name @param {boolean} present @returns {HealthCheck} */
 function bindingCheck(name, present) {
   return {

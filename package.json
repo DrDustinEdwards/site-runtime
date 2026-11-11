@@ -199,7 +199,9 @@
     "health-alert.mjs",
     "health-alert.d.mts",
     "health-snapshot.mjs",
-    "health-snapshot.d.mts"
+    "health-snapshot.d.mts",
+    "print-pdf.mjs",
+    "print-pdf.d.mts"
   ],
   "type": "module",
   "exports": {
@@ -554,6 +556,10 @@
     "./health-snapshot": {
       "types": "./health-snapshot.d.mts",
       "default": "./health-snapshot.mjs"
+    },
+    "./print-pdf": {
+      "types": "./print-pdf.d.mts",
+      "default": "./print-pdf.mjs"
     }
   },
   "scripts": {
