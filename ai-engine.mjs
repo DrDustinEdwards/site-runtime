@@ -69,8 +69,9 @@ export function engineFor(settings, feature, now = Date.now()) {
 }
 
 // Anthropic's list prices in US dollars per million tokens, from platform.claude.com/docs/en/about-claude/pricing,
-// read 2026-11-08 (Haiku 5.5 for prompts up to 100,000 tokens). Refresh from that page; never type a price from memory.
-export const PRICES_CHECKED = "2026-11-08";
+// read 2026-11-11 (Haiku 5.5 for prompts up to 100,000 tokens; cache writes at the five-minute rate). Keyed like
+// anthropic.mjs MODELS. Refresh from that page; never type a price from memory.
+export const PRICES_CHECKED = "2026-11-11";
 /** @type {Readonly<Record<string, Readonly<{ input: number, output: number, cacheWrite: number, cacheRead: number }>>>} */
 export const PRICES = Object.freeze({
   "claude-haiku-5-5": Object.freeze({
@@ -81,7 +82,26 @@ export const PRICES = Object.freeze({
   }),
   "claude-sonnet-5": Object.freeze({ input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 }),
   "claude-opus-5-5": Object.freeze({ input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 }),
+  "claude-opus-4-8": Object.freeze({ input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 }),
+  "claude-haiku-4-5-20251001": Object.freeze({
+    input: 1,
+    output: 5,
+    cacheWrite: 1.25,
+    cacheRead: 0.1,
+  }),
 });
+
+/**
+ * The listed price of a model id: exact, else the dated id it names ("claude-haiku-4-5" for "claude-haiku-4-5-20251001"),
+ * else the undated id a dated one snapshots. Null when none is listed.
+ * @param {string} model
+ */
+export function priceOf(model) {
+  if (PRICES[model]) return PRICES[model];
+  const base = model.replace(/-\d{8}$/, "");
+  const key = Object.keys(PRICES).find((k) => k === base || k.replace(/-\d{8}$/, "") === base);
+  return key ? PRICES[key] : null;
+}
 
 /**
  * What one call cost, in millionths of a dollar, or null for a model with no listed price.
@@ -89,7 +109,7 @@ export const PRICES = Object.freeze({
  * @param {{ input: number, output: number, cacheRead: number, cacheWrite: number }} usage
  */
 export function costMicros(model, usage) {
-  const p = PRICES[model];
+  const p = priceOf(model);
   if (!p) return null;
   // $ per million tokens x tokens = micro-dollars exactly.
   return Math.round(

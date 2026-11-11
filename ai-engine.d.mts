@@ -29,6 +29,11 @@ export const PRICES: Readonly<
   Record<string, Readonly<{ input: number; output: number; cacheWrite: number; cacheRead: number }>>
 >;
 
+/** A model's listed price: exact id, else the same model with or without its -YYYYMMDD snapshot date; null when unlisted. */
+export function priceOf(
+  model: string,
+): Readonly<{ input: number; output: number; cacheWrite: number; cacheRead: number }> | null;
+
 /** What one call cost in millionths of a dollar, or null for a model with no listed price. */
 export function costMicros(
   model: string,
