@@ -1601,8 +1601,11 @@ const run = await runAi({
 - At the cap, `api` uses the routine and `auto` stops falling back.
 - Subscription usage cannot be read (claude.ai/settings/usage is the only meter), so `auto` reacts to a refusal and cannot
   see remaining quota.
-- `costMicros(model, usage)` prices a call from `PRICES` (list prices read 2026-11-11, cache writes at the five-minute
-  rate); `priceOf(model)` finds a price with or without the id's -YYYYMMDD date. This is the network's one price table:
+- `costMicros(model, usage)` prices a call from `PRICES` (list prices read 2026-11-11): `cacheWrite` is five-minute cache
+  writes, `cacheWrite1h` one-hour ones (2x input), and Haiku 5.5's `long` price applies to each request whose prompt
+  (input, cache reads and both cache writes) is over 100,000 tokens. `./anthropic` splits the response's
+  `cache_creation` by TTL and keeps the over-the-line requests in `usage.long`, so its `usage` goes straight in; a usage
+  without `long` is priced as one request. `priceOf(model)` finds a price with or without the id's -YYYYMMDD date. This is the network's one price table:
   a site prices its calls here, never in a copy. Every active model in `./anthropic` `MODELS` has a price (a test checks).
 
 **Tests.** `test/ai-engine.test.mjs`.

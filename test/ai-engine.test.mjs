@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { MODELS } from "../anthropic.mjs";
+import { MODELS, messages } from "../anthropic.mjs";
 import { PRICES, costMicros, engineFor, normalizeSettings, priceOf, runAi } from "../ai-engine.mjs";
 
 const started = { ok: true, outcome: "started", sessionUrl: "https://claude.ai/code/session_x" };
@@ -116,4 +116,53 @@ test("PLANT: every active model has a price, found with or without its snapshot 
     costMicros("claude-sonnet-5", { input: 1000, output: 0, cacheRead: 100, cacheWrite: 0 }),
     2020,
   );
+});
+
+test("PLANT: one-hour cache writes and Haiku 5.5 prompts over 100,000 tokens pay their own price, per request", async () => {
+  // Two requests in one call (pause_turn): the first has a 120,000-token prompt, 100,000 of it a one-hour cache
+  // write; the second has 60,000 and an older response shape with no `cache_creation` split.
+  const replies = [
+    {
+      content: [{ type: "text", text: "a" }],
+      stop_reason: "pause_turn",
+      usage: {
+        input_tokens: 20_000,
+        output_tokens: 1_000,
+        cache_creation_input_tokens: 100_000,
+        cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 100_000 },
+      },
+    },
+    {
+      content: [{ type: "text", text: "b" }],
+      stop_reason: "end_turn",
+      usage: {
+        input_tokens: 2_000,
+        output_tokens: 500,
+        cache_read_input_tokens: 50_000,
+        cache_creation_input_tokens: 8_000,
+      },
+    },
+  ];
+  let n = 0;
+  const fetcher = async () => new Response(JSON.stringify(replies[n++]), { status: 200 });
+  const r = await messages(
+    { ANTHROPIC_API_KEY: "sk-ant-sample" },
+    "sample",
+    { model: "claude-haiku-5-5", max_tokens: 10, messages: [{ role: "user", content: "Hi" }] },
+    { fetcher, log: false },
+  );
+  assert.equal(r.ok, true);
+  assert.deepEqual(
+    [r.usage.cacheWrite, r.usage.cacheWrite1h, r.usage.long.cacheWrite1h],
+    [8_000, 100_000, 100_000],
+  );
+  // First at the long price: 20,000 x $0.50 + 100,000 x $1 + 1,000 x $2.50 = 112,500 micro-dollars. Second at the
+  // standard price: 2,000 x $0.10 + 50,000 x $0.01 + 8,000 x $0.125 + 500 x $0.50 = 1,950.
+  assert.equal(costMicros("claude-haiku-5-5", r.usage), 114_450);
+  // One request on its own: the line is "over 100,000", so exactly 100,000 is still the standard price.
+  const one = { output: 0, cacheRead: 0, cacheWrite: 0 };
+  assert.equal(costMicros("claude-haiku-5-5", { ...one, input: 100_000 }), 10_000);
+  assert.equal(costMicros("claude-haiku-5-5", { ...one, input: 100_002 }), 50_001);
+  // Sonnet 5 one-hour writes at 2x input ($4), not the five-minute $2.50.
+  assert.equal(costMicros("claude-sonnet-5", { ...one, input: 0, cacheWrite1h: 1_000 }), 4_000);
 });
