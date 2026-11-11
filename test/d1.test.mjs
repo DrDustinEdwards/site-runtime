@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { SQLiteSyncDialect, sqliteTable, text } from "drizzle-orm/sqlite-core";
-import { chunked, escapeLike, inChunks, likeContains, rowsPerInsert } from "../d1.mjs";
+import { chunked, escapeLike, inChunks, inList, likeContains, rowsPerInsert } from "../d1.mjs";
 
 test("chunked and inChunks keep D1 under 100 bound parameters; an empty list runs nothing", async () => {
   assert.deepEqual(chunked([1, 2, 3, 4, 5], 2), [[1, 2], [3, 4], [5]]);
@@ -27,4 +27,12 @@ test("likeContains matches %, _ and \\ as typed", () => {
   const q = new SQLiteSyncDialect().sqlToQuery(likeContains(t.name, "a_b%"));
   assert.equal(q.sql, `"t"."name" LIKE ? ESCAPE '\\'`);
   assert.deepEqual(q.params, ["%a\\_b\\%%"]);
+});
+
+test("inList binds any number of values as one parameter", () => {
+  const t = sqliteTable("t", { id: text("id") });
+  const ids = Array.from({ length: 500 }, (_, i) => `id${i}`);
+  const q = new SQLiteSyncDialect().sqlToQuery(inList(t.id, ids));
+  assert.equal(q.sql, `"t"."id" IN (SELECT value FROM json_each(?))`);
+  assert.deepEqual(q.params, [JSON.stringify(ids)]);
 });

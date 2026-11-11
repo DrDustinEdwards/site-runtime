@@ -1,11 +1,32 @@
 /**
  * D1's statement limits, written once. D1 refuses a statement with more than 100 bound parameters ("too many SQL
- * variables", https://developers.cloudflare.com/d1/platform/limits/), so every IN list and every multi-row insert
- * built from data is cut to fit here. LIKE patterns built from what someone typed are escaped here too, so a `%` or
+ * variables", https://developers.cloudflare.com/d1/platform/limits/). An IN list built from data goes through inList,
+ * one JSON parameter at any length; a multi-row insert is cut to fit with chunked and rowsPerInsert. LIKE patterns built from what someone typed are escaped here too, so a `%` or
  * `_` in a search box matches itself instead of everything. Each was a copy, or missing, in five sites (the
  * 2026-11-11 third audit pass).
  */
 import { sql } from "drizzle-orm";
+
+/**
+ * `column IN (the values)` bound as ONE parameter: the values travel as a JSON array that `json_each` opens
+ * (https://developers.cloudflare.com/d1/sql-api/query-json/), so the list can be any length, the statement stays one
+ * statement (an UPDATE or DELETE stays atomic, unlike a chunked loop), and SQLite still uses the column's index for
+ * the IN subquery. An empty list matches nothing, as Drizzle's inArray does. Values are strings or numbers.
+ * @param {import("drizzle-orm").SQLWrapper} column
+ * @param {readonly (string | number)[]} values
+ */
+export function inList(column, values) {
+  return sql`${column} IN (SELECT value FROM json_each(${JSON.stringify(values)}))`;
+}
+
+/**
+ * `column NOT IN (the values)`, bound as one parameter like inList. An empty list matches every row.
+ * @param {import("drizzle-orm").SQLWrapper} column
+ * @param {readonly (string | number)[]} values
+ */
+export function notInList(column, values) {
+  return sql`${column} NOT IN (SELECT value FROM json_each(${JSON.stringify(values)}))`;
+}
 
 /** D1's ceiling on bound parameters in one statement. */
 export const D1_MAX_BOUND_PARAMS = 100;

@@ -1,5 +1,9 @@
 import type { SQL, SQLWrapper } from "drizzle-orm";
 
+/** `column IN (values)` bound as one JSON parameter (json_each): any length, one statement. Empty matches nothing. */
+export function inList(column: SQLWrapper, values: readonly (string | number)[]): SQL;
+/** `column NOT IN (values)` bound as one JSON parameter. Empty matches every row. */
+export function notInList(column: SQLWrapper, values: readonly (string | number)[]): SQL;
 /** D1's ceiling on bound parameters in one statement (100). */
 export const D1_MAX_BOUND_PARAMS: number;
 /** The longest IN list (90), leaving room for the statement's other parameters. */
