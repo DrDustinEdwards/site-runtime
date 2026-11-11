@@ -134,8 +134,8 @@ const cookieNames = (/** @type {Request} */ request) =>
 
 /**
  * Run in the Renderer on every response, last. Anything not marked shared, anything but a 200 (an error page rendered
- * under a shared route's headers) and anything setting a cookie is sent `private, no-store` with no edge header or tag,
- * so it is stored nowhere. Pass the request: a page rendered for a cookie (other than `publicCookies`, which the key
+ * under a shared route's headers) and anything setting a cookie is sent `private, no-store`; anything not shared gets
+ * an edge `no-store` and no tag, so the edge stores only what a purge reaches. Pass the request: a page rendered for a cookie (other than `publicCookies`, which the key
  * already holds) is never stored, and neither is the answer to a HEAD, whose empty body would be served to every
  * reader of the page. A stored page with no validator gets `Last-Modified`, the time it was rendered: it stays the
  * same until a purge or a deploy renders it again, so `forReader` can answer a returning reader 304. Returns the
@@ -153,7 +153,9 @@ export function settleCacheHeaders(response, request, { publicCookies = [] } = {
     if (!headers.has("Cache-Control") || response.status !== 200 || personal)
       headers.set("Cache-Control", UNCACHED);
     if (headers.get("Cache-Control") !== SHARED_CACHE_CONTROL) {
-      headers.delete(EDGE_CACHE_HEADER);
+      // Only a shared page is purged on a write, so nothing else is kept at the edge: a route's own lifetime (a feed's
+      // hour) stays the browser's, and the Workers cache, which reads this header first (RFC 9213), stores none of it.
+      headers.set(EDGE_CACHE_HEADER, "no-store");
       headers.delete("Cache-Tag");
     } else if (!headers.has("Last-Modified") && !headers.has("ETag")) {
       headers.set("Last-Modified", new Date().toUTCString());

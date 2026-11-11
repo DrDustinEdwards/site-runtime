@@ -12,6 +12,9 @@
  *   `emailLinkResult` for what the page says after.
  */
 
+/** Better Auth's error code when a new account's address is at a disposable domain (`./sign-in-form` refuseDisposable). */
+export const DISPOSABLE_EMAIL = "disposable_email";
+
 /** Where the mailed sign-in link opens unless the site names another page: "/sign-in/confirm". */
 export const CONFIRM_PATH = "/sign-in/confirm";
 
@@ -138,7 +141,7 @@ export async function confirmSignInLink(auth, request) {
 }
 
 /**
- * @typedef {"signed-in" | "used" | "expired" | "invalid" | "missing" | "failed"} SignInLinkProblem
+ * @typedef {"signed-in" | "used" | "expired" | "invalid" | "missing" | "disposable" | "failed"} SignInLinkProblem
  */
 
 /**
@@ -150,6 +153,7 @@ export async function confirmSignInLink(auth, request) {
  * - "expired": INVALID_TOKEN after it;
  * - "invalid": INVALID_TOKEN with no send time (a link from before this version, or one cut or edited);
  * - "missing": no token and no error: the link was cut short when copied;
+ * - "disposable": a new account at a disposable address (refuseDisposable), which a new link would not change;
  * - "failed": any other error (the account could not be made, the session could not be written).
  * @param {string | URL} url the page's URL
  * @param {{ signedIn?: boolean, now?: number }} [options]
@@ -160,6 +164,7 @@ export function signInLinkProblem(url, { signedIn = false, now = Date.now() } = 
   const error = params.get("error");
   if (!error) return params.get("token") ? null : "missing";
   if (signedIn) return "signed-in";
+  if (error === DISPOSABLE_EMAIL) return "disposable";
   if (error !== "INVALID_TOKEN") return "failed";
   const sent = Number(params.get(SENT));
   if (!Number.isFinite(sent) || sent <= 0) return "invalid";
@@ -187,6 +192,10 @@ export const SIGN_IN_LINK_WORDS = Object.freeze({
   missing: Object.freeze({
     title: "This link is not complete",
     text: "It may have been cut short when it was copied. Open it straight from the email, or send yourself a new one.",
+  }),
+  disposable: Object.freeze({
+    title: "Use a real email address",
+    text: "Disposable email addresses are not allowed. Sign in with an address you keep.",
   }),
   failed: Object.freeze({
     title: "That sign-in did not finish",

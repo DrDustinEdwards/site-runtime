@@ -150,6 +150,7 @@ export {
   requireFreshSession,
   revokeSessionById,
   securityHistory,
+  sessionIsFresh,
   sessionLookup,
   sessionRows,
   sessionTouch,
@@ -402,10 +403,26 @@ export async function signInOptions(
   };
 }
 
-/** Refuses a new account at a disposable address (`./sign-in-form`, refuseDisposable). */
+/**
+ * Refuses a disposable address (`./sign-in-form`, refuseDisposable): a new account's, whichever way it is made, and a
+ * new address asked for on Better Auth's own /change-email, so a direct call is refused as the account page's
+ * accountFormAction refuses it.
+ */
 const NO_DISPOSABLE = {
   id: "no-disposable-email",
   init: () => ({ options: { databaseHooks: { user: { create: { before: refuseDisposable } } } } }),
+  hooks: {
+    before: [
+      {
+        /** @param {{ path?: string }} ctx */
+        matcher: (ctx) => ctx.path === "/change-email",
+        handler: createAuthMiddleware(async (ctx) => {
+          const newEmail = /** @type {{ newEmail?: unknown } | undefined} */ (ctx.body)?.newEmail;
+          if (typeof newEmail === "string") await refuseDisposable({ email: newEmail });
+        }),
+      },
+    ],
+  },
 };
 
 /**

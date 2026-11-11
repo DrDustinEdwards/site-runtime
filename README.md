@@ -261,7 +261,7 @@ delay), the longest script the Long Animation Frames API saw (address, function,
 it as `web_vital`, every number rounded to the millisecond, the page and script cut to origin and path, and the target a
 CSS selector of the site's own markup. It goes to the site's own origin (`connect-src 'self'`), never to a third party.
 
-A site starts it with `startPage()` (`./page-client`, below), not by calling `reportInp` itself.
+A site starts it with `startPage()` (`./page-client`, below), not by calling `reportInp` itself. `startPage()` loads it as its own chunk once the page has loaded (web-vitals reads buffered entries, and its README asks for it to be deferred), so it stays out of every page's first download.
 
 ### Trusted Types: the default policy
 
@@ -276,13 +276,22 @@ built as DOM. `installTrustedTypes()` from `./trusted-types`, called first in th
   script as a `trusted-types-default-policy` report, so the place can be fixed.
 - Script URLs: same-origin only. Script text (eval, `new Function`, a script's text): always refused. The browser
   reports both itself.
+- Whole-document parses (DOMParser's `parseFromString`): escaped like other HTML, unless the page holds
+  `allowDocumentParsing()`. A parsed document is inert (its scripts never run and it loads nothing), so a page whose
+  library must parse markup it fetched, such as Foxing's EPUB reader building each chapter's frame, holds it while that
+  library runs and calls the function it returned to let go.
+- A same-origin frame the page builds (blob: or about:blank) inherits the page's Content-Security-Policy but not its
+  policies: `installTrustedTypes({ target: frame.contentWindow })` gives it the same default policy. `allowHtml`, a
+  check matching a library's exact markup, lets that one string through where the site cannot change the library.
 
 The policy names a site's `trusted-types` directive lists are `TRUSTED_TYPES_NAMES` (`default`, `capsomer`,
 `enarratio`, `turnstile`), plus `dompurify` where a site sanitizes untrusted HTML with DOMPurify's
 `RETURN_TRUSTED_TYPE`.
 
 A client entry does not call it, or `reportInp`, by itself: `startPage()` from `./page-client` is the first line of
-every client entry (a React Router `entry.client`, a plain site script, each island) and does both. A page with several
+every client entry (a React Router `entry.client`, a plain site script, each island) and does both. It also sets Zod's
+`jitless` flag (the config `z.config()` writes), so a site's client Zod never probes `new Function`, which every site's
+policy refuses and reports. A page with several
 entries calls it in each; only the first does anything.
 
 ```js
@@ -913,15 +922,82 @@ render wait for the whole document. The request's nonce (`./context`) goes on Re
 500; `handleError` is `./log`'s handleServerError. `reactEntry({ nonce })` builds the same entry with another nonce
 reader, for a renderer that stores pages under a placeholder nonce.
 
+## The Worker
+
+`./worker` is every React Router site's `workers/app.ts`: the gateway, the Renderer the Workers cache stores pages
+from, the request log and the cron handler. A site names what is its own and nothing else:
+
+```ts
+import { WorkerEntrypoint } from "cloudflare:workers";
+import { defineSite, siteRenderer, siteWorker } from "@dustinedwards/site-runtime/worker";
+
+const site = defineSite<Env>({
+  name: "Sample",
+  serverBuild: () => import("virtual:react-router/server-build"),
+  mode: import.meta.env.MODE,
+  withSecurityHeaders, // pageSecurity's
+  canonical: { host: "example.com" },
+  files: standardFiles({ origin: SITE_URL, manifest }), // Prelum ./files
+  speculationExclude: ["/admin"],
+  operator: (env) => ({ backup_status: { description: "...", run: () => backupStatus(env) } }),
+  steps: [mediaStep, carrelStep], // (request, env, ctx, kit) => Response | undefined
+  preloads: FONT_PRELOADS,
+  wrap: (handler) => markdownCopies(handler, { origin: SITE_URL, siteMarkdown: false }),
+  cron: cronJobs,
+});
+export class Renderer extends siteRenderer(WorkerEntrypoint, site) {}
+export default siteWorker(site);
+```
+
+The gateway runs, in order: the canonical move (first, with the set built for where it points), maintenance,
+`/.well-known/security.txt`, the standard files, the speculation rules file, CSP reports (per `clientIp` through
+`CSP_REPORT_RATE_LIMIT`; no binding drops them), the operator API, the site's steps, the cross-site write refusal (all
+but `crossSiteExempt`, default `/api/auth/`), then the page. A read with no cookie but `publicCookies` that `cacheable` does not
+refuse goes to the Renderer, which the edge keeps only when it is shared (anything else carries an edge `no-store`), keyed on path, query (tracking
+parameters dropped), host and each public cookie; every other request is rendered live with its own nonce and leaves
+`private, no-store` unless its route set a policy of its own. A route marks its page shared (`publicPageHeaders`); a site whose routes name
+no Cache-Control passes `publicPages(url, env)` instead, and the Renderer stores each such 200 under the tags it
+returns. Every render gets a nonce; a policy that names it is renewed
+per reader; a 304 leaves out the policy (RFC 9111 4.3.4: the browser updates its stored headers from a 304). Every HTML
+answer carries the Speculation-Rules header; a 404 goes through `onNotFound` (site-api's tombstones) and is counted
+unless under `/api/` or `/preview/`; a gateway that throws is a plain 500 with the set and a `gateway_error` line. Around
+it: the request log (DEPLOY_SHA, preview tokens cut, the route named from the build, loaded inside the request), `wrap`,
+then each of `adminIdle`. An unknown cron warns `cron_unknown` and runs nothing; a known one is awaited through
+`runJobs`.
+
 ## Request helpers
 
-`./http`: `clientIp(request)` (`cf-connecting-ip`, else the one shared key "unknown"), `isWrite(request)`,
+`./http`: `clientIp(request)` (the rate-limit key: `cf-connecting-ip` as IPv4 or its IPv6 /64, else the one shared key "unknown"), `ipBucket(ip)`, `isWrite(request)`,
 `textResponse` and `jsonResponse` (`private, no-store`), `timedFetch` (a 20 s timeout unless the caller passes a
 signal) and `fetchUntil(signal)` (also stops when a reader or tool call is canceled), `isWorkerPreview(env)` and
 `publicOrigin(env, canonical)` (`PUBLIC_ORIGIN` before a cutover, else the canonical origin). `./log` has
 `errorMessage(error)`; `./url` has `redirectStatus(method)` (301, or 308 for a form) and `isSameOriginPath(path)`;
 `./headers` has `hostCookie(name, value, { path })` (`__Secure-` on a path other than `/`) and `readCookie(request,
 name)`, which reads only the prefixed names.
+
+## D1 statement limits
+
+`./d1`: D1 refuses a statement with more than 100 bound parameters ([limits](https://developers.cloudflare.com/d1/platform/limits/)),
+so an IN list or a multi-row insert built from data goes through here. `inList(column, values)` and
+`notInList(column, values)` bind the whole list as one JSON parameter (`IN (SELECT value FROM json_each(?))`,
+[JSON functions](https://developers.cloudflare.com/d1/sql-api/query-json/)): any length, one statement, so an UPDATE
+or DELETE stays atomic; an empty list matches nothing (inList) or everything (notInList). For inserts and loops: `chunked(items, size = IN_LIST_CHUNK)` (90,
+room for the statement's other parameters), `inChunks(items, (part) => query)` (one slice after another, rows in
+order, nothing run for an empty list) and `rowsPerInsert(columns)`. A LIKE pattern from what someone typed goes through
+`likeContains(column, text)` or `likeStartsWith(column, text)` (Drizzle SQL ending `ESCAPE '\'`), or `escapeLike(text)`
+for hand-written SQL, so `%` and `_` match themselves. A newest-first page goes by `encodeCursor(at, id)`, `decodeCursor(text)` and
+`olderThan(atColumn, idColumn, at, id)` (order by both, descending): a time alone skips the rows that share the last
+row's millisecond. Sites with Drizzle only: it imports `drizzle-orm`.
+
+## CSV
+
+`./csv`: `toCsv(header, rows)`, `recordsCsv(records, columns?)`, `csvRow(cells)` and `csvCell(value)` write RFC 4180
+(CRLF after every record, a field quoted when it holds a comma, quote or line break; a list joined with "; "). A text cell
+starting `=`, `+`, `-`, `@`, a tab, CR or LF, or the full-width ＝ ＋ － ＠, gets an apostrophe first, so a spreadsheet opens
+it as text ([OWASP CSV Injection](https://owasp.org/www-community/attacks/CSV_Injection)); a number, a date, or text
+that is only a number stays as it is. `parseCsv(text)` reads it back (BOM, CRLF, LF or CR, quoted fields).
+`csvResponse(csv, filename, init?)` is the download answer (`CSV_CONTENT_TYPE` and an RFC 6266 attachment name), and
+`./csv-client` `downloadCsv(filename, csv)` saves one in the browser.
 
 ## Signed links
 
@@ -1079,7 +1155,7 @@ const auth = betterAuth({
   `confirmSignInLink` carries it to `errorCallbackURL` (the confirm page itself when the site names none), txasm's way.
   The page's loader calls `signInLinkProblem(request.url, { signedIn })`: null (show the button), `"used"` (within
   `SIGN_IN_EXPIRES_IN_SECONDS` of the mail), `"expired"` (after), `"invalid"` (no send time: a link cut or edited, or
-  mailed before 0.59.0), `"missing"` (no token: cut short when copied), `"failed"` (any other error), or `"signed-in"`
+  mailed before 0.59.0), `"missing"` (no token: cut short when copied), `"disposable"` (a new account at a disposable address), `"failed"` (any other error), or `"signed-in"`
   (this browser is signed in, so nothing more to do). `SIGN_IN_LINK_WORDS[problem]` is `{ title, text }` in the
   network's words; a site may use its own.
 - The email change's links open a page too (E1). Better Auth's `/verify-email` link acts on a GET (it approves the
@@ -1389,18 +1465,30 @@ export async function action({ request, context }: Route.ActionArgs) {
   page's form POST (`/auth/google`, `/auth/apple`), so the landing is decided on the server. Answers the provider's URL
   and Better Auth's state cookie, or null.
 - `authHandler(auth, request)`: the `/api/auth/*` route. Better Auth's answer, `no-store` when it says nothing.
-- `accountOptions({ confirmPath, sendEmailChange, beforeDelete })`: spread beside `signInOptions`. The email change
+- `accountOptions({ confirmPath, sendEmailChange, beforeDelete, afterDelete })`: spread beside `signInOptions`. The email change
   takes two links, the current address first, each opening the site's confirm page (`confirmEmailLink`), each lasting
   EMAIL_CHANGE_EXPIRES_IN_WORDS (1 hour); `sendEmailChange({ to, link, token, step, newEmail, expiresIn })` mails
-  both. Deletion runs only from the site's own route (`/delete-user` and its callback are off) after `beforeDelete`.
-  Spread its `disabledPaths` with the sign-in's.
+  both. Deletion runs only from the site's own route (`/delete-user` and its callback are off) after `beforeDelete`;
+  `afterDelete`, when given, runs once Better Auth has removed the account (clean-up outside the database). A
+  disposable new address is refused on Better Auth's own `/change-email` too (`signInOptions`' plugin). Spread its
+  `disabledPaths` with the sign-in's.
+- `accountFormAction(auth, request, form, { deletedLanding, beforeDelete })`: the account page's three posts, for
+  Capsomer's account settings (`capsomer/react/sign-in-settings`): `intent=change-email` (`newEmail`; refused when
+  malformed, unchanged, disposable or on an address never confirmed, then Better Auth's two-link change),
+  `intent=sign-out-device` (`session`, an id, so no token reaches the page) and `intent=delete-account` (`confirm`, the
+  ticked box; the site's `beforeDelete(user, form)` runs first and a string it returns is the refusal, then
+  `auth.api.deleteUser` and `{ location: deletedLanding, headers }` with the cleared cookies). Each needs a sign-in from
+  the last FRESH_SECONDS; without one the state says `stale`. Any other intent answers null, for the site's own posts.
+  The words are `ACCOUNT_WORDS`.
 - Disposable addresses: `signInOptions` refuses a new account at a disposable domain or a subdomain of one
   (`isDisposableEmail`, `disposable_email`), from the CC0 list at disposable-email-domains, in
   `disposable-domains.mjs`, plus `NETWORK_EXTRA` (domains a site blocked before that the source lacks). `node update-disposable.mjs` refreshes it; never edit it by hand.
 
 **Tests.** `test/sign-in-form.test.mjs`: the next-path escapes, a disposable subdomain, the headers and token the link
-request carries, each refusal's words, a code's cookie-only redirect, no-store, both email-change links, and the
-disposable refusal on the real Better Auth beside a site's own user hook.
+request carries, each refusal's words, a code's cookie-only redirect, no-store, both email-change links, the
+disposable refusal on the real Better Auth beside a site's own user hook, and the account page's posts on the real
+Better Auth (the email change's refusals and its first link, the delete's box and the site's refusal, a stale sign-in,
+and the delete clearing the cookies).
 
 ## The live sign-in check
 
@@ -1525,8 +1613,11 @@ const run = await runAi({
 - At the cap, `api` uses the routine and `auto` stops falling back.
 - Subscription usage cannot be read (claude.ai/settings/usage is the only meter), so `auto` reacts to a refusal and cannot
   see remaining quota.
-- `costMicros(model, usage)` prices a call from `PRICES` (list prices read 2026-11-11, cache writes at the five-minute
-  rate); `priceOf(model)` finds a price with or without the id's -YYYYMMDD date. This is the network's one price table:
+- `costMicros(model, usage)` prices a call from `PRICES` (list prices read 2026-11-11): `cacheWrite` is five-minute cache
+  writes, `cacheWrite1h` one-hour ones (2x input), and Haiku 5.5's `long` price applies to each request whose prompt
+  (input, cache reads and both cache writes) is over 100,000 tokens. `./anthropic` splits the response's
+  `cache_creation` by TTL and keeps the over-the-line requests in `usage.long`, so its `usage` goes straight in; a usage
+  without `long` is priced as one request. `priceOf(model)` finds a price with or without the id's -YYYYMMDD date. This is the network's one price table:
   a site prices its calls here, never in a copy. Every active model in `./anthropic` `MODELS` has a price (a test checks).
 
 **Tests.** `test/ai-engine.test.mjs`.
@@ -1866,6 +1957,34 @@ if (!(await safeEqual(presentedToken, env.OPERATOR_TOKEN)))
   bytes where it does not (Node).
 - It is async, since WebCrypto's digest is. A side that is not a string, or is empty, matches nothing, so an unset secret
   never admits an absent credential.
+
+## Money
+
+`./money` is the one money formatter, for display and for form inputs, on the server and in the browser. Amounts are
+stored as integers and only become a currency string for display.
+
+```js
+import {
+  formatMoney,
+  formatMoneyShort,
+  moneyInputValue,
+  parseMoneyInput,
+} from "@dustinedwards/site-runtime/money";
+formatMoney(4500, "usd"); // "$45.00"
+formatMoney(5000, "jpy"); // "¥5,000": JPY's minor unit is the yen
+formatMoneyShort(1060, "usd"); // "$11", for stat tiles and dense lists
+formatMoney(2_500_000, "usd", { scale: 6 }); // "$2.50" from micros
+moneyInputValue(4500, "usd"); // "45.00", an input's defaultValue
+parseMoneyInput("1,250.50", "usd"); // 125050, or null when blank, negative or not a plain figure
+```
+
+- The stored unit is the currency's minor unit as Stripe sends it (https://docs.stripe.com/currencies): a hundredth for
+  most, the whole unit for the zero-decimal currencies (JPY, KRW and the rest), a thousandth for BHD, JOD, KWD, OMR and
+  TND. ISK and UGX are sent as hundredths and shown with no decimals. `currencyExponent` is that table, and
+  `toMajorUnits`/`fromMajorUnits` convert for charts and exports.
+- `scale` names another stored unit, as a power of ten: 3 for mills, 6 for micros, 0 for whole units.
+- `digits` sets the places shown. Text is `Intl.NumberFormat` in en-US, one formatter per currency and digit count. A
+  code Intl refuses prints as "50.00 XYZ" and never throws.
 
 ## The Access request check
 

@@ -8,7 +8,14 @@ import {
   summarizeVital,
   trimReportUrl,
 } from "../csp-report.mjs";
-import { callerScript, defaultRules, escapedReport, REACT_SCRIPT_STUB } from "../trusted-types.mjs";
+import {
+  allowDocumentParsing,
+  callerScript,
+  defaultRules,
+  DOCUMENT_PARSE_SINK,
+  escapedReport,
+  REACT_SCRIPT_STUB,
+} from "../trusted-types.mjs";
 
 const URL_ = "https://site.example.com/csp-report";
 const legacy = {
@@ -271,6 +278,32 @@ test("PLANT: the Trusted Types default policy passes only React's script stub an
   assert.equal(rules.createScriptURL("https://evil.example/a.js"), null);
   assert.equal(rules.createScriptURL("//evil.example/a.js"), null);
   assert.equal(rules.createScript(), null);
+
+  // A whole-document parse passes only while a page holds allowDocumentParsing(), and a release counts once.
+  const chapter = '<?xml version="1.0"?><html><body><p onclick="x()">Hi</p></body></html>';
+  assert.notEqual(rules.createHTML(chapter, "TrustedHTML", DOCUMENT_PARSE_SINK), chapter);
+  const release = allowDocumentParsing();
+  const other = allowDocumentParsing();
+  assert.equal(rules.createHTML(chapter, "TrustedHTML", DOCUMENT_PARSE_SINK), chapter);
+  assert.notEqual(rules.createHTML(chapter, "TrustedHTML", "Element innerHTML"), chapter);
+  release();
+  release();
+  assert.equal(rules.createHTML(chapter, "TrustedHTML", DOCUMENT_PARSE_SINK), chapter);
+  other();
+  assert.notEqual(rules.createHTML(chapter, "TrustedHTML", DOCUMENT_PARSE_SINK), chapter);
+
+  // A site's allowHtml lets exactly its library's markup through; everything else is still escaped.
+  const box = '<div data-lib="1"></div>';
+  const framed = defaultRules(
+    () => {},
+    "https://example.com",
+    (html) => html === box,
+  );
+  assert.equal(framed.createHTML(box, "TrustedHTML", "Element innerHTML"), box);
+  assert.equal(
+    framed.createHTML(`${box}<img src=x>`, "TrustedHTML", "Element innerHTML"),
+    "&lt;div data-lib=&quot;1&quot;&gt;&lt;/div&gt;&lt;img src=x&gt;",
+  );
 
   const stack = [
     "Error",

@@ -38,6 +38,7 @@
  */
 
 const ANTHROPIC_ORIGIN = "https://api.anthropic.com";
+import { priceOf } from "./ai-engine.mjs";
 import { logEvent, scrubText } from "./log.mjs";
 
 export const ANTHROPIC_VERSION = "2026-10-21";
@@ -304,7 +305,7 @@ async function answer(env, app, request, options, parse) {
     const sent = await send(call, body);
     if (!sent.ok) return finish(call, { ...sent, pauses });
     const message = sent.message;
-    add(call.usage, message.usage);
+    add(call.usage, message.usage, call.model);
     content.push(...(Array.isArray(message.content) ? message.content : []));
     if (message.stop_reason === "pause_turn" && pauses < call.maxPauses) {
       // Send the assistant's content back unchanged, with its container, so the server tool loop resumes.
@@ -423,7 +424,7 @@ export async function* stream(env, app, request, options = {}) {
       sent.idle.stop();
     }
     const ids = { requestId: sent.requestId, pauses: 0 };
-    if (message) add(call.usage, message.usage);
+    if (message) add(call.usage, message.usage, call.model);
     if (broken || !message) {
       yield done({ ...failure(broken?.kind ?? "unavailable", { status: 200 }), ...broken, ...ids });
       return;
@@ -431,7 +432,7 @@ export async function* stream(env, app, request, options = {}) {
     yield done({ ...stopped({ ...message, content: content.filter(Boolean) }), ...ids });
   } finally {
     if (!reported) {
-      if (message) add(call.usage, message.usage);
+      if (message) add(call.usage, message.usage, call.model);
       finish(call, {
         ...failure("aborted", { status: 200 }),
         requestId: sent?.requestId,
@@ -447,7 +448,8 @@ export async function* stream(env, app, request, options = {}) {
  *   betas?: string[]; signal?: AbortSignal; fetcher?: typeof fetch; sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
  *   log?: boolean; onResult?: (record: Record<string, unknown>) => void | Promise<void>;
  * }} CallOptions
- * @typedef {{ input: number; output: number; cacheRead: number; cacheWrite: number }} Usage
+ * @typedef {{ input: number; output: number; cacheRead: number; cacheWrite: number; cacheWrite1h: number }} Counts
+ * @typedef {Counts & { long: Counts }} Usage
  * @typedef {{ ok: boolean; [key: string]: any }} MessageResult
  */
 
@@ -512,7 +514,7 @@ function prepare(env, app, request, options, streaming) {
     onResult: options.onResult,
     attempts: 0,
     /** @type {Usage} */
-    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    usage: { ...noTokens(), long: noTokens() },
   };
 }
 
@@ -753,13 +755,41 @@ function failure(kind, fields) {
  * Adds a response's usage to the call's running totals.
  * @param {Usage} total
  * @param {any} usage
+ * @param {string} model
  */
-function add(total, usage) {
+function add(total, usage, model) {
   if (!usage) return;
-  total.input += usage.input_tokens ?? 0;
-  total.output += usage.output_tokens ?? 0;
-  total.cacheRead += usage.cache_read_input_tokens ?? 0;
-  total.cacheWrite += usage.cache_creation_input_tokens ?? 0;
+  // The response splits cache writes by TTL in `cache_creation`; without it every write is a five-minute one.
+  const split = usage.cache_creation;
+  const one = {
+    input: usage.input_tokens ?? 0,
+    output: usage.output_tokens ?? 0,
+    cacheRead: usage.cache_read_input_tokens ?? 0,
+    cacheWrite: split
+      ? (split.ephemeral_5m_input_tokens ?? 0)
+      : (usage.cache_creation_input_tokens ?? 0),
+    cacheWrite1h: split ? (split.ephemeral_1h_input_tokens ?? 0) : 0,
+  };
+  sum(total, one);
+  // A model with a long-prompt price (Haiku 5.5 over 100,000 tokens) prices each request on its own prompt, so the
+  // requests over the line are kept apart for ai-engine costMicros.
+  const above = priceOf(model)?.long?.above;
+  if (above !== undefined && one.input + one.cacheRead + one.cacheWrite + one.cacheWrite1h > above)
+    sum(total.long, one);
+}
+
+/** @returns {Counts} */
+function noTokens() {
+  return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cacheWrite1h: 0 };
+}
+
+/** @param {Counts} total @param {Counts} one */
+function sum(total, one) {
+  total.input += one.input;
+  total.output += one.output;
+  total.cacheRead += one.cacheRead;
+  total.cacheWrite += one.cacheWrite;
+  total.cacheWrite1h += one.cacheWrite1h;
 }
 
 /**
@@ -773,7 +803,7 @@ function finish(call, result) {
   /** @type {MessageResult} */
   const out = {
     ...rest,
-    usage: { ...call.usage },
+    usage: { ...call.usage, long: { ...call.usage.long } },
     attempts: call.attempts,
     pauses: result.pauses ?? 0,
   };

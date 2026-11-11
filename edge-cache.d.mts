@@ -26,7 +26,7 @@ export function cacheKey(
   options?: { dimensions?: Record<string, string | undefined> },
 ): string;
 
-/** The Renderer's last step: anything not a shared 200, setting a cookie, or rendered for a request with one, leaves `private, no-store`, with no edge header or tag. */
+/** The Renderer's last step: anything not a shared 200, setting a cookie, or rendered for a request with one, leaves `private, no-store`; anything not shared gets an edge `no-store` and no tag. */
 export function settleCacheHeaders(
   response: Response,
   request?: Request,

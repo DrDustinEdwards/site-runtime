@@ -34,6 +34,7 @@
  * that names them.
  */
 
+import { clientIp } from "./http.mjs";
 import { readCapped } from "./body.mjs";
 import { logEvent } from "./log.mjs";
 
@@ -238,8 +239,7 @@ async function readReport(request, max) {
  */
 export function rateLimitAllow(binding) {
   return async (request) =>
-    binding !== undefined &&
-    (await binding.limit({ key: request.headers.get("CF-Connecting-IP") ?? "unknown" })).success;
+    binding !== undefined && (await binding.limit({ key: clientIp(request) })).success;
 }
 
 /**
