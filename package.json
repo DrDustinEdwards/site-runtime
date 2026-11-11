@@ -190,7 +190,11 @@
     "r2-object.mjs",
     "r2-object.d.mts",
     "jwt.mjs",
-    "jwt.d.mts"
+    "jwt.d.mts",
+    "secret-box.mjs",
+    "secret-box.d.mts",
+    "web-push.mjs",
+    "web-push.d.mts"
   ],
   "type": "module",
   "exports": {
@@ -521,6 +525,14 @@
     "./inbox-report": {
       "types": "./inbox-report.d.mts",
       "default": "./inbox-report.mjs"
+    },
+    "./secret-box": {
+      "types": "./secret-box.d.mts",
+      "default": "./secret-box.mjs"
+    },
+    "./web-push": {
+      "types": "./web-push.d.mts",
+      "default": "./web-push.mjs"
     }
   },
   "scripts": {
