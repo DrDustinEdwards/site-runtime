@@ -81,7 +81,17 @@ import {
   withPurgePages,
 } from "./edge-cache.mjs";
 import { clientIp, isWrite, textResponse } from "./http.mjs";
-import { errorMessage, logEvent, routeNamer, scrubFields, withRequestLog } from "./log.mjs";
+import {
+  PREVIEW_TOKEN,
+  errorMessage,
+  logEvent,
+  routeNamer,
+  scrubFields,
+  tokenPattern,
+  withRequestLog,
+} from "./log.mjs";
+
+export { PREVIEW_TOKEN, tokenPattern };
 import { maintenanceOn, maintenanceResponse } from "./maintenance.mjs";
 import { countNotFound } from "./not-found.mjs";
 import { operatorResponse } from "./operator.mjs";
@@ -95,21 +105,6 @@ import { preloads, rootStylesheets, withPreloadHeader } from "./preload.mjs";
 import { securityTxtResponse } from "./security-txt.mjs";
 import { timedRender } from "./server-timing.mjs";
 import { canonicalRedirect } from "./url.mjs";
-
-/** A preview link's token (Carrel's /preview/<token>), cut from a logged path. */
-export const PREVIEW_TOKEN = /\/(preview)\/[^/?#\s'"]+/g;
-
-/**
- * The pattern for a site's token routes beside the preview link: each match becomes `/<route>/[token]` in the request
- * log and the CSP report log, where a report's page or blocked address would otherwise carry one person's token.
- * @param {readonly string[]} [routes] path prefixes without slashes, such as "u" or "e/c"
- * @returns {RegExp}
- */
-export function tokenPattern(routes = []) {
-  if (routes.length === 0) return PREVIEW_TOKEN;
-  const names = ["preview", ...routes].map((route) => route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  return new RegExp(`\\/(${names.join("|")})\\/[^/?#\\s'"]+`, "g");
-}
 
 /** The security.txt path (RFC 9116 section 3). */
 export const SECURITY_TXT_PATH = "/.well-known/security.txt";

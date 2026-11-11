@@ -919,8 +919,10 @@ A HEAD gets its status and headers with no render. The page streams to people; a
 render wait for the whole document. The request's nonce (`./context`) goes on React's scripts, on ServerRouter and into
 `./nonce`'s `NonceContext` (read it with `useNonce()` for an inline script a component writes). The render stops at
 `streamTimeout` plus a second or when the reader leaves. An error after the shell is one `render_failed` line and a
-500; `handleError` is `./log`'s handleServerError. `reactEntry({ nonce })` builds the same entry with another nonce
-reader, for a renderer that stores pages under a placeholder nonce.
+500; `handleError` is `./log`'s handleServerError, which cuts a preview link's token from the path; a site with token
+routes of its own exports `serverErrorHandler({ tokenPath: tokenPattern(["u", "e/c"]) })` as `handleError` instead.
+`reactEntry({ nonce })` builds the same entry with another nonce reader, for a renderer that stores pages under a
+placeholder nonce.
 
 ## Hydrate on intent
 
@@ -1008,7 +1010,8 @@ the cron fires); an unknown cron warns `cron_unknown` and runs nothing; a known 
 
 A preview link's token is cut from the request log, a `gateway_error` line and every CSP report line (a report names
 the page it came from), as `/preview/[token]`; `tokenRoutes` (`["u", "e/c"]`) adds the site's own token routes, cut
-the same way (`tokenPattern(routes)` is the pattern).
+the same way (`tokenPattern(routes)` in ./log is the pattern; a route error's `server_error` line is entry.server's
+`handleError`, under Server entry).
 
 ## Request helpers
 

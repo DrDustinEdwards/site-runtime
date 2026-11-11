@@ -3,10 +3,7 @@ import type { CronJob } from "./cron.mjs";
 import type { OperatorTool } from "./operator.mjs";
 import type { Preconnect, Preload } from "./preload.mjs";
 
-/** A preview link's token (Carrel's /preview/<token>), cut from a logged path. */
-export const PREVIEW_TOKEN: RegExp;
-/** PREVIEW_TOKEN with the site's token routes ("u", "e/c"): each match is logged as `/<route>/[token]`. */
-export function tokenPattern(routes?: readonly string[]): RegExp;
+export { PREVIEW_TOKEN, tokenPattern } from "./log.mjs";
 /** "/.well-known/security.txt", answered by every site's gateway. */
 export const SECURITY_TXT_PATH: "/.well-known/security.txt";
 
