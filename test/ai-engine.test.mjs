@@ -2,7 +2,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { engineFor, normalizeSettings, runAi } from "../ai-engine.mjs";
+import { MODELS } from "../anthropic.mjs";
+import { PRICES, costMicros, engineFor, normalizeSettings, priceOf, runAi } from "../ai-engine.mjs";
 
 const started = { ok: true, outcome: "started", sessionUrl: "https://claude.ai/code/session_x" };
 const limited = { ok: false, outcome: "rate_limited", error: "429" };
@@ -102,4 +103,17 @@ test("PLANT: a reached API cap closes the API; api uses the routine, auto stops 
     ...jobs(started),
   });
   assert.equal(expired.engine, "subscription");
+});
+
+test("PLANT: every active model has a price, found with or without its snapshot date", () => {
+  for (const [id, entry] of Object.entries(MODELS))
+    if (entry.state === "active") assert.ok(priceOf(id), `${id} has no price in PRICES`);
+  assert.equal(priceOf("claude-haiku-4-5"), PRICES["claude-haiku-4-5-20251001"]);
+  assert.equal(priceOf("claude-sonnet-5-20260101"), PRICES["claude-sonnet-5"]);
+  assert.equal(priceOf("claude-unknown-1"), null);
+  // 1,000 input and 100 cached reads on Sonnet 5: 1000 x $2 + 100 x $0.20 per million = 2,020 micro-dollars.
+  assert.equal(
+    costMicros("claude-sonnet-5", { input: 1000, output: 0, cacheRead: 100, cacheWrite: 0 }),
+    2020,
+  );
 });

@@ -82,6 +82,14 @@ test("a renamed slug is one 301 to its newest name, keeping the rest of the path
 
 test("isSameOriginPath refuses what a browser reads as another host", () => {
   for (const path of ["/", "/a/b?c=1"]) assert.equal(isSameOriginPath(path), true, path);
-  for (const path of ["//evil.example/x", "/\\evil.example/x", "https://evil.example/", "a/b", ""])
+  for (const path of [
+    "//evil.example/x",
+    "/\\evil.example/x",
+    "https://evil.example/",
+    "a/b",
+    "",
+    "/\t/evil.example/x",
+    "/caf\u00e9",
+  ])
     assert.equal(isSameOriginPath(path), false, path);
 });

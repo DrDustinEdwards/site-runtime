@@ -3,7 +3,7 @@
 /** 301 for GET and HEAD, 308 for any other method, so a form body survives a permanent redirect. */
 export function redirectStatus(method: string): 301 | 308;
 
-/** A path a Location may hold on this origin: one leading slash, not `//`, no backslash. */
+/** A path a Location may hold on this origin: one leading slash, not `//`, no backslash, printable ASCII only. */
 export function isSameOriginPath(path: string): boolean;
 
 /**
