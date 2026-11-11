@@ -42,6 +42,13 @@ export const ACCOUNT_WORDS: Readonly<{
   deviceFailed: string;
   noConfirm: string;
   deleteFailed: string;
+  passkeyAddFailed: string;
+  passkeyRenameFailed: string;
+  passkeyRemoveFailed: string;
+  linkFailed: (provider: string) => string;
+  unlinkFailed: (provider: string) => string;
+  othersFailed: string;
+  offline: string;
 }>;
 
 /**

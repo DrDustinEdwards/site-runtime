@@ -64,6 +64,14 @@ export const ACCOUNT_WORDS = Object.freeze({
   deviceFailed: "That device was not signed out. Try again.",
   noConfirm: "Tick the box to confirm, then delete your account.",
   deleteFailed: "The account was not deleted. Try again.",
+  /** The browser's own changes on the account page (Better Auth's client), when one did not go through. */
+  passkeyAddFailed: "The passkey was not saved. Try again.",
+  passkeyRenameFailed: "The passkey was not renamed. Try again.",
+  passkeyRemoveFailed: "The passkey was not removed. Try again.",
+  linkFailed: (/** @type {string} */ provider) => `${provider} was not connected. Try again.`,
+  unlinkFailed: (/** @type {string} */ provider) => `${provider} was not disconnected. Try again.`,
+  othersFailed: "The other devices were not signed out. Try again.",
+  offline: "That did not go through. Check your connection and try again.",
 });
 
 /**
