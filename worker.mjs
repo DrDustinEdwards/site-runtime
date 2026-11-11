@@ -96,6 +96,9 @@ export const SECURITY_TXT_PATH = "/.well-known/security.txt";
 /** Paths the gateway answers itself, which carry no React Router route in the log. */
 const WORKER_PATHS = /^\/(api|health|mcp|media)(\/|$)/;
 
+// The requests a machine file answered, logged under their own path (a site's splat route would name them "/*").
+const answeredFiles = new WeakMap();
+
 /**
  * @template E
  * @param {import("./worker.d.mts").SiteOptions<E>} options
@@ -146,7 +149,7 @@ export function defineSite(options) {
     },
     routeName(request) {
       const path = new URL(request.url).pathname;
-      const own = gatewayRoute(path, options.routeName);
+      const own = answeredFiles.get(request) ?? gatewayRoute(path, options.routeName);
       if (own) return own;
       return WORKER_PATHS.test(path) ? undefined : nameRoute?.(request);
     },
@@ -291,7 +294,10 @@ export function siteWorker(site) {
       return secure(securityTxtResponse({ origin: url.origin }), request, undefined, env);
 
     const file = await options.files?.(request, env);
-    if (file) return secure(file, request, undefined, env);
+    if (file) {
+      answeredFiles.set(request, url.pathname);
+      return secure(file, request, undefined, env);
+    }
 
     if (url.pathname === SPECULATION_RULES_PATH)
       return secure(
