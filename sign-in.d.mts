@@ -40,6 +40,7 @@ export {
   passkeyRows,
   pruneAuthEvents,
   pruneAuthEventsJob,
+  pruneExpiredAuth,
   requireFreshSession,
   revokeSessionById,
   securityHistory,

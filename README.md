@@ -1494,7 +1494,9 @@ its own and the notices by passing one function.
   when there is one, and the device and coarse place; never an address, token or code. `securityHistory(db, userId,
   limit = 50)` gives a person's own sign-ins, passkey and sign-in method changes, email changes and recoveries, newest
   first, as `{ kind, via, at, device, location }` for a page to show. Deleting the account deletes that person's rows.
-  `pruneAuthEvents(db)` is a daily job (`./cron`): rows with no user go after 30 days, the rest after a year. A failed
+  `pruneAuthEvents(db)` is a daily job (`./cron`): rows with no user go after 30 days, the rest after a year. The same job (`pruneAuthEventsJob`) runs
+  `pruneExpiredAuth(db)`, which deletes Better Auth's expired `session` and `verification` rows, since Better Auth
+  never deletes an expired session. A failed
   write is logged (`auth_event_write_failed`) and never stops a sign-in. `./health`'s `authSpikeCheck` reads the same
   table.
 - Sessions list (D5): `await accountSessions(auth, request)` gives `{ id, device, signedInAt, lastActiveAt, current,

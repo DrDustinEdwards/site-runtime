@@ -840,7 +840,19 @@ export async function pruneAuthEvents(db, now = Date.now()) {
 }
 
 /**
- * The nightly job that runs pruneAuthEvents, named "prune-auth-events" on every site (one minute).
+ * Deletes Better Auth's expired sessions and expired one-time values (sign-in links, codes, email-change tokens).
+ * Better Auth deletes a verification row only when it is used and never deletes an expired session, so they pile up
+ * (Foxing had 230 expired verification rows and 181 expired sessions on 2026-10-30). The same cleanup as EmDash 1.4.0
+ * (emdash-cms/emdash#4287, MIT). Every site's tables are `session` and `verification`, with `expires_at` in ms.
+ * @param {D1Like} db @param {number} [now]
+ */
+export async function pruneExpiredAuth(db, now = Date.now()) {
+  await db.prepare("DELETE FROM session WHERE expires_at < ?1").bind(now).run();
+  await db.prepare("DELETE FROM verification WHERE expires_at < ?1").bind(now).run();
+}
+
+/**
+ * The nightly job that runs pruneAuthEvents and pruneExpiredAuth, named "prune-auth-events" on every site (one minute).
  * @param {D1Like} db
  * @returns {import("./cron.d.mts").CronJob}
  */
@@ -849,7 +861,10 @@ export function pruneAuthEventsJob(db) {
     name: "prune-auth-events",
     everyMinutes: 1440,
     timeoutMs: 60_000,
-    run: () => pruneAuthEvents(db),
+    run: async () => {
+      await pruneAuthEvents(db);
+      await pruneExpiredAuth(db);
+    },
   };
 }
 
