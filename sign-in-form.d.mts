@@ -95,7 +95,12 @@ export function startSocialSignIn(
   auth: AuthLike & {
     api: {
       signInSocial: (input: {
-        body: Record<string, string>;
+        body: {
+          provider: string;
+          callbackURL: string;
+          newUserCallbackURL: string;
+          errorCallbackURL: string;
+        };
         headers: Headers;
         asResponse: true;
       }) => Promise<Response>;

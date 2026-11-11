@@ -327,7 +327,7 @@ export async function signInFormAction(auth, request, form, site) {
  * Starts a Google or Apple sign-in from the page's form POST (`/auth/google`, `/auth/apple`), so the provider, the
  * landing and the state cookie are all decided on the server, never by a client-side call. Answers the provider's
  * URL and Better Auth's Set-Cookie (its OAuth state), or null when the provider is not set up.
- * @param {AuthLike & { api: { signInSocial: (input: { body: Record<string, string>, headers: Headers, asResponse: true }) => Promise<Response> } }} auth
+ * @param {AuthLike & { api: { signInSocial: (input: { body: { provider: string, callbackURL: string, newUserCallbackURL: string, errorCallbackURL: string }, headers: Headers, asResponse: true }) => Promise<Response> } }} auth
  * @param {Request} request
  * @param {{ provider: string, callbackURL: string, newUserCallbackURL?: string, errorCallbackURL: string }} start
  * @returns {Promise<{ location: string, headers: Headers } | null>}
