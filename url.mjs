@@ -26,12 +26,17 @@ export function redirectStatus(method) {
 }
 
 /**
- * Whether a path may be put in a Location on this origin: one leading slash and no backslash. `//host/x` and
- * `/\\host/x` are protocol-relative to a browser and would leave the site.
+ * Whether a path may be put in a Location on this origin: one leading slash, no backslash, printable ASCII only.
+ * `//host/x` and `/\\host/x` are protocol-relative to a browser and would leave the site; a browser strips a tab or
+ * newline while parsing, so `/\t/host` becomes `//host`; and a header value cannot carry anything above 0x7e.
  * @param {string} path
  * @returns {boolean}
  */
 export function isSameOriginPath(path) {
+  for (let i = 0; i < path.length; i++) {
+    const code = path.charCodeAt(i);
+    if (code <= 0x20 || code >= 0x7f) return false;
+  }
   return path.startsWith("/") && !path.startsWith("//") && !path.includes("\\");
 }
 
