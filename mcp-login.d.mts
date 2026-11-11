@@ -61,7 +61,7 @@ export function describeRedirect(uri: string): {
   local: boolean;
   warning: string | null;
 };
-/** The consent page's one inline <style>, for the page's Content-Security-Policy hash. */
+/** The consent page's one inline <style> (a minimal copy of Capsomer's consent look), for the page's Content-Security-Policy hash. */
 export const CONSENT_STYLE: string;
 /** The provider's defaultHandler: /health, /authorize (consent page and form, urlencoded only, 64 KiB at most), /callback and /owner. */
 export function loginHandler<E extends LoginEnv>(
