@@ -157,15 +157,15 @@ const integrityNoScript = {
   reason: "The door's pages run no script (default-src 'none'), so none lacks integrity.",
 };
 
-const typesStaged = {
-  value: /** @type {const} */ ("report-only"),
+const typesEnforced = {
+  value: /** @type {const} */ (true),
   reason:
-    "React DOM 19 writes dangerouslySetInnerHTML, and every <script> it creates, through innerHTML with a plain string (react-dom-client), which require-trusted-types-for 'script' refuses unless a policy makes it; the Report-Only policy (buildStagedPolicy) names each sink a page reaches before one is written.",
+    "Enforced: every sink the site's code reaches goes through a named policy (Capsomer's markup() and trustedHtml(), Enarratio's parser, ./turnstile) or is built as DOM, and the default policy (./trusted-types, installed by startPage) passes React DOM 19's script element and text-only strings and escapes the rest. The Report-Only policy's reports (buildStagedPolicy) showed no sink left before this was enforced (2026-11-11).",
 };
-const typesStagedStatic = {
-  value: /** @type {const} */ ("report-only"),
+const typesEnforcedStatic = {
+  value: /** @type {const} */ (true),
   reason:
-    "The Report-Only policy (buildStagedPolicy) names any sink the site's own scripts hand a string to before it is enforced.",
+    "Enforced: the site's own scripts hand no sink a plain string (markup goes through Capsomer's trusted-html or is built as DOM), and the Report-Only policy's reports showed none before this was enforced (2026-11-11).",
 };
 const typesNoScript = {
   value: /** @type {const} */ (true),
@@ -244,7 +244,7 @@ export const dustinedwardsInfo = {
     embeds: /* @__PURE__ */ embeds("the blog"),
     coep: /* @__PURE__ */ coepEmbeds("the podcast audio and the beacon load without cookies"),
     integrityPolicy: integrityStaged,
-    trustedTypes: typesStaged,
+    trustedTypes: typesEnforced,
     denyUnlisted: unlistedStaged,
   },
   deviations: { C3: beaconNotStrict },
@@ -300,7 +300,7 @@ export const foxhound = {
       "the merchant app returns from Stripe and draws its charts and the admin's pages behind a sign-in",
     ),
     integrityPolicy: integrityStaged,
-    trustedTypes: typesStaged,
+    trustedTypes: typesEnforced,
     denyUnlisted: unlistedStaged,
   },
   deviations: { C3: beaconNotStrict },
@@ -334,7 +334,7 @@ export const foxing = {
       "the reader frames each book's pages and loads its covers and fonts",
     ),
     integrityPolicy: integrityStaged,
-    trustedTypes: typesStaged,
+    trustedTypes: typesEnforced,
     denyUnlisted: unlistedStaged,
   },
   deviations: { C3: beaconNotStrict },
@@ -371,7 +371,7 @@ export const germomics = {
       "the data pages load Google Maps' script, tiles and fonts and the games Phaser's assets, none of which this site controls",
     ),
     integrityPolicy: integrityStaged,
-    trustedTypes: typesStaged,
+    trustedTypes: typesEnforced,
     denyUnlisted: unlistedStaged,
   },
   deviations: { C3: beaconNotStrict },
@@ -398,7 +398,7 @@ export const julieedwardsInfo = {
     },
     coep: coepCredentialless,
     integrityPolicy: integrityStaged,
-    trustedTypes: typesStaged,
+    trustedTypes: typesEnforced,
   },
   deviations: { C3: beaconNotStrict },
   assets: {
@@ -430,7 +430,7 @@ export const bsw = {
     },
     coep: coepCredentialless,
     integrityPolicy: integrityStaged,
-    trustedTypes: typesStaged,
+    trustedTypes: typesEnforced,
   },
   deviations: { C3: bswNotStrict },
   assets: {
@@ -459,7 +459,7 @@ export const txasm = {
       "submission, review, the abstract book's PDF.js viewer and the admin sit behind a sign-in",
     ),
     integrityPolicy: integrityStaged,
-    trustedTypes: typesStaged,
+    trustedTypes: typesEnforced,
     denyUnlisted: unlistedStaged,
   },
   deviations: { C3: beaconNotStrict },
@@ -478,7 +478,7 @@ export const carrel = {
     denyUnlisted: nothingUnlisted,
     coep: coepCredentialless,
     integrityPolicy: integrityStagedStatic,
-    trustedTypes: typesStagedStatic,
+    trustedTypes: typesEnforcedStatic,
   },
   deviations: { C3: beaconNotStrict },
   assets: {
@@ -508,7 +508,7 @@ export const carrelDesk = {
       "the editor frames each draft's preview, the site's own markup under a sandbox policy, which COEP would refuse unless it carries it too",
     ),
     integrityPolicy: integrityStaged,
-    trustedTypes: typesStaged,
+    trustedTypes: typesEnforced,
     denyUnlisted: unlistedStaged,
   },
   assets: { paths: /* @__PURE__ */ hashed("/assets/*") },
@@ -533,7 +533,7 @@ export const capsidPortal = {
       reason:
         "The build's tags carry integrity (subresourceIntegrity, ./sri, dashboard/vite.config.ts), but each view is a chunk loaded with import(), which only an import map could give integrity; Report-Only while the reports name them.",
     },
-    trustedTypes: typesStaged,
+    trustedTypes: typesEnforced,
   },
   deviations: {
     C3: {
@@ -574,7 +574,7 @@ export const capsid = {
     denyUnlisted: nothingUnlisted,
     coep: coepCredentialless,
     integrityPolicy: integrityStagedStatic,
-    trustedTypes: typesStagedStatic,
+    trustedTypes: typesEnforcedStatic,
   },
   deviations: { C3: beaconNotStrict },
   assets: {
@@ -603,7 +603,7 @@ export const enarratio = {
     },
     coep: coepCredentialless,
     integrityPolicy: integrityStagedStatic,
-    trustedTypes: typesStagedStatic,
+    trustedTypes: typesEnforcedStatic,
   },
   deviations: { C3: beaconNotStrict },
   assets: {
@@ -672,7 +672,7 @@ export const capsomer = {
       reason:
         "The build's tags carry integrity (subresourceIntegrity, ./sri, site/vite.config.ts), but the admin and some states pages load chunks with import(), which only an import map could give integrity; Report-Only while the reports name them.",
     },
-    trustedTypes: typesStagedStatic,
+    trustedTypes: typesEnforcedStatic,
     denyUnlisted: unlistedStaged,
   },
   deviations: { C3: beaconNotStrict },
@@ -705,7 +705,7 @@ export const prelum = {
     embeds: /* @__PURE__ */ embeds("the specimen's embed section"),
     coep: /* @__PURE__ */ coepEmbeds("the specimen shows every element a post can hold"),
     integrityPolicy: integrityStagedStatic,
-    trustedTypes: typesStagedStatic,
+    trustedTypes: typesEnforcedStatic,
   },
   deviations: { C3: beaconNotStrict },
   assets: {
