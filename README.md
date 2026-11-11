@@ -2919,7 +2919,9 @@ clientRegistrationCallback: ({ clientMetadata }) => {
   provider's default revokes them), for a server whose two connectors share one client id.
 - The consent POST must be `application/x-www-form-urlencoded` (else 415) and at most 64 KiB (else 413), read to the
   ceiling before it is parsed.
-- The page's one inline style is `CONSENT_STYLE`, rendered exactly, so the server's Content-Security-Policy trusts it by
+- The page is Capsomer's consent screen as HTML (its `cap-consent` classes: the card, the write grant's box, Allow and
+  Deny side by side), so it looks like every other site's consent screen. site-runtime cannot depend on Capsomer, so
+  `CONSENT_STYLE` is a minimal copy of that look. The page's one inline style is `CONSENT_STYLE`, rendered exactly, so the server's Content-Security-Policy trusts it by
   `scriptHash(CONSENT_STYLE)`. Give the page no `form-action`: the approve POST redirects through Access to whatever
   redirect URI the client named. A loopback callback or an app's own scheme (an app on the person's computer) gets a
   line saying so. `describeRedirect(uri)` is that check for a server with its own consent page: `{ host, local,
