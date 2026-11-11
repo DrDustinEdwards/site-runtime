@@ -18,16 +18,25 @@ import { APIError } from "better-auth/api";
 import { DISPOSABLE_DOMAINS } from "./disposable-domains.mjs";
 import { OWASP_EVENTS, logEvent, requestFields } from "./log.mjs";
 import { emailConfirmURL } from "./sign-in-link.mjs";
-import { DISPOSABLE_EMAIL, SIGN_IN_WORDS } from "./sign-in-words.mjs";
+import {
+  DISPOSABLE_EMAIL,
+  EMAIL_CHANGE_EXPIRES_IN_SECONDS,
+  EMAIL_CHANGE_EXPIRES_IN_WORDS,
+  SIGN_IN_WORDS,
+} from "./sign-in-words.mjs";
 
-export { DISPOSABLE_EMAIL, SIGN_IN_WORDS, signInErrorWords } from "./sign-in-words.mjs";
+export {
+  DISPOSABLE_EMAIL,
+  EMAIL_CHANGE_EXPIRES_IN_SECONDS,
+  EMAIL_CHANGE_EXPIRES_IN_WORDS,
+  SIGN_IN_WORDS,
+  emailLinkWords,
+  passkeyErrorWords,
+  signInErrorWords,
+} from "./sign-in-words.mjs";
 
 /** Better Auth's email OTP sign-in path (also SIGN_IN_CODE_PATH in `./sign-in`). */
 const CODE_PATH = "/sign-in/email-otp";
-
-/** How long each email-change link works: an hour, Better Auth's default, and the words the mails say. */
-export const EMAIL_CHANGE_EXPIRES_IN_SECONDS = 60 * 60;
-export const EMAIL_CHANGE_EXPIRES_IN_WORDS = "1 hour";
 
 /**
  * True when the address is at a disposable (throwaway) domain or a subdomain of one, from the list in

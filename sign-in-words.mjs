@@ -5,6 +5,10 @@
  */
 import { SIGN_IN_EXPIRES_IN_WORDS } from "./sign-in-link.mjs";
 
+/** How long each email-change link works: an hour, Better Auth's default, and the words the mails say. */
+export const EMAIL_CHANGE_EXPIRES_IN_SECONDS = 60 * 60;
+export const EMAIL_CHANGE_EXPIRES_IN_WORDS = "1 hour";
+
 /** Better Auth's error code when a new account's address is at a disposable domain (refuseDisposable). */
 export const DISPOSABLE_EMAIL = "disposable_email";
 
@@ -72,4 +76,51 @@ export function passkeyErrorWords(error) {
   if (code === "EMAIL_RATE_LIMITED" || code === "TOO_MANY_REQUESTS")
     return SIGN_IN_WORDS.passkey.limited;
   return SIGN_IN_WORDS.passkey.failed;
+}
+
+/**
+ * What the email-change page says (`emailLinkResult`'s `done` and `problem`): a title and a sentence each. `settings`
+ * names the page where the address is changed ("Settings", "My account").
+ * @param {{ siteName: string, settings: string }} site
+ */
+export function emailLinkWords({ siteName, settings }) {
+  return Object.freeze({
+    confirm: Object.freeze({
+      title: "Confirm your email change",
+      text: "Nothing changes until you press the button.",
+    }),
+    approved: Object.freeze({
+      title: "Change approved",
+      text: `Now open the link ${siteName} sent to your new address to finish the change.`,
+    }),
+    changed: Object.freeze({
+      title: "Email changed",
+      text: `Your ${siteName} account email is changed.`,
+    }),
+    verified: Object.freeze({ title: "Email confirmed", text: "Your email address is confirmed." }),
+    expired: Object.freeze({
+      title: "This link has expired",
+      text: `Email change links work for ${EMAIL_CHANGE_EXPIRES_IN_WORDS}. Ask for the change again in ${settings}.`,
+    }),
+    done: Object.freeze({
+      title: "This change is already made",
+      text: `The link has been used, so it no longer works. Your account email is shown in ${settings}.`,
+    }),
+    "other-account": Object.freeze({
+      title: "This link is for another account",
+      text: `This browser is signed in to a different ${siteName} account. Sign out, then open the link again.`,
+    }),
+    invalid: Object.freeze({
+      title: "This link no longer works",
+      text: `It is not complete or not valid. Open it from the email again, or ask for the change again in ${settings}.`,
+    }),
+    failed: Object.freeze({
+      title: "The change did not finish",
+      text: `Something went wrong on our side. Open the link from the email again, or ask for the change again in ${settings}.`,
+    }),
+    missing: Object.freeze({
+      title: "This link is not complete",
+      text: "Part of the link is missing. Open it straight from the email.",
+    }),
+  });
 }

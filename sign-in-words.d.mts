@@ -1,5 +1,9 @@
 export { SIGN_IN_EXPIRES_IN_WORDS, SIGN_IN_LINK_WORDS } from "./sign-in-link.mjs";
 
+/** How long each email-change link works, in seconds and in the mails' words. */
+export const EMAIL_CHANGE_EXPIRES_IN_SECONDS: number;
+export const EMAIL_CHANGE_EXPIRES_IN_WORDS: string;
+
 /** Better Auth's error code when a new account's address is at a disposable domain. */
 export const DISPOSABLE_EMAIL: "disposable_email";
 
@@ -37,3 +41,25 @@ export function signInErrorWords(
 
 /** The words for a passkey sign-in that did not sign in, or null when the person canceled the prompt. */
 export function passkeyErrorWords(error: unknown): string | null;
+
+type Words = Readonly<{ title: string; text: string }>;
+
+/** What the email-change page says for each `done` and `problem` of `emailLinkResult`. */
+export function emailLinkWords(site: {
+  siteName: string;
+  settings: string;
+}): Readonly<
+  Record<
+    | "confirm"
+    | "approved"
+    | "changed"
+    | "verified"
+    | "expired"
+    | "done"
+    | "other-account"
+    | "invalid"
+    | "failed"
+    | "missing",
+    Words
+  >
+>;

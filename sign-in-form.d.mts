@@ -1,8 +1,12 @@
-export { DISPOSABLE_EMAIL, SIGN_IN_WORDS, signInErrorWords } from "./sign-in-words.mjs";
-
-/** How long each email-change link works, in seconds and in the mails' words. */
-export const EMAIL_CHANGE_EXPIRES_IN_SECONDS: number;
-export const EMAIL_CHANGE_EXPIRES_IN_WORDS: string;
+export {
+  DISPOSABLE_EMAIL,
+  EMAIL_CHANGE_EXPIRES_IN_SECONDS,
+  EMAIL_CHANGE_EXPIRES_IN_WORDS,
+  SIGN_IN_WORDS,
+  emailLinkWords,
+  passkeyErrorWords,
+  signInErrorWords,
+} from "./sign-in-words.mjs";
 
 /** True when the address is at a disposable domain or a subdomain of one. */
 export function isDisposableEmail(email: string): boolean;

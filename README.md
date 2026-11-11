@@ -1355,7 +1355,8 @@ export async function action({ request, context }: Route.ActionArgs) {
   the session's `Set-Cookie`. A link request says "sent" for every address. The answer is `{ state: { sent, error,
   codeError }, status }` for the page, or `{ location, headers }` for the redirect.
 - `SIGN_IN_WORDS` (`./sign-in-words`): one sentence per answer (link, code and passkey refusals), and
-  `signInErrorWords(code, { siteName, settings })` for a page's `?error=`.
+  `signInErrorWords(code, { siteName, settings })` for a page's `?error=`, `passkeyErrorWords(error)` for a passkey that did not sign in (null when the person canceled), and
+  `emailLinkWords({ siteName, settings })` for the email-change page.
 - `safeNextPath(raw, { fallback, within })`: where a sign-in may land. A path on this site only, every check anchored
   at the start (an OAuth `next` legitimately carries `https://` in its query); absolute, `//host`, `/\host` and any
   character outside printable ASCII fall back. `within` limits it to those paths and below.
