@@ -1465,11 +1465,13 @@ export async function action({ request, context }: Route.ActionArgs) {
   page's form POST (`/auth/google`, `/auth/apple`), so the landing is decided on the server. Answers the provider's URL
   and Better Auth's state cookie, or null.
 - `authHandler(auth, request)`: the `/api/auth/*` route. Better Auth's answer, `no-store` when it says nothing.
-- `accountOptions({ confirmPath, sendEmailChange, beforeDelete })`: spread beside `signInOptions`. The email change
+- `accountOptions({ confirmPath, sendEmailChange, beforeDelete, afterDelete })`: spread beside `signInOptions`. The email change
   takes two links, the current address first, each opening the site's confirm page (`confirmEmailLink`), each lasting
   EMAIL_CHANGE_EXPIRES_IN_WORDS (1 hour); `sendEmailChange({ to, link, token, step, newEmail, expiresIn })` mails
-  both. Deletion runs only from the site's own route (`/delete-user` and its callback are off) after `beforeDelete`.
-  Spread its `disabledPaths` with the sign-in's.
+  both. Deletion runs only from the site's own route (`/delete-user` and its callback are off) after `beforeDelete`;
+  `afterDelete`, when given, runs once Better Auth has removed the account (clean-up outside the database). A
+  disposable new address is refused on Better Auth's own `/change-email` too (`signInOptions`' plugin). Spread its
+  `disabledPaths` with the sign-in's.
 - `accountFormAction(auth, request, form, { deletedLanding, beforeDelete })`: the account page's three posts, for
   Capsomer's account settings (`capsomer/react/sign-in-settings`): `intent=change-email` (`newEmail`; refused when
   malformed, unchanged, disposable or on an address never confirmed, then Better Auth's two-link change),

@@ -384,10 +384,11 @@ export async function authHandler(auth, request) {
  *   addresses after. Nothing else mails a verification link (/send-verification-email is off).
  * - DELETION ONLY FROM THE SITE'S OWN ROUTE: Better Auth's /delete-user and its callback are off, so the account page's
  *   action calls auth.api.deleteUser after its fresh sign-in check, and `beforeDelete` (the site's hand-over or erase)
- *   runs first. Better Auth then removes the sessions, linked accounts and passkeys.
- * @param {{ confirmPath: string, sendEmailChange: SendEmailChange, beforeDelete: (user: { id: string, email: string }) => Promise<void> }} site
+ *   runs first. Better Auth then removes the sessions, linked accounts and passkeys, then runs `afterDelete` (the site's
+ *   clean-up outside its database, such as Foxhound revoking its Stripe grants), when the site has one.
+ * @param {{ confirmPath: string, sendEmailChange: SendEmailChange, beforeDelete: (user: { id: string, email: string }) => Promise<void>, afterDelete?: (user: { id: string, email: string }) => Promise<void> }} site
  */
-export function accountOptions({ confirmPath, sendEmailChange, beforeDelete }) {
+export function accountOptions({ confirmPath, sendEmailChange, beforeDelete, afterDelete }) {
   if (!confirmPath.startsWith("/") || confirmPath.startsWith("//"))
     throw new Error("confirmPath is a path on the site");
   /** @param {string} url */
@@ -409,7 +410,7 @@ export function accountOptions({ confirmPath, sendEmailChange, beforeDelete }) {
           });
         },
       },
-      deleteUser: { enabled: true, beforeDelete },
+      deleteUser: { enabled: true, beforeDelete, afterDelete },
     },
     emailVerification: {
       expiresIn: EMAIL_CHANGE_EXPIRES_IN_SECONDS,

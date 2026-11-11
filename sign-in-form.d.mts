@@ -132,6 +132,8 @@ export function accountOptions(site: {
   confirmPath: string;
   sendEmailChange: SendEmailChange;
   beforeDelete: (user: { id: string; email: string }) => Promise<void>;
+  /** After Better Auth removes the account: the site's clean-up outside its database. */
+  afterDelete?: (user: { id: string; email: string }) => Promise<void>;
 }): {
   disabledPaths: string[];
   user: {
@@ -147,6 +149,7 @@ export function accountOptions(site: {
     deleteUser: {
       enabled: true;
       beforeDelete: (user: { id: string; email: string }) => Promise<void>;
+      afterDelete: ((user: { id: string; email: string }) => Promise<void>) | undefined;
     };
   };
   emailVerification: {

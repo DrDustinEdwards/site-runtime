@@ -256,10 +256,18 @@ test("the account page's posts on the real Better Auth: email change, delete, an
     confirmPath: "/email/confirm",
     sendEmailChange: async (mail) => void mails.push(mail),
     beforeDelete: async () => {},
+    afterDelete: async (user) => void afterDeleted.push(user.email),
   });
+  const afterDeleted = [];
+  const { signInOptions } = await import("../sign-in.mjs");
+  const signIn = await signInOptions(
+    { BETTER_AUTH_URL: "https://example.com", TURNSTILE_SITE_KEY: "k", TURNSTILE_SECRET_KEY: "s" },
+    { siteName: "Sample", sendMagicLink: async () => {} },
+  );
   const mem = { user: [], session: [], account: [], verification: [] };
   const auth = betterAuth({
     ...options,
+    plugins: signIn.plugins.filter((plugin) => plugin.id === "no-disposable-email"),
     database: memoryAdapter(mem),
     secret: "sample-secret-sample-secret-sample-secret",
     baseURL: "https://example.com",
@@ -299,6 +307,14 @@ test("the account page's posts on the real Better Auth: email change, delete, an
     ["not-an-address", ACCOUNT_WORDS.noEmail],
   ])
     assert.equal((await post({ intent: "change-email", newEmail })).state.error, words, newEmail);
+  // Better Auth's own /change-email, called past the page: the same refusal.
+  await assert.rejects(
+    auth.api.changeEmail({
+      body: { newEmail: "c@mailinator.com" },
+      headers: new Headers({ Cookie: cookie }),
+    }),
+    (error) => error.body?.code === "disposable_email",
+  );
   assert.equal(mails.length, 0);
   const sent = await post({ intent: "change-email", newEmail: "B@example.com" });
   assert.deepEqual([sent.status, sent.state.sentTo], [200, "a@example.com"]);
@@ -326,4 +342,5 @@ test("the account page's posts on the real Better Auth: email change, delete, an
   assert.equal(deleted.location, "/signin?deleted=1");
   assert.ok(deleted.headers.getSetCookie().length > 0, "the cookies are cleared");
   assert.deepEqual([mem.user.length, mem.session.length], [0, 0]);
+  assert.deepEqual(afterDeleted, ["a@example.com"], "the site's afterDelete ran");
 });
