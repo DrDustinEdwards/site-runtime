@@ -31,6 +31,8 @@
     "page-headers.d.mts",
     "context.mjs",
     "context.d.mts",
+    "kv-cache.mjs",
+    "kv-cache.d.mts",
     "check.mjs",
     "check.d.mts",
     "sites.mjs",
@@ -196,6 +198,10 @@
     "./context": {
       "types": "./context.d.mts",
       "default": "./context.mjs"
+    },
+    "./kv-cache": {
+      "types": "./kv-cache.d.mts",
+      "default": "./kv-cache.mjs"
     },
     "./csp-report": {
       "types": "./csp-report.d.mts",

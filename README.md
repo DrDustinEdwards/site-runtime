@@ -1013,6 +1013,14 @@ the page it came from), as `/preview/[token]`; `tokenRoutes` (`["u", "e/c"]`) ad
 the same way (`tokenPattern(routes)` in ./log is the pattern; a route error's `server_error` line is entry.server's
 `handleError`, under Server entry).
 
+## KV read-through
+
+`./kv-cache`'s `kvCached(kv, key, { ttl, valid, keep }, read)` keeps a rarely changing read in a KV namespace: a hit
+is a kept value `valid` accepts (default anything but null); a miss runs `read` and keeps what it returns for `ttl`
+seconds (at least KV's 60) unless `keep` refuses it. A KV fault on either side never fails the read; a `read` that
+throws keeps nothing and throws on. With no namespace it reads straight through. KV is eventually consistent, so drop
+an entry a write made stale with `kv.delete(key)`, and never use it for what a person just wrote and expects to see.
+
 ## Request helpers
 
 `./http`: `clientIp(request)` (the rate-limit key: `cf-connecting-ip` as IPv4 or its IPv6 /64, else the one shared key "unknown"), `ipBucket(ip)`, `isWrite(request)`,
