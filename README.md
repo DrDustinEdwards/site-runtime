@@ -1326,7 +1326,9 @@ it.
 ### The sign-in page's server side
 
 `./sign-in-form` is what a site's sign-in route action does, the same on every site, for Capsomer's sign-in screen
-(`capsomer/react/sign-in`). `./sign-in-words` is its words, with no dependency, so the screen reads them in the browser.
+(`capsomer/react/sign-in`). `./sign-in-words` is its words, with no dependency, so the screen reads them in the browser. `./sign-in-passkey` is the
+browser's passkey calls (`signInWithPasskey`, the `signal*` calls, `canOfferPasskey`, and `passkeySignIn`, which signs
+in and then signals the account's passkeys), also with no dependency; `./sign-in-client` re-exports them.
 
 ```ts
 import {
