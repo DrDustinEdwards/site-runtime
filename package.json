@@ -195,7 +195,9 @@
     "secret-box.mjs",
     "secret-box.d.mts",
     "web-push.mjs",
-    "web-push.d.mts"
+    "web-push.d.mts",
+    "health-alert.mjs",
+    "health-alert.d.mts"
   ],
   "type": "module",
   "exports": {
@@ -542,6 +544,10 @@
     "./cron-lock/durable-object": {
       "types": "./cron-lock/durable-object.d.mts",
       "default": "./cron-lock/durable-object.mjs"
+    },
+    "./health-alert": {
+      "types": "./health-alert.d.mts",
+      "default": "./health-alert.mjs"
     }
   },
   "scripts": {
