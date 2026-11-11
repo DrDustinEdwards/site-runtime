@@ -152,6 +152,10 @@
     "nonce.d.mts",
     "react-entry.mjs",
     "react-entry.d.mts",
+    "deferred-scripts.mjs",
+    "deferred-scripts.d.mts",
+    "hydrate-on-intent.mjs",
+    "hydrate-on-intent.d.mts",
     "http.mjs",
     "http.d.mts",
     "sign-in-passkey.mjs",
@@ -424,6 +428,14 @@
     "./react-entry": {
       "types": "./react-entry.d.mts",
       "default": "./react-entry.mjs"
+    },
+    "./deferred-scripts": {
+      "types": "./deferred-scripts.d.mts",
+      "default": "./deferred-scripts.mjs"
+    },
+    "./hydrate-on-intent": {
+      "types": "./hydrate-on-intent.d.mts",
+      "default": "./hydrate-on-intent.mjs"
     },
     "./http": {
       "types": "./http.d.mts",
