@@ -2090,10 +2090,16 @@ run is normal) or `never` (a notice, not a fault), for a page that lists them. F
 `cron_run_history`, which kept a second ledger beside `cron_runs`.
 
 `./cron-alert` mails what `cronFindings` names. `cronAlert({ db, mail, from, to, site, jobs, deployedAt, now })` sends
-one message for the jobs that are new today, and a `cron_alerts` row per job, kind (`failure` or `stale`) and UTC day
-(`CRON_ALERTS_SQL`) is both the record and the dedupe, claimed before the mail so two invocations cannot both send. A mail
-that fails gives its claims back; the alert never throws, so it cannot take down the cron it watches. Foxhound keeps its
-enable switch, admin page and dead-letter alert.
+one message for the jobs that are new today, and an `alerts_sent` row per key, kind (`failure` or `stale`) and UTC day
+(`ALERTS_SQL`) is both the record and the dedupe, claimed before the mail so two invocations cannot both send. A mail
+that fails gives its claims back; the alert never throws, so it cannot take down the cron it watches. A site with its
+own mail templates passes `send(alerts)` instead of `mail`, and `each: true` to send one alert per call; `graceMinutes`
+may be a function of the interval (`(every) => every` lets a job miss one whole period).
+
+`alertOnce({ db, key, kind, detail, send })` is the same claim, send and give-back for any other alert a site raises at
+most once a day: a job's failure the moment it happens, a dead-letter queue that filled. It answers `{ sent: true }`,
+`{ sent: false, reason: "deduped" }` or `{ sent: false, reason: "send_failed", error }`, and never throws. Foxhound keeps
+its enable switch and admin page.
 
 ## Sending mail
 
