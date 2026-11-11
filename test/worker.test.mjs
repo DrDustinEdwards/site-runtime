@@ -41,7 +41,7 @@ function harness(options = {}) {
   return { worker, stored, fetch: (/** @type {Request} */ r) => worker.fetch(r, env, ctx), env };
 }
 
-test("a cookieless or theme-only read goes to the Renderer, keyed on host and theme", async () => {
+test("a cookieless or theme-only read goes to the Renderer, keyed on host and theme; a 304 has no policy", async () => {
   const { fetch, stored } = harness();
   const page = await fetch(new Request("https://example.com/about"));
   assert.equal(page.status, 200);
@@ -51,10 +51,7 @@ test("a cookieless or theme-only read goes to the Renderer, keyed on host and th
     stored.map((s) => s.key),
     ["/about;host=example.com", "/about;host=example.com;theme=dark"],
   );
-});
-
-test("a 304 from the cache leaves out the policy, so the reader's copy keeps its own nonce", async () => {
-  const { fetch } = harness();
+  // A 304 leaves out the policy, so the reader's copy keeps its own nonce.
   const reply = await fetch(
     new Request("https://example.com/about", { headers: { "If-None-Match": '"v1"' } }),
   );
