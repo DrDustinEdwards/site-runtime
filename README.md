@@ -946,7 +946,9 @@ The gateway runs, in order: the canonical move (first, with the set built for wh
 but `crossSiteExempt`, default `/api/auth/`), then the page. A read with no cookie but `publicCookies`, on a path with no
 file extension (bar `.data`) that `cacheable` does not refuse, goes to the Renderer, keyed on path, query (tracking
 parameters dropped), host and each public cookie; every other request is rendered live with its own nonce and leaves
-`private, no-store` unless its route set a policy of its own. Every render gets a nonce; a policy that names it is renewed
+`private, no-store` unless its route set a policy of its own. A route marks its page shared (`publicPageHeaders`); a site whose routes name
+no Cache-Control passes `publicPages(url, env)` instead, and the Renderer stores each such 200 under the tags it
+returns. Every render gets a nonce; a policy that names it is renewed
 per reader; a 304 leaves out the policy (RFC 9111 4.3.4: the browser updates its stored headers from a 304). Every HTML
 answer carries the Speculation-Rules header; a 404 goes through `onNotFound` (site-api's tombstones) and is counted
 unless under `/api/` or `/preview/`; a gateway that throws is a plain 500 with the set and a `gateway_error` line. Around

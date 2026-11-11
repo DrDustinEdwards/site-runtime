@@ -67,6 +67,7 @@ import {
   forReader,
   forRenderer,
   privateRender,
+  publicPageHeaders,
   purgeAfterWrite,
   settleCacheHeaders,
   withPurgePages,
@@ -181,7 +182,12 @@ export function siteRenderer(Base, site) {
     /** @param {Request} request */
     async fetch(request) {
       const nonce = generateNonce();
+      const shared = options.publicPages?.(new URL(request.url), this.env);
       const rendered = await site.render(request, this.env, this.ctx, { nonce });
+      // A site whose routes name no Cache-Control of their own stores each 200 under the tags it names.
+      if (shared && rendered.status === 200 && !rendered.headers.has("Cache-Control"))
+        for (const [name, value] of Object.entries(publicPageHeaders(await shared)))
+          rendered.headers.set(name, value);
       const page = await site.earlyHints(
         options.withSecurityHeaders(rendered, request, pageNonce(rendered, nonce), this.env),
       );

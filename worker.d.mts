@@ -80,6 +80,14 @@ export interface SiteOptions<E> {
   publicCookies?: string[];
   /** False keeps a read from the Renderer (a private path, a signed-in-only area); the standard rule applies first. */
   cacheable?: (request: Request, url: URL, env: E) => boolean;
+  /**
+   * For a site whose routes name no Cache-Control: a 200 the Renderer draws without one is stored, under these tags
+   * (publicPageHeaders' options: `tags`, `until`). A route's own Cache-Control is left alone.
+   */
+  publicPages?: (
+    url: URL,
+    env: E,
+  ) => Promise<Parameters<typeof import("./edge-cache.mjs").publicPageHeaders>[0]>;
   /** Preloads beyond the root stylesheets, for the Early Hints header (fonts). */
   preloads?: (Preload | Preconnect)[];
   /** Sets the site's own context keys on every render. cloudflareContext and cspNonceContext are set already. */
