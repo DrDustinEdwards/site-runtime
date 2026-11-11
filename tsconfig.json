@@ -11,7 +11,7 @@
     "skipLibCheck": true,
     "types": ["node", "@cloudflare/workers-types"]
   },
-  "include": ["*.mjs", "members/*.mjs", "rate-limit/*.mjs", "bin/*.mjs"],
+  "include": ["*.mjs", "members/*.mjs", "rate-limit/*.mjs", "doc-room/*.mjs", "bin/*.mjs"],
   "exclude": [
     "turnstile.mjs",
     "sign-in-client.mjs",
