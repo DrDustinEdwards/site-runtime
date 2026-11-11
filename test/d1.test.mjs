@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { SQLiteSyncDialect, sqliteTable, text } from "drizzle-orm/sqlite-core";
-import { chunked, escapeLike, inChunks, inList, likeContains, rowsPerInsert } from "../d1.mjs";
+import {
+  chunked,
+  decodeCursor,
+  encodeCursor,
+  escapeLike,
+  inChunks,
+  inList,
+  likeContains,
+  rowsPerInsert,
+} from "../d1.mjs";
 
 test("chunked and inChunks keep D1 under 100 bound parameters; an empty list runs nothing", async () => {
   assert.deepEqual(chunked([1, 2, 3, 4, 5], 2), [[1, 2], [3, 4], [5]]);
@@ -35,4 +44,14 @@ test("inList binds any number of values as one parameter", () => {
   const q = new SQLiteSyncDialect().sqlToQuery(inList(t.id, ids));
   assert.equal(q.sql, `"t"."id" IN (SELECT value FROM json_each(?))`);
   assert.deepEqual(q.params, [JSON.stringify(ids)]);
+});
+
+test("a cursor keeps its id, so rows of one millisecond are not skipped; a bad one is the first page", () => {
+  assert.deepEqual(decodeCursor(encodeCursor(1731300000123, "ab.c_d")), {
+    at: 1731300000123,
+    id: "ab.c_d",
+  });
+  assert.equal(decodeCursor("1731300000123"), null);
+  assert.equal(decodeCursor("x.y"), null);
+  assert.equal(decodeCursor(null), null);
 });

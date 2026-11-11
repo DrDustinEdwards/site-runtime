@@ -933,7 +933,9 @@ or DELETE stays atomic; an empty list matches nothing (inList) or everything (no
 room for the statement's other parameters), `inChunks(items, (part) => query)` (one slice after another, rows in
 order, nothing run for an empty list) and `rowsPerInsert(columns)`. A LIKE pattern from what someone typed goes through
 `likeContains(column, text)` or `likeStartsWith(column, text)` (Drizzle SQL ending `ESCAPE '\'`), or `escapeLike(text)`
-for hand-written SQL, so `%` and `_` match themselves. Sites with Drizzle only: it imports `drizzle-orm`.
+for hand-written SQL, so `%` and `_` match themselves. A newest-first page goes by `encodeCursor(at, id)`, `decodeCursor(text)` and
+`olderThan(atColumn, idColumn, at, id)` (order by both, descending): a time alone skips the rows that share the last
+row's millisecond. Sites with Drizzle only: it imports `drizzle-orm`.
 
 ## CSV exports
 

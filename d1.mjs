@@ -5,7 +5,7 @@
  * `_` in a search box matches itself instead of everything. Each was a copy, or missing, in five sites (the
  * 2026-11-11 third audit pass).
  */
-import { sql } from "drizzle-orm";
+import { and, eq, lt, or, sql } from "drizzle-orm";
 
 /**
  * `column IN (the values)` bound as ONE parameter: the values travel as a JSON array that `json_each` opens
@@ -101,4 +101,41 @@ export function likeContains(column, text) {
  */
 export function likeStartsWith(column, text) {
   return sql`${column} LIKE ${`${escapeLike(text)}%`} ESCAPE '\\'`;
+}
+
+/**
+ * A page cursor for a list ordered newest first by a time and then by id: `<ms>.<id>`. A time alone skips every row
+ * that shares the millisecond of the page's last row; the id breaks the tie, so each row is on exactly one page.
+ * @param {number} at the last row's time in ms
+ * @param {string} id the last row's id
+ */
+export function encodeCursor(at, id) {
+  return `${Math.trunc(at)}.${id}`;
+}
+
+/**
+ * The time and id in a cursor from encodeCursor, or null when `text` is not one (so a bad cursor reads as the
+ * first page, never as an error page).
+ * @param {string | null | undefined} text
+ * @returns {{ at: number, id: string } | null}
+ */
+export function decodeCursor(text) {
+  const match = /^(\d{1,16})\.(.{1,128})$/s.exec(text ?? "");
+  if (!match) return null;
+  const at = Number(match[1]);
+  return Number.isSafeInteger(at) ? { at, id: /** @type {string} */ (match[2]) } : null;
+}
+
+/**
+ * The rows after a cursor in `ORDER BY at DESC, id DESC`: `at < value OR (at = value AND id < id)`. `at` is passed as
+ * the time column takes it (a Date for a timestamp column), so Drizzle maps it as it maps any value of that column.
+ * @param {import("drizzle-orm").Column} atColumn
+ * @param {import("drizzle-orm").Column} idColumn
+ * @param {unknown} at
+ * @param {string} id
+ */
+export function olderThan(atColumn, idColumn, at, id) {
+  return /** @type {import("drizzle-orm").SQL} */ (
+    or(lt(atColumn, at), and(eq(atColumn, at), lt(idColumn, id)))
+  );
 }
