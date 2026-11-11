@@ -39,7 +39,6 @@ await writeFile(
   join(import.meta.dirname, "disposable-domains.mjs"),
   `// Written by update-disposable.mjs on ${read} from ${REPO} (CC0 1.0). Never edited by hand: run the script.
 // ${domains.length} domains.
-export const DISPOSABLE_DOMAINS_READ = ${JSON.stringify(read)};
 export const DISPOSABLE_DOMAINS = new Set(${JSON.stringify(domains)});
 `,
 );

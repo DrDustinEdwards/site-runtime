@@ -71,7 +71,7 @@ export { SIGN_IN_EXPIRES_IN_WORDS, SIGN_IN_LINK_WORDS } from "./sign-in-link.mjs
  */
 export function passkeyErrorWords(error) {
   const code = /** @type {{ code?: unknown } | null} */ (error)?.code;
-  if (code === "AUTH_CANCELLED") return null;
+  if (code === "AUTH_CANCELLED") return null; // codespell:ignore -- Better Auth's error code
   if (code === "RATE_LIMIT_UNAVAILABLE") return SIGN_IN_WORDS.passkey.unavailable;
   if (code === "EMAIL_RATE_LIMITED" || code === "TOO_MANY_REQUESTS")
     return SIGN_IN_WORDS.passkey.limited;
