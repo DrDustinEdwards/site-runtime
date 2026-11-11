@@ -268,17 +268,45 @@ export async function purgeTags(cache, tags, why, log = console.error) {
   return false;
 }
 
+/** The KV key holding the last failed purge. */
+export const PURGE_FAILED_KEY = "purge:failed";
+
+/**
+ * Keeps the last failed purge in KV until a purge succeeds, so a write whose pages stayed stale shows on /health
+ * (`purgeCheck`) and not only in a log line: the purge runs after the answer has gone, so the writer cannot be told.
+ * One key and no TTL, since an expiring record would turn the check green while the pages are still stale. `false`
+ * keeps the failure, `true` clears it, `null` (no purge API) changes nothing. Never throws.
+ * @param {{ put(key: string, value: string): Promise<unknown>, delete(key: string): Promise<unknown> } | undefined} kv
+ * @param {string} why
+ * @param {boolean | null} purged
+ * @param {(line: string) => void} [log]
+ */
+export async function recordPurge(kv, why, purged, log = console.error) {
+  if (!kv || purged === null) return;
+  try {
+    if (purged === false)
+      await kv.put(PURGE_FAILED_KEY, JSON.stringify({ why, at: new Date().toISOString() }));
+    else await kv.delete(PURGE_FAILED_KEY);
+  } catch (error) {
+    log(JSON.stringify({ alert: "cache-purge-record-failed", why, detail: String(error) }));
+  }
+}
+
 /**
  * The Renderer's `purgePages` RPC method, mixed into its class: `class Renderer extends withPurgePages(WorkerEntrypoint)`.
  * The method drops `tags` (default `PAGES_CACHE_TAG`) from the Renderer's own cache; RPC methods bypass the cache.
- * @template {new (...args: any[]) => { ctx: { cache?: any } }} T
+ * With `kv`, the outcome is recorded (`recordPurge`) for /health's `purgeCheck`, whichever way the purge was asked for.
+ * @template {new (...args: any[]) => { ctx: { cache?: any }, env?: any }} T
  * @param {T} Base
+ * @param {{ kv?: (env: any) => Parameters<typeof recordPurge>[0] }} [options] the KV namespace to record in, from the Renderer's env
  */
-export function withPurgePages(Base) {
+export function withPurgePages(Base, { kv } = {}) {
   return class extends Base {
     /** @param {string} why @param {string[]} [tags] */
     async purgePages(why, tags = [PAGES_CACHE_TAG]) {
-      return purgeTags(this.ctx.cache, tags, why);
+      const purged = await purgeTags(this.ctx.cache, tags, why);
+      if (kv) await recordPurge(kv(this.env), why, purged);
+      return purged;
     }
   };
 }

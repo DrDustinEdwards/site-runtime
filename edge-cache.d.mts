@@ -57,10 +57,27 @@ export function purgeTags(
   log?: (line: string) => void,
 ): Promise<boolean | null>;
 
-/** Mixes the `purgePages(why, tags?)` RPC method into the Renderer: `class Renderer extends withPurgePages(WorkerEntrypoint)`. */
+/** The KV key holding the last failed purge. */
+export const PURGE_FAILED_KEY: "purge:failed";
+
+/** Keeps the last failed purge in KV (`false`), clears it on a good one (`true`), changes nothing for `null`. Never throws. */
+export function recordPurge(
+  kv:
+    | { put(key: string, value: string): Promise<unknown>; delete(key: string): Promise<unknown> }
+    | undefined,
+  why: string,
+  purged: boolean | null,
+  log?: (line: string) => void,
+): Promise<void>;
+
+/** Mixes the `purgePages(why, tags?)` RPC method into the Renderer: `class Renderer extends withPurgePages(WorkerEntrypoint, { kv: (env) => env.APP_KV })`. With `kv`, each outcome is recorded for `purgeCheck`. */
 // oxlint-disable-next-line typescript/no-explicit-any -- a mixin's constructor must take (...args: any[]); unknown[] refuses WorkerEntrypoint (TS2345), never[] its subclass (TS2510)
 export function withPurgePages<T extends abstract new (...args: any[]) => object>(
   Base: T,
+  options?: {
+    // oxlint-disable-next-line typescript/no-explicit-any -- the Renderer's env is the site's own type
+    kv?: (env: any) => Parameters<typeof recordPurge>[0];
+  },
 ): T &
   // oxlint-disable-next-line typescript/no-explicit-any -- the same mixin constructor, as TypeScript requires it
   (abstract new (...args: any[]) => {

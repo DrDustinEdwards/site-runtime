@@ -410,7 +410,8 @@ return healthResponse({
   ok, never rolls a deploy back for it; its result carries `alert: true`, `alerts` names it, and it is logged as
   `health_alert`. A watcher (Capsid's) keys on `alerts` to raise a finding and mail a person.
 - `r2Check(name, bucket)` and `kvCheck(name, kv)` are the binding checks: a `head` or `get` of a fixed key, where no
-  object is fine and a throw fails.
+  object is fine and a throw fails. `purgeCheck(kv)` is the "cache-purge" warn check: a failed cache purge (kept in KV by
+  `withPurgePages`'s `kv` option, see Purging) shows until a later purge succeeds; its detail names only the time.
 - `imagesCheck(name, env.IMAGES)` asks the Images binding for `info` on a 1 x 1 GIF (it reads the header and
   transforms nothing). `durableObjectCheck(name, env.ROOM)` proves the namespace is bound and mints an id with
   `idFromName`; it sends no request, which would wake an object and bill it. `queueCheck(name, env.QUEUE)`,
@@ -701,7 +702,9 @@ What else the scheme does, and the helpers that do it:
 - **Purging.** `class Renderer extends withPurgePages(WorkerEntrypoint)` gives the Renderer its `purgePages(why, tags?)`
   RPC method. In the gateway, `purgeAfterWrite(request, response, ctx, why)` asks for it after an accepted write.
   From a cron or a queue, which have no Renderer of their own, `purgeViaRenderer(why)` asks over `exports` from
-  "cloudflare:workers". `schedulePurgeHook()` is a site-api publish hook that does that after a schedule changes a page.
+  "cloudflare:workers". `withPurgePages(Base, { kv: (env) => env.APP_KV })` also records each outcome in KV
+  (`recordPurge`: a failed purge is kept, with no TTL, until one succeeds), and `purgeCheck(env.APP_KV)` in /health's
+  checks shows it, so a write whose pages stayed stale is seen by Capsid's watcher and not only in a log line. `schedulePurgeHook()` is a site-api publish hook that does that after a schedule changes a page.
 
 ```js
 class Renderer extends withPurgePages(WorkerEntrypoint) {

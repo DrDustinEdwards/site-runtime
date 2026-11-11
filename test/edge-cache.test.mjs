@@ -6,8 +6,11 @@ import {
   forReader,
   forRenderer,
   publicPageHeaders,
+  recordPurge,
   settleCacheHeaders,
+  withPurgePages,
 } from "../edge-cache.mjs";
+import { healthResponse, purgeCheck } from "../health.mjs";
 
 // A stored page is handed to everyone: an error page, or one with no Cache-Control, must never be kept.
 test("only a shared 200 keeps its edge header, and a reader with a cookie is told no-store", () => {
@@ -211,4 +214,32 @@ test("with the database down, a stale stored page is served and the failed rende
   // Past the stale window the error shows, and is still not stored.
   assert.equal((await read(9 * 86_400)).response.status, 500);
   assert.equal(await edge.get("/about")?.response.clone().text(), "the page");
+});
+
+test("a failed purge is kept until one succeeds, and /health warns with only its time", async () => {
+  const store = new Map();
+  const kv = {
+    get: async (k) => store.get(k) ?? null,
+    put: async (k, v) => void store.set(k, v),
+    delete: async (k) => void store.delete(k),
+  };
+  const status = async () => await (await healthResponse({ checks: [purgeCheck(kv)] })).json();
+  assert.equal((await status()).status, "pass");
+  await recordPurge(kv, "save draft secret-title", false);
+  const warned = await status();
+  assert.equal(warned.status, "warn");
+  assert.doesNotMatch(warned.checks[0].detail, /secret-title/);
+  await recordPurge(kv, "again", null);
+  assert.equal((await status()).status, "warn");
+  const { Renderer } = {
+    Renderer: withPurgePages(
+      class {
+        ctx = { cache: { purge: async () => ({ success: true }) } };
+        env = { KV: kv };
+      },
+      { kv: (env) => env.KV },
+    ),
+  };
+  assert.equal(await new Renderer().purgePages("write"), true);
+  assert.equal((await status()).status, "pass");
 });
