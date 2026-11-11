@@ -13,8 +13,20 @@
 export const PAGED_DONE_ATTRIBUTE = "data-pagedjs-done";
 
 /**
- * The config script a Paged.js page runs before the polyfill: auto layout, then the completion mark the render waits
- * on. Its text is fixed so a page's CSP can trust it by hash.
+ * Paged.js 0.4.3's page frame, exactly as the polyfill assigns it to a <template>'s innerHTML for every page (its
+ * TEMPLATE constant). The one markup string the book's Trusted Types policy lets through; a different Paged.js
+ * version may write another, so a site that ships the polyfill checks its copy still contains this text.
+ */
+export const PAGED_JS_PAGE_TEMPLATE =
+  '\n<div class="pagedjs_page">\n\t<div class="pagedjs_sheet">\n\t\t<div class="pagedjs_bleed pagedjs_bleed-top">\n\t\t\t<div class="pagedjs_marks-crop"></div>\n\t\t\t<div class="pagedjs_marks-middle">\n\t\t\t\t<div class="pagedjs_marks-cross"></div>\n\t\t\t</div>\n\t\t\t<div class="pagedjs_marks-crop"></div>\n\t\t</div>\n\t\t<div class="pagedjs_bleed pagedjs_bleed-bottom">\n\t\t\t<div class="pagedjs_marks-crop"></div>\n\t\t\t<div class="pagedjs_marks-middle">\n\t\t\t\t<div class="pagedjs_marks-cross"></div>\n\t\t\t</div>\t\t<div class="pagedjs_marks-crop"></div>\n\t\t</div>\n\t\t<div class="pagedjs_bleed pagedjs_bleed-left">\n\t\t\t<div class="pagedjs_marks-crop"></div>\n\t\t\t<div class="pagedjs_marks-middle">\n\t\t\t\t<div class="pagedjs_marks-cross"></div>\n\t\t\t</div>\t\t<div class="pagedjs_marks-crop"></div>\n\t\t</div>\n\t\t<div class="pagedjs_bleed pagedjs_bleed-right">\n\t\t\t<div class="pagedjs_marks-crop"></div>\n\t\t\t<div class="pagedjs_marks-middle">\n\t\t\t\t<div class="pagedjs_marks-cross"></div>\n\t\t\t</div>\n\t\t\t<div class="pagedjs_marks-crop"></div>\n\t\t</div>\n\t\t<div class="pagedjs_pagebox">\n\t\t\t<div class="pagedjs_margin-top-left-corner-holder">\n\t\t\t\t<div class="pagedjs_margin pagedjs_margin-top-left-corner"><div class="pagedjs_margin-content"></div></div>\n\t\t\t</div>\n\t\t\t<div class="pagedjs_margin-top">\n\t\t\t\t<div class="pagedjs_margin pagedjs_margin-top-left"><div class="pagedjs_margin-content"></div></div>\n\t\t\t\t<div class="pagedjs_margin pagedjs_margin-top-center"><div class="pagedjs_margin-content"></div></div>\n\t\t\t\t<div class="pagedjs_margin pagedjs_margin-top-right"><div class="pagedjs_margin-content"></div></div>\n\t\t\t</div>\n\t\t\t<div class="pagedjs_margin-top-right-corner-holder">\n\t\t\t\t<div class="pagedjs_margin pagedjs_margin-top-right-corner"><div class="pagedjs_margin-content"></div></div>\n\t\t\t</div>\n\t\t\t<div class="pagedjs_margin-right">\n\t\t\t\t<div class="pagedjs_margin pagedjs_margin-right-top"><div class="pagedjs_margin-content"></div></div>\n\t\t\t\t<div class="pagedjs_margin pagedjs_margin-right-middle"><div class="pagedjs_margin-content"></div></div>\n\t\t\t\t<div class="pagedjs_margin pagedjs_margin-right-bottom"><div class="pagedjs_margin-content"></div></div>\n\t\t\t</div>\n\t\t\t<div class="pagedjs_margin-left">\n\t\t\t\t<div class="pagedjs_margin pagedjs_margin-left-top"><div class="pagedjs_margin-content"></div></div>\n\t\t\t\t<div class="pagedjs_margin pagedjs_margin-left-middle"><div class="pagedjs_margin-content"></div></div>\n\t\t\t\t<div class="pagedjs_margin pagedjs_margin-left-bottom"><div class="pagedjs_margin-content"></div></div>\n\t\t\t</div>\n\t\t\t<div class="pagedjs_margin-bottom-left-corner-holder">\n\t\t\t\t<div class="pagedjs_margin pagedjs_margin-bottom-left-corner"><div class="pagedjs_margin-content"></div></div>\n\t\t\t</div>\n\t\t\t<div class="pagedjs_margin-bottom">\n\t\t\t\t<div class="pagedjs_margin pagedjs_margin-bottom-left"><div class="pagedjs_margin-content"></div></div>\n\t\t\t\t<div class="pagedjs_margin pagedjs_margin-bottom-center"><div class="pagedjs_margin-content"></div></div>\n\t\t\t\t<div class="pagedjs_margin pagedjs_margin-bottom-right"><div class="pagedjs_margin-content"></div></div>\n\t\t\t</div>\n\t\t\t<div class="pagedjs_margin-bottom-right-corner-holder">\n\t\t\t\t<div class="pagedjs_margin pagedjs_margin-bottom-right-corner"><div class="pagedjs_margin-content"></div></div>\n\t\t\t</div>\n\t\t\t<div class="pagedjs_area">\n\t\t\t\t<div class="pagedjs_page_content"></div>\n\t\t\t\t<div class="pagedjs_footnote_area">\n\t\t\t\t\t<div class="pagedjs_footnote_content pagedjs_footnote_empty">\n\t\t\t\t\t\t<div class="pagedjs_footnote_inner_content"></div>\n\t\t\t\t\t</div>\n\t\t\t\t</div>\n\t\t\t</div>\n\t\t</div>\n\t</div>\n</div>';
+
+/**
+ * The config script a Paged.js page runs before the polyfill: auto layout, the completion mark the render waits on,
+ * and the page's Trusted Types "default" policy. Paged.js writes two strings to injection sinks: its page frame
+ * (PAGED_JS_PAGE_TEMPLATE) and "" to clear a running element. The policy passes exactly those and refuses everything
+ * else, so a page can enforce `require-trusted-types-for 'script'` with `trusted-types default`. Paged.js also copies
+ * the body into a template through innerHTML unless the content is already in one, which `pagedContent` does. Its
+ * text is fixed so a page's CSP can trust it by hash.
  */
 export const PAGED_JS_CONFIG = `
   window.PagedConfig = {
@@ -23,7 +35,27 @@ export const PAGED_JS_CONFIG = `
       document.documentElement.setAttribute("${PAGED_DONE_ATTRIBUTE}", "true");
     },
   };
+  if (window.trustedTypes && !window.trustedTypes.defaultPolicy) {
+    const frame = ${JSON.stringify(PAGED_JS_PAGE_TEMPLATE)};
+    window.trustedTypes.createPolicy("default", {
+      createHTML: (html) => (html === frame || html === "" ? html : null),
+      createScript: () => null,
+      createScriptURL: () => null,
+    });
+  }
 `;
+
+/** The Trusted Types policy names a Paged.js page's Content-Security-Policy lists: only the config's default. */
+export const PAGED_JS_TRUSTED_TYPES = Object.freeze(["default"]);
+
+/**
+ * A Paged.js page's content, wrapped in the template Paged.js reads it from (`<template data-ref="pagedjs-content">`),
+ * so the polyfill never copies the body through innerHTML. Put it first in the body, before `pagedScripts`.
+ * @param {string} html the page's content markup
+ */
+export function pagedContent(html) {
+  return `<template data-ref="pagedjs-content">${html}</template>`;
+}
 
 /**
  * The closing scripts of a Paged.js page: the config, then the self-hosted polyfill with its integrity hash (a page
