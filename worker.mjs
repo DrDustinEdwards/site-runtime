@@ -8,7 +8,8 @@
  *
  * 1. Canonical address (./url canonicalRedirect): first, before anything reads the request, so an http request never
  *    gets a policy whose report endpoint is http. The move carries the security set built for where it points.
- *    `canonical.before` is a site's own earlier move (dei's WordPress addresses), answered the same way.
+ *    `canonical.before` is a site's own earlier move (dei's WordPress addresses), answered the same way, and
+ *    `canonical.keep(url)` keeps an address's trailing slash (dei's removed WordPress addresses answer 410 as they were).
  * 2. Maintenance (./maintenance): every path but /health answers 503 while MAINTENANCE is on.
  * 3. /.well-known/security.txt (./security-txt, RFC 9116) on every site, with the network's contact.
  * 4. The standard files (Prelum's standardFiles: robots.txt, ai.txt, site.webmanifest, the IndexNow key, ownership
@@ -45,7 +46,13 @@
  *
  * Under `vite dev` (mode "development") a page also carries `<meta property="csp-nonce">` for the styles Vite injects.
  *
- * Cron: `cron(env, date)[controller.cron]` runs through ./cron runJobs, awaited; a trigger with no list warns
+ * Every render sets ./context serverTimingContext, so a loader's own marks join `render` in the Server-Timing header.
+ * A page a route marks shared (`public, max-age=0`) with no edge lifetime of its own is stored for publicPageHeaders'
+ * day, so the purge it answers to has something to reach. A site's `respond` gets the last word on each page and step
+ * answer after the security set (Foxhound's route classes); settleCacheHeaders or privateRender still runs after it.
+ *
+ * Cron: `cron(env, date, ctx)[controller.cron]` (the lists may come from a promise, so a site can import its jobs when
+ * the cron fires) runs through ./cron runJobs, awaited; a trigger with no list warns
  * `cron_unknown` and runs nothing.
  *
  * In workers/app.ts:
@@ -57,11 +64,12 @@
  */
 import { createRequestHandler, RouterContextProvider } from "react-router";
 import { withAdminIdle } from "./access.mjs";
-import { cloudflareContext, cspNonceContext } from "./context.mjs";
+import { cloudflareContext, cspNonceContext, serverTimingContext } from "./context.mjs";
 import { CSP_REPORT_PATH, generateNonce, renewNonce } from "./csp.mjs";
 import { receiveCspReport } from "./csp-report.mjs";
 import { runJobs } from "./cron.mjs";
 import {
+  EDGE_CACHE_HEADER,
   SHARED_CACHE_CONTROL,
   cacheKey,
   forReader,
@@ -73,7 +81,17 @@ import {
   withPurgePages,
 } from "./edge-cache.mjs";
 import { clientIp, isWrite, textResponse } from "./http.mjs";
-import { errorMessage, logEvent, routeNamer, withRequestLog } from "./log.mjs";
+import {
+  PREVIEW_TOKEN,
+  errorMessage,
+  logEvent,
+  routeNamer,
+  scrubFields,
+  tokenPattern,
+  withRequestLog,
+} from "./log.mjs";
+
+export { PREVIEW_TOKEN, tokenPattern };
 import { maintenanceOn, maintenanceResponse } from "./maintenance.mjs";
 import { countNotFound } from "./not-found.mjs";
 import { operatorResponse } from "./operator.mjs";
@@ -87,9 +105,6 @@ import { preloads, rootStylesheets, withPreloadHeader } from "./preload.mjs";
 import { securityTxtResponse } from "./security-txt.mjs";
 import { timedRender } from "./server-timing.mjs";
 import { canonicalRedirect } from "./url.mjs";
-
-/** A preview link's token (Carrel's /preview/<token>), cut from a logged path. */
-export const PREVIEW_TOKEN = /\/(preview)\/[^/?#\s'"]+/g;
 
 /** The security.txt path (RFC 9116 section 3). */
 export const SECURITY_TXT_PATH = "/.well-known/security.txt";
@@ -126,7 +141,10 @@ export function defineSite(options) {
       context.set(cspNonceContext, nonce ?? null);
       options.context?.(context, env, ctx);
       set?.(context);
-      const page = await timedRender(() => requestHandler(request, context));
+      const page = await timedRender((marks) => {
+        context.set(serverTimingContext, marks);
+        return requestHandler(request, context);
+      });
       return dev && nonce ? withViteNonce(page, nonce) : page;
     },
     async stylesheets() {
@@ -188,13 +206,26 @@ export function siteRenderer(Base, site) {
       if (shared && rendered.status === 200 && !rendered.headers.has("Cache-Control"))
         for (const [name, value] of Object.entries(publicPageHeaders(await shared)))
           rendered.headers.set(name, value);
-      const page = await site.earlyHints(
+      // A route that marks its answer shared but names no edge lifetime gets publicPageHeaders' day: with none, the
+      // Workers cache reads `max-age=0` and keeps nothing a purge would ever need to reach.
+      if (
+        rendered.headers.get("Cache-Control") === SHARED_CACHE_CONTROL &&
+        !rendered.headers.has(EDGE_CACHE_HEADER)
+      )
+        rendered.headers.set(EDGE_CACHE_HEADER, DEFAULT_EDGE_LIFETIME);
+      const secured = await site.earlyHints(
         options.withSecurityHeaders(rendered, request, pageNonce(rendered, nonce), this.env),
       );
+      const page = options.respond
+        ? await options.respond(secured, request, this.env, { stored: true })
+        : secured;
       return settleCacheHeaders(page, request, { publicCookies: options.publicCookies ?? [] });
     }
   };
 }
+
+/** publicPageHeaders' edge lifetime: a day fresh, a week stale. */
+const DEFAULT_EDGE_LIFETIME = publicPageHeaders()[EDGE_CACHE_HEADER];
 
 /**
  * @param {Request} request
@@ -266,6 +297,10 @@ export function siteWorker(site) {
   const purgeAfter = options.purgeAfter ?? ["/admin"];
   const publicCookies = options.publicCookies ?? [];
   const siteName = options.name;
+  const tokenPath = tokenPattern(options.tokenRoutes);
+  // A report's page and blocked addresses are cut to origin and path; a token route's token goes too.
+  const logReport = (/** @type {Record<string, unknown>} */ line) =>
+    console.log(JSON.stringify(scrubFields(line, { tokenPath })));
 
   /**
    * @param {Request} request
@@ -278,7 +313,13 @@ export function siteWorker(site) {
     const canonical = options.canonical === false ? null : (options.canonical ?? {});
     const moved =
       canonical &&
-      ((await canonical.before?.(request, env)) ?? canonicalRedirect(request, canonical));
+      ((await canonical.before?.(request, env)) ??
+        canonicalRedirect(
+          request,
+          canonical.keep?.(url)
+            ? { ...canonical, except: [...(canonical.except ?? []), url.pathname] }
+            : canonical,
+        ));
     if (moved)
       return secure(
         moved,
@@ -311,7 +352,12 @@ export function siteWorker(site) {
       const binding = /** @type {any} */ (env).CSP_REPORT_RATE_LIMIT;
       const allow = async (/** @type {Request} */ r) =>
         binding !== undefined && (await binding.limit({ key: clientIp(r) })).success;
-      return secure(await receiveCspReport(request, { allow }), request, undefined, env);
+      return secure(
+        await receiveCspReport(request, { allow, log: logReport }),
+        request,
+        undefined,
+        env,
+      );
     }
 
     if (options.operator && url.pathname === "/api/operator") {
@@ -336,9 +382,12 @@ export function siteWorker(site) {
       purgeAfterWrite: (r, response, why) => purgeAfterWrite(r, response, ctx, why),
       secure: (response, r = request, nonce) => secure(response, r, nonce, env),
     };
+    /** @type {(response: Response) => Promise<Response>} */
+    const live = async (response) =>
+      options.respond ? options.respond(response, request, env, { stored: false }) : response;
     for (const step of options.steps ?? []) {
       const answer = await step(request, env, ctx, kit);
-      if (answer) return secure(answer, request, undefined, env);
+      if (answer) return live(secure(answer, request, undefined, env));
     }
 
     if (!exempt.some((prefix) => url.pathname.startsWith(prefix))) {
@@ -368,7 +417,9 @@ export function siteWorker(site) {
     const response = await site.render(request, env, ctx, { nonce });
     if (isWrite(request) && purgeAfter.some((prefix) => url.pathname.startsWith(prefix)))
       purgeAfterWrite(request, response, ctx, `${request.method} ${url.pathname}`);
-    const page = await site.earlyHints(secure(response, request, pageNonce(response, nonce), env));
+    const page = await live(
+      await site.earlyHints(secure(response, request, pageNonce(response, nonce), env)),
+    );
     const cacheControl = page.headers.get("Cache-Control");
     // Rendered for this one reader: a route's shared headers mean nothing here, and a response with none is said to
     // be private rather than left to a heuristic.
@@ -386,7 +437,11 @@ export function siteWorker(site) {
     try {
       response = await gateway(request, env, ctx);
     } catch (error) {
-      logEvent("gateway_error", { path, error: errorMessage(error) }, { level: "error" });
+      logEvent(
+        "gateway_error",
+        { path, error: errorMessage(error) },
+        { level: "error", tokenPath },
+      );
       return secure(
         textResponse("Something went wrong on our side. Please try again.", 500),
         request,
@@ -433,7 +488,7 @@ export function siteWorker(site) {
     ) => (await Promise.all([wrapped(request, env, ctx), site.routesReady()]))[0],
     {
       sha: (env) => options.sha?.(env) ?? /** @type {any} */ (env).DEPLOY_SHA,
-      tokenPath: PREVIEW_TOKEN,
+      tokenPath,
       route: (request) => site.routeName(request),
     },
   );
@@ -443,9 +498,11 @@ export function siteWorker(site) {
     /**
      * @param {ScheduledController} controller
      * @param {E} env
+     * @param {ExecutionContext} ctx
      */
-    async scheduled(controller, env) {
-      const jobs = options.cron?.(env, new Date(controller.scheduledTime))[controller.cron];
+    async scheduled(controller, env, ctx) {
+      const lists = await options.cron?.(env, new Date(controller.scheduledTime), ctx);
+      const jobs = lists?.[controller.cron];
       if (!jobs) {
         logEvent("cron_unknown", { cron: controller.cron }, { level: "warn" });
         return;

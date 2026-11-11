@@ -3,14 +3,11 @@
  * too: `./sign-in-form` answers with them on the server, and Capsomer's sign-in screen shows them (and the passkey's,
  * which only the browser knows).
  */
-import { SIGN_IN_EXPIRES_IN_WORDS } from "./sign-in-link.mjs";
+import { DISPOSABLE_EMAIL, SIGN_IN_EXPIRES_IN_WORDS } from "./sign-in-link.mjs";
 
 /** How long each email-change link works: an hour, Better Auth's default, and the words the mails say. */
 export const EMAIL_CHANGE_EXPIRES_IN_SECONDS = 60 * 60;
 export const EMAIL_CHANGE_EXPIRES_IN_WORDS = "1 hour";
-
-/** Better Auth's error code when a new account's address is at a disposable domain (refuseDisposable). */
-export const DISPOSABLE_EMAIL = "disposable_email";
 
 /** The words every site's sign-in pages say, by answer. */
 export const SIGN_IN_WORDS = Object.freeze({
@@ -44,6 +41,36 @@ export const SIGN_IN_WORDS = Object.freeze({
   }),
 });
 
+/** The words every site's account page says, by answer (`./sign-in-form` accountFormAction). */
+export const ACCOUNT_WORDS = Object.freeze({
+  noEmail: "Enter an email address.",
+  sameEmail: "That is already your email address.",
+  disposable: "Use a real email address. Disposable email addresses are not allowed.",
+  unverified: "Sign in with an email link first, then change your address.",
+  emailFailed: "The email was not sent. Try again in a minute.",
+  /** The current address the first email-change link went to, and the time both links last. */
+  emailSent: (/** @type {string} */ to) =>
+    `We sent a link to ${to}. Open it within ${EMAIL_CHANGE_EXPIRES_IN_WORDS} to approve the change; we then send one to the new address to confirm it.`,
+  stale: Object.freeze({
+    "change-email": "Changing your email needs a recent sign-in. Sign in again, then change it.",
+    "sign-out-device":
+      "Seeing and signing out your devices needs a recent sign-in. Sign in again first.",
+    "delete-account":
+      "Deleting your account needs a recent sign-in. Sign in again, then delete it.",
+  }),
+  deviceFailed: "That device was not signed out. Try again.",
+  noConfirm: "Tick the box to confirm, then delete your account.",
+  deleteFailed: "The account was not deleted. Try again.",
+  /** The browser's own changes on the account page (Better Auth's client), when one did not go through. */
+  passkeyAddFailed: "The passkey was not saved. Try again.",
+  passkeyRenameFailed: "The passkey was not renamed. Try again.",
+  passkeyRemoveFailed: "The passkey was not removed. Try again.",
+  linkFailed: (/** @type {string} */ provider) => `${provider} was not connected. Try again.`,
+  unlinkFailed: (/** @type {string} */ provider) => `${provider} was not disconnected. Try again.`,
+  othersFailed: "The other devices were not signed out. Try again.",
+  offline: "That did not go through. Check your connection and try again.",
+});
+
 /**
  * The words for a `?error=` code a sign-in page is sent back with (Better Auth's, from a refused Google or Apple
  * callback, a refused link, or the site's own limit), or null for none. `settings` names where the person joins Google
@@ -62,7 +89,7 @@ export function signInErrorWords(code, { siteName, settings }) {
   return "That sign-in did not complete. Try again, or use another way.";
 }
 
-export { SIGN_IN_EXPIRES_IN_WORDS, SIGN_IN_LINK_WORDS } from "./sign-in-link.mjs";
+export { DISPOSABLE_EMAIL, SIGN_IN_EXPIRES_IN_WORDS, SIGN_IN_LINK_WORDS } from "./sign-in-link.mjs";
 
 /**
  * The words for a passkey sign-in that did not sign in, from the error Better Auth's client returned, or null when the

@@ -19,6 +19,14 @@ export const cloudflareContext = createContext();
  */
 export const cspNonceContext = createContext(/** @type {string | null} */ (null));
 
+/**
+ * This render's Server-Timing marks (./server-timing): a loader adds its own with `timed(getTimings(context), ...)`,
+ * and they go out in the page's one Server-Timing header beside `render`. Null outside a timed render.
+ */
+export const serverTimingContext = createContext(
+  /** @type {import("./server-timing.mjs").Mark[] | null} */ (null),
+);
+
 /** @param {Readonly<import("react-router").RouterContextProvider>} context */
 export const getEnv = (context) => context.get(cloudflareContext).env;
 
@@ -27,3 +35,6 @@ export const getExecutionContext = (context) => context.get(cloudflareContext).c
 
 /** @param {Readonly<import("react-router").RouterContextProvider>} context */
 export const getNonce = (context) => context.get(cspNonceContext) ?? undefined;
+
+/** @param {Readonly<import("react-router").RouterContextProvider>} context */
+export const getTimings = (context) => context.get(serverTimingContext) ?? undefined;

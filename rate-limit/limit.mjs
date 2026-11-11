@@ -1,4 +1,5 @@
 import { sha256Hex } from "../encoding.mjs";
+import { ipBucket } from "../http.mjs";
 
 /**
  * @typedef {"ok" | "limited" | "unavailable"} Status
@@ -110,29 +111,6 @@ export function limitedResponse(verdict) {
 export function ipKey(prefix, request) {
   const ip = request.headers.get("CF-Connecting-IP")?.trim();
   return { key: `${prefix}:${ip ? ipBucket(ip) : "anon"}`, anonymous: !ip };
-}
-
-/**
- * An IPv4 address as it is; an IPv6 one as its first four groups (`::` expanded, leading zeros dropped) and `/64`,
- * and an IPv4-mapped one (`::ffff:192.0.2.1`) as its IPv4 address.
- * @param {string} ip
- */
-function ipBucket(ip) {
-  const address = ip.toLowerCase().split("%")[0] ?? "";
-  if (!address.includes(":")) return address;
-  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(address);
-  if (mapped) return /** @type {string} */ (mapped[1]);
-  const [head = "", tail] = address.split("::");
-  const front = head ? head.split(":") : [];
-  const back = tail ? tail.split(":") : [];
-  const groups =
-    tail === undefined
-      ? front
-      : [...front, ...Array(Math.max(0, 8 - front.length - back.length)).fill("0"), ...back];
-  return `${groups
-    .slice(0, 4)
-    .map((g) => (Number.parseInt(g, 16) || 0).toString(16))
-    .join("-")}/64`;
 }
 
 /**

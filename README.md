@@ -6,7 +6,7 @@ The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-
 servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-log`), server scaffold (`./mcp-server`), the admin MCP Worker built from them (`./admin-mcp`) and named agent keys (`./agent-keys`), the Access request-token check
 (`./access`), the check that an Access application lets in exactly the site's admins (`./access-drift`, `site-runtime-access-drift`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the one mail send (`./email`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images and their edits (`./image`), link prefetch (`./prefetch`), preloads and Early Hints (`./preload`), the Worker in front of a static site (`./static-site`), the edge page cache (`./edge-cache`), the Server-Timing header (`./server-timing`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), the signed token behind emailed links (`./signed-token`), where a site's Anthropic calls go
 (`./ai-gateway`), starting a Claude Code routine (`./routine`), the check on AI-written prose with the measure of an author's voice (`./prose`), the one sign-in every site
-offers (`./sign-in`, `./sign-in-client`, `./apple-secret`), INP attribution in the browser (`./vitals-client`), the page's Trusted Types default policy (`./trusted-types`) and the one call every client entry makes first (`./page-client`), the Cloudflare Turnstile widget and its server check (`./turnstile`), the same-origin check for
+offers (`./sign-in`, `./sign-in-client`, `./apple-secret`), INP attribution in the browser (`./vitals-client`), the page's Trusted Types default policy (`./trusted-types`), the one call every client entry makes first (`./page-client`), hydrate on intent (`./deferred-scripts`, `./hydrate-on-intent`), the Cloudflare Turnstile widget and its server check (`./turnstile`), the same-origin check for
 resource routes (`./origin`), the trailing-slash redirect, the gone list and the slug-rename redirect (`./url`), one structured log line and its scrubbers (`./log`, with the `handleError` that leaves a route 404 unlogged), the 404 counter, the redirect table
 (`./not-found`), scheduled jobs with their record, their run-now tool, `run_job`, and the Worker's `scheduled` body (`./cron`), the Worker glue for a site's security headers (`./page-headers`: set, nonce, policy, Report-Only companion, report endpoint, edge-cache nonce renewal) and the per-request bindings and nonce on React Router's context (`./context`). `./body` also reads a form or JSON to a ceiling and throws the 413.
 
@@ -14,7 +14,7 @@ One dependency, Google's `web-vitals` (pinned, no dependencies of its own), whic
 `@better-auth/passkey`, 1.7.17 or later (the security fixes of 2026-11-03 and 04), which a site that imports it installs itself; they are not declared as peers,
 because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
 tag (merging a version bump to `main` is the release: `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.92.0"`. `npm test` runs every test in `test/`. `npm run typecheck` checks the modules and bins (strict, `checkJs`, Workers and Node
-types; `tsconfig.json`) and the browser modules, `./turnstile`, `./sign-in-client`, `./vitals-client`, `./trusted-types` and `./page-client` (DOM types; `tsconfig.browser.json`), against
+types; `tsconfig.json`) and the browser modules, `./turnstile`, `./sign-in-client`, `./vitals-client`, `./trusted-types`, `./page-client`, `./hydrate-on-intent` and `./deferred-scripts` (DOM types; `tsconfig.browser.json`), against
 the hand-written `.d.mts` beside each; `better-auth`, `@better-auth/passkey` and `@cloudflare/workers-oauth-provider` are dev
 dependencies only so it can read their types. `test/` is not checked yet. `npm run lint` is Oxlint with the network's shared
 config (devkit's `./oxlint`, in `oxlint.config.ts`), type-aware through the same tsconfigs (`test/` through TypeScript's defaults).
@@ -919,8 +919,47 @@ A HEAD gets its status and headers with no render. The page streams to people; a
 render wait for the whole document. The request's nonce (`./context`) goes on React's scripts, on ServerRouter and into
 `./nonce`'s `NonceContext` (read it with `useNonce()` for an inline script a component writes). The render stops at
 `streamTimeout` plus a second or when the reader leaves. An error after the shell is one `render_failed` line and a
-500; `handleError` is `./log`'s handleServerError. `reactEntry({ nonce })` builds the same entry with another nonce
-reader, for a renderer that stores pages under a placeholder nonce.
+500; `handleError` is `./log`'s handleServerError, which cuts a preview link's token from the path; a site with token
+routes of its own exports `serverErrorHandler({ tokenPath: tokenPattern(["u", "e/c"]) })` as `handleError` instead.
+`reactEntry({ nonce })` builds the same entry with another nonce reader, for a renderer that stores pages under a
+placeholder nonce.
+
+## Hydrate on intent
+
+A page that needs React for one thing only (germomics' player) can send no React until the reader reaches for that thing.
+`./deferred-scripts` is the React half, `./hydrate-on-intent` the browser half:
+
+```tsx
+// app/root.tsx, Layout: decide once per document, then keep it for the client-side navigations that follow.
+const deferred = !routeHydrates(useMatches()); // a route opts into hydrating on load with handle = { hydrate: true }
+<head>… <StreamBuffer deferred={deferred} /> …</head>
+<body>{children}<HydrationScripts deferred={deferred} /></body>
+```
+
+```ts
+// The page's own script, after startPage():
+hydrateOnIntent({ selector: "[data-play-intent]", press: playNow, warm });
+```
+
+`HydrationScripts` is React Router's `<ScrollRestoration />` and `<Scripts />` on any other page. On a deferred page it
+writes React Router's boot as a `<script type="application/json">`, which a browser never runs: the server handoff, each
+match's route modules, the manifest (or the partial one, with lazy route discovery), the client entry and the module
+preloads with their integrity. The import map that subresource integrity needs stays in the page; it loads nothing.
+`StreamBuffer` is an inline stand-in, under the page's nonce, that keeps the loader data React Router streams after the
+document until the boot runs. `hydrateNow()` runs the boot: it adds the module preloads as `<link>` elements, makes React
+Router's context and stream (handing over what was buffered), loads the route modules and the client entry with
+`import()`, and the entry hydrates. `hydrateOnIntent` calls it on the first press, hover or focus of a matching control; its
+`press` runs inside the press for what cannot wait (Safari refuses a later `play()`), and the press is handed to the
+control (found again by position, focus restored) once `HydrationScripts` marks the page live (`data-hydrated` on `<html>`,
+the `site-runtime:hydrated` event, `isHydrated()`).
+
+Trusted Types: nothing here writes markup or script text, so the page needs no policy beyond the network's default, and
+no new CSP source (`import()` is governed by script-src, as for any same-origin module). It replaces a design that held
+React Router's scripts as text in a `<noscript>` and re-ran them, which needed innerHTML and a script-text policy.
+Checked in Playwright's Chromium with `require-trusted-types-for 'script'` enforced (germomics, 2026-11-11): a deferred
+page loads no module until a play button is focused, then hydrates, hands on the press and navigates client-side, with no
+violation; a page that hydrates on load is unchanged. The JSON mirrors React Router 8.5's `<Scripts>`; a React Router
+upgrade checks it against that component.
 
 ## The Worker
 
@@ -949,7 +988,8 @@ export class Renderer extends siteRenderer(WorkerEntrypoint, site) {}
 export default siteWorker(site);
 ```
 
-The gateway runs, in order: the canonical move (first, with the set built for where it points), maintenance,
+The gateway runs, in order: the canonical move (first, with the set built for where it points; `canonical.before` is
+a site's own earlier move and `canonical.keep(url)` keeps an address's slash), maintenance,
 `/.well-known/security.txt`, the standard files, the speculation rules file, CSP reports (per `clientIp` through
 `CSP_REPORT_RATE_LIMIT`; no binding drops them), the operator API, the site's steps, the cross-site write refusal (all
 but `crossSiteExempt`, default `/api/auth/`), then the page. A read with no cookie but `publicCookies` that `cacheable` does not
@@ -957,17 +997,33 @@ refuse goes to the Renderer, which the edge keeps only when it is shared (anythi
 parameters dropped), host and each public cookie; every other request is rendered live with its own nonce and leaves
 `private, no-store` unless its route set a policy of its own. A route marks its page shared (`publicPageHeaders`); a site whose routes name
 no Cache-Control passes `publicPages(url, env)` instead, and the Renderer stores each such 200 under the tags it
-returns. Every render gets a nonce; a policy that names it is renewed
+returns; a page marked shared with no edge lifetime of its own is stored for publicPageHeaders' day. A site's
+`respond(response, request, env, { stored })` gets the last word on each page and step answer after the set (a route-class
+cache rule); `settleCacheHeaders` or `privateRender` still runs after it. Each render sets `serverTimingContext` (./context;
+`timed(getTimings(context), name, fn)` in a loader adds a mark to the page's Server-Timing). Every render gets a nonce; a policy that names it is renewed
 per reader; a 304 leaves out the policy (RFC 9111 4.3.4: the browser updates its stored headers from a 304). Every HTML
 answer carries the Speculation-Rules header; a 404 goes through `onNotFound` (site-api's tombstones) and is counted
 unless under `/api/` or `/preview/`; a gateway that throws is a plain 500 with the set and a `gateway_error` line. Around
-it: the request log (DEPLOY_SHA, preview tokens cut, the route named from the build, loaded inside the request), `wrap`,
-then each of `adminIdle`. An unknown cron warns `cron_unknown` and runs nothing; a known one is awaited through
-`runJobs`.
+it: the request log (DEPLOY_SHA, the route named from the build, loaded inside the request), `wrap`,
+then each of `adminIdle`. `cron(env, scheduledTime, ctx)` names the job lists by expression (a promise is fine, so the jobs can be imported when
+the cron fires); an unknown cron warns `cron_unknown` and runs nothing; a known one is awaited through `runJobs`.
+
+A preview link's token is cut from the request log, a `gateway_error` line and every CSP report line (a report names
+the page it came from), as `/preview/[token]`; `tokenRoutes` (`["u", "e/c"]`) adds the site's own token routes, cut
+the same way (`tokenPattern(routes)` in ./log is the pattern; a route error's `server_error` line is entry.server's
+`handleError`, under Server entry).
+
+## KV read-through
+
+`./kv-cache`'s `kvCached(kv, key, { ttl, valid, keep }, read)` keeps a rarely changing read in a KV namespace: a hit
+is a kept value `valid` accepts (default anything but null); a miss runs `read` and keeps what it returns for `ttl`
+seconds (at least KV's 60) unless `keep` refuses it. A KV fault on either side never fails the read; a `read` that
+throws keeps nothing and throws on. With no namespace it reads straight through. KV is eventually consistent, so drop
+an entry a write made stale with `kv.delete(key)`, and never use it for what a person just wrote and expects to see.
 
 ## Request helpers
 
-`./http`: `clientIp(request)` (`cf-connecting-ip`, else the one shared key "unknown"), `isWrite(request)`,
+`./http`: `clientIp(request)` (the rate-limit key: `cf-connecting-ip` as IPv4 or its IPv6 /64, else the one shared key "unknown"), `ipBucket(ip)`, `isWrite(request)`,
 `textResponse` and `jsonResponse` (`private, no-store`), `timedFetch` (a 20 s timeout unless the caller passes a
 signal) and `fetchUntil(signal)` (also stops when a reader or tool call is canceled), `isWorkerPreview(env)` and
 `publicOrigin(env, canonical)` (`PUBLIC_ORIGIN` before a cutover, else the canonical origin). `./log` has
@@ -990,6 +1046,8 @@ for hand-written SQL, so `%` and `_` match themselves. A newest-first page goes 
 row's millisecond. Sites with Drizzle only: it imports `drizzle-orm`.
 
 ## CSV
+
+`./confirm`: `confirmationSatisfied(form, word?)` and `confirmationRequired()`, the server half of a destructive action's confirmation. The page asks (Capsomer's confirm dialog or confirm page) and posts `confirmed=1`, plus the typed word as `confirm` where it asks for one; the action refuses what is not confirmed with a 400. devkit-destructive finds the call by name inside each destructive intent's branch.
 
 `./csv`: `toCsv(header, rows)`, `recordsCsv(records, columns?)`, `csvRow(cells)` and `csvCell(value)` write RFC 4180
 (CRLF after every record, a field quoted when it holds a comma, quote or line break; a list joined with "; "). A text cell
@@ -1155,7 +1213,7 @@ const auth = betterAuth({
   `confirmSignInLink` carries it to `errorCallbackURL` (the confirm page itself when the site names none), txasm's way.
   The page's loader calls `signInLinkProblem(request.url, { signedIn })`: null (show the button), `"used"` (within
   `SIGN_IN_EXPIRES_IN_SECONDS` of the mail), `"expired"` (after), `"invalid"` (no send time: a link cut or edited, or
-  mailed before 0.59.0), `"missing"` (no token: cut short when copied), `"failed"` (any other error), or `"signed-in"`
+  mailed before 0.59.0), `"missing"` (no token: cut short when copied), `"disposable"` (a new account at a disposable address), `"failed"` (any other error), or `"signed-in"`
   (this browser is signed in, so nothing more to do). `SIGN_IN_LINK_WORDS[problem]` is `{ title, text }` in the
   network's words; a site may use its own.
 - The email change's links open a page too (E1). Better Auth's `/verify-email` link acts on a GET (it approves the
@@ -1465,18 +1523,30 @@ export async function action({ request, context }: Route.ActionArgs) {
   page's form POST (`/auth/google`, `/auth/apple`), so the landing is decided on the server. Answers the provider's URL
   and Better Auth's state cookie, or null.
 - `authHandler(auth, request)`: the `/api/auth/*` route. Better Auth's answer, `no-store` when it says nothing.
-- `accountOptions({ confirmPath, sendEmailChange, beforeDelete })`: spread beside `signInOptions`. The email change
+- `accountOptions({ confirmPath, sendEmailChange, beforeDelete, afterDelete })`: spread beside `signInOptions`. The email change
   takes two links, the current address first, each opening the site's confirm page (`confirmEmailLink`), each lasting
   EMAIL_CHANGE_EXPIRES_IN_WORDS (1 hour); `sendEmailChange({ to, link, token, step, newEmail, expiresIn })` mails
-  both. Deletion runs only from the site's own route (`/delete-user` and its callback are off) after `beforeDelete`.
-  Spread its `disabledPaths` with the sign-in's.
+  both. Deletion runs only from the site's own route (`/delete-user` and its callback are off) after `beforeDelete`;
+  `afterDelete`, when given, runs once Better Auth has removed the account (clean-up outside the database). A
+  disposable new address is refused on Better Auth's own `/change-email` too (`signInOptions`' plugin). Spread its
+  `disabledPaths` with the sign-in's.
+- `accountFormAction(auth, request, form, { deletedLanding, beforeDelete })`: the account page's three posts, for
+  Capsomer's account settings (`capsomer/react/sign-in-settings`): `intent=change-email` (`newEmail`; refused when
+  malformed, unchanged, disposable or on an address never confirmed, then Better Auth's two-link change),
+  `intent=sign-out-device` (`session`, an id, so no token reaches the page) and `intent=delete-account` (`confirm`, the
+  ticked box; the site's `beforeDelete(user, form)` runs first and a string it returns is the refusal, then
+  `auth.api.deleteUser` and `{ location: deletedLanding, headers }` with the cleared cookies). Each needs a sign-in from
+  the last FRESH_SECONDS; without one the state says `stale`. Any other intent answers null, for the site's own posts.
+  The words are `ACCOUNT_WORDS`.
 - Disposable addresses: `signInOptions` refuses a new account at a disposable domain or a subdomain of one
   (`isDisposableEmail`, `disposable_email`), from the CC0 list at disposable-email-domains, in
   `disposable-domains.mjs`, plus `NETWORK_EXTRA` (domains a site blocked before that the source lacks). `node update-disposable.mjs` refreshes it; never edit it by hand.
 
 **Tests.** `test/sign-in-form.test.mjs`: the next-path escapes, a disposable subdomain, the headers and token the link
-request carries, each refusal's words, a code's cookie-only redirect, no-store, both email-change links, and the
-disposable refusal on the real Better Auth beside a site's own user hook.
+request carries, each refusal's words, a code's cookie-only redirect, no-store, both email-change links, the
+disposable refusal on the real Better Auth beside a site's own user hook, and the account page's posts on the real
+Better Auth (the email change's refusals and its first link, the delete's box and the site's refusal, a stale sign-in,
+and the delete clearing the cookies).
 
 ## The live sign-in check
 
@@ -1601,8 +1671,11 @@ const run = await runAi({
 - At the cap, `api` uses the routine and `auto` stops falling back.
 - Subscription usage cannot be read (claude.ai/settings/usage is the only meter), so `auto` reacts to a refusal and cannot
   see remaining quota.
-- `costMicros(model, usage)` prices a call from `PRICES` (list prices read 2026-11-11, cache writes at the five-minute
-  rate); `priceOf(model)` finds a price with or without the id's -YYYYMMDD date. This is the network's one price table:
+- `costMicros(model, usage)` prices a call from `PRICES` (list prices read 2026-11-11): `cacheWrite` is five-minute cache
+  writes, `cacheWrite1h` one-hour ones (2x input), and Haiku 5.5's `long` price applies to each request whose prompt
+  (input, cache reads and both cache writes) is over 100,000 tokens. `./anthropic` splits the response's
+  `cache_creation` by TTL and keeps the over-the-line requests in `usage.long`, so its `usage` goes straight in; a usage
+  without `long` is priced as one request. `priceOf(model)` finds a price with or without the id's -YYYYMMDD date. This is the network's one price table:
   a site prices its calls here, never in a copy. Every active model in `./anthropic` `MODELS` has a price (a test checks).
 
 **Tests.** `test/ai-engine.test.mjs`.
@@ -1665,6 +1738,23 @@ if (refused) return refused;
   included. The request's own origin, not a configured one, so the check holds on workers.dev, a preview and the live
   domain alike.
 - `originRefusal(headers)` is the 403: `ORIGIN_REFUSAL` as plain text, `no-store`, saying nothing about the route.
+
+## Who may see a draft
+
+`draftGate(row, canSeeDrafts, { isDraft? })` (`./draft-gate`) is the one check a loader makes before it renders a row
+that may not be public yet. A missing row and a draft the viewer may not see are the same 404 (a thrown `Response`,
+`no-store`), so a visitor cannot tell a draft from nothing. `canSeeDrafts` (the site's admin check) runs only for a
+draft, so a public page never verifies an Access token. A draft is `status === "draft"` unless `isDraft` says otherwise.
+
+```js
+import { draftGate, draftRobots } from "@dustinedwards/site-runtime/draft-gate";
+const { row: page, draft } = await draftGate(await getPage(db, slug), () =>
+  isAdminViewer(env, request),
+);
+// render <DraftNotice show={draft} /> (capsomer/react/draft-notice); meta: [...draftRobots(draft)]
+```
+
+`draftRobots(draft)` is the `noindex` robots meta a draft page carries, or nothing.
 
 ## One address per page
 
