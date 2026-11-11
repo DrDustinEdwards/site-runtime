@@ -43,6 +43,8 @@
  * left from a finished request can stay unsettled in workerd), the site's `wrap` (Prelum's markdownCopies), then the
  * admin idle sign-out (./access) for each of `adminIdle`.
  *
+ * Under `vite dev` (mode "development") a page also carries `<meta property="csp-nonce">` for the styles Vite injects.
+ *
  * Cron: `cron(env, date)[controller.cron]` runs through ./cron runJobs, awaited; a trigger with no list warns
  * `cron_unknown` and runs nothing.
  *
@@ -109,6 +111,7 @@ export function defineSite(options) {
   let hintHeader;
 
   const build = async () => options.serverBuild();
+  const dev = options.mode === "development";
 
   /** @type {import("./worker.d.mts").Site<E>} */
   const site = {
@@ -119,7 +122,8 @@ export function defineSite(options) {
       context.set(cspNonceContext, nonce ?? null);
       options.context?.(context, env, ctx);
       set?.(context);
-      return timedRender(() => requestHandler(request, context));
+      const page = await timedRender(() => requestHandler(request, context));
+      return dev && nonce ? withViteNonce(page, nonce) : page;
     },
     async stylesheets() {
       stylesheetHrefs ??= rootStylesheets(await build()).map((sheet) => sheet.href);
@@ -202,6 +206,22 @@ function publicCookieValues(request, publicCookies) {
     values[name] = eq < 0 ? "" : pair.slice(eq + 1);
   }
   return values;
+}
+
+/**
+ * Under `vite dev` only: Vite's client injects each stylesheet as a <style> and takes its nonce from
+ * `<meta property="csp-nonce">` (vite.dev/guide/features#content-security-policy-csp), so the page's policy lets it in.
+ * @param {Response} page
+ * @param {string} nonce
+ */
+function withViteNonce(page, nonce) {
+  if (!page.headers.get("Content-Type")?.startsWith("text/html")) return page;
+  return new HTMLRewriter()
+    .on("head", {
+      element: (head) =>
+        void head.prepend(`<meta property="csp-nonce" nonce="${nonce}">`, { html: true }),
+    })
+    .transform(page);
 }
 
 /**
