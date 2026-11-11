@@ -197,7 +197,9 @@
     "web-push.mjs",
     "web-push.d.mts",
     "health-alert.mjs",
-    "health-alert.d.mts"
+    "health-alert.d.mts",
+    "health-snapshot.mjs",
+    "health-snapshot.d.mts"
   ],
   "type": "module",
   "exports": {
@@ -548,6 +550,10 @@
     "./health-alert": {
       "types": "./health-alert.d.mts",
       "default": "./health-alert.mjs"
+    },
+    "./health-snapshot": {
+      "types": "./health-snapshot.d.mts",
+      "default": "./health-snapshot.mjs"
     }
   },
   "scripts": {
