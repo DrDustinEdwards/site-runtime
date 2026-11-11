@@ -243,12 +243,6 @@ function pageNonce(response, nonce) {
   return response.headers.get("Content-Type")?.startsWith("text/html") ? nonce : undefined;
 }
 
-/** @param {string} path */
-function isPagePath(path) {
-  const last = path.slice(path.lastIndexOf("/") + 1);
-  return !last.includes(".") || last.endsWith(".data");
-}
-
 /** @param {Response} page */
 function withSpeculationRules(page) {
   if (!page.headers.get("Content-Type")?.startsWith("text/html")) return page;
@@ -356,7 +350,6 @@ export function siteWorker(site) {
     if (
       !isWrite(request) &&
       cookies &&
-      isPagePath(url.pathname) &&
       url.pathname !== "/health" &&
       (options.cacheable?.(request, url, env) ?? true)
     ) {

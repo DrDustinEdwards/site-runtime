@@ -25,13 +25,19 @@ test("only a shared 200 keeps its edge header, and a reader with a cookie is tol
 
   const failed = settleCacheHeaders(new Response("boom", { status: 500, headers: shared() }));
   assert.equal(failed.headers.get("Cache-Control"), "private, no-store");
-  assert.equal(failed.headers.get("Cloudflare-CDN-Cache-Control"), null);
+  assert.equal(failed.headers.get("Cloudflare-CDN-Cache-Control"), "no-store");
 
-  const unmarked = settleCacheHeaders(
-    new Response("ok", { headers: { "Cloudflare-CDN-Cache-Control": "max-age=60" } }),
+  // A route's own lifetime (a feed's hour) is the browser's; the edge, which no purge would reach, keeps none of it.
+  const own = settleCacheHeaders(
+    new Response("ok", {
+      headers: {
+        "Cache-Control": "public, max-age=3600",
+        "Cloudflare-CDN-Cache-Control": "max-age=60",
+      },
+    }),
   );
-  assert.equal(unmarked.headers.get("Cache-Control"), "private, no-store");
-  assert.equal(unmarked.headers.get("Cloudflare-CDN-Cache-Control"), null);
+  assert.equal(own.headers.get("Cache-Control"), "public, max-age=3600");
+  assert.equal(own.headers.get("Cloudflare-CDN-Cache-Control"), "no-store");
 
   const withCookie = new Request("https://example.com/", { headers: { Cookie: "a=b" } });
   assert.equal(forReader(kept, withCookie).headers.get("Cache-Control"), "private, no-store");

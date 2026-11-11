@@ -59,7 +59,7 @@ test("a cookieless or theme-only read goes to the Renderer, keyed on host and th
   assert.equal(reply.headers.get("Content-Security-Policy"), null);
 });
 
-test("any other cookie, a write or a file path is never stored", async () => {
+test("any other cookie, a write or a refused path never reaches the Renderer", async () => {
   const { fetch, stored } = harness({
     cacheable: (_r, url) => !url.pathname.startsWith("/account"),
   });
@@ -70,7 +70,7 @@ test("any other cookie, a write or a file path is never stored", async () => {
   assert.equal(signedIn.status, 500);
   assert.equal(signedIn.headers.get("X-Set"), "1");
   await fetch(new Request("https://example.com/account"));
-  await fetch(new Request("https://example.com/feed.xml"));
+  await fetch(new Request("https://example.com/about", { method: "POST" }));
   assert.equal(stored.length, 0);
 });
 
