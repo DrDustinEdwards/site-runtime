@@ -2,7 +2,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { canonicalRedirect, goneResponse, renameRedirect, slashRedirect } from "../url.mjs";
+import {
+  canonicalRedirect,
+  goneResponse,
+  isSameOriginPath,
+  renameRedirect,
+  slashRedirect,
+} from "../url.mjs";
 
 const at = (/** @type {string} */ path, method = "GET") =>
   new Request(`https://example.com${path}`, { method });
@@ -72,4 +78,10 @@ test("a renamed slug is one 301 to its newest name, keeping the rest of the path
     renameRedirect(at("/a"), { prefix: "/", renames: { a: "b", b: "a" } }),
     /loop/,
   );
+});
+
+test("isSameOriginPath refuses what a browser reads as another host", () => {
+  for (const path of ["/", "/a/b?c=1"]) assert.equal(isSameOriginPath(path), true, path);
+  for (const path of ["//evil.example/x", "/\\evil.example/x", "https://evil.example/", "a/b", ""])
+    assert.equal(isSameOriginPath(path), false, path);
 });

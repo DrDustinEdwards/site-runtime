@@ -14,3 +14,10 @@ export function base64url(input: Input): string;
 export function fromBase64url(text: string): Uint8Array<ArrayBuffer>;
 /** SHA-256 as lowercase hex. */
 export function sha256Hex(input: Input): Promise<string>;
+/** HMAC-SHA-256 of `payload` under the UTF-8 bytes of `secret`, as lowercase hex. */
+export function hmacSha256Hex(
+  secret: string,
+  payload: Uint8Array | ArrayBuffer | string,
+): Promise<string>;
+/** FNV-1a, 32 bits, over UTF-16 code units, as eight hex digits: a fingerprint, never a security boundary. */
+export function fnv1a32(input: string): string;

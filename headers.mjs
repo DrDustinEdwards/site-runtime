@@ -205,13 +205,19 @@ export function buildSecurityHeaders({ site, overrides, coep } = {}) {
  * A Set-Cookie value for a cookie that holds a sign-in or anything else script must never read (ASVS 3.3.1 to 3.3.4):
  * named `__Host-<name>`, so the browser refuses it unless it is Secure, host-only and on `/`; HttpOnly; and SameSite Lax
  * (or Strict). `maxAge: 0` with an empty value ends it. A name or value a cookie cannot carry is refused, never encoded.
+ * A cookie scoped to a `path` other than `/` cannot be `__Host-`, so it is `__Secure-<name>` with the same attributes
+ * and no Domain (host-only all the same). Read either back with readCookie.
  * @param {string} name the name without its prefix
  * @param {string} value
- * @param {{ maxAge?: number, sameSite?: "Lax" | "Strict", httpOnly?: boolean }} [options] `httpOnly: false` only for a
- *   cookie script must read, which is never a session
+ * @param {{ maxAge?: number, sameSite?: "Lax" | "Strict", httpOnly?: boolean, path?: string }} [options]
+ *   `httpOnly: false` only for a cookie script must read, which is never a session
  * @returns {string}
  */
-export function hostCookie(name, value, { maxAge, sameSite = "Lax", httpOnly = true } = {}) {
+export function hostCookie(
+  name,
+  value,
+  { maxAge, sameSite = "Lax", httpOnly = true, path = "/" } = {},
+) {
   if (!/^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/.test(name) || /^__(host|secure)-/i.test(name))
     throw new Error(`${JSON.stringify(name)} is not a cookie name (give it without its prefix)`);
   if (!/^[\x21\x23-\x2B\x2D-\x3A\x3C-\x5B\x5D-\x7E]*$/.test(value))
@@ -220,14 +226,41 @@ export function hostCookie(name, value, { maxAge, sameSite = "Lax", httpOnly = t
     throw new Error(`SameSite is Lax or Strict, not ${JSON.stringify(sameSite)}`);
   if (maxAge !== undefined && !(Number.isInteger(maxAge) && maxAge >= 0))
     throw new Error(`maxAge is whole seconds, got ${maxAge}`);
+  if (!/^\/[\x21-\x3A\x3C-\x7E]*$/.test(path))
+    throw new Error(`a cookie path starts with / and holds no ; or space, got ${path}`);
   return [
-    `__Host-${name}=${value}`,
-    "Path=/",
+    `${cookiePrefix(path)}${name}=${value}`,
+    `Path=${path}`,
     "Secure",
     ...(httpOnly ? ["HttpOnly"] : []),
     `SameSite=${sameSite}`,
     ...(maxAge === undefined ? [] : [`Max-Age=${maxAge}`]),
   ].join("; ");
+}
+
+/** @param {string} path */
+const cookiePrefix = (path) => (path === "/" ? "__Host-" : "__Secure-");
+
+/**
+ * The value of a cookie hostCookie wrote, by its name without the prefix: `__Host-<name>`, else `__Secure-<name>`.
+ * A bare `<name>` is never read, since any sibling subdomain or plaintext page could have set it. The first of a
+ * repeated name wins, as browsers send the most specific path first (RFC 6265 5.4). Null when there is none.
+ * @param {Request} request
+ * @param {string} name
+ * @returns {string | null}
+ */
+export function readCookie(request, name) {
+  const header = request.headers.get("Cookie");
+  if (!header) return null;
+  /** @type {Map<string, string>} */
+  const jar = new Map();
+  for (const part of header.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq === -1) continue;
+    const key = part.slice(0, eq).trim();
+    if (!jar.has(key)) jar.set(key, part.slice(eq + 1).trim());
+  }
+  return jar.get(`__Host-${name}`) ?? jar.get(`__Secure-${name}`) ?? null;
 }
 
 /**

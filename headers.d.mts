@@ -23,14 +23,17 @@ export function buildSecurityHeaders(options?: {
 /** Cross-Origin-Embedder-Policy: `credentialless` or `require-corp`, Report-Only when asked. */
 export type Coep = { value: "credentialless" | "require-corp"; reportOnly?: boolean };
 /**
- * A Set-Cookie value: `__Host-<name>=<value>; Path=/; Secure; HttpOnly; SameSite=Lax`, with Max-Age when given. A name
- * with a prefix already, or a name or value a cookie cannot carry, is refused.
+ * A Set-Cookie value: `__Host-<name>=<value>; Path=/; Secure; HttpOnly; SameSite=Lax`, with Max-Age when given; with a
+ * `path` other than `/`, `__Secure-<name>` on that path. A name with a prefix already, or a name, value or path a cookie
+ * cannot carry, is refused.
  */
 export function hostCookie(
   name: string,
   value: string,
-  options?: { maxAge?: number; sameSite?: "Lax" | "Strict"; httpOnly?: boolean },
+  options?: { maxAge?: number; sameSite?: "Lax" | "Strict"; httpOnly?: boolean; path?: string },
 ): string;
+/** A cookie hostCookie wrote, by its name without the prefix (`__Host-`, else `__Secure-`); never the bare name. */
+export function readCookie(request: Request, name: string): string | null;
 /** What an uploaded file is served with: nosniff and `sandbox; default-src 'none'; style-src 'unsafe-inline'`. */
 export const UPLOAD_HEADERS: Readonly<Record<string, string>>;
 /**

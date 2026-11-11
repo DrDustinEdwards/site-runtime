@@ -74,3 +74,5 @@ export const OWASP_EVENTS: Readonly<{
  * not logged; any other error is one scrubbed `server_error` line at error level with the request's fields.
  */
 export function handleServerError(error: unknown, args: { request: Request }): void;
+/** The message of a thrown value: an Error's own message, anything else as a string. */
+export function errorMessage(error: unknown): string;

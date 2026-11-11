@@ -15,6 +15,27 @@
 const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 /**
+ * The status of every permanent redirect a site answers: 301 for GET and HEAD, 308 for any other method, since a 301
+ * lets a browser turn a POST into a GET and drop the form's body.
+ * @param {string} method
+ * @returns {301 | 308}
+ */
+export function redirectStatus(method) {
+  const m = method.toUpperCase();
+  return m === "GET" || m === "HEAD" ? 301 : 308;
+}
+
+/**
+ * Whether a path may be put in a Location on this origin: one leading slash and no backslash. `//host/x` and
+ * `/\\host/x` are protocol-relative to a browser and would leave the site.
+ * @param {string} path
+ * @returns {boolean}
+ */
+export function isSameOriginPath(path) {
+  return path.startsWith("/") && !path.startsWith("//") && !path.includes("\\");
+}
+
+/**
  * The redirect for a path that ends in a slash, or null when there is nothing to redirect.
  * @param {Request} request
  * @param {{ except?: readonly string[] }} [options]
@@ -46,7 +67,7 @@ export function canonicalRedirect(request, { host, except = [], https = true } =
   const target = new URL(`${scheme}//${hostname}${url.port ? `:${url.port}` : ""}`);
   target.pathname = path.replace(/^\/+/, "/");
   target.search = url.search;
-  const status = request.method === "GET" || request.method === "HEAD" ? 301 : 308;
+  const status = redirectStatus(request.method);
   return new Response(null, {
     status,
     headers: { Location: target.href, "Cache-Control": "private, no-store" },
@@ -133,7 +154,7 @@ export async function renameRedirect(request, { prefix, renames }) {
   const target = new URL(url.origin);
   target.pathname = `${prefix}${encodeURIComponent(to)}${suffix}`;
   target.search = url.search;
-  const status = request.method === "GET" || request.method === "HEAD" ? 301 : 308;
+  const status = redirectStatus(request.method);
   return new Response(null, {
     status,
     headers: { Location: target.href, "Cache-Control": "private, no-store" },
