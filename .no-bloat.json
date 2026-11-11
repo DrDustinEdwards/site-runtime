@@ -1,6 +1,6 @@
 {
   "baseline": {
-    "measured_at": "b736d4f",
+    "measured_at": "b0187d6",
     "knip": {
       "Unused files": 7,
       "Unused exports": 3
@@ -12,12 +12,12 @@
     },
     "tests": {
       "files": 56,
-      "cases": 368
+      "cases": 369
     },
     "comments": {
-      "lines": 7895,
-      "code": 28797,
-      "percentage": 21.52
+      "lines": 7919,
+      "code": 28869,
+      "percentage": 21.53
     }
   }
 }

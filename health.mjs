@@ -28,6 +28,7 @@
  * where only custom domains get functional cache operations) or `backupTtlMs` is 0, every request reads.
  */
 
+import { PURGE_FAILED_KEY } from "./edge-cache.mjs";
 import { logEvent, scrubText } from "./log.mjs";
 import { authEventCounts } from "./sign-in-account.mjs";
 
@@ -204,6 +205,29 @@ export function r2Check(name, bucket) {
  */
 export function kvCheck(name, kv) {
   return { name, run: async () => (await kv.get(PROBE_KEY), true) };
+}
+
+/**
+ * A check that no cache purge is outstanding: `recordPurge` (edge-cache) keeps the last failed purge in KV until one
+ * succeeds, so pages that may be stale show here. Level warn. The detail names only the time, since the reason can
+ * name a draft.
+ * @param {{ get(key: string): Promise<string | null> }} kv
+ * @returns {HealthCheck}
+ */
+export function purgeCheck(kv) {
+  return {
+    name: "cache-purge",
+    level: "warn",
+    run: async () => {
+      const raw = await kv.get(PURGE_FAILED_KEY);
+      if (!raw) return true;
+      const at = JSON.parse(raw)?.at;
+      return {
+        ok: false,
+        detail: `a cache purge failed at ${at}; pages may be stale until the next purge`,
+      };
+    },
+  };
 }
 
 /**

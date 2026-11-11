@@ -50,6 +50,8 @@ export function healthResponse(probe?: {
 export function r2Check(name: string, bucket: { head(key: string): Promise<unknown> }): HealthCheck;
 /** A check that a KV namespace answers: a `get` of a fixed key; null passes, a throw fails. */
 export function kvCheck(name: string, kv: { get(key: string): Promise<unknown> }): HealthCheck;
+/** A check that no cache purge is outstanding (`recordPurge` in ./edge-cache keeps the last failed one in KV): level warn, named "cache-purge", the detail only the time. */
+export function purgeCheck(kv: { get(key: string): Promise<string | null> }): HealthCheck;
 /**
  * The sign-in spike alert (F3), level warn and `alert: true`: fails when failed sign-ins or sign-in mails in the last `windowMinutes`
  * (60) pass `failures` (50) or `mails` (50), read from ./sign-in's `auth_events` table (AUTH_EVENTS_SQL, `eventsDb`).
