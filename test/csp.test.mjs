@@ -561,7 +561,7 @@ test("trustedTypes writes require-trusted-types-for, and its names; the staged c
   assert.throws(() => buildStagedPolicy(SINK, {}), /stages nothing/);
 });
 
-test("renewNonce leaves a response with no nonce as it is, and refuses to resend a stored nonce without HTMLRewriter", () => {
+test("renewNonce swaps only the nonce, byte for byte, a value split across chunks included; anything else as it is", async () => {
   const plain = new Response("x", {
     headers: { "Content-Type": "text/html", "Content-Security-Policy": "script-src 'self'" },
   });
@@ -573,12 +573,27 @@ test("renewNonce leaves a response with no nonce as it is, and refuses to resend
     },
   });
   assert.equal(renewNonce(json), json);
-  if (typeof globalThis.HTMLRewriter !== "undefined") return;
-  const stored = new Response("<script nonce=a></script>", {
-    headers: {
-      "Content-Type": "text/html",
-      "Content-Security-Policy": `script-src 'nonce-${generateNonce()}'`,
+
+  const old = "OLDnonce0000+/==";
+  const page = `<link nonce="${old}" rel="icon" href="/i.svg"/><script nonce="${old}" src="/s.js"></script><p>nonce="x"</p>`;
+  const bytes = new TextEncoder().encode(page);
+  const cut = page.indexOf(old) + 3;
+  const stored = new Response(
+    new ReadableStream({
+      start(controller) {
+        controller.enqueue(bytes.slice(0, cut));
+        controller.enqueue(bytes.slice(cut));
+        controller.close();
+      },
+    }),
+    {
+      headers: {
+        "Content-Type": "text/html",
+        "Content-Security-Policy": `script-src 'nonce-${old}'`,
+      },
     },
-  });
-  assert.throws(() => renewNonce(stored), /needs HTMLRewriter/);
+  );
+  const out = renewNonce(stored, "NEW");
+  assert.equal(out.headers.get("Content-Security-Policy"), "script-src 'nonce-NEW'");
+  assert.equal(await out.text(), page.replaceAll(`nonce="${old}"`, 'nonce="NEW"'));
 });
