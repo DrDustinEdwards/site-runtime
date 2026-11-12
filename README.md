@@ -1071,7 +1071,7 @@ an entry a write made stale with `kv.delete(key)`, and never use it for what a p
 `textResponse` and `jsonResponse` (`private, no-store`), `timedFetch` (a 20 s timeout unless the caller passes a
 signal) and `fetchUntil(signal)` (also stops when a reader or tool call is canceled), `isWorkerPreview(env)` and
 `publicOrigin(env, canonical)` (`PUBLIC_ORIGIN` before a cutover, else the canonical origin). `./log` has
-`errorMessage(error)`; `./url` has `redirectStatus(method)` (301, or 308 for a form) and `isSameOriginPath(path)`;
+`errorMessage(error)`; `./url` has `redirectStatus(method)` (301, or 308 for a form), `isSameOriginPath(path)` and `isHttpUrl(value)` (an entered link: absolute http or https with a host, so no `javascript:` href);
 `./headers` has `hostCookie(name, value, { path })` (`__Secure-` on a path other than `/`) and `readCookie(request,
 name)`, which reads only the prefixed names.
 

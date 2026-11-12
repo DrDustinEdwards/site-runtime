@@ -15,6 +15,21 @@
 const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 /**
+ * An outside address a page may put in an href, stored as typed: absolute, http or https, with a host. A `javascript:` or
+ * `data:` URL survives HTML escaping, so a link a person entered is checked by this before it is stored or drawn.
+ * @param {unknown} value
+ * @returns {value is string}
+ */
+export function isHttpUrl(value) {
+  if (typeof value !== "string" || !/^https?:\/\//i.test(value)) return false;
+  try {
+    return new URL(value).hostname !== "";
+  } catch {
+    return false;
+  }
+}
+
+/**
  * The status of every permanent redirect a site answers: 301 for GET and HEAD, 308 for any other method, since a 301
  * lets a browser turn a POST into a GET and drop the form's body.
  * @param {string} method
