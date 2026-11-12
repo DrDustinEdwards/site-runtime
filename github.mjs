@@ -104,9 +104,8 @@ export function pagePath(path, perPage, page) {
 /**
  * Every page of a GitHub list, read to the end. The next page is asked for by number while the Link header says
  * `rel="next"` (a short page is not the end test: GitHub may serve fewer than per_page with more to come). A list not
- * read whole comes back with `problem` set ("page N returned S", "more than N pages") rather than as if it were
- * complete: a page refused, or more than
- * `maxPages` (then `truncated` is true too).
+ * read whole comes back with `problem` set rather than as if it were complete: "page N returned S" for a refused
+ * page, or "more than N pages" past `maxPages` (then `truncated` is true too).
  * @template T
  * @param {(path: string) => Promise<Response>} call
  * @param {string} path
