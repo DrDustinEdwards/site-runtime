@@ -207,7 +207,8 @@ export function integrityPolicy(options?: { endpoint?: string; reportOnly?: bool
   value: string;
 };
 /**
- * A stored HTML page with a fresh nonce in its policy header and on every <script>, <style> and <link> that carried the
- * rendered one (HTMLRewriter; throws without it). Anything else comes back as it is.
+ * A stored HTML page with a fresh nonce in its policy header and in every `nonce="…"` attribute that carried the rendered
+ * one, swapped in the byte stream so the page differs from a fresh render by its nonce alone. Anything else comes back
+ * as it is.
  */
 export function renewNonce(response: Response, nonce?: string): Response;

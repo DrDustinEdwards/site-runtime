@@ -502,11 +502,12 @@ const NONCE_SOURCE = /'nonce-([A-Za-z0-9+/_=-]+)'/;
 
 /**
  * A stored page with a fresh nonce: the nonce its policy was rendered with becomes `nonce` in the Content-Security-Policy
- * (and Report-Only) header and on every <script>, <style> and <link> whose nonce attribute held it, so no two readers of
- * an edge-cached page share one, and an element injected without the old nonce gains none. Call it on every response
- * the cache answers, hit or miss. A response that is not HTML, or whose policy has no nonce, comes back as it is.
- * It needs HTMLRewriter (Workers), and throws without it rather than send the stored nonce again. This is the third
- * way to trust inline scripts on a cached page, beside hashes, and the one to use before `inlineScripts`.
+ * (and Report-Only) header and in every `nonce="…"` attribute that held it, so no two readers of an edge-cached page share
+ * one, and an element injected without the old nonce gains none. Call it on every response the cache answers, hit or
+ * miss. A response that is not HTML, or whose policy has no nonce, comes back as it is. The attribute's value is swapped
+ * in the byte stream, never by re-serializing the tag (HTMLRewriter writes `<link … />` where React wrote `<link …/>`), so
+ * a stored page differs from a fresh render of the same page by its nonce alone. This is the third way to trust inline
+ * scripts on a cached page, beside hashes, and the one to use before `inlineScripts`.
  * @param {Response} response
  * @param {string} [nonce] the new nonce (generateNonce), when the caller needs to know it
  * @returns {Response}
@@ -516,20 +517,48 @@ export function renewNonce(response, nonce = generateNonce()) {
   const names = ["Content-Security-Policy", "Content-Security-Policy-Report-Only"];
   const rendered = names.map((n) => NONCE_SOURCE.exec(headers.get(n) ?? "")?.[1]).find(Boolean);
   if (!rendered || !/text\/html/i.test(headers.get("Content-Type") ?? "")) return response;
-  if (typeof HTMLRewriter === "undefined")
-    throw new Error("renewNonce needs HTMLRewriter (a Workers runtime)");
   for (const name of names) {
     const value = headers.get(name);
     if (value) headers.set(name, value.replaceAll(`'nonce-${rendered}'`, `'nonce-${nonce}'`));
   }
-  const rewrite = {
-    element: (/** @type {any} */ el) =>
-      el.getAttribute("nonce") === rendered && el.setAttribute("nonce", nonce),
-  };
-  const body = new HTMLRewriter()
-    .on("script[nonce]", rewrite)
-    .on("style[nonce]", rewrite)
-    .on("link[nonce]", rewrite)
-    .transform(response).body;
+  const body =
+    response.body && replaceInStream(response.body, `nonce="${rendered}"`, `nonce="${nonce}"`);
   return new Response(body, { status: response.status, statusText: response.statusText, headers });
+}
+
+/**
+ * `body` with every `from` made `to`, a match split across chunks included: each chunk holds back the tail that could
+ * still begin a match.
+ * @param {ReadableStream<Uint8Array>} body
+ * @param {string} from
+ * @param {string} to
+ */
+function replaceInStream(body, from, to) {
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let tail = "";
+  /** @param {string} text @param {boolean} last */
+  const swap = (text, last) => {
+    let out = "";
+    let i = 0;
+    for (let at = text.indexOf(from); at !== -1; at = text.indexOf(from, i)) {
+      out += text.slice(i, at) + to;
+      i = at + from.length;
+    }
+    const keep = last ? text.length : Math.max(i, text.length - from.length + 1);
+    tail = text.slice(keep);
+    return out + text.slice(i, keep);
+  };
+  return body.pipeThrough(
+    new TransformStream({
+      transform(chunk, controller) {
+        const out = swap(tail + decoder.decode(chunk, { stream: true }), false);
+        if (out) controller.enqueue(encoder.encode(out));
+      },
+      flush(controller) {
+        const out = swap(tail + decoder.decode(), true);
+        if (out) controller.enqueue(encoder.encode(out));
+      },
+    }),
+  );
 }

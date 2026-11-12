@@ -207,9 +207,9 @@ the tag and can give it the nonce.
 **Nonce or hash.** A response that is never shared-cached may carry a per-request nonce (`generateNonce`).
 An edge-cached response must not send its stored nonce again: every reader would share one for the cache lifetime. Either
 its inline scripts are trusted by hash (`scriptHash`), or it keeps the nonce and `renewNonce(response)` gives every response
-a fresh one, in the policy header and on every `<script>`, `<style>` and `<link>` that carried the rendered one (an element
-injected without it gains none). Call it on every response the cache answers. It uses HTMLRewriter, and throws outside
-Workers rather than resend the stored nonce; Foxing's edge cache works this way.
+a fresh one, in the policy header and in every `nonce="…"` attribute that carried the rendered one (an element injected
+without it gains none). Call it on every response the cache answers. It swaps the value in the byte stream rather than
+re-serializing tags, so a stored page and a fresh render differ by their nonce alone; Foxing's edge cache works this way.
 
 **Trusted Types and staged rollout.** `trustedTypes: true` writes `require-trusted-types-for 'script'`; a list of names adds
 `trusted-types <names>`. Ship it Report-Only first: `buildStagedPolicy(site, { trustedTypes: ["default"] })` returns the

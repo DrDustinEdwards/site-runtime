@@ -74,21 +74,10 @@ test("a site must say what it stages", () => {
   assert.throws(() => pageSecurity({ set, policy: () => ({}) }), /stages/);
 });
 
-test("renew: a stored page gets a fresh nonce per reader and its policy is built again for it", () => {
-  // renewNonce rewrites the body with HTMLRewriter, which only a Workers runtime has; the headers are what is checked.
-  let rewrites = 0;
-  /** @type {any} */ (globalThis).HTMLRewriter = class {
-    on() {
-      return this;
-    }
-    transform(/** @type {Response} */ response) {
-      rewrites++;
-      return response;
-    }
-  };
-  try {
+test("renew: a stored page gets a fresh nonce per reader and its policy is built again for it", async () => {
+  {
     const { withSecurityHeaders } = make({ renew: true });
-    const stored = new Response("<p>x</p>", {
+    const stored = new Response('<script nonce="STALE"></script>', {
       headers: {
         "Content-Type": "text/html",
         "Content-Security-Policy": "script-src 'nonce-STALE' 'self'",
@@ -97,22 +86,21 @@ test("renew: a stored page gets a fresh nonce per reader and its policy is built
     const out = withSecurityHeaders(stored, req());
     const policy = out.headers.get("Content-Security-Policy") ?? "";
     assert.ok(!policy.includes("STALE"));
-    assert.match(policy, /'nonce-[^']+'/);
+    const nonce = /'nonce-([^']+)'/.exec(policy)?.[1];
+    assert.ok(nonce);
     assert.ok(policy.includes("report-uri"), "the policy is built again, not just renewed");
-    assert.equal(rewrites, 1);
+    assert.equal(await out.text(), `<script nonce="${nonce}"></script>`);
     // A fresh render carries this request's own nonce: applying the headers again leaves it alone.
     const { withSecurityHeaders: again, nonceFor } = make({ renew: true });
     const request = req();
-    const fresh = new Response("<p>x</p>", {
+    const own = nonceFor(request);
+    const fresh = new Response(`<script nonce="${own}"></script>`, {
       headers: {
         "Content-Type": "text/html",
-        "Content-Security-Policy": `script-src 'nonce-${nonceFor(request)}' 'self'`,
+        "Content-Security-Policy": `script-src 'nonce-${own}' 'self'`,
       },
     });
-    again(fresh, request);
-    assert.equal(rewrites, 1, "a fresh render is not rewritten a second time");
-  } finally {
-    delete (/** @type {any} */ (globalThis).HTMLRewriter);
+    assert.equal(await again(fresh, request).text(), `<script nonce="${own}"></script>`);
   }
   {
     const { withSecurityHeaders } = make({
