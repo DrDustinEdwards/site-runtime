@@ -23,7 +23,7 @@
 
 import { verifyJwt } from "./access-login.mjs";
 import { safeEqual } from "./compare.mjs";
-import { base64url, fromBase64url } from "./encoding.mjs";
+import { base64url, fromBase64urlText } from "./encoding.mjs";
 import { logEvent } from "./log.mjs";
 
 export const ACCESS_JWT_HEADER = "cf-access-jwt-assertion";
@@ -280,7 +280,7 @@ export const ACCESS_LOGOUT_PATH = "/cdn-cgi/access/logout";
  */
 function tokenClaims(token) {
   try {
-    return JSON.parse(new TextDecoder().decode(fromBase64url(token.split(".")[1] ?? "")));
+    return JSON.parse(fromBase64urlText(token.split(".")[1] ?? ""));
   } catch {
     return {};
   }

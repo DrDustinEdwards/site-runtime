@@ -88,7 +88,7 @@ import { deleteSessionCookie } from "better-auth/cookies";
 import { captcha, emailOTP, magicLink } from "better-auth/plugins";
 
 import { appleClientSecret } from "./apple-secret.mjs";
-import { base64url, fromBase64url } from "./encoding.mjs";
+import { base64url, fromBase64urlText } from "./encoding.mjs";
 import { LOGOUT_HEADERS } from "./headers.mjs";
 import { OWASP_EVENTS, logEvent } from "./log.mjs";
 import { emailKey, limit, mustStop } from "./rate-limit/index.mjs";
@@ -960,7 +960,7 @@ function accountEvents(siteName, sendSecurityNotice, db, details) {
  */
 function emailInToken(token) {
   try {
-    return JSON.parse(new TextDecoder().decode(fromBase64url(String(token).split(".")[1]))).email;
+    return JSON.parse(fromBase64urlText(String(token).split(".")[1])).email;
   } catch {
     return null;
   }
