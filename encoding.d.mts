@@ -20,12 +20,23 @@ export function fromBase64urlText(text: string): string;
 export function pageCursor(scope: string, position: number): string;
 /** The position a `pageCursor` for `scope` carries; null for another scope, a negative or fractional position, or junk. */
 export function readPageCursor(scope: string, cursor: string): number | null;
+/** SHA-256 as bytes. */
+export function sha256(input: Input): Promise<Uint8Array<ArrayBuffer>>;
 /** SHA-256 as lowercase hex. */
 export function sha256Hex(input: Input): Promise<string>;
+/** HMAC-SHA-256 of `payload` under the UTF-8 bytes of `secret`, as bytes. */
+export function hmacSha256(
+  secret: string,
+  payload: Uint8Array | ArrayBuffer | string,
+): Promise<Uint8Array<ArrayBuffer>>;
 /** HMAC-SHA-256 of `payload` under the UTF-8 bytes of `secret`, as lowercase hex. */
 export function hmacSha256Hex(
   secret: string,
   payload: Uint8Array | ArrayBuffer | string,
 ): Promise<string>;
+/** The standard CRC-32 (IEEE, as PNG and ZIP use) of `bytes`, unsigned. */
+export function crc32(bytes: Uint8Array): number;
+/** JSON with every object's keys sorted and `undefined` members dropped, so equal values print alike. */
+export function canonicalJson(value: unknown): string;
 /** FNV-1a, 32 bits, over UTF-16 code units, as eight hex digits: a fingerprint, never a security boundary. */
 export function fnv1a32(input: string): string;

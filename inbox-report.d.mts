@@ -12,7 +12,6 @@ export interface InboxItem {
 export type ReportResult = { state: "skipped" | "sent" | "failed"; detail: string };
 
 export const INBOX_REPORT_PATH: "/ops/inbox/report";
-export const CAPSID_ORIGIN: string;
 export const MAX_REPORT_ITEMS: number;
 export const MAX_REPORT_TITLE: number;
 export const MAX_INBOX_REPORT_BYTES: number;

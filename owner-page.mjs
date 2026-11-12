@@ -26,7 +26,9 @@ import { correlationId, recordAudit } from "./audit-log.mjs";
 import { readCapped } from "./body.mjs";
 import { safeEqual } from "./compare.mjs";
 import { sha256Hex, toHex } from "./encoding.mjs";
+import { hostCookie, readCookie } from "./headers.mjs";
 import { escapeHtml as escape } from "./html.mjs";
+import { redirectResponse } from "./http.mjs";
 
 /** @typedef {import("@cloudflare/workers-oauth-provider").OAuthHelpers} OAuthHelpers */
 /** @typedef {import("@cloudflare/workers-oauth-provider").GrantSummary} GrantSummary */
@@ -35,14 +37,15 @@ import { escapeHtml as escape } from "./html.mjs";
 
 export const OWNER_PATH = "/owner";
 const STATE_PREFIX = "owner.";
-const SIGN_IN_COOKIE = "__Host-owner-sign-in";
-const SESSION_COOKIE = "__Host-owner";
+const SIGN_IN_COOKIE = "owner-sign-in";
+const SESSION_COOKIE = "owner";
 const SIGN_IN_SECONDS = 600;
 const SESSION_SECONDS = 1800;
 const FORM_MAX_BYTES = 4096;
 const LOG_PAGE = 50;
 const GRANT_PAGES = 10;
 
+/** What every answer of an authenticated operator surface carries: never cached, indexed or framed. */
 const PRIVATE_HEADERS = {
   "cache-control": "no-store",
   "x-content-type-options": "nosniff",
@@ -52,40 +55,24 @@ const PRIVATE_HEADERS = {
   "x-frame-options": "DENY",
 };
 
-/** @param {string} body @param {number} [status] @param {string} [type] @param {Headers} [headers] */
-function respond(body, status = 200, type = "text/plain; charset=utf-8", headers) {
+/**
+ * An answer of an authenticated operator surface (the owner page, the consent page): never cached, indexed or framed.
+ * @param {string} body @param {number} [status] @param {string} [type] @param {Headers} [headers]
+ */
+export function respond(body, status = 200, type = "text/plain; charset=utf-8", headers) {
   const out = new Headers(headers);
   out.set("content-type", type);
   for (const [name, value] of Object.entries(PRIVATE_HEADERS)) out.set(name, value);
   return new Response(body, { status, headers: out });
 }
 
-/** @param {string} location @param {Headers} [headers] */
-function seeOther(location, headers) {
-  const out = new Headers(headers);
-  out.set("location", location);
-  out.set("cache-control", "no-store");
-  return new Response(null, { status: 303, headers: out });
-}
-
-/** @param {Request} request @param {string} name */
-function cookie(request, name) {
-  for (const part of (request.headers.get("cookie") ?? "").split(";")) {
-    const [key, ...value] = part.trim().split("=");
-    if (key === name) return value.join("=");
-  }
-  return null;
-}
-
-/** @param {string} name @param {string} value @param {number} maxAge */
-function setCookie(name, value, maxAge) {
-  return `${name}=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
-}
-
 const randomId = () => toHex(crypto.getRandomValues(new Uint8Array(32)));
 
-/** @param {Request} request @param {{ PUBLIC_ORIGIN?: string }} env */
-function originOf(request, env) {
+/**
+ * The origin the server answers at: `PUBLIC_ORIGIN` when set, else the request's, no trailing slash.
+ * @param {Request} request @param {{ PUBLIC_ORIGIN?: string }} env
+ */
+export function originOf(request, env) {
   return (env.PUBLIC_ORIGIN?.trim() || new URL(request.url).origin).replace(/\/+$/, "");
 }
 
@@ -272,7 +259,7 @@ export const OWNER_STYLE = `
 export function ownerPage({ name, admit, server, readsLog = () => true }) {
   /** @param {Request} request @param {E} env */
   async function session(request, env) {
-    const id = cookie(request, SESSION_COOKIE);
+    const id = readCookie(request, SESSION_COOKIE);
     if (!id || !/^[0-9a-f]{64}$/.test(id)) return null;
     const stored = await env.OAUTH_KV.get(`owner:session:${await sha256Hex(id)}`);
     return stored
@@ -298,9 +285,10 @@ export function ownerPage({ name, admit, server, readsLog = () => true }) {
       state,
       ...signIn,
     });
-    return seeOther(
+    return redirectResponse(
       to,
-      new Headers({ "set-cookie": setCookie(SIGN_IN_COOKIE, state, SIGN_IN_SECONDS) }),
+      303,
+      new Headers({ "set-cookie": hostCookie(SIGN_IN_COOKIE, state, { maxAge: SIGN_IN_SECONDS }) }),
     );
   }
 
@@ -309,7 +297,7 @@ export function ownerPage({ name, admit, server, readsLog = () => true }) {
     const url = new URL(request.url);
     const state = url.searchParams.get("state") ?? "";
     const code = url.searchParams.get("code");
-    const bound = cookie(request, SIGN_IN_COOKIE);
+    const bound = readCookie(request, SIGN_IN_COOKIE);
     if (!bound || !(await safeEqual(bound, state)))
       return respond(
         "This sign-in was started in another browser. Open the owner page again.",
@@ -365,9 +353,9 @@ export function ownerPage({ name, admit, server, readsLog = () => true }) {
       },
     );
     const headers = new Headers();
-    headers.append("set-cookie", setCookie(SESSION_COOKIE, id, SESSION_SECONDS));
-    headers.append("set-cookie", setCookie(SIGN_IN_COOKIE, "", 0));
-    return seeOther(OWNER_PATH, headers);
+    headers.append("set-cookie", hostCookie(SESSION_COOKIE, id, { maxAge: SESSION_SECONDS }));
+    headers.append("set-cookie", hostCookie(SIGN_IN_COOKIE, "", { maxAge: 0 }));
+    return redirectResponse(OWNER_PATH, 303, headers);
   }
 
   /**
@@ -428,13 +416,13 @@ export function ownerPage({ name, admit, server, readsLog = () => true }) {
       const form = await postedForm(request, env, signedIn);
       if (form instanceof Response) return form;
       if (url.pathname === `${OWNER_PATH}/sign-out`) {
-        const id = cookie(request, SESSION_COOKIE) ?? "";
+        const id = readCookie(request, SESSION_COOKIE) ?? "";
         await env.OAUTH_KV.delete(`owner:session:${await sha256Hex(id)}`);
         return respond(
           `Signed out of the owner page of ${name}.`,
           200,
           undefined,
-          new Headers({ "set-cookie": setCookie(SESSION_COOKIE, "", 0) }),
+          new Headers({ "set-cookie": hostCookie(SESSION_COOKIE, "", { maxAge: 0 }) }),
         );
       }
       const grantId = String(form.get("grant") ?? "");
@@ -445,7 +433,7 @@ export function ownerPage({ name, admit, server, readsLog = () => true }) {
         server,
       });
       if (!done) return respond("You hold no such grant.", 404);
-      return seeOther(`${OWNER_PATH}?revoked=1`);
+      return redirectResponse(`${OWNER_PATH}?revoked=1`, 303);
     },
   };
 }

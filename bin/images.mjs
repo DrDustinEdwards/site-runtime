@@ -49,6 +49,8 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 import { parsePolicy } from "../check.mjs";
+import { htmlAttributes, sitemapLocs } from "../html.mjs";
+import { mediaType } from "../http.mjs";
 import { AVIF_MAX_EDGE, RASTER_PATH, RASTER_TYPES } from "../image.mjs";
 
 const MAX_PAGES = 25;
@@ -713,7 +715,7 @@ async function auditShareCard({ url, meta, absolute, load }) {
     wrong.push(`og:image:height ${meta.get("og:image:height")} (the file is ${file.height})`);
   // The type a crawler (Accept */*) and a browser (Accept with AVIF and WebP) are each served, and what the bytes are.
   const said = meta.get("og:image:type")?.toLowerCase();
-  const typeOf = (/** @type {Fetched} */ f) => f.type.split(";")[0].trim().toLowerCase();
+  const typeOf = (/** @type {Fetched} */ f) => mediaType(f.type);
   const browser = await load(src, 0, BROWSER_ACCEPT);
   const served = [
     ...new Set([typeOf(got), browser.status === 200 ? typeOf(browser) : ""].filter(Boolean)),
@@ -956,37 +958,6 @@ function privateExif(tiff) {
   return found;
 }
 
-/** @param {string} text @returns {Record<string, string | undefined>} */
-function attributesOf(text) {
-  /** @type {Record<string, string>} */
-  const attrs = {};
-  for (const a of text.matchAll(/([^\s=/"']+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g)) {
-    const key = a[1].toLowerCase();
-    if (!(key in attrs)) attrs[key] = decode(a[2] ?? a[3] ?? a[4] ?? "");
-  }
-  return attrs;
-}
-
-/** @param {string} text */
-function decode(text) {
-  const named = /** @type {Record<string, string>} */ ({
-    quot: '"',
-    apos: "'",
-    lt: "<",
-    gt: ">",
-    amp: "&",
-    nbsp: " ",
-  });
-  return text.replace(
-    /&(?:#x([0-9a-f]+)|#(\d+)|(quot|apos|lt|gt|amp|nbsp));/gi,
-    (whole, hex, dec, name) => {
-      if (name) return named[name.toLowerCase()];
-      const code = Number.parseInt(hex ?? dec, hex ? 16 : 10);
-      return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole;
-    },
-  );
-}
-
 const VOID = new Set([
   "area",
   "base",
@@ -1026,7 +997,7 @@ function parseTree(html) {
       continue;
     }
     /** @type {El} */
-    const el = { tag, attrs: attributesOf(m[3]), children: [], parent: node };
+    const el = { tag, attrs: htmlAttributes(m[3]), children: [], parent: node };
     node.children.push(el);
     if (!VOID.has(tag) && !m[3].trimEnd().endsWith("/")) node = el;
   }
@@ -1485,11 +1456,11 @@ async function sitemapEntries(load, origin) {
       if (!index) return [];
       /** @type {Array<{ loc: string, images: boolean }>} */
       const all = [];
-      for (const loc of locs(xml)) all.push(...((await read(loc, false)) ?? []));
+      for (const loc of sitemapLocs(xml)) all.push(...((await read(loc, false)) ?? []));
       return all;
     }
     return [...xml.matchAll(/<url>([\s\S]*?)<\/url>/gi)].map((m) => ({
-      loc: locs(m[1])[0],
+      loc: sitemapLocs(m[1])[0],
       images: /<image:image\b/i.test(m[1]),
     }));
   };
@@ -1506,11 +1477,6 @@ async function sitemapEntries(load, origin) {
     for (const url of named) entries.push(...((await read(url, true)) ?? []));
   }
   return entries.filter((e) => e.loc === origin || Boolean(e.loc?.startsWith(`${origin}/`)));
-}
-
-/** @param {string} xml */
-function locs(xml) {
-  return [...xml.matchAll(/<loc>\s*([^<]*?)\s*<\/loc>/gi)].map((m) => decode(m[1]));
 }
 
 /**

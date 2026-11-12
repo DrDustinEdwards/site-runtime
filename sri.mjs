@@ -15,6 +15,7 @@
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { integrityHash } from "./csp.mjs";
+import { htmlAttributes } from "./html.mjs";
 
 // `[^<>]` and not `[^>]`: a run of `<script` with no `>` stays linear.
 const TAG = /<(script|link)\b[^<>]*>/gi;
@@ -50,12 +51,13 @@ export async function writeIntegrity(dir, { base = "/" } = {}) {
     let at = 0;
     for (const match of html.matchAll(TAG)) {
       const tag = match[0];
+      const attrs = htmlAttributes(tag);
       const isScript = match[1]?.toLowerCase() === "script";
-      const url = attribute(tag, isScript ? "src" : "href");
+      const url = attrs[isScript ? "src" : "href"];
       const eligible =
         url &&
         !/\sintegrity\s*=/i.test(tag) &&
-        (isScript || /^modulepreload$/i.test(attribute(tag, "rel") ?? ""));
+        (isScript || /^modulepreload$/i.test(attrs.rel ?? ""));
       const file = eligible ? localFile(url, pagePath, base, root) : null;
       const hash = file ? await hashOf(file) : null;
       if (!hash) continue;
@@ -65,7 +67,7 @@ export async function writeIntegrity(dir, { base = "/" } = {}) {
         (end) => ` integrity="${hash}"${cors}${end.trim() === "/>" ? " />" : ">"}`,
       );
       count += 1;
-      if (isScript && /^module$/i.test(attribute(tag, "type") ?? "") && file) {
+      if (isScript && /^module$/i.test(attrs.type ?? "") && file) {
         const tagEnd = html.indexOf("</script>", (match.index ?? 0) + tag.length);
         if (tagEnd !== -1) {
           const preloaded = preloadsOf(html, pagePath, base, root);
@@ -120,12 +122,6 @@ export function subresourceIntegrity() {
   };
 }
 
-/** @param {string} tag @param {string} name */
-function attribute(tag, name) {
-  const match = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i").exec(tag);
-  return match ? (match[1] ?? match[2] ?? match[3] ?? null) : null;
-}
-
 /** @param {string} url @param {string} pagePath @param {string} base @param {string} root */
 function localFile(url, pagePath, base, root) {
   const resolved = new URL(url, `https://site.invalid${pagePath}`);
@@ -141,9 +137,10 @@ function preloadsOf(html, pagePath, base, root) {
   /** @type {Set<string>} */
   const files = new Set();
   for (const [tag] of html.matchAll(/<link\b[^<>]*>/gi)) {
-    const href = attribute(tag, "href");
+    const attrs = htmlAttributes(tag);
+    const href = attrs.href;
     const file =
-      href && /^modulepreload$/i.test(attribute(tag, "rel") ?? "")
+      href && /^modulepreload$/i.test(attrs.rel ?? "")
         ? localFile(href, pagePath, base, root)
         : null;
     if (file) files.add(file);

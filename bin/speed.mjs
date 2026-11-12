@@ -25,6 +25,8 @@ import { connect } from "node:http2";
 import { connect as tlsConnect } from "node:tls";
 import { parseArgs } from "node:util";
 
+import { sitemapLocs } from "../html.mjs";
+import { retryAfterSeconds } from "../http.mjs";
 import { speedFindings } from "../speed.mjs";
 
 const { values } = parseArgs({
@@ -236,16 +238,14 @@ async function earlyHints(url) {
 /** Every <loc> in the sitemap, following a sitemap index one level. */
 async function sitemapUrls() {
   const locs = async (/** @type {string} */ url) =>
-    [
-      ...(
-        await (
-          await fetch(url, {
-            headers: { "user-agent": UA, "x-check": CHECK },
-            signal: AbortSignal.timeout(60_000),
-          })
-        ).text()
-      ).matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g),
-    ].map((m) => m[1]);
+    sitemapLocs(
+      await (
+        await fetch(url, {
+          headers: { "user-agent": UA, "x-check": CHECK },
+          signal: AbortSignal.timeout(60_000),
+        })
+      ).text(),
+    );
   try {
     const top = await locs(`${base}/sitemap.xml`);
     const nested = top.filter((loc) => /\.xml(\?|$)/.test(loc));
@@ -314,15 +314,10 @@ async function pagespeed(url) {
           error: `PageSpeed Insights answered ${r.status}${attempt > 1 ? ` after ${attempt} tries` : ""}${r.status === 429 && !key ? " (no PSI_API_KEY, so Google's shared keyless quota)" : ""}`,
         };
         if (r.status !== 429 && r.status < 500) break;
-        const after = Number(r.headers.get("retry-after"));
+        const after = retryAfterSeconds(r.headers);
         if (attempt < PSI_TRIES)
           await sleep(
-            Math.min(
-              60_000,
-              Number.isFinite(after) && after > 0
-                ? after * 1000
-                : 2 ** attempt * 1000 + Math.random() * 1000,
-            ),
+            Math.min(60_000, after ? after * 1000 : 2 ** attempt * 1000 + Math.random() * 1000),
           );
       } catch (error) {
         out[strategy] = {

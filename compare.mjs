@@ -12,10 +12,7 @@
  *   admits an absent or empty credential.
  */
 
-/** @param {string} text */
-async function digest(text) {
-  return new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)));
-}
+import { sha256 } from "./encoding.mjs";
 
 /**
  * Two equal-length byte arrays, compared in time that does not depend on where they differ.
@@ -44,8 +41,8 @@ export async function safeEqual(a, b) {
   // Both digests are computed before either check is answered, so a refused type or empty side costs what a compare does.
   const valid = typeof a === "string" && typeof b === "string" && a !== "" && b !== "";
   const [left, right] = await Promise.all([
-    digest(typeof a === "string" ? a : ""),
-    digest(typeof b === "string" ? b : ""),
+    sha256(typeof a === "string" ? a : ""),
+    sha256(typeof b === "string" ? b : ""),
   ]);
   const same = sameBytes(left, right);
   return valid && same;

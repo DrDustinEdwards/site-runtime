@@ -1,5 +1,7 @@
 /** Stored times (time.mjs): D1's zoneless UTC text and nullable epoch milliseconds. */
 
+/** The D1 timestamp text of a time, "YYYY-MM-DD HH:MM:SS" in UTC, the inverse of `parseSqlTime`; throws a RangeError for an invalid date. */
+export function toSqlTime(value: Date | number | string): string;
 /** Epoch ms of "YYYY-MM-DD HH:MM:SS" (UTC), an ISO time with its zone, or a bare day; null when absent or unreadable. */
 export function parseSqlTime(value: string | null | undefined): number | null;
 /** A Date from epoch ms; null stays null. */

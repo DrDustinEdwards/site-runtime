@@ -9,6 +9,8 @@
  * inline scripts by hash), no cookie, nothing signed in. Signed-in pages keep the default, `private, no-store`.
  */
 
+import { isWrite } from "./http.mjs";
+
 /** Stored at the edge, never in a browser: a purge cannot reach a browser, so max-age stays 0. */
 export const SHARED_CACHE_CONTROL = "public, max-age=0";
 
@@ -320,9 +322,6 @@ export function withPurgePages(Base, { kv } = {}) {
     }
   };
 }
-
-const isWrite = (/** @type {Request} */ request) =>
-  request.method !== "GET" && request.method !== "HEAD";
 
 /**
  * In the gateway, after it answers a write: an accepted one (below 400) asks the Renderer to purge, in `waitUntil`, so

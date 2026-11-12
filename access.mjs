@@ -23,7 +23,7 @@
 
 import { verifyJwt } from "./access-login.mjs";
 import { safeEqual } from "./compare.mjs";
-import { base64url, fromBase64urlText } from "./encoding.mjs";
+import { base64url, fromBase64urlText, hmacSha256 } from "./encoding.mjs";
 import { logEvent } from "./log.mjs";
 
 export const ACCESS_JWT_HEADER = "cf-access-jwt-assertion";
@@ -296,19 +296,7 @@ function tokenClaims(token) {
  * @param {string} secret
  */
 async function seenMac(claims, time, secret) {
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    enc.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  return base64url(
-    new Uint8Array(
-      await crypto.subtle.sign("HMAC", key, enc.encode(`${claims.sub}.${claims.iat}.${time}`)),
-    ),
-  );
+  return base64url(await hmacSha256(secret, `${claims.sub}.${claims.iat}.${time}`));
 }
 
 /** The shortest `secret` adminIdle takes: 32 characters, 256 bits as the deploy mints it (base64url of 32 bytes). */

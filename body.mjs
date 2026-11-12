@@ -1,3 +1,4 @@
+import { mediaType, textResponse } from "./http.mjs";
 import { errors, schemaIssues } from "./http-errors.mjs";
 
 /**
@@ -69,13 +70,9 @@ export async function readCapped(source, max) {
  * @returns {Response | null}
  */
 export function requireJson(request) {
-  const type =
-    (request.headers.get("Content-Type") ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
+  const type = mediaType(request.headers.get("Content-Type"));
   if (type === "application/json" || /^application\/[a-z0-9.+-]+\+json$/.test(type)) return null;
-  return new Response("This route takes application/json only.", {
-    status: 415,
-    headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
-  });
+  return textResponse("This route takes application/json only.", 415);
 }
 
 /**
@@ -83,10 +80,7 @@ export function requireJson(request) {
  * @returns {Response}
  */
 export function payloadTooLarge() {
-  return new Response("Payload Too Large", {
-    status: 413,
-    headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
-  });
+  return textResponse("Payload Too Large", 413);
 }
 
 /**
@@ -181,10 +175,7 @@ const PART_HEADER_LIMIT = 16 * 1024;
  * @returns {Response}
  */
 function malformedUpload(message = "Could not read the upload. Try again.") {
-  return new Response(message, {
-    status: 400,
-    headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
-  });
+  return textResponse(message, 400);
 }
 
 /**

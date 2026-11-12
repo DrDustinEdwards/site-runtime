@@ -25,6 +25,8 @@
  *   it, so the job waits for the caller's next tick instead of being lost.
  */
 
+import { retryAfterSeconds } from "./http.mjs";
+
 const FIRE_URL =
   /^https:\/\/api\.anthropic\.com\/v1\/claude_code\/routines\/(trig_[A-Za-z0-9_-]{8,64})\/fire$/;
 const MAX_TEXT = 65_536;
@@ -200,11 +202,7 @@ async function errorType(res) {
  * @returns {T & { retryAfter?: number }}
  */
 function withRetryAfter(result, res) {
-  const raw = res.headers.get("Retry-After")?.trim() ?? "";
-  let seconds = null;
-  if (/^\d{1,9}$/.test(raw)) seconds = Number(raw);
-  else if (raw && Number.isFinite(Date.parse(raw)))
-    seconds = Math.max(0, Math.ceil((Date.parse(raw) - Date.now()) / 1000));
+  const seconds = retryAfterSeconds(res.headers);
   return seconds === null ? result : { ...result, retryAfter: seconds };
 }
 
