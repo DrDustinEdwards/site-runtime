@@ -12,6 +12,10 @@ export function fromBase64(text: string): Uint8Array<ArrayBuffer>;
 export function base64url(input: Input): string;
 /** The bytes of URL-safe base64, padded or not. */
 export function fromBase64url(text: string): Uint8Array<ArrayBuffer>;
+/** Standard base64 decoded to UTF-8 text. */
+export function fromBase64Text(text: string): string;
+/** URL-safe base64 decoded to UTF-8 text. */
+export function fromBase64urlText(text: string): string;
 /** SHA-256 as lowercase hex. */
 export function sha256Hex(input: Input): Promise<string>;
 /** HMAC-SHA-256 of `payload` under the UTF-8 bytes of `secret`, as lowercase hex. */

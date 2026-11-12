@@ -947,8 +947,8 @@ fixed date with a test that fails a month before it lapses, the prompt to confir
 ## Byte encodings
 
 `./encoding` is the one set of byte encodings, Web APIs only (no Buffer, no `jose`): `toHex`/`fromHex`,
-`toBase64`/`fromBase64` (whitespace ignored, as GitHub wraps it), `base64url`/`fromBase64url` (no padding) and
-`sha256Hex`, `hmacSha256Hex(secret, payload)` and `fnv1a32` (a short fingerprint, never a security boundary). Every
+`toBase64`/`fromBase64` (whitespace ignored, as GitHub wraps it), `base64url`/`fromBase64url` (no padding),
+`fromBase64Text`/`fromBase64urlText` (decoded to UTF-8 text) and `sha256Hex`, `hmacSha256Hex(secret, payload)` and `fnv1a32` (a short fingerprint, never a security boundary). Every
 encoder takes bytes or a string, which is encoded as UTF-8.
 
 ## The server entry
@@ -1113,6 +1113,24 @@ WebCrypto with no dependency. `key` is a PEM (PKCS#8, or PKCS#1 as GitHub hands 
 `pkcs8FromPem`; literal "\n" sequences read as newlines), a private JWK or a CryptoKey. `githubAppJwt(appId, key)` is
 the App's token request JWT (issued a minute back, nine minutes long). Sign in with Apple's client secret
 (`./apple-secret`) signs through it.
+
+`./github`: the GitHub REST pieces every repo shares. `githubHeaders(token, userAgent)`; `installationToken({ appId,
+privateKey, userAgent, owner, repo | installationId, repositories, permissions, fetcher })` mints an App installation
+token (looked up from the repo when no id is given; narrowed to `repositories` and `permissions`) and returns
+`{ token, expiresAt, installationId }`, leaving the cache to the caller. The rest take `call(path, init)`, the caller's
+own fetch of `https://api.github.com${path}`: `readAllPages(call, path, { maxPages, perPage, rowsOf })` reads a list by
+Link `rel="next"` and says in `problem` when it was not read whole; `githubJson(call, path)` throws "GitHub answered
+<status> for <path>"; `canDispatch(call, owner, repo, workflow)` proves Actions: Write without starting a run (a dispatch
+on a ref that cannot exist answers 422). `PR_URL_SOURCE` and `parsePrUrl(url)` read a pull request URL.
+
+`./time`: `parseSqlTime(value)` is epoch milliseconds of a stored time: D1's zoneless "YYYY-MM-DD HH:MM:SS" read as
+UTC, an ISO time with its zone kept, a bare day as its UTC midnight, and null for nothing or nonsense. `toDate(ms)` and
+`toMs(date)` convert Drizzle's nullable timestamps, keeping null as null.
+
+`./google-service-account`: `parseServiceAccountKey(raw, name)` checks a pasted key file (JSON, a service account,
+a PKCS#8 key, Google's own token_uri) and gives `{ ok: true, key }` or `{ ok: false, state, detail }`;
+`serviceAccountToken(key, scopes, { fetcher })` exchanges a signed RS256 assertion for an access token and keeps it per
+isolate until five minutes before it expires. The caller keeps its own allowlist of what the account may ask Google.
 
 `./r2-object`: `r2ObjectResponse(request, bucket, key, { cacheControl, contentType, disposition, filename, noindex,
 tags })` answers with one stored file the way a static file server does: HEAD from `bucket.head`, byte ranges (206,

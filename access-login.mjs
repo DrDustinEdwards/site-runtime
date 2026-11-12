@@ -16,6 +16,8 @@
  * Who is admitted is the caller's: the email comes back, and the caller compares it with its administrator.
  */
 
+import { base64url, fromBase64url, fromBase64urlText } from "./encoding.mjs";
+
 const SKEW_SECONDS = 60;
 const TOKEN_TIMEOUT_MS = 15_000;
 /** How long a key fetch may take, so a slow JWKS endpoint cannot hold a sign-in open. */
@@ -49,20 +51,6 @@ export function accessSaas(env) {
     tokenUrl: `${issuer}/token`,
     jwksUrl: `${issuer}/jwks`,
   };
-}
-
-/** @param {Uint8Array} bytes */
-function base64url(bytes) {
-  let raw = "";
-  for (const b of bytes) raw += String.fromCharCode(b);
-  return btoa(raw).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-/** @param {string} value */
-function fromBase64url(value) {
-  const b64 = value.replace(/-/g, "+").replace(/_/g, "/");
-  const raw = atob(b64 + "=".repeat((4 - (b64.length % 4)) % 4));
-  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
 }
 
 /** A fresh PKCE verifier (43 characters, 256 random bits) and OIDC nonce for one sign-in. Keep both server-side. */
@@ -144,8 +132,8 @@ export async function verifyJwt(token, keys, expect) {
   /** @type {unknown} */
   let parsed;
   try {
-    header = JSON.parse(new TextDecoder().decode(fromBase64url(parts[0])));
-    parsed = JSON.parse(new TextDecoder().decode(fromBase64url(parts[1])));
+    header = JSON.parse(fromBase64urlText(parts[0]));
+    parsed = JSON.parse(fromBase64urlText(parts[1]));
   } catch {
     return { ok: false, reason: "malformed" };
   }

@@ -70,6 +70,24 @@ export function fromBase64url(text) {
 }
 
 /**
+ * Standard base64 read back as UTF-8 text (a GitHub file's content, a cookie's payload).
+ * @param {string} text
+ * @returns {string}
+ */
+export function fromBase64Text(text) {
+  return new TextDecoder().decode(fromBase64(text));
+}
+
+/**
+ * URL-safe base64 read back as UTF-8 text (a JWT's header or claims).
+ * @param {string} text
+ * @returns {string}
+ */
+export function fromBase64urlText(text) {
+  return new TextDecoder().decode(fromBase64url(text));
+}
+
+/**
  * The SHA-256 digest of `input`, as lowercase hex.
  * @param {Uint8Array | ArrayBuffer | string} input
  * @returns {Promise<string>}
