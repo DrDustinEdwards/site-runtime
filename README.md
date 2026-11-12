@@ -1103,6 +1103,12 @@ reads: `cronRuns` (CRON_SQL), `page404Daily` (NOT_FOUND_SQL), `alertsSent` (ALER
 writes a migration that drops or reshapes it. Time columns are epoch ms numbers, as the SQL writes them. The test
 holds each mirror to its SQL column for column. Sites with Drizzle only: it imports `drizzle-orm`.
 
+`./drizzle-check`: `assertMirror(table, sql)` is that test's check, for any package that ships Drizzle mirrors of its
+own SQL (site-api's `./drizzle` uses it): it runs `sql` in an in-memory SQLite and throws an AssertionError naming the
+difference unless the Drizzle table of the same name has the same columns, types, NOT NULL, defaults (a JSON column's
+default as its JSON text), primary key, AUTOINCREMENT and indexes. Node only (`node:sqlite`), so it is a test-time
+entry of its own and never reaches a Worker bundle.
+
 ## CSV
 
 `./deploy`: `deployedSha(env, { fallback? })` is the deployed commit from the DEPLOY_SHA var devkit's worker-deploy
