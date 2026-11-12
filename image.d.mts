@@ -49,6 +49,28 @@ export function assetsObject(
 /** The stored key a /media path names, or null: safe segments only, under `within` when given. */
 export function mediaKey(path: string, within?: string): string | null;
 
+/** Where a site's addresses for stored files live: its own origins, the route's prefix, keyPrefix and within. */
+export interface AddressOptions {
+  /** The site's own origins ("https://example.com"); an absolute address on any other host names no file. */
+  origins?: string[];
+  /** The route's path prefix. Default "/media/". */
+  prefix?: string;
+  /** Put in front of the path to make the stored key, as the route's `keyPrefix`. */
+  keyPrefix?: string;
+  /** The prefix every stored key has, as the route's `within`. */
+  within?: string;
+}
+/**
+ * The stored key an image address names (`/media/<key>` or the site's own absolute URL to it, a size's suffix and the
+ * query cut, segments decoded, checked as `mediaKey`), or null for any other address.
+ */
+export function keyOfAddress(address: string, options?: AddressOptions): string | null;
+/** Every stored key a text (markdown, HTML, srcset, JSON) names by address, in the order first named. */
+export function keysAtAddresses(
+  text: string | null | undefined,
+  options?: AddressOptions,
+): Set<string>;
+
 /** A focal point as CSS `object-position` ("37.5% 60%"), each axis to a tenth of a percent; undefined when not one. */
 export function focalPosition(value: unknown): string | undefined;
 

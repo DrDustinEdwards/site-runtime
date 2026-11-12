@@ -4,6 +4,28 @@ import type { OperatorTool } from "./operator.mjs";
 import type { Preconnect, Preload } from "./preload.mjs";
 
 export { PREVIEW_TOKEN, tokenPattern } from "./log.mjs";
+import type { AccessSecrets, AdminSettings } from "./access.mjs";
+
+/**
+ * The secrets and dashboard vars every site's Worker reads through site-runtime, which `wrangler types` cannot see. A
+ * site's env.d.ts extends it (`interface Env extends SiteSecrets {}`) and adds only its own. Each is optional where the
+ * code that reads it fails closed when it is unset.
+ */
+export interface SiteSecrets extends AdminSettings, Partial<AccessSecrets> {
+  /** "1" or "true" puts the site in maintenance: every path but /health answers the 503 page (./maintenance). */
+  MAINTENANCE?: string;
+  /** Keys the admin idle cookie (withAdminIdle `secret`). Minted by the deploy (devkit worker-deploy `generated-secrets`). */
+  ADMIN_IDLE_SECRET: string;
+  /** The bearer for /api/operator (./operator), 32 characters or more. Unset or short: the route answers 503. */
+  OPERATOR_TOKEN?: string;
+  /** Carrel's key for site-api's /api/carrel/v1, 32 characters or more. Unset or short: every call is refused. */
+  CARREL_SITE_KEY?: string;
+  /** The Anthropic key for the site's AI features (straight at Anthropic). Unset: those features say so. */
+  ANTHROPIC_API_KEY?: string;
+  /** Turnstile on the sign-in email link (./sign-in). On only when both are set. */
+  TURNSTILE_SITE_KEY?: string;
+  TURNSTILE_SECRET_KEY?: string;
+}
 /** "/.well-known/security.txt", answered by every site's gateway. */
 export const SECURITY_TXT_PATH: "/.well-known/security.txt";
 

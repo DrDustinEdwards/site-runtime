@@ -536,6 +536,11 @@ checked against a database row); the default, `versionedCache()`, is `IMMUTABLE_
 day for one without (an address a person copied), so a replaced file shows through within a day. A site that needs
 `respond` alone still has it.
 
+`keyOfAddress(address, { origins, prefix, keyPrefix, within })` reads the stored key back out of an address a page
+holds (`/media/<key>` or the site's own absolute URL to it, a size's suffix and the query cut, segments decoded, checked
+as `mediaKey`), and `keysAtAddresses(text, options)` collects every key a markdown, HTML or JSON text names that way:
+the media library's "used by" and a renderer's `keyOf` both read keys this way, so they agree with the route.
+
 The widths and the three layouts are Astro's (MIT, credited in `image.mjs`): `constrained` offers the use's width, twice
 it and every screen width between (`SCREEN_WIDTHS`), `fixed` offers 1x and 2x, `full-width` every screen width, and none is
 ever wider than the original. `sizes` follows the layout.
