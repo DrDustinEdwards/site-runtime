@@ -118,10 +118,10 @@ export async function serviceAccountToken(key, scopes, options = {}) {
       await resp.json().catch(() => ({}))
     );
   if (!resp.ok || !body.access_token) {
-    const why =
-      [body.error, body.error_description].filter(Boolean).join(": ").slice(0, 200) ||
-      `status ${resp.status}`;
-    throw new Error(`Google refused the service account key (${why}).`);
+    const why = [body.error, body.error_description].filter(Boolean).join(": ").slice(0, 200);
+    throw new Error(
+      `Google refused the service account key (${resp.status}${why ? ` ${why}` : ""}).`,
+    );
   }
   tokens.set(cacheKey, {
     token: body.access_token,
