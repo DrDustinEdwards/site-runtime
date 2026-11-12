@@ -1810,7 +1810,7 @@ return operatorResponse(request, {
   throws `OperatorError` is a 400 with its message; any other throw is a 500 saying only `The tool failed (ref xxxxxxxx)`
   with the error in the `operator_tool_failed` line under that ref (ASVS 16.5.1). A tool's return is sent as `{ok: true, data}`.
 - Every answer is JSON, `no-store` and `noindex`. The route is not under `/admin`, so Access does not cover it.
-- `callOperator(url, token, tool, { args, fetch, timeoutMs, userAgent })` is the caller's side (Capsid's
+- `callOperator(url, token, tool, { args, fetch, timeoutMs, signal, userAgent })` is the caller's side (Capsid's
   `src/site-operator.ts` wraps it with its allowlist): `POST {tool, args}` with the bearer, `redirect: "manual"`, five
   minutes by default (`OPERATOR_CALL_TIMEOUT_MS`). It never throws and answers `{ ok, status, data, error }`, `error` one
   line ("backup_status answered 401: ...", "... did not complete: ...") with the token blanked.

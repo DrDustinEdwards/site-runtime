@@ -49,6 +49,8 @@ export function callOperator(
     args?: Record<string, unknown>;
     fetch?: typeof fetch;
     timeoutMs?: number;
+    /** Used in place of the timeout, for a caller that joins its own abort to one. */
+    signal?: AbortSignal;
     userAgent?: string;
   },
 ): Promise<OperatorCallResult>;

@@ -167,7 +167,8 @@ const CALL_ERROR_MAX = 300;
  * @param {string} url the site's operator route, such as https://example.com/api/operator
  * @param {string} token
  * @param {string} tool
- * @param {{ args?: Record<string, unknown>, fetch?: typeof fetch, timeoutMs?: number, userAgent?: string }} [options]
+ * @param {{ args?: Record<string, unknown>, fetch?: typeof fetch, timeoutMs?: number, signal?: AbortSignal, userAgent?: string }} [options]
+ *   `signal` replaces the timeout (a caller that joins its own abort to one)
  * @returns {Promise<{ ok: boolean, status: number, data: unknown, error: string | null }>}
  */
 export async function callOperator(url, token, tool, options = {}) {
@@ -192,7 +193,7 @@ export async function callOperator(url, token, tool, options = {}) {
       },
       body: JSON.stringify({ tool, args }),
       redirect: "manual",
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: options.signal ?? AbortSignal.timeout(timeoutMs),
     });
     payload = await response.json().catch(() => null);
   } catch (error) {
