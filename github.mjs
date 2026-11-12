@@ -97,7 +97,7 @@ export async function installationToken(options) {
  * @param {number} perPage
  * @param {number} page
  */
-export function pagePath(path, perPage, page) {
+function pagePath(path, perPage, page) {
   return `${path}${path.includes("?") ? "&" : "?"}per_page=${perPage}&page=${page}`;
 }
 
