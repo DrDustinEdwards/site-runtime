@@ -27,7 +27,7 @@ test("readAllPages follows Link rel=next, not page length, and reports a list it
   const refused = await readAllPages(async () => new Response("no", { status: 403 }), "/x", {
     maxPages: 2,
   });
-  assert.deepEqual(refused, { items: [], problem: "page 1 of /x returned 403", truncated: false });
+  assert.deepEqual(refused, { items: [], problem: "page 1 returned 403", truncated: false });
 });
 
 test("installationToken narrows the token to what was asked for", async () => {

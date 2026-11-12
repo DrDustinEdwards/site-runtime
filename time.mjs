@@ -4,7 +4,8 @@
  * Drizzle's timestamp columns hold epoch milliseconds that may be null. One reader for each.
  */
 
-const SQL_TIME = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)$/;
+const SQL_TIME =
+  /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)(Z|[+-]\d{2}:?\d{2})?$/i;
 
 /**
  * Epoch milliseconds of a stored time, or null for null, empty or unreadable. A zoneless "YYYY-MM-DD HH:MM:SS" (with or
@@ -17,7 +18,7 @@ export function parseSqlTime(value) {
   const text = value.trim();
   const zoneless = SQL_TIME.exec(text);
   const iso = zoneless
-    ? `${zoneless[1]}T${zoneless[2]}Z`
+    ? `${zoneless[1]}T${zoneless[2]}${zoneless[3]?.toUpperCase() ?? "Z"}`
     : /^\d{4}-\d{2}-\d{2}$/.test(text)
       ? `${text}T00:00:00Z`
       : text;
