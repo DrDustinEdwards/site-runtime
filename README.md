@@ -948,7 +948,7 @@ fixed date with a test that fails a month before it lapses, the prompt to confir
 
 `./encoding` is the one set of byte encodings, Web APIs only (no Buffer, no `jose`): `toHex`/`fromHex`,
 `toBase64`/`fromBase64` (whitespace ignored, as GitHub wraps it), `base64url`/`fromBase64url` (no padding),
-`fromBase64Text`/`fromBase64urlText` (decoded to UTF-8 text) and `sha256Hex`, `hmacSha256Hex(secret, payload)` and `fnv1a32` (a short fingerprint, never a security boundary). Every
+`fromBase64Text`/`fromBase64urlText` (decoded to UTF-8 text) and `sha256Hex`, `hmacSha256Hex(secret, payload)` and `fnv1a32` (a short fingerprint, never a security boundary). `pageCursor(scope, position)` is a list's opaque next-page cursor (base64url JSON of the tool or route it came from and a page or offset), and `readPageCursor(scope, cursor)` gives its position back, or null for a cursor another list issued. Every
 encoder takes bytes or a string, which is encoded as UTF-8.
 
 ## The server entry
@@ -1125,7 +1125,7 @@ on a ref that cannot exist answers 422). `PR_URL_SOURCE` and `parsePrUrl(url)` r
 
 `./time`: `parseSqlTime(value)` is epoch milliseconds of a stored time: D1's zoneless "YYYY-MM-DD HH:MM:SS" read as
 UTC, an ISO time with its zone kept, a bare day as its UTC midnight, and null for nothing or nonsense. `toDate(ms)` and
-`toMs(date)` convert Drizzle's nullable timestamps, keeping null as null.
+`toMs(date)` convert Drizzle's nullable timestamps, keeping null as null. `monthKey(date)` is its UTC month as "YYYY-MM".
 
 `./google-service-account`: `parseServiceAccountKey(raw, name)` checks a pasted key file (JSON, a service account,
 a PKCS#8 key, Google's own token_uri) and gives `{ ok: true, key }` or `{ ok: false, state, detail }`;

@@ -3,7 +3,7 @@
     "knip": "knip@6.45.1"
   },
   "baseline": {
-    "measured_at": "b923833",
+    "measured_at": "0423aae",
     "knip": {
       "Unused files": 11,
       "Unused exports": 3
@@ -19,12 +19,12 @@
     },
     "tests": {
       "files": 77,
-      "cases": 455
+      "cases": 456
     },
     "comments": {
-      "lines": 11427,
-      "code": 37273,
-      "percentage": 23.46
+      "lines": 11453,
+      "code": 37306,
+      "percentage": 23.49
     }
   }
 }

@@ -88,6 +88,33 @@ export function fromBase64urlText(text) {
 }
 
 /**
+ * An opaque page cursor: base64url JSON naming the list it came from (`scope`, a tool or route name) and a position (a
+ * page or an offset), so a client never builds one and a cursor from one list handed to another is refused.
+ * @param {string} scope
+ * @param {number} position
+ * @returns {string}
+ */
+export function pageCursor(scope, position) {
+  return base64url(JSON.stringify({ t: scope, p: position }));
+}
+
+/**
+ * The position a `pageCursor` for `scope` carries, or null when it is not one: another scope, not a whole number of zero
+ * or more, or not a cursor at all. Unpadded standard base64 reads too.
+ * @param {string} scope
+ * @param {string} cursor
+ * @returns {number | null}
+ */
+export function readPageCursor(scope, cursor) {
+  try {
+    const { t, p } = JSON.parse(fromBase64urlText(cursor)) ?? {};
+    return t === scope && Number.isInteger(p) && p >= 0 ? p : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The SHA-256 digest of `input`, as lowercase hex.
  * @param {Uint8Array | ArrayBuffer | string} input
  * @returns {Promise<string>}
