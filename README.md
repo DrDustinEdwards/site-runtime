@@ -1094,6 +1094,15 @@ for hand-written SQL, so `%` and `_` match themselves. A newest-first page goes 
 `olderThan(atColumn, idColumn, at, id)` (order by both, descending): a time alone skips the rows that share the last
 row's millisecond. Sites with Drizzle only: it imports `drizzle-orm`.
 
+## Drizzle mirrors
+
+`./drizzle`: the tables site-runtime creates with its own SQL, as Drizzle tables, for a site whose schema drizzle-kit
+reads: `cronRuns` (CRON_SQL), `page404Daily` (NOT_FOUND_SQL), `alertsSent` (ALERTS_SQL) and `authEvents`
+(AUTH_EVENTS_SQL with AUTH_EVENTS_DEVICE_SQL). The site's schema re-exports them (`export { cronRuns } from
+"@dustinedwards/site-runtime/drizzle"`) instead of keeping its own copy, so drizzle-kit knows each table and never
+writes a migration that drops or reshapes it. Time columns are epoch ms numbers, as the SQL writes them. The test
+holds each mirror to its SQL column for column. Sites with Drizzle only: it imports `drizzle-orm`.
+
 ## CSV
 
 `./deploy`: `deployedSha(env, { fallback? })` is the deployed commit from the DEPLOY_SHA var devkit's worker-deploy
