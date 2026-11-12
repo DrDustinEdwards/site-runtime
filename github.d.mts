@@ -23,8 +23,6 @@ export function installationToken(options: {
   fetcher?: typeof fetch;
   now?: number;
 }): Promise<{ token: string; expiresAt: number; installationId: string }>;
-/** `path` with `per_page` and `page` added. */
-export function pagePath(path: string, perPage: number, page: number): string;
 /** Every page of a list, by Link rel="next"; `problem` says when it was not read whole. */
 export function readAllPages<T = unknown>(
   call: (path: string) => Promise<Response>,
