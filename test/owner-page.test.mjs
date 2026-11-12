@@ -7,6 +7,7 @@ import { afterEach, beforeEach, test } from "node:test";
 
 import { ToolCallLog } from "../audit-log.mjs";
 import { isAdminUser, loginHandler } from "../mcp-login.mjs";
+import { respond } from "../owner-page.mjs";
 import { publicJwk as jwk, sign as idToken } from "./jwt.mjs";
 
 const ORIGIN = "https://wrapper.test";
@@ -181,4 +182,14 @@ test("the owner sees their grants, the agent keys and the log, and revokes only 
   assert.equal(rows[0].phase, "revoked");
   assert.equal(rows[0].caller, "access:admin@example.com");
   assert.equal(rows[0].client_id, "https://client.example.com/meta");
+});
+
+// 0.143.0 gave every answer a one-directive policy, which replaced the site's default on plain-text errors.
+test("respond: a plain-text answer leaves the policy to the site, a page frames nothing", () => {
+  assert.equal(respond("no", 400).headers.get("content-security-policy"), null);
+  assert.equal(respond("no", 400).headers.get("x-frame-options"), "DENY");
+  assert.equal(
+    respond("<p>", 200, "text/html; charset=utf-8").headers.get("content-security-policy"),
+    "frame-ancestors 'none'",
+  );
 });
