@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { sendEmail } from "../email.mjs";
+import { isEmail, sendEmail } from "../email.mjs";
 
 /** A binding that records what it was handed, or throws `error`. */
 function binding(/** @type {unknown} */ error) {
@@ -77,4 +77,21 @@ test("a refusal keeps the binding's code and cuts each secret and the recipient 
     mail,
   );
   assert.equal(odd.sent ? "" : odd.code, "unknown");
+});
+
+test("isEmail takes what an email field takes, with a dotted domain, and refuses markup and overlong input", () => {
+  for (const ok of ["a@example.com", "o'brien+tag@mail.example.co", "x_y@sub-1.example.org"])
+    assert.equal(isEmail(ok), true, ok);
+  for (const bad of [
+    "a@example",
+    "a b@example.com",
+    'a"@example.com',
+    "<a>@example.com",
+    "a@-example.com",
+    "a@example..com",
+    "a@example.com\nBcc: x@example.com",
+    `${"a".repeat(250)}@example.com`,
+    42,
+  ])
+    assert.equal(isEmail(bad), false, String(bad));
 });
