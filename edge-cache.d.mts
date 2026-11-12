@@ -5,6 +5,8 @@
 
 export const SHARED_CACHE_CONTROL: "public, max-age=0";
 export const UNCACHED: "private, no-store";
+/** A private HTML page's `headers`: UNCACHED plus no-transform, so no Web Analytics beacon (and no edge compression). */
+export const PRIVATE_PAGE_HEADERS: Readonly<{ "Cache-Control": "private, no-store, no-transform" }>;
 export const EDGE_CACHE_HEADER: "Cloudflare-CDN-Cache-Control";
 export const PAGES_CACHE_TAG: "pages";
 

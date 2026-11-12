@@ -706,7 +706,9 @@ An image entry may carry `imageSrcSet`, `imageSizes` and `fetchPriority` (`image
 `./edge-cache` stores a site's public pages at the edge through the Workers cache and drops them by tag when the site
 writes: the scheme dustinedwards.info runs. A stored page is handed to every reader, so only a page that is the same
 for all of them may be stored: its CSP trusts inline scripts by hash, not a per-request nonce, it sets no cookie and
-it shows nothing signed in. Everything else stays `private, no-store`.
+it shows nothing signed in. Everything else stays `private, no-store`. A private HTML page that Cloudflare must not
+touch exports `headers = () => PRIVATE_PAGE_HEADERS` (`private, no-store, no-transform`): no Web Analytics beacon is
+injected, so private and signed-in pages stay out of the count, and the edge leaves it uncompressed.
 
 ```jsonc
 // wrangler.jsonc: the gateway runs on every request; the Renderer's responses are stored. No `cross_version_cache`,
