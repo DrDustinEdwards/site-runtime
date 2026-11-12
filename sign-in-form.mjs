@@ -20,6 +20,7 @@ import { isEmail } from "./email.mjs";
 import { OWASP_EVENTS, logEvent, requestFields } from "./log.mjs";
 import { SessionNotFresh, requireFreshSession, revokeSessionById } from "./sign-in-account.mjs";
 import { emailConfirmURL } from "./sign-in-link.mjs";
+import { isSameOriginPath } from "./url.mjs";
 import {
   ACCOUNT_WORDS,
   DISPOSABLE_EMAIL,
@@ -390,8 +391,7 @@ export async function authHandler(auth, request) {
  * @param {{ confirmPath: string, sendEmailChange: SendEmailChange, beforeDelete: (user: { id: string, email: string }) => Promise<void>, afterDelete?: (user: { id: string, email: string }) => Promise<void> }} site
  */
 export function accountOptions({ confirmPath, sendEmailChange, beforeDelete, afterDelete }) {
-  if (!confirmPath.startsWith("/") || confirmPath.startsWith("//"))
-    throw new Error("confirmPath is a path on the site");
+  if (!isSameOriginPath(confirmPath)) throw new Error("confirmPath is a path on the site");
   /** @param {string} url */
   const confirmURL = (url) => emailConfirmURL(url, confirmPath);
   return {

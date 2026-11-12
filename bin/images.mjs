@@ -49,7 +49,7 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 import { parsePolicy } from "../check.mjs";
-import { AVIF_MAX_EDGE } from "../image.mjs";
+import { AVIF_MAX_EDGE, RASTER_PATH, RASTER_TYPES } from "../image.mjs";
 
 const MAX_PAGES = 25;
 const MAX_SIZE_URLS = 6;
@@ -71,9 +71,6 @@ const ABOVE = 0.8;
 const BELOW = 1.1;
 /** The smallest visible area (CSS px) an image needs to be a page's largest paint rather than an icon. */
 const LCP_AREA = 150 * 150;
-
-const RASTER_PATH = /\.(png|jpe?g|webp|avif|gif)(?:$|[?#])/i;
-const RASTER_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/avif", "image/gif"]);
 
 /**
  * @typedef {{ severity: "error" | "warning" | "unmeasured", item: string, url: string, detail: string }} Finding

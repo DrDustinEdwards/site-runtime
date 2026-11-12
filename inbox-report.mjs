@@ -10,13 +10,14 @@
  * whole report for one item outside them.
  */
 
+import { CAPSID_ORIGIN } from "./access-sync.mjs";
 import { timedFetch } from "./http.mjs";
 import { logEvent } from "./log.mjs";
 
 /** Where the report goes, on Capsid's origin. */
 export const INBOX_REPORT_PATH = "/ops/inbox/report";
-/** Capsid's origin when the app's config names none. */
-export const CAPSID_ORIGIN = "https://mcp.dustinedwards.info";
+/** Capsid's origin when the app's config names none: access-sync's, the one value. */
+export { CAPSID_ORIGIN };
 /** The receiver's limits: items per report, characters per title, bytes per body. */
 export const MAX_REPORT_ITEMS = 20;
 export const MAX_REPORT_TITLE = 200;

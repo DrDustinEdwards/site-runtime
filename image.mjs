@@ -781,8 +781,15 @@ export async function editImage(
  * @typedef {{ input(stream: ReadableStream): ImagesOutput & { transform(options: object): ImagesOutput } }} ImagesLike
  */
 
-const RASTER_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/avif", "image/gif"]);
-const RASTER_PATH = /\.(png|jpe?g|webp|avif|gif)(?:$|[?#])/i;
+/** The raster image types, and the paths that name one (a query or fragment may follow the extension). */
+export const RASTER_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/avif",
+  "image/gif",
+]);
+export const RASTER_PATH = /\.(png|jpe?g|webp|avif|gif)(?:$|[?#])/i;
 const GIF_PATH = /\.gif(?:$|[?#])/i;
 const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
 
