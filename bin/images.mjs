@@ -124,7 +124,7 @@ export async function auditImages({ origin, from, fetch: get = fetch, maxPages =
       notes: [],
     };
   }
-  const entries = await sitemapEntries(load, origin);
+  const entries = await sitemapPages(load, origin);
   /** @type {Map<string, boolean>} page URL to whether its sitemap entry lists images; absent for a page not listed */
   const listed = new Map();
   const pages = [`${origin}/`];
@@ -1447,7 +1447,7 @@ function candidatesOf(srcset) {
  * @param {string} origin
  * @returns {Promise<Array<{ loc: string, images: boolean }>>}
  */
-async function sitemapEntries(load, origin) {
+async function sitemapPages(load, origin) {
   const read = async (/** @type {string} */ url, /** @type {boolean} */ index) => {
     const got = await load(url, Number.POSITIVE_INFINITY);
     if (got.status !== 200) return null;

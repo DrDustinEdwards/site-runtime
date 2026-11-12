@@ -214,6 +214,57 @@ export function mediaKey(path, within = "") {
 }
 
 /**
+ * The stored key an image address names, or null for any other address: `<prefix><path>` (default "/media/") or one of
+ * the site's own `origins` before it ("https://example.com"), query and fragment cut, each segment percent-decoded,
+ * a size's format suffix cut as the route cuts it, `keyPrefix` put back in front (the route's `keyPrefix`), and the key checked as `mediaKey` checks a served one. Another
+ * site's /media/ address is not this site's file. The inverse of the address a page writes for a stored key.
+ * @param {string} address
+ * @param {{ origins?: string[], prefix?: string, keyPrefix?: string, within?: string }} [options]
+ * @returns {string | null}
+ */
+export function keyOfAddress(
+  address,
+  { origins = [], prefix = "/media/", keyPrefix = "", within = "" } = {},
+) {
+  let path = address.trim();
+  const origin = origins.find((o) => path.startsWith(`${o.replace(/\/+$/, "")}/`));
+  if (origin) path = path.slice(origin.replace(/\/+$/, "").length);
+  if (!path.startsWith(prefix)) return null;
+  const [rest = "", query = ""] = path.slice(prefix.length).split("#")[0].split("?");
+  // A size's address (`photo.jpg.webp?w=640`) names the original, as the route reads it (originalKey).
+  const sized = new URLSearchParams(query).has("w") ? (suffixed(rest)?.stored ?? rest) : rest;
+  try {
+    return mediaKey(keyPrefix + sized.split("/").map(decodeURIComponent).join("/"), within);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Every stored key a text names by address (markdown, HTML, srcset or JSON): each `keyOfAddress` match that starts the
+ * text or follows a space, quote, bracket, `=`, `,` or `>`, trailing sentence punctuation cut. In the order first named.
+ * Over-detection only keeps a file from being deleted; a key with a space or `)` is found only when the address is encoded.
+ * @param {string | null | undefined} text
+ * @param {{ origins?: string[], prefix?: string, keyPrefix?: string, within?: string }} [options]
+ * @returns {Set<string>}
+ */
+export function keysAtAddresses(text, options = {}) {
+  const keys = new Set();
+  if (!text) return keys;
+  const escape = (/** @type {string} */ s) => s.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+  const origins = (options.origins ?? []).map((o) => escape(o.replace(/\/+$/, ""))).join("|");
+  const address = new RegExp(
+    `(?:^|[\\s"'\`(\\[=,>])((?:${origins ? `(?:${origins})` : ""})?${escape(options.prefix ?? "/media/")}[^\\s"'\`<>()\\[\\]\\\\]+)`,
+    "g",
+  );
+  for (const m of text.matchAll(address)) {
+    const key = keyOfAddress((m[1] ?? "").replace(/[.,;:!]+$/, ""), options);
+    if (key) keys.add(key);
+  }
+  return keys;
+}
+
+/**
  * The widths an image is offered at, by Astro's rules: full-width takes every screen width up to the original;
  * fixed takes 1x and 2x; constrained takes 1x, 2x and every screen width up to 2x. Never wider than the original.
  * @param {{ layout: "constrained" | "fixed" | "full-width", width?: number, originalWidth?: number, breakpoints?: number[] }} options

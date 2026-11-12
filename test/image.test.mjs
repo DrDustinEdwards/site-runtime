@@ -531,3 +531,25 @@ test("mediaKey refuses a path that climbs out, an empty segment or a key outside
   ])
     assert.equal(mediaKey(bad, "uploads/"), null, bad);
 });
+
+test("keyOfAddress and keysAtAddresses read a stored key back out of the addresses a page writes", async () => {
+  const { keyOfAddress, keysAtAddresses } = await import("../image.mjs");
+  const site = { origins: ["https://example.com"], keyPrefix: "media/", within: "media/" };
+  assert.equal(keyOfAddress("/media/2026/a%20b.jpg?v=1#x", site), "media/2026/a b.jpg");
+  assert.equal(keyOfAddress("https://example.com/media/a.jpg.webp?w=640&v=2", site), "media/a.jpg");
+  assert.equal(keyOfAddress("/media/a.webp", site), "media/a.webp");
+  for (const bad of [
+    "https://other.example/media/a.jpg",
+    "/media/../a.jpg",
+    "/media/%2e%2e/a",
+    "/media/%zz",
+    "/blog/a",
+  ])
+    assert.equal(keyOfAddress(bad, site), null, bad);
+  const text = `![a](/media/one.jpg) <img srcset="/media/two.png.webp?w=640 640w, https://example.com/media/three.gif">
+    "cover":"/media/one.jpg" see /media/four.jpg. https://other.example/media/five.jpg x/media/six.jpg`;
+  assert.deepEqual(
+    [...keysAtAddresses(text, site)],
+    ["media/one.jpg", "media/two.png", "media/three.gif", "media/four.jpg"],
+  );
+});
