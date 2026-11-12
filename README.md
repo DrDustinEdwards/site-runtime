@@ -2157,6 +2157,10 @@ if (!outcome.sent) throw new Error(`Email not sent (${outcome.code}).`);
 
 The `emailCheck` in `./health` checks the binding is present without sending.
 
+`isEmail(value)` is the one check on a typed address before a site stores or mails it: the HTML Standard's
+[valid email address](https://html.spec.whatwg.org/multipage/input.html#valid-e-mail-address) (the rule a browser
+already applies to an email field), a dotted domain and at most 254 characters (RFC 5321). Trim the value first.
+
 ## A secret at rest
 
 `./secret-box` seals a secret (an OAuth token, a webhook URL) with AES-256-GCM under a keyring that rotates.

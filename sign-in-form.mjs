@@ -16,6 +16,7 @@
 import { APIError } from "better-auth/api";
 
 import { DISPOSABLE_DOMAINS } from "./disposable-domains.mjs";
+import { isEmail } from "./email.mjs";
 import { OWASP_EVENTS, logEvent, requestFields } from "./log.mjs";
 import { SessionNotFresh, requireFreshSession, revokeSessionById } from "./sign-in-account.mjs";
 import { emailConfirmURL } from "./sign-in-link.mjs";
@@ -439,8 +440,6 @@ export const ACCOUNT_INTENTS = Object.freeze(["change-email", "sign-out-device",
  * @typedef {{ intent: string, ok: boolean, error: string | null, stale: boolean, sentTo: string | null }} AccountFormState
  */
 
-const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 /** @param {unknown} error */
 const isNotFresh = (error) =>
   error instanceof SessionNotFresh ||
@@ -519,7 +518,7 @@ export async function accountFormAction(auth, request, form, site) {
     const newEmail = String(form.get("newEmail") ?? "")
       .trim()
       .toLowerCase();
-    if (!EMAIL_SHAPE.test(newEmail)) return answer({ error: ACCOUNT_WORDS.noEmail }, 400);
+    if (!isEmail(newEmail)) return answer({ error: ACCOUNT_WORDS.noEmail }, 400);
     if (newEmail === fresh.user.email.toLowerCase())
       return answer({ error: ACCOUNT_WORDS.sameEmail }, 400);
     if (isDisposableEmail(newEmail)) return answer({ error: ACCOUNT_WORDS.disposable }, 400);

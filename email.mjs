@@ -17,6 +17,25 @@
 import { logEvent } from "./log.mjs";
 
 const LINE_BREAK = /[\r\n]/;
+
+/**
+ * The HTML Standard's "valid email address" (html.spec.whatwg.org, input type=email), the rule a browser already
+ * applies to an email field, with a dot required in the domain, since a site mails only public addresses. No quotes,
+ * angle brackets, spaces or line breaks can pass, and nothing past RFC 5321's 254-character path.
+ */
+const EMAIL_ADDRESS =
+  /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+
+/**
+ * Whether a typed address is one a site may store and mail: the browser's own email-field rule, a dotted domain and at
+ * most 254 characters. Trim it first; this does not.
+ * @param {unknown} value
+ * @returns {value is string}
+ */
+export function isEmail(value) {
+  return typeof value === "string" && value.length <= 254 && EMAIL_ADDRESS.test(value);
+}
+
 // The binding's codes are short names (E_SENDER_NOT_VERIFIED); anything else is reported as "unknown".
 const CODE = /^[\w.-]{1,64}$/;
 

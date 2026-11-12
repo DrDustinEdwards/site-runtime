@@ -45,3 +45,6 @@ export function sendEmail(
 
 /** Each of `secrets` cut out of `text`, as `[redacted]`. Empty entries are skipped. */
 export function redact(text: string, secrets?: readonly (string | null | undefined)[]): string;
+
+/** Whether a typed address is one a site may store and mail: the HTML Standard's email-field rule, a dotted domain, at most 254 characters. */
+export function isEmail(value: unknown): value is string;
