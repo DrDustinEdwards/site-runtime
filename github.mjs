@@ -105,12 +105,12 @@ export function pagePath(path, perPage, page) {
  * Every page of a GitHub list, read to the end. The next page is asked for by number while the Link header says
  * `rel="next"` (a short page is not the end test: GitHub may serve fewer than per_page with more to come). A list not
  * read whole comes back with `problem` set rather than as if it were complete: a page refused, or more than
- * `maxPages`.
+ * `maxPages` (then `truncated` is true too).
  * @template T
  * @param {(path: string) => Promise<Response>} call
  * @param {string} path
  * @param {{ maxPages: number; perPage?: number; rowsOf?: (body: unknown) => T[] | undefined }} options
- * @returns {Promise<{ items: T[]; problem: string | null }>}
+ * @returns {Promise<{ items: T[]; problem: string | null; truncated: boolean }>}
  */
 export async function readAllPages(call, path, options) {
   const perPage = options.perPage ?? 100;
@@ -121,12 +121,21 @@ export async function readAllPages(call, path, options) {
     const resp = await call(pagePath(path, perPage, page));
     if (!resp.ok) {
       await resp.body?.cancel();
-      return { items, problem: `page ${page} of ${path.split("?")[0]} returned ${resp.status}` };
+      return {
+        items,
+        problem: `page ${page} of ${path.split("?")[0]} returned ${resp.status}`,
+        truncated: false,
+      };
     }
     items.push(...(rowsOf(await resp.json()) ?? []));
-    if (!/rel="next"/.test(resp.headers.get("Link") ?? "")) return { items, problem: null };
+    if (!/rel="next"/.test(resp.headers.get("Link") ?? ""))
+      return { items, problem: null, truncated: false };
   }
-  return { items, problem: `${path.split("?")[0]} has more than ${options.maxPages} pages` };
+  return {
+    items,
+    problem: `${path.split("?")[0]} has more than ${options.maxPages} pages`,
+    truncated: true,
+  };
 }
 
 /**

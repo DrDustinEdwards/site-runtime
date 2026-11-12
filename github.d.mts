@@ -30,7 +30,7 @@ export function readAllPages<T = unknown>(
   call: (path: string) => Promise<Response>,
   path: string,
   options: { maxPages: number; perPage?: number; rowsOf?: (body: unknown) => T[] | undefined },
-): Promise<{ items: T[]; problem: string | null }>;
+): Promise<{ items: T[]; problem: string | null; truncated: boolean }>;
 /** A GET's JSON; a refusal throws "GitHub answered <status> for <path>". */
 export function githubJson(
   call: (path: string) => Promise<Response>,

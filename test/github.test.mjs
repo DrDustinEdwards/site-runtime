@@ -22,10 +22,11 @@ test("readAllPages follows Link rel=next, not page length, and reports a list it
   const capped = await readAllPages(call, "/repos/o/r/pulls", { maxPages: 2, perPage: 2 });
   assert.deepEqual(capped.items, [1, 2, 3]);
   assert.match(capped.problem ?? "", /more than 2 pages/);
+  assert.equal(capped.truncated, true);
   const refused = await readAllPages(async () => new Response("no", { status: 403 }), "/x", {
     maxPages: 2,
   });
-  assert.deepEqual(refused, { items: [], problem: "page 1 of /x returned 403" });
+  assert.deepEqual(refused, { items: [], problem: "page 1 of /x returned 403", truncated: false });
 });
 
 test("installationToken narrows the token to what was asked for", async () => {
