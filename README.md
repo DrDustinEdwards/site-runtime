@@ -706,7 +706,9 @@ An image entry may carry `imageSrcSet`, `imageSizes` and `fetchPriority` (`image
 `./edge-cache` stores a site's public pages at the edge through the Workers cache and drops them by tag when the site
 writes: the scheme dustinedwards.info runs. A stored page is handed to every reader, so only a page that is the same
 for all of them may be stored: its CSP trusts inline scripts by hash, not a per-request nonce, it sets no cookie and
-it shows nothing signed in. Everything else stays `private, no-store`.
+it shows nothing signed in. Everything else stays `private, no-store`. A private HTML page that Cloudflare must not
+touch exports `headers = () => PRIVATE_PAGE_HEADERS` (`private, no-store, no-transform`): no Web Analytics beacon is
+injected, so private and signed-in pages stay out of the count, and the edge leaves it uncompressed.
 
 ```jsonc
 // wrangler.jsonc: the gateway runs on every request; the Renderer's responses are stored. No `cross_version_cache`,
@@ -729,7 +731,7 @@ import {
   settleCacheHeaders,
 } from "@dustinedwards/site-runtime/edge-cache";
 
-// A public route: stored a day, served stale a week while it re-renders, tagged "pages".
+// A public route: stored a day, served stale a week while it re-renders, tagged "pages", Vary: Cookie.
 export const headers = () => publicPageHeaders();
 
 export class Renderer extends WorkerEntrypoint {
@@ -1046,9 +1048,8 @@ refuse goes to the Renderer, which the edge keeps only when it is shared (anythi
 parameters dropped), host and each public cookie; every other request is rendered live with its own nonce and leaves
 `private, no-store` unless its route set a policy of its own. A route marks its page shared (`publicPageHeaders`); a site whose routes name
 no Cache-Control passes `publicPages(url, env)` instead, and the Renderer stores each such 200 under the tags it
-returns; a page marked shared with no edge lifetime of its own is stored for publicPageHeaders' day. A site's
-`respond(response, request, env, { stored })` gets the last word on each page and step answer after the set (a route-class
-cache rule); `settleCacheHeaders` or `privateRender` still runs after it. Each render sets `serverTimingContext` (./context;
+returns; a page marked shared with no edge lifetime of its own is stored for publicPageHeaders' day. A step's answer, like a
+live page, leaves `private, no-store` unless it set a policy of its own; no site hook rewrites Cache-Control. Each render sets `serverTimingContext` (./context;
 `timed(getTimings(context), name, fn)` in a loader adds a mark to the page's Server-Timing). Every render gets a nonce; a policy that names it is renewed
 per reader; a 304 leaves out the policy (RFC 9111 4.3.4: the browser updates its stored headers from a 304). Every HTML
 answer carries the Speculation-Rules header; a 404 goes through `onNotFound` (site-api's tombstones) and is counted

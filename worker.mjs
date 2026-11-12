@@ -49,8 +49,8 @@
  *
  * Every render sets ./context serverTimingContext, so a loader's own marks join `render` in the Server-Timing header.
  * A page a route marks shared (`public, max-age=0`) with no edge lifetime of its own is stored for publicPageHeaders'
- * day, so the purge it answers to has something to reach. A site's `respond` gets the last word on each page and step
- * answer after the security set (Foxhound's route classes); settleCacheHeaders or privateRender still runs after it.
+ * day, so the purge it answers to has something to reach. The cache rule is the routes' own `headers` and these steps,
+ * the same on every site: no site hook rewrites an answer's Cache-Control.
  *
  * Cron: `cron(env, date, ctx)[controller.cron]` (the lists may come from a promise, so a site can import its jobs when
  * the cron fires) runs through ./cron runJobs, awaited; a trigger with no list warns
@@ -220,10 +220,7 @@ export function siteRenderer(Base, site) {
       const secured = await site.earlyHints(
         options.withSecurityHeaders(rendered, request, pageNonce(rendered, nonce), this.env),
       );
-      const page = options.respond
-        ? await options.respond(secured, request, this.env, { stored: true })
-        : secured;
-      return settleCacheHeaders(page, request, { publicCookies: options.publicCookies ?? [] });
+      return settleCacheHeaders(secured, request, { publicCookies: options.publicCookies ?? [] });
     }
   };
 }
@@ -287,6 +284,16 @@ function withSpeculationRules(page) {
   const headers = new Headers(page.headers);
   headers.set(SPECULATION_RULES_HEADER.name, SPECULATION_RULES_HEADER.value);
   return new Response(page.body, { status: page.status, statusText: page.statusText, headers });
+}
+
+/**
+ * A page or step answer drawn for one reader, never stored: a route's shared headers mean nothing here, and an answer
+ * with no Cache-Control is said to be private rather than left to a heuristic (RFC 9111 4.2.2).
+ * @param {Response} answer
+ */
+function forOneReader(answer) {
+  const cacheControl = answer.headers.get("Cache-Control");
+  return !cacheControl || cacheControl === SHARED_CACHE_CONTROL ? privateRender(answer) : answer;
 }
 
 /**
@@ -386,12 +393,9 @@ export function siteWorker(site) {
       purgeAfterWrite: (r, response, why) => purgeAfterWrite(r, response, ctx, why),
       secure: (response, r = request, nonce) => secure(response, r, nonce, env),
     };
-    /** @type {(response: Response) => Promise<Response>} */
-    const live = async (response) =>
-      options.respond ? options.respond(response, request, env, { stored: false }) : response;
     for (const step of options.steps ?? []) {
       const answer = await step(request, env, ctx, kit);
-      if (answer) return live(secure(answer, request, undefined, env));
+      if (answer) return forOneReader(secure(answer, request, undefined, env));
     }
 
     if (!exempt.some((prefix) => url.pathname.startsWith(prefix))) {
@@ -421,13 +425,9 @@ export function siteWorker(site) {
     const response = await site.render(request, env, ctx, { nonce });
     if (isWrite(request) && purgeAfter.some((prefix) => url.pathname.startsWith(prefix)))
       purgeAfterWrite(request, response, ctx, `${request.method} ${url.pathname}`);
-    const page = await live(
+    return forOneReader(
       await site.earlyHints(secure(response, request, pageNonce(response, nonce), env)),
     );
-    const cacheControl = page.headers.get("Cache-Control");
-    // Rendered for this one reader: a route's shared headers mean nothing here, and a response with none is said to
-    // be private rather than left to a heuristic.
-    return !cacheControl || cacheControl === SHARED_CACHE_CONTROL ? privateRender(page) : page;
   }
 
   /**

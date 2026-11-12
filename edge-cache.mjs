@@ -25,6 +25,14 @@ export const SHARED_CACHE_CONTROL = "public, max-age=0";
  */
 export const UNCACHED = "private, no-store";
 
+/**
+ * A route's `headers` for a page drawn for one reader that Cloudflare must not change: UNCACHED plus `no-transform`,
+ * so the Web Analytics beacon is never injected (developers.cloudflare.com/web-analytics/faq/) and private and
+ * signed-in pages stay out of the count. Cloudflare then also leaves the page uncompressed
+ * (developers.cloudflare.com/cache/concepts/cache-control/), so it goes on HTML pages only, never on assets.
+ */
+export const PRIVATE_PAGE_HEADERS = Object.freeze({ "Cache-Control": `${UNCACHED}, no-transform` });
+
 /** Outranks Cache-Control at Cloudflare's edge, so it goes only on a response marked shared. */
 export const EDGE_CACHE_HEADER = "Cloudflare-CDN-Cache-Control";
 
@@ -73,6 +81,9 @@ export function publicPageHeaders({
     "Cache-Control": SHARED_CACHE_CONTROL,
     [EDGE_CACHE_HEADER]: `max-age=${freshSeconds}, stale-while-revalidate=${staleSeconds}`,
     "Cache-Tag": tags.join(","),
+    // The gateway draws a request carrying any cookie but a public one live, for that reader, so a shared page differs
+    // by Cookie (RFC 9110 12.5.5): a cache between the reader and the edge keys a signed-in copy apart from this one.
+    Vary: "Cookie",
   };
 }
 

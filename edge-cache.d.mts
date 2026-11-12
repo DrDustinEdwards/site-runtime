@@ -5,10 +5,12 @@
 
 export const SHARED_CACHE_CONTROL: "public, max-age=0";
 export const UNCACHED: "private, no-store";
+/** A private HTML page's `headers`: UNCACHED plus no-transform, so no Web Analytics beacon (and no edge compression). */
+export const PRIVATE_PAGE_HEADERS: Readonly<{ "Cache-Control": "private, no-store, no-transform" }>;
 export const EDGE_CACHE_HEADER: "Cloudflare-CDN-Cache-Control";
 export const PAGES_CACHE_TAG: "pages";
 
-/** A route's `headers` to have its page stored: a day fresh, a week stale, tagged "pages" unless `tags` says otherwise; fresh no later than `until` (a minute at least). */
+/** A route's `headers` to have its page stored: a day fresh, a week stale, tagged "pages" unless `tags` says otherwise; fresh no later than `until` (a minute at least); `Vary: Cookie`, since a reader with a cookie gets a live render. */
 export function publicPageHeaders(options?: {
   tags?: string[];
   freshSeconds?: number;

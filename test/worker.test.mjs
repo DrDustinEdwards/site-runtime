@@ -96,15 +96,11 @@ test("the canonical move, security.txt and a cross-site write are answered befor
   assert.equal(stored.length, 0);
 });
 
-test("a site step answers first, gets the set, then the site's respond; a cron's lists may be a promise", async () => {
+test("a site step answers first with the set, private unless it says otherwise; a cron's lists may be a promise", async () => {
   /** @type {unknown[]} */
   const crons = [];
   const { fetch, worker, env } = harness({
     steps: [(r) => (new URL(r.url).pathname === "/media/x" ? new Response("img") : undefined)],
-    respond: (/** @type {Response} */ response, _r, _e, /** @type {any} */ where) => {
-      response.headers.set("X-Stored", String(where.stored));
-      return response;
-    },
     cron: async (_env, _at, /** @type {any} */ ctx) => {
       crons.push(ctx.tag);
       return {};
@@ -113,7 +109,7 @@ test("a site step answers first, gets the set, then the site's respond; a cron's
   const media = await fetch(new Request("https://example.com/media/x"));
   assert.equal(await media.text(), "img");
   assert.equal(media.headers.get("X-Set"), "1");
-  assert.equal(media.headers.get("X-Stored"), "false");
+  assert.equal(media.headers.get("Cache-Control"), "private, no-store");
   const ctx = /** @type {any} */ ({ tag: "ctx" });
   await worker.scheduled(/** @type {any} */ ({ cron: "1 2 * * *", scheduledTime: 0 }), env, ctx);
   assert.deepEqual(crons, ["ctx"]);
