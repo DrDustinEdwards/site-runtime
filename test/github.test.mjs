@@ -16,6 +16,7 @@ test("readAllPages follows Link rel=next, not page length, and reports a list it
     {
       items: [1, 2, 3],
       problem: null,
+      truncated: false,
     },
   );
   assert.equal(asked[0], "/repos/o/r/pulls?state=open&per_page=2&page=1");
