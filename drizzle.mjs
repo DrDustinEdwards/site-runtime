@@ -25,6 +25,20 @@ export const cronRuns = sqliteTable("cron_runs", {
   lastError: text("last_error"),
 });
 
+/** ./cron CRON_LOG_SQL: one row per recorded run, written by runJobs with `history`, newest few kept per job. */
+export const cronRunLog = sqliteTable(
+  "cron_run_log",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    name: text("name").notNull(),
+    startedAt: integer("started_at").notNull(),
+    finishedAt: integer("finished_at").notNull(),
+    outcome: text("outcome").notNull(),
+    reason: text("reason").notNull().default(""),
+  },
+  (t) => [index("cron_run_log_name").on(t.name, t.id)],
+);
+
 /** ./not-found NOT_FOUND_SQL: the 404 count per day, path and referring host, the pathname only. */
 export const page404Daily = sqliteTable(
   "page_404_daily",

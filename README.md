@@ -1098,7 +1098,7 @@ row's millisecond. Sites with Drizzle only: it imports `drizzle-orm`.
 ## Drizzle mirrors
 
 `./drizzle`: the tables site-runtime creates with its own SQL, as Drizzle tables, for a site whose schema drizzle-kit
-reads: `cronRuns` (CRON_SQL), `page404Daily` (NOT_FOUND_SQL), `alertsSent` (ALERTS_SQL) and `authEvents`
+reads: `cronRuns` (CRON_SQL), `cronRunLog` (CRON_LOG_SQL), `page404Daily` (NOT_FOUND_SQL), `alertsSent` (ALERTS_SQL) and `authEvents`
 (AUTH_EVENTS_SQL with AUTH_EVENTS_DEVICE_SQL). The site's schema re-exports them (`export { cronRuns } from
 "@dustinedwards/site-runtime/drizzle"`) instead of keeping its own copy, so drizzle-kit knows each table and never
 writes a migration that drops or reshapes it. Time columns are epoch ms numbers, as the SQL writes them. The test
@@ -2132,12 +2132,13 @@ sweep that found nothing did, which "ok" alone cannot), `refused` records the ru
 /health warns) without throwing, and `skipped` records nothing, as `CRON_SKIPPED` does. `rethrow: false` is for a step in
 a larger run: its failures are in the outcomes and the record and do not throw. `everyMinutes: null` is an event job, one
 whose runs come and go with the work: it has no stale window and is flagged only by a failure inside the last day
-(`CRON_EVENT_WINDOW_MS`).
+(`CRON_EVENT_WINDOW_MS`). A job's `run(signal, { startedAt })` gets its run's start: with the name, the key of its
+`cron_run_log` row, so a send or a write the run makes can name the run that made it.
 
 `readCronRuns(db, names, per)` reads the newest runs back in one query, and `cronStates(jobs, runs, now)` says which job
 is `failing` (its newest run failed or was refused), `quiet` (a periodic job with no run for two of its periods: one missed
 run is normal) or `never` (a notice, not a fault), for a page that lists them. From Capsid's task ledger and Foxhound's
-`cron_run_history`, which kept a second ledger beside `cron_runs`.
+old `cron_run_history`, which kept a second ledger beside `cron_runs`.
 
 `./cron-alert` mails what `cronFindings` names. `cronAlert({ db, mail, from, to, site, jobs, deployedAt, now })` sends
 one message for the jobs that are new today, and an `alerts_sent` row per key, kind (`failure` or `stale`) and UTC day

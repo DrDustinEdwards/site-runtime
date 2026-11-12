@@ -3,14 +3,15 @@
 import { test } from "node:test";
 
 import { ALERTS_SQL } from "../cron-alert.mjs";
-import { CRON_SQL } from "../cron.mjs";
+import { CRON_LOG_SQL, CRON_SQL } from "../cron.mjs";
 import { assertMirror } from "../drizzle-check.mjs";
-import { alertsSent, authEvents, cronRuns, page404Daily } from "../drizzle.mjs";
+import { alertsSent, authEvents, cronRunLog, cronRuns, page404Daily } from "../drizzle.mjs";
 import { NOT_FOUND_SQL } from "../not-found.mjs";
 import { AUTH_EVENTS_DEVICE_SQL, AUTH_EVENTS_SQL } from "../sign-in-account.mjs";
 
 for (const [table, sql, name] of [
   [cronRuns, CRON_SQL, "cron_runs"],
+  [cronRunLog, CRON_LOG_SQL, "cron_run_log"],
   [page404Daily, NOT_FOUND_SQL, "page_404_daily"],
   [alertsSent, ALERTS_SQL, "alerts_sent"],
   [authEvents, AUTH_EVENTS_SQL + AUTH_EVENTS_DEVICE_SQL, "auth_events"],

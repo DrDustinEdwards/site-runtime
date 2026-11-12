@@ -3,7 +3,16 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 
-import { CRON_SKIPPED, CRON_SQL, cronCheck, cronFindings, runJobTool, runJobs } from "../cron.mjs";
+import {
+  CRON_LOG_SQL,
+  CRON_SKIPPED,
+  CRON_SQL,
+  cronCheck,
+  cronFindings,
+  readCronRuns,
+  runJobTool,
+  runJobs,
+} from "../cron.mjs";
 
 /** A D1-shaped wrapper over node:sqlite. */
 function d1() {
@@ -47,6 +56,28 @@ test("a failed job does not stop the next, the run throws naming it, and the che
   assert.equal(await cronCheck(store, at(11)).run(), true);
   // publish runs every minute: its own interval plus 10 minutes of grace.
   assert.deepEqual(await cronCheck(store, at(12)).run(), { ok: false, detail: "publish stale" });
+});
+
+test("with history a job learns its run's start, the key of its cron_run_log row with its reason", async () => {
+  const store = d1();
+  store.db.exec(CRON_LOG_SQL);
+  const t0 = Date.UTC(2026, 10, 12);
+  let clock = t0;
+  /** @type {number[]} */
+  const seen = [];
+  const job = {
+    name: "sweep",
+    everyMinutes: 5,
+    run: async (/** @type {AbortSignal} */ _signal, /** @type {{ startedAt: number }} */ run) => {
+      seen.push(run.startedAt);
+      clock += 40;
+      return { outcome: "ok", reason: "swept 3" };
+    },
+  };
+  await runJobs(store, [job], { now: () => clock, history: true });
+  const [row] = (await readCronRuns(store, ["sweep"])).get("sweep") ?? [];
+  assert.deepEqual(seen, [t0]);
+  assert.deepEqual(row, { startedAt: t0, finishedAt: t0 + 40, outcome: "ok", reason: "swept 3" });
 });
 
 test("a hung job times out as failed and the next still runs; a daily job warns past about 26 hours; a job that never ran warns", async () => {
