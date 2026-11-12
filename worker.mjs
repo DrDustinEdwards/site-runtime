@@ -23,8 +23,9 @@
  *    the stored pages when the step says so (`kit.purgeAfterWrite`).
  * 9. A cross-site write is refused (./origin refuseCrossSite) on every path but `crossSiteExempt` (default /api/auth/,
  *    where Better Auth checks its own origins and Apple's form_post arrives cross-site).
- * 10. The page. A read (GET or HEAD) with no cookie but `publicCookies`, on a path with no file extension (bar .data)
- *     and not refused by the site's `cacheable`, goes to the Renderer through the Workers cache, keyed on the path, the
+ * 10. The page. A read (GET or HEAD) with no cookie but `publicCookies`, not refused by the site's `cacheable`, goes
+ *     to the Renderer through the Workers cache (a file path too: a shared feed or sitemap is stored and purged like a
+ *     page, and anything not shared leaves with an edge no-store, so the cache keeps nothing else), keyed on the path, the
  *     query without tracking parameters, the host and each public cookie's value. Everything else (a write, a signed-in
  *     reader, a private path) is rendered live for this reader with its own nonce, and leaves private, no-store unless
  *     the route said otherwise for a page that is not shared. A live write on a `purgeAfter` path (default /admin)
@@ -469,7 +470,8 @@ export function siteWorker(site) {
   const idled = (request, env, ctx) => {
     /** @type {() => Promise<Response>} */
     let handle = () => guarded(request, env, ctx);
-    for (const idle of options.adminIdle ?? []) {
+    // Innermost first, so the list's first entry wraps the rest, as SiteOptions.adminIdle says.
+    for (const idle of [...(options.adminIdle ?? [])].reverse()) {
       const inner = handle;
       handle = () =>
         withAdminIdle(request, inner, {
@@ -488,7 +490,13 @@ export function siteWorker(site) {
       /** @type {Request} */ request,
       /** @type {E} */ env,
       /** @type {ExecutionContext} */ ctx,
-    ) => (await Promise.all([wrapped(request, env, ctx), site.routesReady()]))[0],
+    ) => {
+      // After the answer, which a render has already loaded the build for: two imports of it at once on an isolate's
+      // first request is what vitest's module mocker answers with the unmocked module, so a site's tests drew the stub.
+      const response = await wrapped(request, env, ctx);
+      await site.routesReady();
+      return response;
+    },
     {
       sha: (env) => options.sha?.(env) ?? deployedSha(env),
       tokenPath,
