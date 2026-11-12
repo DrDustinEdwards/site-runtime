@@ -128,12 +128,13 @@ export function describeRuns(
 ): string;
 /** Whether every run in a run_job answer succeeded or was skipped; false for a failed call or one without its runs. */
 export function runsSucceeded(call: { ok: boolean; data: unknown }): boolean;
-/** `backup_status` and `run_job` together, for a site's operatorResponse tools. */
+/** `backup_status` and `run_job` together, for a site's operatorResponse tools; `history` as the site's runJobs has it. */
 export function operatorJobTools(options: {
   db: D1Like | (() => D1Like) | null;
   jobs: CronJob[] | (() => CronJob[]);
   backupStatus: () => unknown;
   files?: string[];
+  history?: boolean | CronHistory;
 }): {
   backup_status: import("./operator.d.mts").OperatorTool;
   run_job: import("./operator.d.mts").OperatorTool;

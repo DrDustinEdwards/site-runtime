@@ -367,14 +367,15 @@ export function backupStatusTool(status, { files = [] } = {}) {
 
 /**
  * The two operator tools every site's scheduled jobs answer through: `backup_status` (backupStatusTool) and `run_job`
- * (runJobTool), for a site's operatorResponse `tools`.
- * @param {{ db: D1Like | (() => D1Like) | null, jobs: CronJob[] | (() => CronJob[]), backupStatus: () => unknown, files?: string[] }} options
+ * (runJobTool), for a site's operatorResponse `tools`. `history` is the site's runJobs history, so a job run now is kept
+ * in `cron_run_log` as its trigger keeps it.
+ * @param {{ db: D1Like | (() => D1Like) | null, jobs: CronJob[] | (() => CronJob[]), backupStatus: () => unknown, files?: string[], history?: boolean | CronHistory }} options
  * @returns {{ backup_status: import("./operator.d.mts").OperatorTool, run_job: import("./operator.d.mts").OperatorTool }}
  */
-export function operatorJobTools({ db, jobs, backupStatus, files }) {
+export function operatorJobTools({ db, jobs, backupStatus, files, history }) {
   return {
     backup_status: backupStatusTool(backupStatus, { files }),
-    run_job: runJobTool(db, jobs),
+    run_job: runJobTool(db, jobs, { history }),
   };
 }
 
