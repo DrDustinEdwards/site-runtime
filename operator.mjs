@@ -15,11 +15,12 @@
  *   the error logged under that reference, so an internal message (a query, a path) never leaves (ASVS 5 v16.5.1).
  * - Every answer is JSON, `no-store` and `noindex`.
  *
- * The site decides what its tools are and what each does; this owns only the door.
+ * The site decides what its tools are and what each does; this owns only the door. `callOperator` is the caller's side
+ * of the same wire format, so the two cannot drift.
  */
 import { readCapped } from "./body.mjs";
 import { safeEqual } from "./compare.mjs";
-import { OWASP_EVENTS, logEvent, requestFields } from "./log.mjs";
+import { OWASP_EVENTS, errorMessage, logEvent, requestFields } from "./log.mjs";
 import { limit, limitedResponse, mustStop } from "./rate-limit/limit.mjs";
 
 /** The shortest token the route accepts: 32 characters. */
@@ -154,4 +155,56 @@ export async function operatorResponse(request, options) {
       ? json({ ok: false, error: error.message }, 400)
       : json({ ok: false, error: `The tool failed (ref ${ref}).` }, 500);
   }
+}
+
+/** How long a caller waits for one tool by default: a repair can re-derive a whole store. */
+export const OPERATOR_CALL_TIMEOUT_MS = 5 * 60_000;
+const CALL_ERROR_MAX = 300;
+
+/**
+ * The caller's side: `POST {tool, args}` to a site's operator route with its bearer, no redirect followed (a redirect is
+ * an answer, never a hop to another host with the token). Never throws, and never puts the token in `error`.
+ * @param {string} url the site's operator route, such as https://example.com/api/operator
+ * @param {string} token
+ * @param {string} tool
+ * @param {{ args?: Record<string, unknown>, fetch?: typeof fetch, timeoutMs?: number, signal?: AbortSignal, userAgent?: string }} [options]
+ *   `signal` replaces the timeout (a caller that joins its own abort to one)
+ * @returns {Promise<{ ok: boolean, status: number, data: unknown, error: string | null }>}
+ */
+export async function callOperator(url, token, tool, options = {}) {
+  const { args = {}, fetch: fetchImpl = fetch, timeoutMs = OPERATOR_CALL_TIMEOUT_MS } = options;
+  /** @param {number} status @param {string} error */
+  const fail = (status, error) => ({
+    ok: false,
+    status,
+    data: null,
+    error: error.split(token).join("[token]").slice(0, CALL_ERROR_MAX),
+  });
+  let response;
+  /** @type {unknown} */
+  let payload;
+  try {
+    response = await fetchImpl(url, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        ...(options.userAgent ? { "user-agent": options.userAgent } : {}),
+      },
+      body: JSON.stringify({ tool, args }),
+      redirect: "manual",
+      signal: options.signal ?? AbortSignal.timeout(timeoutMs),
+    });
+    payload = await response.json().catch(() => null);
+  } catch (error) {
+    return fail(0, `${tool} did not complete: ${errorMessage(error)}`);
+  }
+  const body = /** @type {{ ok?: unknown, data?: unknown, error?: unknown }} */ (
+    payload && typeof payload === "object" ? payload : {}
+  );
+  if (!response.ok || body.ok !== true) {
+    const said = typeof body.error === "string" ? body.error : "no error was given";
+    return fail(response.status, `${tool} answered ${response.status}: ${said}`);
+  }
+  return { ok: true, status: response.status, data: body.data, error: null };
 }

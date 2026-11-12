@@ -121,6 +121,13 @@ export function backupStatusTool(
   status: () => unknown,
   options?: { files?: string[] },
 ): import("./operator.d.mts").OperatorTool;
+/** One line for what a run_job call came to (callOperator's result): each run, or why nothing was proven. */
+export function describeRuns(
+  what: string,
+  call: { ok: boolean; status: number; data: unknown; error: string | null },
+): string;
+/** Whether every run in a run_job answer succeeded or was skipped; false for a failed call or one without its runs. */
+export function runsSucceeded(call: { ok: boolean; data: unknown }): boolean;
 /** `backup_status` and `run_job` together, for a site's operatorResponse tools. */
 export function operatorJobTools(options: {
   db: D1Like | (() => D1Like) | null;

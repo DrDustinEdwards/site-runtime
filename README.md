@@ -1810,6 +1810,10 @@ return operatorResponse(request, {
   throws `OperatorError` is a 400 with its message; any other throw is a 500 saying only `The tool failed (ref xxxxxxxx)`
   with the error in the `operator_tool_failed` line under that ref (ASVS 16.5.1). A tool's return is sent as `{ok: true, data}`.
 - Every answer is JSON, `no-store` and `noindex`. The route is not under `/admin`, so Access does not cover it.
+- `callOperator(url, token, tool, { args, fetch, timeoutMs, signal, userAgent })` is the caller's side (Capsid's
+  `src/site-operator.ts` wraps it with its allowlist): `POST {tool, args}` with the bearer, `redirect: "manual"`, five
+  minutes by default (`OPERATOR_CALL_TIMEOUT_MS`). It never throws and answers `{ ok, status, data, error }`, `error` one
+  line ("backup_status answered 401: ...", "... did not complete: ...") with the token blanked.
 
 ## The cross-site check
 
@@ -2078,6 +2082,9 @@ async scheduled(controller, env, ctx) {
 - `operatorJobTools({ db, jobs, backupStatus, files })` is the operator's two job tools: `backup_status`
   (`backupStatusTool(status, { files })`, the backup read now, uncached, its description naming the files passes) and
   `run_job`.
+- `describeRuns(what, call)` and `runsSucceeded(call)` read a `run_job` answer from the caller's side (a
+  `callOperator` result): one line naming each run's job, status, time and error ("run_job ran: backup ok in 812 ms"),
+  or "answered 200 without its runs, so nothing was proven"; and whether no run failed.
 
 **Tests.** `test/cron.test.mjs` (on an in-memory SQLite with `CRON_SQL`) and `test/health.test.mjs`.
 

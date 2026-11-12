@@ -29,3 +29,28 @@ export interface OperatorOptions {
 
 /** GET lists the tools, POST {tool, args} runs one; both behind the bearer. Never throws. */
 export function operatorResponse(request: Request, options: OperatorOptions): Promise<Response>;
+
+/** How long callOperator waits by default: five minutes. */
+export const OPERATOR_CALL_TIMEOUT_MS: number;
+/** What one call came to: the tool's data on `{ok: true, data}`, else the status and a one-line error without the token. */
+export interface OperatorCallResult {
+  ok: boolean;
+  /** 0 when no answer came. */
+  status: number;
+  data: unknown;
+  error: string | null;
+}
+/** The caller's side: POST {tool, args} with the bearer, no redirect followed, a timeout. Never throws. */
+export function callOperator(
+  url: string,
+  token: string,
+  tool: string,
+  options?: {
+    args?: Record<string, unknown>;
+    fetch?: typeof fetch;
+    timeoutMs?: number;
+    /** Used in place of the timeout, for a caller that joins its own abort to one. */
+    signal?: AbortSignal;
+    userAgent?: string;
+  },
+): Promise<OperatorCallResult>;
