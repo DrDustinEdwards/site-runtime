@@ -2,7 +2,7 @@
 // reaches only a named tool. PLANT tests fail if the guard they name is removed.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { OperatorError, operatorResponse } from "../operator.mjs";
+import { OperatorError, callOperator, operatorResponse } from "../operator.mjs";
 
 const TOKEN = "t".repeat(40);
 const limiter = {
@@ -104,4 +104,34 @@ test("PLANT: an unset, short, wrong or missing token runs nothing; the right one
     [refused.status, (await refused.json()).error],
     [400, "first-publish-requires-admin"],
   );
+});
+
+test("callOperator speaks the door's format: data on success, the refusal by status, nothing thrown", async () => {
+  const t = tools();
+  /** @type {typeof fetch} */
+  const door = async (input, init) =>
+    operatorResponse(new Request(/** @type {string} */ (input), init), {
+      token: TOKEN,
+      limiter,
+      tools: t.tools,
+    });
+  const url = "https://site.example.com/api/operator";
+  const ok = await callOperator(url, TOKEN, "backup_status", { fetch: door, args: { a: 1 } });
+  assert.deepEqual(ok, { ok: true, status: 200, data: { age_hours: 1 }, error: null });
+  assert.deepEqual(t.ran, [{ a: 1 }]);
+  const wrong = await callOperator(url, "x".repeat(40), "backup_status", { fetch: door });
+  assert.equal(wrong.ok, false);
+  assert.equal(wrong.status, 401);
+  assert.match(wrong.error ?? "", /^backup_status answered 401: /);
+  const down = await callOperator(url, TOKEN, "backup_status", {
+    fetch: async () => {
+      throw new Error(`refused for ${TOKEN}`);
+    },
+  });
+  assert.deepEqual(down, {
+    ok: false,
+    status: 0,
+    data: null,
+    error: "backup_status did not complete: refused for [token]",
+  });
 });

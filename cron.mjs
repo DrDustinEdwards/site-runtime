@@ -378,6 +378,36 @@ export function operatorJobTools({ db, jobs, backupStatus, files }) {
   };
 }
 
+/**
+ * One line for what a `run_job` call came to, from the caller's side (./operator callOperator): each run's job, status,
+ * time and error, or why nothing was proven. `what` names the call ("run_job { backup: true }").
+ * @param {string} what
+ * @param {{ ok: boolean, status: number, data: unknown, error: string | null }} call
+ * @returns {string}
+ */
+export function describeRuns(what, call) {
+  if (!call.ok) return call.error ?? `${what} failed`;
+  const runs = /** @type {{ runs?: unknown } | null} */ (call.data)?.runs;
+  if (!Array.isArray(runs))
+    return `${what} answered ${call.status} without its runs, so nothing was proven`;
+  const each = runs.map(
+    (/** @type {{ job?: unknown, status?: unknown, ms?: unknown, error?: unknown }} */ r) =>
+      `${String(r.job)} ${String(r.status)}${typeof r.ms === "number" ? ` in ${r.ms} ms` : ""}${typeof r.error === "string" ? ` (${r.error})` : ""}`,
+  );
+  return `${what} ran: ${each.join(", ") || "no jobs"}`;
+}
+
+/**
+ * Whether a `run_job` answer shows every run succeeded or skipped by its own gate: false for a failed call, an answer
+ * without its runs, or any run that failed.
+ * @param {{ ok: boolean, data: unknown }} call
+ * @returns {boolean}
+ */
+export function runsSucceeded(call) {
+  const runs = /** @type {{ runs?: Array<{ status?: unknown }> } | null} */ (call.data)?.runs;
+  return call.ok && Array.isArray(runs) && runs.every((r) => r.status !== "failed");
+}
+
 /** The 24 hours a nightly job's interval is, in minutes. */
 export const DAILY_MINUTES = 1440;
 
