@@ -121,17 +121,6 @@ export interface SiteOptions<E> {
    * in the Early Hints header and in `stylesheets()`, which a preview drawn outside React Router reads.
    */
   stylesheetRoutes?: readonly string[];
-  /**
-   * The last word on a page or a step's answer, after the security set: a site's own cache rule (Foxhound's route
-   * classes, Vary: Cookie). `stored` is true in the Renderer, whose answer the Workers cache keeps (settleCacheHeaders
-   * still runs after it); false for a step's answer or a page rendered for one reader (privateRender still runs after).
-   */
-  respond?: (
-    response: Response,
-    request: Request,
-    env: E,
-    where: { stored: boolean },
-  ) => Response | Promise<Response>;
   /** Sets the site's own context keys on every render. cloudflareContext and cspNonceContext are set already. */
   context?: (context: RouterContextProvider, env: E, ctx: ExecutionContext) => void;
   /** The KV that keeps the last failed purge, for purgeCheck. */

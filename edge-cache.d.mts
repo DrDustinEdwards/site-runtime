@@ -8,7 +8,7 @@ export const UNCACHED: "private, no-store";
 export const EDGE_CACHE_HEADER: "Cloudflare-CDN-Cache-Control";
 export const PAGES_CACHE_TAG: "pages";
 
-/** A route's `headers` to have its page stored: a day fresh, a week stale, tagged "pages" unless `tags` says otherwise; fresh no later than `until` (a minute at least). */
+/** A route's `headers` to have its page stored: a day fresh, a week stale, tagged "pages" unless `tags` says otherwise; fresh no later than `until` (a minute at least); `Vary: Cookie`, since a reader with a cookie gets a live render. */
 export function publicPageHeaders(options?: {
   tags?: string[];
   freshSeconds?: number;

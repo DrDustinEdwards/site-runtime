@@ -73,6 +73,9 @@ export function publicPageHeaders({
     "Cache-Control": SHARED_CACHE_CONTROL,
     [EDGE_CACHE_HEADER]: `max-age=${freshSeconds}, stale-while-revalidate=${staleSeconds}`,
     "Cache-Tag": tags.join(","),
+    // The gateway draws a request carrying any cookie but a public one live, for that reader, so a shared page differs
+    // by Cookie (RFC 9110 12.5.5): a cache between the reader and the edge keys a signed-in copy apart from this one.
+    Vary: "Cookie",
   };
 }
 
