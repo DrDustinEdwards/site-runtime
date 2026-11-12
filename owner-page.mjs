@@ -51,9 +51,10 @@ const PRIVATE_HEADERS = {
   "x-content-type-options": "nosniff",
   "referrer-policy": "no-referrer",
   "x-robots-tag": "noindex, nofollow",
-  "content-security-policy": "frame-ancestors 'none'",
   "x-frame-options": "DENY",
 };
+/** A page answers with its own policy; any other answer takes the site's default policy, which a one-directive policy here would replace. */
+const FRAMING_POLICY = "frame-ancestors 'none'";
 
 /**
  * An answer of an authenticated operator surface (the owner page, the consent page): never cached, indexed or framed.
@@ -63,6 +64,7 @@ export function respond(body, status = 200, type = "text/plain; charset=utf-8", 
   const out = new Headers(headers);
   out.set("content-type", type);
   for (const [name, value] of Object.entries(PRIVATE_HEADERS)) out.set(name, value);
+  if (type.startsWith("text/html")) out.set("content-security-policy", FRAMING_POLICY);
   return new Response(body, { status, headers: out });
 }
 
