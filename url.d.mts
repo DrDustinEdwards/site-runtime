@@ -3,6 +3,9 @@
 /** 301 for GET and HEAD, 308 for any other method, so a form body survives a permanent redirect. */
 export function redirectStatus(method: string): 301 | 308;
 
+/** An absolute http or https address with a host: what an entered link must be before it is stored or drawn as an href. */
+export function isHttpUrl(value: unknown): value is string;
+
 /** A path a Location may hold on this origin: one leading slash, not `//`, no backslash, printable ASCII only. */
 export function isSameOriginPath(path: string): boolean;
 

@@ -5,6 +5,7 @@ import { test } from "node:test";
 import {
   canonicalRedirect,
   goneResponse,
+  isHttpUrl,
   isSameOriginPath,
   renameRedirect,
   slashRedirect,
@@ -92,4 +93,20 @@ test("isSameOriginPath refuses what a browser reads as another host", () => {
     "/caf\u00e9",
   ])
     assert.equal(isSameOriginPath(path), false, path);
+});
+
+test("PLANT: isHttpUrl lets an entered link through only as absolute http or https with a host", () => {
+  for (const ok of ["https://example.com", "HTTP://example.com/a?b=1"])
+    assert.equal(isHttpUrl(ok), true, ok);
+  for (const bad of [
+    "javascript:alert(1)",
+    "data:text/html,x",
+    "//example.com",
+    "/path",
+    "https://",
+
+    " https://example.com",
+    null,
+  ])
+    assert.equal(isHttpUrl(bad), false, String(bad));
 });
