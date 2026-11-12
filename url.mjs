@@ -88,6 +88,11 @@ export function canonicalRedirect(request, { host, except = [], https = true } =
   target.pathname = path.replace(/^\/+/, "/");
   target.search = url.search;
   const status = redirectStatus(request.method);
+  return redirectResponse(target, status);
+}
+
+/** @param {URL} target @param {number} status */
+function redirectResponse(target, status) {
   return new Response(null, {
     status,
     headers: { Location: target.href, "Cache-Control": "private, no-store" },
@@ -175,8 +180,5 @@ export async function renameRedirect(request, { prefix, renames }) {
   target.pathname = `${prefix}${encodeURIComponent(to)}${suffix}`;
   target.search = url.search;
   const status = redirectStatus(request.method);
-  return new Response(null, {
-    status,
-    headers: { Location: target.href, "Cache-Control": "private, no-store" },
-  });
+  return redirectResponse(target, status);
 }

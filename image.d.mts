@@ -14,6 +14,9 @@ export const SCREEN_WIDTHS: number[];
 export const AVIF_MAX_EDGE: 1200;
 export const IMAGE_FORMATS: { readonly avif: "image/avif"; readonly webp: "image/webp" };
 export const IMAGE_QUALITY: 85;
+/** The raster image types, and the paths that name one (a query or fragment may follow the extension). */
+export const RASTER_TYPES: ReadonlySet<string>;
+export const RASTER_PATH: RegExp;
 /** The R2 custom-metadata field holding a file's focal point ("XxY", 0 to 1). */
 export const FOCUS_METADATA: "focus";
 

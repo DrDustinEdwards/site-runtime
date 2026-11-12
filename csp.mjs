@@ -33,10 +33,7 @@ export const CSP_REPORT_GROUP = "csp-endpoint";
 
 /** @returns {string} a fresh nonce, 24 base64 characters */
 export function generateNonce() {
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
+  return toBase64(crypto.getRandomValues(new Uint8Array(16)));
 }
 
 /**
