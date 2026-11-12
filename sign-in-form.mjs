@@ -98,11 +98,7 @@ export function safeNextPath(raw, { fallback = "/", within } = {}) {
       return fallback;
     }
   }
-  for (let i = 0; i < path.length; i++) {
-    const code = path.charCodeAt(i);
-    if (code <= 0x20 || code >= 0x7f) return fallback;
-  }
-  if (!path.startsWith("/") || path.startsWith("//") || path.startsWith("/\\")) return fallback;
+  if (!isSameOriginPath(path)) return fallback;
   if (
     within &&
     !within.some(

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { parseSqlTime } from "../time.mjs";
+import { parseSqlTime, toSqlTime } from "../time.mjs";
 
 test("parseSqlTime reads D1's zoneless text as UTC and keeps a zone that is given", () => {
   const utc = Date.UTC(2026, 10, 11, 23, 5, 9);
@@ -14,4 +14,11 @@ test("parseSqlTime reads D1's zoneless text as UTC and keeps a zone that is give
   assert.equal(parseSqlTime("2026-11-11"), Date.UTC(2026, 10, 11));
   assert.equal(parseSqlTime(""), null);
   assert.equal(parseSqlTime("soon"), null);
+});
+
+test("toSqlTime writes D1's text in UTC and parseSqlTime reads it back", () => {
+  const ms = Date.UTC(2026, 10, 11, 23, 5, 9);
+  assert.equal(toSqlTime(ms), "2026-11-11 23:05:09");
+  assert.equal(parseSqlTime(toSqlTime(new Date(ms))), ms);
+  assert.throws(() => toSqlTime("nope"), RangeError);
 });

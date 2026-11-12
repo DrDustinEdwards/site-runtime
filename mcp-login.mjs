@@ -25,30 +25,15 @@ import { accessSaas, authorizationUrl, finishSignIn, newSignIn } from "./access-
 import { correlationId, recordAudit } from "./audit-log.mjs";
 import { readCapped } from "./body.mjs";
 import { healthResponse } from "./health.mjs";
+import { redirectResponse } from "./http.mjs";
 import { deployedSha } from "./deploy.mjs";
 import { escapeHtml as escape } from "./html.mjs";
-import { ownerPage } from "./owner-page.mjs";
+import { originOf, ownerPage, respond } from "./owner-page.mjs";
 import { ipKey } from "./rate-limit/limit.mjs";
 
 /** @typedef {import("./mcp-login.d.mts").LoginEnv} LoginEnv */
 /** @typedef {import("@cloudflare/workers-oauth-provider").AuthRequest} AuthRequest */
 /** @typedef {import("@cloudflare/workers-oauth-provider").ClientInfo} ClientInfo */
-
-// Caching and indexing: an authenticated operator surface is never cached or indexed.
-const PRIVATE_HEADERS = {
-  "cache-control": "no-store",
-  "x-content-type-options": "nosniff",
-  "referrer-policy": "no-referrer",
-  "x-robots-tag": "noindex, nofollow",
-};
-
-/** @param {string} body @param {number} [status] @param {Headers} [headers] */
-function text(body, status = 200, headers) {
-  const out = new Headers(headers);
-  out.set("content-type", "text/plain; charset=utf-8");
-  for (const [name, value] of Object.entries(PRIVATE_HEADERS)) out.set(name, value);
-  return new Response(body, { status, headers: out });
-}
 
 const LOCAL_REDIRECT_WARNING = [
   "This sends access to an app on your computer.",
@@ -76,14 +61,6 @@ export function describeRedirect(uri) {
   return { host, local, warning: local ? LOCAL_REDIRECT_WARNING.join(" ") : null };
 }
 
-/** @param {string} location @param {Headers} [headers] */
-function redirect(location, headers) {
-  const out = new Headers(headers);
-  out.set("location", location);
-  out.set("cache-control", "no-store");
-  return new Response(null, { status: 302, headers: out });
-}
-
 /**
  * The OAuth error answer to the client, once its redirect URI is known good.
  * @param {AuthRequest} request @param {string} description @param {Headers} [headers]
@@ -94,12 +71,7 @@ function redirectError(request, description, headers) {
   url.searchParams.set("error_description", description);
   url.searchParams.set("state", request.state);
   if (request.issuer) url.searchParams.set("iss", request.issuer);
-  return redirect(url.href, headers);
-}
-
-/** @param {Request} request @param {LoginEnv} env */
-function origin(request, env) {
-  return (env.PUBLIC_ORIGIN?.trim() || new URL(request.url).origin).replace(/\/+$/, "");
+  return redirectResponse(url.href, 302, headers);
 }
 
 /**
@@ -240,17 +212,17 @@ ${target.local ? `<div class="cap-alert" data-tone="warn" role="alert"><span cla
 
   /** @param {Request} request @param {E} env */
   async function authorizeGet(request, env) {
-    if (!accessSaas(env)) return text(NOT_CONFIGURED, 503);
+    if (!accessSaas(env)) return respond(NOT_CONFIGURED, 503);
     const oauth = env.OAUTH_PROVIDER;
     const authRequest = await oauth.parseAuthRequest(request);
     // PKCE with S256 for every client (OAuth 2.1 section 7.5.2, MCP authorization "Authorization Code Protection"). The
     // provider already requires it of a public client; a client that registers as confidential could otherwise leave it
     // out, and a code sent to a loopback or app callback is then usable by whatever program caught it.
     if (!authRequest.codeChallenge) {
-      return text("PKCE is required: send code_challenge with code_challenge_method=S256.", 400);
+      return respond("PKCE is required: send code_challenge with code_challenge_method=S256.", 400);
     }
     const client = await oauth.lookupClient(authRequest.clientId);
-    if (!client) return text("Unknown OAuth client.", 400);
+    if (!client) return respond("Unknown OAuth client.", 400);
     const consent = await oauth.beginConsent(authRequest);
     consent.headers.set("content-type", "text/html; charset=utf-8");
     // no-transform keeps Cloudflare from injecting anything into this page.
@@ -266,23 +238,23 @@ ${target.local ? `<div class="cap-alert" data-tone="warn" role="alert"><span cla
   /** @param {Request} request @param {E} env */
   async function authorizePost(request, env) {
     const saas = accessSaas(env);
-    if (!saas) return text(NOT_CONFIGURED, 503);
+    if (!saas) return respond(NOT_CONFIGURED, 503);
     if (
       !(request.headers.get("content-type") ?? "")
         .toLowerCase()
         .startsWith("application/x-www-form-urlencoded")
     ) {
-      return text("The consent form is posted as application/x-www-form-urlencoded.", 415);
+      return respond("The consent form is posted as application/x-www-form-urlencoded.", 415);
     }
     const body = await readCapped(request, CONSENT_FORM_MAX_BYTES);
     if (body === null)
-      return text(`The consent form is larger than ${CONSENT_FORM_MAX_BYTES} bytes.`, 413);
+      return respond(`The consent form is larger than ${CONSENT_FORM_MAX_BYTES} bytes.`, 413);
     const oauth = env.OAUTH_PROVIDER;
     const form = new URLSearchParams(body);
     const handle = String(form.get("handle") ?? "");
     if (form.get("decision") !== "approve") {
       const denied = await oauth.denyConsent(request, handle);
-      return redirect(denied.redirectTo, denied.headers);
+      return redirectResponse(denied.redirectTo, 302, denied.headers);
     }
     const scope = form.get("allow_write") === "1" ? [scopes.read, scopes.write] : [scopes.read];
     const approved = await oauth.approveConsent(request, handle, { scope });
@@ -291,12 +263,13 @@ ${target.local ? `<div class="cap-alert" data-tone="warn" role="alert"><span cla
       { ...approved.request, scope },
       { data: signIn, headers: approved.headers },
     );
-    return redirect(
+    return redirectResponse(
       await authorizationUrl(saas, {
-        redirectUri: `${origin(request, env)}/callback`,
+        redirectUri: `${originOf(request, env)}/callback`,
         state,
         ...signIn,
       }),
+      302,
       headers,
     );
   }
@@ -304,7 +277,7 @@ ${target.local ? `<div class="cap-alert" data-tone="warn" role="alert"><span cla
   /** @param {Request} request @param {E} env */
   async function callback(request, env) {
     const saas = accessSaas(env);
-    if (!saas) return text(NOT_CONFIGURED, 503);
+    if (!saas) return respond(NOT_CONFIGURED, 503);
     const oauth = env.OAUTH_PROVIDER;
     const { request: original, data, headers } = await oauth.finishUpstream(request);
     const { verifier, nonce } = /** @type {{ verifier: string, nonce: string }} */ (data);
@@ -314,7 +287,7 @@ ${target.local ? `<div class="cap-alert" data-tone="warn" role="alert"><span cla
 
     const signedIn = await finishSignIn(saas, {
       code,
-      redirectUri: `${origin(request, env)}/callback`,
+      redirectUri: `${originOf(request, env)}/callback`,
       verifier,
       nonce,
     });
@@ -360,7 +333,7 @@ ${target.local ? `<div class="cap-alert" data-tone="warn" role="alert"><span cla
       `granted ${granted.join(" ")}`,
       true,
     );
-    return redirect(redirectTo, headers);
+    return redirectResponse(redirectTo, 302, headers);
   }
 
   return {
@@ -380,7 +353,7 @@ ${target.local ? `<div class="cap-alert" data-tone="warn" role="alert"><span cla
         }
         const owned = await ownerRoutes?.fetch(request, env);
         if (owned) return owned;
-        return text("Not found.", 404);
+        return respond("Not found.", 404);
       } catch (error) {
         // Redirect only to a validated client; render the rest.
         if (error instanceof Error && error.name === "AuthorizationError") {
@@ -389,7 +362,7 @@ ${target.local ? `<div class="cap-alert" data-tone="warn" role="alert"><span cla
               error
             );
           if (!failure.redirectUri)
-            return text(
+            return respond(
               `${failure.description} Start the sign-in again from your MCP client.`,
               400,
             );
@@ -398,10 +371,10 @@ ${target.local ? `<div class="cap-alert" data-tone="warn" role="alert"><span cla
           url.searchParams.set("error_description", failure.description);
           if (failure.state) url.searchParams.set("state", failure.state);
           if (failure.issuer) url.searchParams.set("iss", failure.issuer);
-          return redirect(url.href);
+          return redirectResponse(url.href);
         }
         if (error instanceof Error && error.name === "CimdFetchError") {
-          return text(
+          return respond(
             "This client could not be verified: its client metadata document could not be fetched.",
             400,
           );

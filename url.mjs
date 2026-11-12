@@ -11,6 +11,8 @@
  * - Never stored: the edge key holds no scheme, so a stored redirect would send https readers back to themselves.
  */
 
+import { redirectResponse } from "./http.mjs";
+
 /** The dev server and wrangler serve plaintext; redirecting them breaks local dev. */
 const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
@@ -89,14 +91,6 @@ export function canonicalRedirect(request, { host, except = [], https = true } =
   target.search = url.search;
   const status = redirectStatus(request.method);
   return redirectResponse(target, status);
-}
-
-/** @param {URL} target @param {number} status */
-function redirectResponse(target, status) {
-  return new Response(null, {
-    status,
-    headers: { Location: target.href, "Cache-Control": "private, no-store" },
-  });
 }
 
 /**

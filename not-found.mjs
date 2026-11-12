@@ -18,6 +18,7 @@
  *   (`not_found_count_failed`), since a count that stops in silence leaves the table empty with nobody told.
  */
 
+import { redirectResponse } from "./http.mjs";
 import { logEvent } from "./log.mjs";
 
 /** The longest path stored: a crawler probing for exploits sends very long URLs, each a row of that size. */
@@ -312,10 +313,7 @@ export async function tableRedirect(request, table) {
   if (!target.search && !hit.to.includes("?")) target.search = url.search;
   if (request.method !== "GET" && request.method !== "HEAD")
     status = status === 301 || status === 308 ? 308 : 307;
-  return new Response(null, {
-    status,
-    headers: { Location: target.href, "Cache-Control": "private, no-store" },
-  });
+  return redirectResponse(target, status);
 }
 
 /**

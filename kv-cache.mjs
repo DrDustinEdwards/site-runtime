@@ -4,6 +4,7 @@
  * Every site wrote the same read-through by hand.
  *
  * - A hit is a value `valid` accepts (default: anything but null); anything else, or a KV read that throws, is a miss.
+ *   `refresh` skips the lookup and always reads (a "fresh" request), and what it reads still replaces the entry.
  * - A miss runs `read`. What it returns is kept for `ttl` seconds, at least 60, KV's floor
  *   (developers.cloudflare.com/kv/api/write-key-value-pairs/), unless `keep` refuses it (an empty answer is a failed
  *   one). A `read` that throws keeps nothing and throws on.
@@ -26,13 +27,15 @@ export const KV_MIN_TTL = 60;
  * @param {() => Promise<T>} read
  * @returns {Promise<T>}
  */
-export async function kvCached(kv, key, { ttl, valid = (v) => v !== null, keep }, read) {
+export async function kvCached(kv, key, { ttl, valid = (v) => v !== null, keep, refresh }, read) {
   if (!kv) return read();
-  try {
-    const kept = await kv.get(key, "json");
-    if (kept !== null && valid(kept)) return /** @type {T} */ (kept);
-  } catch {
-    // An unreadable entry is a miss.
+  if (!refresh) {
+    try {
+      const kept = await kv.get(key, "json");
+      if (kept !== null && valid(kept)) return /** @type {T} */ (kept);
+    } catch {
+      // An unreadable entry is a miss.
+    }
   }
   const value = await read();
   if (keep && !keep(value)) return value;

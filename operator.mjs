@@ -20,6 +20,7 @@
  */
 import { readCapped } from "./body.mjs";
 import { safeEqual } from "./compare.mjs";
+import { jsonResponse } from "./http.mjs";
 import { OWASP_EVENTS, errorMessage, logEvent, requestFields } from "./log.mjs";
 import { limit, limitedResponse, mustStop } from "./rate-limit/limit.mjs";
 
@@ -45,15 +46,7 @@ export class OperatorError extends Error {
  * @param {Record<string, string>} [headers]
  */
 function json(body, status = 200, headers = {}) {
-  return new Response(JSON.stringify(body, null, 2), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-      "x-robots-tag": "noindex, nofollow",
-      ...headers,
-    },
-  });
+  return jsonResponse(body, status, { "x-robots-tag": "noindex, nofollow", ...headers });
 }
 
 /**

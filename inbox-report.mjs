@@ -16,8 +16,6 @@ import { logEvent } from "./log.mjs";
 
 /** Where the report goes, on Capsid's origin. */
 export const INBOX_REPORT_PATH = "/ops/inbox/report";
-/** Capsid's origin when the app's config names none: access-sync's, the one value. */
-export { CAPSID_ORIGIN };
 /** The receiver's limits: items per report, characters per title, bytes per body. */
 export const MAX_REPORT_ITEMS = 20;
 export const MAX_REPORT_TITLE = 200;

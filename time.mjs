@@ -8,6 +8,16 @@ const SQL_TIME =
   /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)(Z|[+-]\d{2}:?\d{2})?$/i;
 
 /**
+ * The D1 timestamp text of a time, "YYYY-MM-DD HH:MM:SS" in UTC: the inverse of `parseSqlTime`. Throws a RangeError for
+ * an invalid date.
+ * @param {Date | number | string} value a Date, epoch milliseconds or a date string `new Date` reads
+ * @returns {string}
+ */
+export function toSqlTime(value) {
+  return new Date(value).toISOString().replace("T", " ").slice(0, 19);
+}
+
+/**
  * Epoch milliseconds of a stored time, or null for null, empty or unreadable. A zoneless "YYYY-MM-DD HH:MM:SS" (with or
  * without the T, seconds or fraction) is UTC; a value carrying Z or an offset keeps it; a bare day is its UTC midnight.
  * @param {string | null | undefined} value

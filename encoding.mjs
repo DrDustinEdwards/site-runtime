@@ -115,12 +115,38 @@ export function readPageCursor(scope, cursor) {
 }
 
 /**
+ * SHA-256 as bytes.
+ * @param {Uint8Array | ArrayBuffer | string} input
+ * @returns {Promise<Uint8Array<ArrayBuffer>>}
+ */
+export async function sha256(input) {
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", bytesOf(input)));
+}
+
+/**
  * The SHA-256 digest of `input`, as lowercase hex.
  * @param {Uint8Array | ArrayBuffer | string} input
  * @returns {Promise<string>}
  */
 export async function sha256Hex(input) {
-  return toHex(await crypto.subtle.digest("SHA-256", bytesOf(input)));
+  return toHex(await sha256(input));
+}
+
+/**
+ * HMAC-SHA-256 of `payload` under the UTF-8 bytes of `secret`, as bytes.
+ * @param {string} secret
+ * @param {Uint8Array | ArrayBuffer | string} payload
+ * @returns {Promise<Uint8Array<ArrayBuffer>>}
+ */
+export async function hmacSha256(secret, payload) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  return new Uint8Array(await crypto.subtle.sign("HMAC", key, bytesOf(payload)));
 }
 
 /**
@@ -130,14 +156,43 @@ export async function sha256Hex(input) {
  * @returns {Promise<string>}
  */
 export async function hmacSha256Hex(secret, payload) {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  return toHex(await crypto.subtle.sign("HMAC", key, bytesOf(payload)));
+  return toHex(await hmacSha256(secret, payload));
+}
+
+/** @type {Uint32Array} */
+const CRC_TABLE = Uint32Array.from({ length: 256 }, (_, n) => {
+  let c = n;
+  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  return c >>> 0;
+});
+
+/**
+ * The standard CRC-32 (IEEE 802.3, the one PNG and ZIP use) of `bytes`, unsigned.
+ * @param {Uint8Array} bytes
+ * @returns {number}
+ */
+export function crc32(bytes) {
+  let crc = 0xffffffff;
+  for (const byte of bytes) crc = (CRC_TABLE[(crc ^ byte) & 0xff] ?? 0) ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+/**
+ * JSON with every object's keys sorted and `undefined` members dropped, so equal values print alike: the input to a
+ * hash of a value (`toolListHash`).
+ * @param {unknown} value
+ * @returns {string}
+ */
+export function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value)
+      .filter((key) => /** @type {any} */ (value)[key] !== undefined)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(/** @type {any} */ (value)[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
 }
 
 /**

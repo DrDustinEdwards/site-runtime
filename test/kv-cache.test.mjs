@@ -39,4 +39,7 @@ test("a miss reads and keeps it at KV's 60 s floor; a hit, a refused value and a
     kvCached(ns, "x", { ttl: 5 }, async () => Promise.reject(new Error("db down"))),
   );
   assert.equal(ns.store.has("x"), false);
+  // `refresh` skips the hit and still keeps the new value.
+  assert.deepEqual(await kvCached(ns, "k", { ttl: 5, refresh: true }, read), { n: 4 });
+  assert.deepEqual(await kvCached(ns, "k", { ttl: 5 }, read), { n: 4 });
 });

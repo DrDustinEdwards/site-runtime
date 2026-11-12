@@ -78,3 +78,7 @@ export function ownerPage<E extends OwnerEnv>(options: {
   /** GET /owner, POST /owner/revoke and /owner/sign-out; null for any other path. */
   fetch(request: Request, env: E): Promise<Response | null>;
 };
+/** An answer of an authenticated operator surface: never cached, indexed or framed; `headers` is kept (cookies). */
+export function respond(body: string, status?: number, type?: string, headers?: Headers): Response;
+/** The origin the server answers at: `PUBLIC_ORIGIN` when set, else the request's, no trailing slash. */
+export function originOf(request: Request, env: { PUBLIC_ORIGIN?: string }): string;

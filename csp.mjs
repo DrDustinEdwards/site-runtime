@@ -23,7 +23,7 @@
  */
 
 import { EMBED_FRAME_SOURCES } from "./embeds.mjs";
-import { toBase64 } from "./encoding.mjs";
+import { sha256, toBase64 } from "./encoding.mjs";
 
 /** Where every site receives its reports (./csp-report): the default report-uri, and the path the check expects. */
 export const CSP_REPORT_PATH = "/csp-report";
@@ -41,7 +41,7 @@ export function generateNonce() {
  * @returns {Promise<string>} `sha256-<base64>`, without the quotes the policy puts round it
  */
 export async function scriptHash(text) {
-  return `sha256-${toBase64(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)))}`;
+  return `sha256-${toBase64(await sha256(text))}`;
 }
 
 /**

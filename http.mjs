@@ -75,6 +75,41 @@ export function jsonResponse(body, status = 200, headers) {
 }
 
 /**
+ * A redirect, `private, no-store` so a move that is undone is not held in a browser. `headers` adds or overrides.
+ * @param {string | URL} location
+ * @param {number} [status]
+ * @param {HeadersInit} [headers]
+ */
+export function redirectResponse(location, status = 302, headers) {
+  const out = new Headers(headers);
+  if (!out.has("Cache-Control")) out.set("Cache-Control", "private, no-store");
+  out.set("Location", String(location));
+  return new Response(null, { status, headers: out });
+}
+
+/**
+ * A response's Retry-After as whole seconds (RFC 9110, 10.2.3): delta-seconds or an HTTP date, never negative; null when
+ * the header is absent or unreadable.
+ * @param {Headers} headers
+ * @returns {number | null}
+ */
+export function retryAfterSeconds(headers) {
+  const raw = headers.get("Retry-After")?.trim() ?? "";
+  if (/^\d{1,9}$/.test(raw)) return Number(raw);
+  const date = raw ? Date.parse(raw) : Number.NaN;
+  return Number.isFinite(date) ? Math.max(0, Math.ceil((date - Date.now()) / 1000)) : null;
+}
+
+/**
+ * The media type of a Content-Type value: what is before the first `;`, trimmed and lowercased; "" for none.
+ * @param {string | null | undefined} value
+ * @returns {string}
+ */
+export function mediaType(value) {
+  return (value ?? "").split(";")[0].trim().toLowerCase();
+}
+
+/**
  * @param {string} body
  * @param {number} status
  * @param {string} type

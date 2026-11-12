@@ -16,7 +16,7 @@
  * Who is admitted is the caller's: the email comes back, and the caller compares it with its administrator.
  */
 
-import { base64url, fromBase64url, fromBase64urlText } from "./encoding.mjs";
+import { base64url, fromBase64url, fromBase64urlText, sha256 } from "./encoding.mjs";
 
 const SKEW_SECONDS = 60;
 const TOKEN_TIMEOUT_MS = 15_000;
@@ -67,9 +67,7 @@ export function newSignIn() {
  * @param {{ redirectUri: string, state: string, verifier: string, nonce: string }} input
  */
 export async function authorizationUrl(saas, input) {
-  const challenge = base64url(
-    new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input.verifier))),
-  );
+  const challenge = base64url(await sha256(input.verifier));
   const url = new URL(saas.authorizationUrl);
   url.searchParams.set("client_id", saas.clientId);
   url.searchParams.set("redirect_uri", input.redirectUri);

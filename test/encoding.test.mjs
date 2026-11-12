@@ -3,6 +3,8 @@ import { test } from "node:test";
 
 import {
   base64url,
+  canonicalJson,
+  crc32,
   fromBase64,
   fromBase64url,
   fromHex,
@@ -54,4 +56,14 @@ test("a page cursor reads back only in the list that issued it", () => {
   // A cursor issued before as unpadded standard base64 still reads.
   const old = btoa(JSON.stringify({ t: "list_items", p: 2 })).replace(/=+$/, "");
   assert.equal(readPageCursor("list_items", old), 2);
+});
+
+test("crc32 is the IEEE check value, unsigned; canonicalJson sorts keys at every depth and drops undefined", () => {
+  assert.equal(crc32(new TextEncoder().encode("123456789")), 0xcbf43926);
+  assert.equal(crc32(new Uint8Array(0)), 0);
+  assert.equal(
+    canonicalJson({ b: [{ z: 1, a: undefined, y: null }], a: "x" }),
+    '{"a":"x","b":[{"y":null,"z":1}]}',
+  );
+  assert.equal(canonicalJson(undefined), "null");
 });

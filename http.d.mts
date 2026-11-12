@@ -10,6 +10,16 @@ export function isWrite(request: Request): boolean;
 export function textResponse(text: string, status?: number, headers?: HeadersInit): Response;
 /** A JSON answer, `private, no-store`; `headers` adds or overrides. */
 export function jsonResponse(body: unknown, status?: number, headers?: HeadersInit): Response;
+/** A redirect, `private, no-store`; `headers` adds or overrides. */
+export function redirectResponse(
+  location: string | URL,
+  status?: number,
+  headers?: HeadersInit,
+): Response;
+/** A response's Retry-After as whole seconds (delta or HTTP date); null when absent or unreadable. */
+export function retryAfterSeconds(headers: Headers): number | null;
+/** The media type of a Content-Type value: before the first `;`, trimmed, lowercased; "" for none. */
+export function mediaType(value: string | null | undefined): string;
 /** fetch with OUTBOUND_TIMEOUT_MS unless the caller passes its own signal. */
 export const timedFetch: typeof fetch;
 /** A fetch that also stops when `signal` aborts, keeping the timeout; `fetcher` defaults to timedFetch. */

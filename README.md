@@ -346,7 +346,7 @@ text field (64 KiB by default). `multipartBoundary(contentType)` is the boundary
 
 ## HTML escaping
 
-`./html` is the one `escapeHtml`.
+`./html` is the one `escapeHtml`, and its reading counterparts: `unescapeHtml(text)` (decimal, hex and the six named references, in one pass), `htmlAttributes(tagText)` (a tag's attributes by lowercased name, values unescaped, the first of a repeated name winning) and `sitemapLocs(xml)` (the `<loc>` addresses of a sitemap or index).
 
 ```js
 import { escapeHtml } from "@dustinedwards/site-runtime/html";
@@ -948,7 +948,7 @@ fixed date with a test that fails a month before it lapses, the prompt to confir
 
 `./encoding` is the one set of byte encodings, Web APIs only (no Buffer, no `jose`): `toHex`/`fromHex`,
 `toBase64`/`fromBase64` (whitespace ignored, as GitHub wraps it), `base64url`/`fromBase64url` (no padding),
-`fromBase64Text`/`fromBase64urlText` (decoded to UTF-8 text) and `sha256Hex`, `hmacSha256Hex(secret, payload)` and `fnv1a32` (a short fingerprint, never a security boundary). `pageCursor(scope, position)` is a list's opaque next-page cursor (base64url JSON of the tool or route it came from and a page or offset), and `readPageCursor(scope, cursor)` gives its position back, or null for a cursor another list issued. Every
+`fromBase64Text`/`fromBase64urlText` (decoded to UTF-8 text) and `sha256`/`sha256Hex`, `hmacSha256`/`hmacSha256Hex(secret, payload)` (bytes or lowercase hex), `crc32(bytes)` (the IEEE check PNG and ZIP use, unsigned), `canonicalJson(value)` (keys sorted at every depth, undefined dropped: the input to a hash of a value, as `toolListHash` uses) and `fnv1a32` (a short fingerprint, never a security boundary). `pageCursor(scope, position)` is a list's opaque next-page cursor (base64url JSON of the tool or route it came from and a page or offset), and `readPageCursor(scope, cursor)` gives its position back, or null for a cursor another list issued. Every
 encoder takes bytes or a string, which is encoded as UTF-8.
 
 ## The server entry
@@ -1059,16 +1059,16 @@ the same way (`tokenPattern(routes)` in ./log is the pattern; a route error's `s
 
 ## KV read-through
 
-`./kv-cache`'s `kvCached(kv, key, { ttl, valid, keep }, read)` keeps a rarely changing read in a KV namespace: a hit
+`./kv-cache`'s `kvCached(kv, key, { ttl, valid, keep, refresh }, read)` keeps a rarely changing read in a KV namespace: a hit
 is a kept value `valid` accepts (default anything but null); a miss runs `read` and keeps what it returns for `ttl`
-seconds (at least KV's 60) unless `keep` refuses it. A KV fault on either side never fails the read; a `read` that
+seconds (at least KV's 60) unless `keep` refuses it; `refresh: true` skips the lookup and still keeps the new value (a "fresh" request). A KV fault on either side never fails the read; a `read` that
 throws keeps nothing and throws on. With no namespace it reads straight through. KV is eventually consistent, so drop
 an entry a write made stale with `kv.delete(key)`, and never use it for what a person just wrote and expects to see.
 
 ## Request helpers
 
 `./http`: `clientIp(request)` (the rate-limit key: `cf-connecting-ip` as IPv4 or its IPv6 /64, else the one shared key "unknown"), `ipBucket(ip)`, `isWrite(request)`,
-`textResponse` and `jsonResponse` (`private, no-store`), `timedFetch` (a 20 s timeout unless the caller passes a
+`textResponse`, `jsonResponse` and `redirectResponse(location, status?, headers?)` (`private, no-store`), `mediaType(contentType)` (before the `;`, trimmed, lowercased), `retryAfterSeconds(headers)` (delta or HTTP date, else null), `timedFetch` (a 20 s timeout unless the caller passes a
 signal) and `fetchUntil(signal)` (also stops when a reader or tool call is canceled), `isWorkerPreview(env)` and
 `publicOrigin(env, canonical)` (`PUBLIC_ORIGIN` before a cutover, else the canonical origin). `./log` has
 `errorMessage(error)`; `./url` has `redirectStatus(method)` (301, or 308 for a form), `isSameOriginPath(path)` and `isHttpUrl(value)` (an entered link: absolute http or https with a host, so no `javascript:` href);
@@ -1125,7 +1125,7 @@ on a ref that cannot exist answers 422). `PR_URL_SOURCE` and `parsePrUrl(url)` r
 
 `./time`: `parseSqlTime(value)` is epoch milliseconds of a stored time: D1's zoneless "YYYY-MM-DD HH:MM:SS" read as
 UTC, an ISO time with its zone kept, a bare day as its UTC midnight, and null for nothing or nonsense. `toDate(ms)` and
-`toMs(date)` convert Drizzle's nullable timestamps, keeping null as null. `monthKey(date)` is its UTC month as "YYYY-MM".
+`toMs(date)` convert Drizzle's nullable timestamps, keeping null as null. `toSqlTime(date)` is D1's "YYYY-MM-DD HH:MM:SS" in UTC, the inverse of `parseSqlTime`. `monthKey(date)` is its UTC month as "YYYY-MM".
 
 `./google-service-account`: `parseServiceAccountKey(raw, name)` checks a pasted key file (JSON, a service account,
 a PKCS#8 key, Google's own token_uri) and gives `{ ok: true, key }` or `{ ok: false, state, detail }`;

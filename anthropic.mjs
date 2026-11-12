@@ -39,6 +39,7 @@
 
 const ANTHROPIC_ORIGIN = "https://api.anthropic.com";
 import { priceOf } from "./ai-engine.mjs";
+import { retryAfterSeconds } from "./http.mjs";
 import { logEvent, scrubText } from "./log.mjs";
 
 export const ANTHROPIC_VERSION = "2026-10-21";
@@ -675,9 +676,8 @@ function retryDecision(status, headers, body, attempt) {
   if (status === 429) {
     if (body?.error?.details?.error_code === "enforced_spend_limit_reached")
       return { kind: "spend_limit", retry: false, waitMs: 0 };
-    const seconds = Number(headers.get("retry-after"));
-    if (!headers.has("retry-after") || !Number.isFinite(seconds) || seconds < 0)
-      return { kind: "rate_limited", retry: false, waitMs: 0 };
+    const seconds = retryAfterSeconds(headers);
+    if (seconds === null) return { kind: "rate_limited", retry: false, waitMs: 0 };
     return { kind: "rate_limited", retry: true, waitMs: seconds * 1000, retryAfter: seconds };
   }
   if (

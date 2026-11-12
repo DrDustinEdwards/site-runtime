@@ -20,7 +20,7 @@ import { isProbeKey, PROBE_PRINCIPAL, probeCaller } from "./agent-keys.mjs";
 import { readCappedBytes } from "./body.mjs";
 import { applyHeaderSet, buildSecurityHeaders } from "./headers.mjs";
 import { limit } from "./rate-limit/limit.mjs";
-import { sha256Hex } from "./encoding.mjs";
+import { canonicalJson, sha256Hex } from "./encoding.mjs";
 import { CONSENT_STYLE, isAdminUser } from "./mcp-login.mjs";
 import { OWNER_STYLE } from "./owner-page.mjs";
 import { originRefusal, originVerdict } from "./origin.mjs";
@@ -940,19 +940,6 @@ function schemaProblems(schema, at, add) {
       schemaProblems(child, `${at}.${key}.${name}`, add);
 }
 
-/** JSON with every object's keys sorted, so equal values print alike. @param {unknown} value @returns {string} */
-function canonical(value) {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value && typeof value === "object") {
-    return `{${Object.keys(value)
-      .filter((key) => /** @type {any} */ (value)[key] !== undefined)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${canonical(/** @type {any} */ (value)[key])}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "null";
-}
-
 /**
  * The SHA-256 of a tool list (T12, the tool-poisoning guard): every tool as `tools/list` sends it, `_meta` left out,
  * sorted by name, as canonical JSON. Pin it in the server's tests (`assert.equal(await toolListHash(listed), PINNED)`),
@@ -967,7 +954,7 @@ export async function toolListHash(tools) {
     .sort((a, b) =>
       String(a.name) < String(b.name) ? -1 : String(a.name) > String(b.name) ? 1 : 0,
     );
-  return sha256Hex(canonical(plain));
+  return sha256Hex(canonicalJson(plain));
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

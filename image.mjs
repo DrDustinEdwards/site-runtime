@@ -50,6 +50,7 @@
  */
 
 import { applyHeaderSet, corpFor, UPLOAD_HEADERS } from "./headers.mjs";
+import { mediaType } from "./http.mjs";
 
 /**
  * Astro's "limited" screen widths, the set it uses for images it generates ahead of time. A site's closed set starts
@@ -825,11 +826,6 @@ function placeholderBackground({ src, placeholder, color, focus }) {
 /** @param {string} path */
 function isRasterPath(path) {
   return RASTER_PATH.test(path);
-}
-
-/** @param {string | null | undefined} type */
-function mediaType(type) {
-  return (type ?? "").split(";")[0].trim().toLowerCase();
 }
 
 /** @param {string | null | undefined} type */

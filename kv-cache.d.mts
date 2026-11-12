@@ -11,6 +11,8 @@ export interface KvCacheOptions<T> {
   valid?: (value: unknown) => boolean;
   /** False keeps a fresh value out of KV (a failed or empty answer); default keeps everything. */
   keep?: (value: T) => boolean;
+  /** True skips the lookup and always reads, then keeps the new value (a "fresh" request); default false. */
+  refresh?: boolean;
 }
 
 /** KV's shortest expirationTtl, in seconds. */

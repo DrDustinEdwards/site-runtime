@@ -26,6 +26,8 @@ import { request as httpsRequest } from "node:https";
 import { request as httpRequest } from "node:http";
 import { parseArgs } from "node:util";
 import { checkSecurityHeaders, checkSecurityTxt, declined } from "../check.mjs";
+import { sitemapLocs, unescapeHtml } from "../html.mjs";
+import { timedFetch } from "../http.mjs";
 import { siteForOrigin } from "../sites-values.mjs";
 
 const UA = "Mozilla/5.0 (site-runtime-security)";
@@ -90,11 +92,10 @@ if (!entry)
 /** @param {string} path @param {string} [method] */
 async function get(path, method = "GET") {
   const url = new URL(path, served).href;
-  const res = await fetch(url, {
+  const res = await timedFetch(url, {
     method,
     redirect: "manual",
     headers: { "user-agent": UA },
-    signal: AbortSignal.timeout(20_000),
   });
   return { url, res };
 }
@@ -236,7 +237,7 @@ for (const [tag] of homeHtml.matchAll(/<(?:script|link)\b[^<>]*>/gi)) {
   if (/^<link/i.test(tag) && !/\srel=["']?stylesheet/i.test(tag)) continue;
   const src = /\s(?:src|href)=["']([^"']+)["']/i.exec(tag)?.[1];
   if (!src || /\sintegrity=/i.test(tag)) continue;
-  const at = new URL(src.replaceAll("&amp;", "&"), home.url);
+  const at = new URL(unescapeHtml(src), home.url);
   if (at.origin !== served && at.origin !== origin && /^https?:$/.test(at.protocol)) {
     report(
       "warning",
@@ -290,9 +291,9 @@ if (nonce) {
 // (T2: the redirect carries HSTS too).
 const sitemap = await sample("/sitemap.xml");
 if (sitemap?.res.status === 200) {
-  const page = [...(await sitemap.res.text()).matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)]
+  const page = sitemapLocs(await sitemap.res.text())
     .slice(0, 50)
-    .map((m) => URL.parse((m[1] ?? "").replace(origin, served)))
+    .map((loc) => URL.parse(loc.replace(origin, served)))
     .find((u) => u?.origin === served && u.pathname !== "/");
   if (page) {
     await (await sample(`${page.pathname}${page.search}`))?.res.body?.cancel();
@@ -309,10 +310,9 @@ if (sitemap?.res.status === 200) {
 // T2: an apex's www. host redirects to it, with HSTS on the redirect. A www. host that does not answer is no finding.
 const apex = new URL(served);
 if (apex.hostname.split(".").length === 2) {
-  const www = await fetch(`https://www.${apex.host}/`, {
+  const www = await timedFetch(`https://www.${apex.host}/`, {
     redirect: "manual",
     headers: { "user-agent": UA },
-    signal: AbortSignal.timeout(20_000),
   }).catch(() => null);
   await www?.body?.cancel();
   if (www && www.status >= 300 && www.status < 400)
@@ -321,7 +321,7 @@ if (apex.hostname.split(".").length === 2) {
 
 // A hashed asset, its source map, and one other static file the home page names.
 const refs = [...homeHtml.matchAll(/\s(?:src|href)="([^"]+)"/gi)]
-  .map((m) => new URL((m[1] ?? "").replaceAll("&amp;", "&"), home.url))
+  .map((m) => new URL(unescapeHtml(m[1] ?? ""), home.url))
   .filter(
     (u) => u.origin === served && /\.[a-z0-9]+$/i.test(u.pathname) && !/\.html?$/i.test(u.pathname),
   );
@@ -345,7 +345,7 @@ await (await sample(`/site-runtime-security-${crypto.randomUUID()}`))?.res.body?
 const uploads = entry?.optIns?.uploads?.value;
 const uploaded = uploads
   ? [...homeHtml.matchAll(/\s(?:src|href|srcset)="([^"\s]+)/gi)]
-      .map((m) => new URL((m[1] ?? "").replaceAll("&amp;", "&"), home.url))
+      .map((m) => new URL(unescapeHtml(m[1] ?? ""), home.url))
       .find((u) => u.origin === served && u.pathname.startsWith(uploads))
   : undefined;
 if (uploaded)
@@ -381,10 +381,9 @@ try {
 try {
   const http = new URL(served);
   http.protocol = "http:";
-  const res = await fetch(http, {
+  const res = await timedFetch(http, {
     redirect: "manual",
     headers: { "user-agent": UA },
-    signal: AbortSignal.timeout(20_000),
   });
   await res.body?.cancel();
   const to = res.headers.get("Location")
@@ -448,11 +447,10 @@ await expectStatus(
 for (const method of ["GET", "OPTIONS"]) {
   try {
     const url = new URL("/", served).href;
-    const res = await fetch(url, {
+    const res = await timedFetch(url, {
       method,
       redirect: "manual",
       headers: { "user-agent": UA, origin: FOREIGN, "access-control-request-method": "POST" },
-      signal: AbortSignal.timeout(20_000),
     });
     await res.body?.cancel();
     // Access's own answer (its sign-in redirect echoes the Origin) holds nothing of the site's to read.
