@@ -3,15 +3,16 @@
     "knip": "knip@6.45.1"
   },
   "baseline": {
-    "measured_at": "a639a5e",
+    "measured_at": "1e7d9a3",
     "knip": {
-      "Unused files": 11,
-      "Unused exports": 3
+      "files": 11,
+      "exports": 5
     },
     "jscpd": {
       "clones": 10,
       "lines": 84,
-      "percentage": 0.17
+      "percentage": 0.17,
+      "unread": 3
     },
     "shared copies": {
       "clones": 0,
