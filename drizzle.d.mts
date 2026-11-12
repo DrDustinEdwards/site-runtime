@@ -50,6 +50,19 @@ export const cronRuns: Table<
   }
 >;
 
+/** ./cron CRON_LOG_SQL: one row per recorded run (epoch ms), its outcome ("ok", "refused", "failed") and reason. */
+export const cronRunLog: Table<
+  "cron_run_log",
+  {
+    id: Column<"cron_run_log", "id", "integer", true, { isPrimaryKey: true; hasDefault: true }>;
+    name: Column<"cron_run_log", "name", "text", true>;
+    startedAt: Column<"cron_run_log", "started_at", "integer", true>;
+    finishedAt: Column<"cron_run_log", "finished_at", "integer", true>;
+    outcome: Column<"cron_run_log", "outcome", "text", true>;
+    reason: Column<"cron_run_log", "reason", "text", true, { hasDefault: true }>;
+  }
+>;
+
 /** ./not-found NOT_FOUND_SQL: the 404 count per day (epoch ms), path and referring host. */
 export const page404Daily: Table<
   "page_404_daily",

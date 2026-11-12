@@ -86,7 +86,7 @@ ON CONFLICT (name) DO UPDATE SET last_failed_at = excluded.last_failed_at, last_
 
 /**
  * @typedef {{ prepare(sql: string): { bind(...values: unknown[]): { run(): Promise<unknown>, all(): Promise<{ results: unknown[] }> } } }} D1Like
- * @typedef {{ name: string, everyMinutes: number | null, timeoutMs?: number, holdOnTimeout?: boolean, backup?: boolean, run: (signal: AbortSignal) => Promise<unknown> }} CronJob
+ * @typedef {{ name: string, everyMinutes: number | null, timeoutMs?: number, holdOnTimeout?: boolean, backup?: boolean, run: (signal: AbortSignal, run: { startedAt: number }) => Promise<unknown> }} CronJob
  * @typedef {{ job: string, status: "ok" | "skipped" | "failed" | "refused", ms: number, result?: unknown, reason?: string, error?: string }} CronOutcome
  * @typedef {{ keep?: number, retentionDays?: number }} CronHistory
  * @typedef {{ now?: () => number, timeoutMs?: number, history?: boolean | CronHistory }} CronOptions
@@ -195,7 +195,7 @@ async function runOne(
   const controller = new AbortController();
   /** @type {ReturnType<typeof setTimeout> | undefined} */
   let timer;
-  const work = Promise.resolve().then(() => run(controller.signal));
+  const work = Promise.resolve().then(() => run(controller.signal, { startedAt: started }));
   try {
     const timeout = new Promise((_, reject) => {
       timer = setTimeout(() => {
@@ -367,14 +367,15 @@ export function backupStatusTool(status, { files = [] } = {}) {
 
 /**
  * The two operator tools every site's scheduled jobs answer through: `backup_status` (backupStatusTool) and `run_job`
- * (runJobTool), for a site's operatorResponse `tools`.
- * @param {{ db: D1Like | (() => D1Like) | null, jobs: CronJob[] | (() => CronJob[]), backupStatus: () => unknown, files?: string[] }} options
+ * (runJobTool), for a site's operatorResponse `tools`. `history` is the site's runJobs history, so a job run now is kept
+ * in `cron_run_log` as its trigger keeps it.
+ * @param {{ db: D1Like | (() => D1Like) | null, jobs: CronJob[] | (() => CronJob[]), backupStatus: () => unknown, files?: string[], history?: boolean | CronHistory }} options
  * @returns {{ backup_status: import("./operator.d.mts").OperatorTool, run_job: import("./operator.d.mts").OperatorTool }}
  */
-export function operatorJobTools({ db, jobs, backupStatus, files }) {
+export function operatorJobTools({ db, jobs, backupStatus, files, history }) {
   return {
     backup_status: backupStatusTool(backupStatus, { files }),
-    run_job: runJobTool(db, jobs),
+    run_job: runJobTool(db, jobs, { history }),
   };
 }
 

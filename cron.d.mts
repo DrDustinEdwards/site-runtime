@@ -26,7 +26,7 @@ export interface D1Like {
 /**
  * One job: `everyMinutes` is how often its trigger fires, or null for an event job (runs come and go with the work: no
  * stale window, flagged only by a failure inside the last day); `timeoutMs` overrides runJobs' timeout for it. `run` gets a
- * signal that is aborted when the job times out.
+ * signal aborted when the job times out, and `startedAt` (epoch ms), with the name the key of its `cron_run_log` row.
  */
 export interface CronJob {
   name: string;
@@ -39,7 +39,7 @@ export interface CronJob {
   holdOnTimeout?: boolean;
   /** A backup job: one Capsid Admin's back up now runs (runJobTool's `{ backup: true }`). */
   backup?: boolean;
-  run: (signal: AbortSignal) => Promise<unknown>;
+  run: (signal: AbortSignal, run: { startedAt: number }) => Promise<unknown>;
 }
 
 /** What one run came to: its own result (as JSON, cut to CRON_RESULT_MAX) on a success, the stored error on a failure. */
@@ -128,12 +128,13 @@ export function describeRuns(
 ): string;
 /** Whether every run in a run_job answer succeeded or was skipped; false for a failed call or one without its runs. */
 export function runsSucceeded(call: { ok: boolean; data: unknown }): boolean;
-/** `backup_status` and `run_job` together, for a site's operatorResponse tools. */
+/** `backup_status` and `run_job` together, for a site's operatorResponse tools; `history` as the site's runJobs has it. */
 export function operatorJobTools(options: {
   db: D1Like | (() => D1Like) | null;
   jobs: CronJob[] | (() => CronJob[]);
   backupStatus: () => unknown;
   files?: string[];
+  history?: boolean | CronHistory;
 }): {
   backup_status: import("./operator.d.mts").OperatorTool;
   run_job: import("./operator.d.mts").OperatorTool;
