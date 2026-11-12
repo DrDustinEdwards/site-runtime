@@ -3,10 +3,10 @@
     "knip": "knip@6.45.1"
   },
   "baseline": {
-    "measured_at": "f4260de",
+    "measured_at": "9a94948",
     "knip": {
-      "Unused files": 11,
-      "Unused exports": 3
+      "files": 11,
+      "exports": 5
     },
     "jscpd": {
       "clones": 10,
@@ -22,9 +22,9 @@
       "cases": 459
     },
     "comments": {
-      "lines": 11526,
+      "lines": 11530,
       "code": 37307,
-      "percentage": 23.6
+      "percentage": 23.61
     }
   }
 }
