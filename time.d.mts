@@ -6,3 +6,5 @@ export function parseSqlTime(value: string | null | undefined): number | null;
 export function toDate(ms: number | null | undefined): Date | null;
 /** Epoch ms of a Date; null stays null. */
 export function toMs(date: Date | null | undefined): number | null;
+/** The UTC calendar month of a Date as "YYYY-MM". */
+export function monthKey(date: Date): string;

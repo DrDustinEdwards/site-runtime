@@ -43,3 +43,12 @@ export function toDate(ms) {
 export function toMs(date) {
   return date == null ? null : date.getTime();
 }
+
+/**
+ * The UTC calendar month of a Date as "YYYY-MM": a month bucket, a billing period's key.
+ * @param {Date} date
+ * @returns {string}
+ */
+export function monthKey(date) {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}

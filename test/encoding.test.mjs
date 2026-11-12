@@ -6,6 +6,8 @@ import {
   fromBase64,
   fromBase64url,
   fromHex,
+  pageCursor,
+  readPageCursor,
   sha256Hex,
   toBase64,
   toHex,
@@ -40,4 +42,16 @@ test("sha256Hex matches the published test vector", async () => {
 test("a malformed hex string throws instead of decoding to the wrong bytes", () => {
   assert.throws(() => fromHex("abc"));
   assert.throws(() => fromHex("zz"));
+});
+
+test("a page cursor reads back only in the list that issued it", () => {
+  const cursor = pageCursor("list_items", 3);
+  assert.doesNotMatch(cursor, /[+/=]/);
+  assert.equal(readPageCursor("list_items", cursor), 3);
+  assert.equal(readPageCursor("list_files", cursor), null);
+  assert.equal(readPageCursor("list_items", pageCursor("list_items", -1)), null);
+  assert.equal(readPageCursor("list_items", "not a cursor"), null);
+  // A cursor issued before as unpadded standard base64 still reads.
+  const old = btoa(JSON.stringify({ t: "list_items", p: 2 })).replace(/=+$/, "");
+  assert.equal(readPageCursor("list_items", old), 2);
 });

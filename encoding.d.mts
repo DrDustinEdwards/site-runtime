@@ -16,6 +16,10 @@ export function fromBase64url(text: string): Uint8Array<ArrayBuffer>;
 export function fromBase64Text(text: string): string;
 /** URL-safe base64 decoded to UTF-8 text. */
 export function fromBase64urlText(text: string): string;
+/** An opaque page cursor: base64url JSON of the list it came from (`scope`) and a position (a page or an offset). */
+export function pageCursor(scope: string, position: number): string;
+/** The position a `pageCursor` for `scope` carries; null for another scope, a negative or fractional position, or junk. */
+export function readPageCursor(scope: string, cursor: string): number | null;
 /** SHA-256 as lowercase hex. */
 export function sha256Hex(input: Input): Promise<string>;
 /** HMAC-SHA-256 of `payload` under the UTF-8 bytes of `secret`, as lowercase hex. */
