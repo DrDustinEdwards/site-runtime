@@ -64,7 +64,7 @@ const RULES = [
   // left as it is.
   {
     kind: "auth",
-    pattern: new RegExp(
+    pattern: /* @__PURE__ */ new RegExp(
       String.raw`\b(authorization["']?\s*[:=]\s*["']?)((?:bearer|basic|token|digest)\s+)?(?!(?:bearer|basic|token|digest)\s)(${VALUE})`,
       "gi",
     ),
@@ -84,7 +84,7 @@ const RULES = [
   // NAME=value, NAME: value, "name": "value", ?name=value, for a secret-shaped name.
   {
     kind: "assignment",
-    pattern: new RegExp(
+    pattern: /* @__PURE__ */ new RegExp(
       String.raw`(?<![A-Za-z0-9_.-])(["']?)(${SECRET_NAME})\1(\s*[:=]\s*)(["']?)(${VALUE})`,
       "gi",
     ),
