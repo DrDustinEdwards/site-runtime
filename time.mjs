@@ -62,3 +62,28 @@ export function toMs(date) {
 export function monthKey(date) {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
 }
+
+/**
+ * `promise`, or a rejection with `new Error(message)` when `ms` pass first; the timer is cleared either way, so a
+ * settled call leaves nothing pending. `onTimeout` hears the error before the rejection (to abort the work it raced).
+ * @template T
+ * @param {Promise<T>} promise
+ * @param {number} ms
+ * @param {string} [message]
+ * @param {(error: Error) => void} [onTimeout]
+ * @returns {Promise<T>}
+ */
+export function withTimeout(promise, ms, message = `timed out after ${ms} ms`, onTimeout) {
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let timer;
+  const late = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error(message);
+      onTimeout?.(error);
+      reject(error);
+    }, ms);
+  });
+  return /** @type {Promise<T>} */ (Promise.race([promise, late])).finally(() =>
+    clearTimeout(timer),
+  );
+}

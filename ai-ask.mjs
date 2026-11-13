@@ -11,6 +11,7 @@
 import { sha256Hex } from "./encoding.mjs";
 import { logEvent } from "./log.mjs";
 import { checkProse as defaultCheckProse } from "./prose.mjs";
+import { withTimeout } from "./time.mjs";
 
 /** The event the guard sends after an answer the model did not finish, so the reader is told it was cut. */
 export const CUT_EVENT = "cut";
@@ -204,15 +205,7 @@ export function guardAnswerStream(
    * @param {ReadableStreamDefaultReader} reader
    */
   function readBy(reader) {
-    /** @type {ReturnType<typeof setTimeout> | undefined} */
-    let timer;
-    const late = new Promise((_, reject) => {
-      timer = setTimeout(
-        () => reject(new Error(`the answer sent nothing for ${timeoutMs} ms`)),
-        timeoutMs,
-      );
-    });
-    return Promise.race([reader.read(), late]).finally(() => clearTimeout(timer));
+    return withTimeout(reader.read(), timeoutMs, `the answer sent nothing for ${timeoutMs} ms`);
   }
 
   return new ReadableStream({

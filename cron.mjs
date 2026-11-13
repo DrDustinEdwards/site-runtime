@@ -34,6 +34,7 @@
  */
 
 import { logEvent, scrubText } from "./log.mjs";
+import { withTimeout } from "./time.mjs";
 
 /** The longest error stored. */
 export const CRON_ERROR_MAX = 500;
@@ -193,18 +194,9 @@ async function runOne(
   };
   const limit = own ?? timeoutMs;
   const controller = new AbortController();
-  /** @type {ReturnType<typeof setTimeout> | undefined} */
-  let timer;
   const work = Promise.resolve().then(() => run(controller.signal, { startedAt: started }));
   try {
-    const timeout = new Promise((_, reject) => {
-      timer = setTimeout(() => {
-        const error = new Error(`timed out after ${limit} ms`);
-        controller.abort(error);
-        reject(error);
-      }, limit);
-    });
-    const value = await Promise.race([work, timeout]);
+    const value = await withTimeout(work, limit, undefined, (error) => controller.abort(error));
     const at = now();
     const verdict = history
       ? verdictOf(value)
@@ -251,8 +243,6 @@ async function runOne(
       logEvent("cron_job_overran", { name, ms: now() - started }, { level: "error" });
     }
     return { job: name, status: "failed", ms: at - started, error: stored };
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -406,7 +396,11 @@ export function describeRuns(what, call) {
  */
 export function runsSucceeded(call) {
   const runs = /** @type {{ runs?: Array<{ status?: unknown }> } | null} */ (call.data)?.runs;
-  return call.ok && Array.isArray(runs) && runs.every((r) => r.status !== "failed" && r.status !== "refused");
+  return (
+    call.ok &&
+    Array.isArray(runs) &&
+    runs.every((r) => r.status !== "failed" && r.status !== "refused")
+  );
 }
 
 /** The 24 hours a nightly job's interval is, in minutes. */

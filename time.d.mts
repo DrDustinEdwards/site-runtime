@@ -10,3 +10,10 @@ export function toDate(ms: number | null | undefined): Date | null;
 export function toMs(date: Date | null | undefined): number | null;
 /** The UTC calendar month of a Date as "YYYY-MM". */
 export function monthKey(date: Date): string;
+/** `promise`, or a rejection with `new Error(message)` (default "timed out after <ms> ms") when `ms` pass first; `onTimeout` hears that error first. */
+export function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  message?: string,
+  onTimeout?: (error: Error) => void,
+): Promise<T>;
