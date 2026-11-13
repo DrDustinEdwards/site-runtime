@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  PRIVATE_PAGE_HEADERS,
   cacheKey,
+  compressUntransformed,
   forReader,
   forRenderer,
   publicPageHeaders,
@@ -248,4 +250,62 @@ test("a failed purge is kept until one succeeds, and /health warns with only its
   };
   assert.equal(await new Renderer().purgePages("write"), true);
   assert.equal((await status()).status, "pass");
+});
+
+// A private page is kept out of Web Analytics by no-transform, which also stops the edge compressing it: the Worker
+// names the coding the reader takes (its own header, not the one Cloudflare rewrites) and keeps no-transform on an
+// error page or a cookie's render, where the beacon would otherwise get in.
+test("a private page keeps no-transform and is compressed for the coding its reader takes", () => {
+  const page = (/** @type {Record<string, string>} */ extra = {}) =>
+    new Response("<p>mine</p>", {
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Length": "11",
+        ...PRIVATE_PAGE_HEADERS,
+        ...extra,
+      },
+    });
+  const reader = (/** @type {string} */ accept, /** @type {string} */ client = accept) =>
+    Object.assign(new Request("https://example.com/", { headers: { "Accept-Encoding": accept } }), {
+      cf: { clientAcceptEncoding: client },
+    });
+
+  const br = compressUntransformed(page(), reader("gzip, br"));
+  assert.equal(br.headers.get("Content-Encoding"), "br");
+  assert.equal(br.headers.get("Content-Length"), null);
+  assert.equal(br.headers.get("Vary"), "Accept-Encoding");
+  assert.equal(
+    compressUntransformed(page(), reader("br, gzip", "gzip")).headers.get("Content-Encoding"),
+    "gzip",
+  );
+  assert.equal(
+    compressUntransformed(page(), reader("br;q=0, gzip;q=0.5")).headers.get("Content-Encoding"),
+    "gzip",
+  );
+  assert.equal(
+    compressUntransformed(page(), reader("*;q=0.1")).headers.get("Content-Encoding"),
+    "br",
+  );
+  const none = compressUntransformed(page(), reader("identity"));
+  assert.equal(none.headers.get("Content-Encoding"), null);
+  assert.equal(none.headers.get("Vary"), "Accept-Encoding");
+
+  const shared = new Response("<p>all</p>", {
+    headers: { "Content-Type": "text/html", ...publicPageHeaders() },
+  });
+  assert.equal(compressUntransformed(shared, reader("br")), shared);
+  const image = new Response("x", {
+    headers: { "Content-Type": "image/png", ...PRIVATE_PAGE_HEADERS },
+  });
+  assert.equal(compressUntransformed(image, reader("br")), image);
+
+  const failed = settleCacheHeaders(
+    new Response("boom", { status: 500, headers: PRIVATE_PAGE_HEADERS }),
+  );
+  assert.equal(failed.headers.get("Cache-Control"), "private, no-store, no-transform");
+  const signedIn = new Request("https://example.com/", { headers: { Cookie: "session=x" } });
+  assert.equal(
+    settleCacheHeaders(page(), signedIn).headers.get("Cache-Control"),
+    "private, no-store, no-transform",
+  );
 });

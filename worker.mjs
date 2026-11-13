@@ -36,7 +36,9 @@
  * page never share one. A 304 from the cache leaves out the policy: RFC 9111 4.3.4 has the
  * browser update its stored headers from a 304, and a new nonce there would not match the scripts in its copy.
  *
- * On the way out, every HTML answer carries the Speculation-Rules header, a 404 is counted (./not-found) unless it is
+ * On the way out, every HTML answer carries the Speculation-Rules header, a private page (./edge-cache
+ * PRIVATE_PAGE_HEADERS, no-transform, so Cloudflare injects no beacon and compresses nothing) is compressed by the
+ * Worker, a 404 is counted (./not-found) unless it is
  * under /api/ or /preview/, and a 404 goes through the site's `onNotFound` (site-api's tombstones, a 410). A gateway
  * that throws answers a plain 500 with the security set and logs `gateway_error`, never the runtime's 1101 page.
  *
@@ -73,6 +75,7 @@ import {
   EDGE_CACHE_HEADER,
   SHARED_CACHE_CONTROL,
   cacheKey,
+  compressUntransformed,
   forReader,
   forRenderer,
   privateRender,
@@ -459,7 +462,7 @@ export function siteWorker(site) {
       const db = options.notFoundDb?.(env) ?? /** @type {any} */ (env).DB;
       if (db) countNotFound(db, request, response, ctx);
     }
-    return withSpeculationRules(response);
+    return compressUntransformed(withSpeculationRules(response), request);
   }
 
   /**

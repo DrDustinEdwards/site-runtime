@@ -9,7 +9,7 @@
  * inline scripts by hash), no cookie, nothing signed in. Signed-in pages keep the default, `private, no-store`.
  */
 
-import { isWrite } from "./http.mjs";
+import { acceptedEncoding, isWrite, mediaType } from "./http.mjs";
 
 /** Stored at the edge, never in a browser: a purge cannot reach a browser, so max-age stays 0. */
 export const SHARED_CACHE_CONTROL = "public, max-age=0";
@@ -26,12 +26,51 @@ export const SHARED_CACHE_CONTROL = "public, max-age=0";
 export const UNCACHED = "private, no-store";
 
 /**
- * A route's `headers` for a page drawn for one reader that Cloudflare must not change: UNCACHED plus `no-transform`,
- * so the Web Analytics beacon is never injected (developers.cloudflare.com/web-analytics/faq/) and private and
- * signed-in pages stay out of the count. Cloudflare then also leaves the page uncompressed
- * (developers.cloudflare.com/cache/concepts/cache-control/), so it goes on HTML pages only, never on assets.
+ * The `headers` of every private page (admin, signed-in, any page drawn for one reader that is not public): UNCACHED
+ * plus `no-transform`, so the Web Analytics beacon Cloudflare injects into HTML never reaches it
+ * (developers.cloudflare.com/web-analytics/faq/) and only public pages are counted. Cloudflare then compresses nothing
+ * (developers.cloudflare.com/cache/concepts/cache-control/), so the Worker does (`compressUntransformed`, which the
+ * gateway runs on every answer). It goes on pages, never on assets, which keep the edge's compression and cache.
  */
 export const PRIVATE_PAGE_HEADERS = Object.freeze({ "Cache-Control": `${UNCACHED}, no-transform` });
+
+const NO_TRANSFORM = /(?:^|,)\s*no-transform\s*(?:,|$)/i;
+
+/** What compressing pays for: text, JSON, JavaScript, XML and SVG. Images, fonts and media are compressed already. */
+const COMPRESSIBLE =
+  /^(?:text\/|application\/(?:json|javascript|xml|[\w.-]+\+(?:json|xml))$|image\/svg\+xml$)/;
+
+/**
+ * A `no-transform` answer, compressed by the Worker, since the edge leaves it as the Worker sent it: Content-Encoding
+ * names the coding the reader takes (./http acceptedEncoding) and the runtime encodes the body as it sends it
+ * (ResponseInit `encodeBody: "automatic"`, the default), as the speculation rules file is sent. Vary names
+ * Accept-Encoding. Anything else, an answer already encoded, one with no body and a type not worth compressing
+ * comes back as it was.
+ * @param {Response} response
+ * @param {Request} [request]
+ */
+export function compressUntransformed(response, request) {
+  if (
+    !response.body ||
+    response.headers.has("Content-Encoding") ||
+    !NO_TRANSFORM.test(response.headers.get("Cache-Control") ?? "") ||
+    !COMPRESSIBLE.test(mediaType(response.headers.get("Content-Type")))
+  )
+    return response;
+  const headers = new Headers(response.headers);
+  if (!/(?:^|,)\s*accept-encoding\s*(?:,|$)/i.test(headers.get("Vary") ?? ""))
+    headers.append("Vary", "Accept-Encoding");
+  const coding = acceptedEncoding(request);
+  if (coding) {
+    headers.set("Content-Encoding", coding);
+    headers.delete("Content-Length");
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
 
 /** Outranks Cache-Control at Cloudflare's edge, so it goes only on a response marked shared. */
 export const EDGE_CACHE_HEADER = "Cloudflare-CDN-Cache-Control";
@@ -147,7 +186,7 @@ const cookieNames = (/** @type {Request} */ request) =>
 
 /**
  * Run in the Renderer on every response, last. Anything not marked shared, anything but a 200 (an error page rendered
- * under a shared route's headers) and anything setting a cookie is sent `private, no-store`; anything not shared gets
+ * under a shared route's headers) and anything setting a cookie is sent `private, no-store` (keeping `no-transform`); anything not shared gets
  * an edge `no-store` and no tag, so the edge stores only what a purge reaches. Pass the request: a page rendered for a cookie (other than `publicCookies`, which the key
  * already holds) is never stored, and neither is the answer to a HEAD, whose empty body would be served to every
  * reader of the page. A stored page with no validator gets `Last-Modified`, the time it was rendered: it stays the
@@ -163,8 +202,14 @@ export function settleCacheHeaders(response, request, { publicCookies = [] } = {
     request?.method === "HEAD" ||
     Boolean(request && !cookieNames(request).every((name) => publicCookies.includes(name)));
   const apply = (/** @type {Headers} */ headers) => {
+    // A private page keeps no-transform whatever else changes, so its error page or a cookie never lets the beacon in.
     if (!headers.has("Cache-Control") || response.status !== 200 || personal)
-      headers.set("Cache-Control", UNCACHED);
+      headers.set(
+        "Cache-Control",
+        NO_TRANSFORM.test(headers.get("Cache-Control") ?? "")
+          ? PRIVATE_PAGE_HEADERS["Cache-Control"]
+          : UNCACHED,
+      );
     if (headers.get("Cache-Control") !== SHARED_CACHE_CONTROL) {
       // Only a shared page is purged on a write, so nothing else is kept at the edge: a route's own lifetime (a feed's
       // hour) stays the browser's, and the Workers cache, which reads this header first (RFC 9213), stores none of it.

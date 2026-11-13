@@ -20,6 +20,8 @@ export function redirectResponse(
 export function retryAfterSeconds(headers: Headers): number | null;
 /** The media type of a Content-Type value: before the first `;`, trimmed, lowercased; "" for none. */
 export function mediaType(value: string | null | undefined): string;
+/** br, else gzip, else null: the coding this reader takes, from `request.cf.clientAcceptEncoding` (Cloudflare rewrites the header a Worker sees), else Accept-Encoding; q=0 refuses. */
+export function acceptedEncoding(request: Request | undefined): "br" | "gzip" | null;
 /** fetch with OUTBOUND_TIMEOUT_MS unless the caller passes its own signal. */
 export const timedFetch: typeof fetch;
 /** A fetch that also stops when `signal` aborts, keeping the timeout; `fetcher` defaults to timedFetch. */
