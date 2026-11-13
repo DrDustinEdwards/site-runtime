@@ -77,6 +77,10 @@ test("a next path is a path on this site; every escape falls back", () => {
     assert.equal(safeNextPath(bad, { fallback: "/x" }), "/x", String(bad));
   assert.equal(safeNextPath("/account/passkeys", { within: ["/account"] }), "/account/passkeys");
   assert.equal(safeNextPath("/accounting", { within: ["/account"] }), "/");
+  // Dot segments resolve before `within`, and a resolve that makes "//host" falls back too.
+  for (const bad of ["/account/../admin", "/account/%2e%2e/admin", "/account/..//evil.example"])
+    assert.equal(safeNextPath(bad, { within: ["/account"] }), "/", bad);
+  assert.equal(safeNextPath("/..//evil.example"), "/");
 });
 
 test("a disposable domain is caught at any depth, and a real one is not", () => {

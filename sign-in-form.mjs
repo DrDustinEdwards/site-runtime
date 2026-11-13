@@ -83,7 +83,8 @@ export async function refuseDisposable(user) {
  * which some browsers read as "//host"), and any character outside printable ASCII (a browser strips a tab or newline,
  * so "/\t/host" becomes "//host", and a header cannot carry the rest). A value encoded twice ("%2Fpath") is decoded
  * once more; one already a path is left alone, since a second decode would rewrite its query. With `within`, the path
- * must also be one of those paths or under one ("/account" takes "/account", "/account/x" and "/account?x").
+ * must also be one of those paths or under one ("/account" takes "/account", "/account/x" and "/account?x"), after its
+ * dot segments are resolved, so "/account/../admin" is "/admin".
  * Foxhound's next-path.ts, which carried Recova's validateRedirect with its two holes closed.
  * @param {unknown} raw
  * @param {{ fallback?: string, within?: readonly string[] }} [options]
@@ -98,6 +99,12 @@ export function safeNextPath(raw, { fallback = "/", within } = {}) {
       return fallback;
     }
   }
+  if (!isSameOriginPath(path)) return fallback;
+  // The path the browser will land on: dot segments ("/account/../admin", "/account/%2e%2e/admin") resolved, so
+  // `within` is checked against where the reader actually goes.
+  const resolved = new URL(path, "https://x.invalid");
+  path = resolved.pathname + resolved.search + resolved.hash;
+  // Resolving can itself make a protocol-relative path ("/..//host" is "//host"), so the check runs again.
   if (!isSameOriginPath(path)) return fallback;
   if (
     within &&

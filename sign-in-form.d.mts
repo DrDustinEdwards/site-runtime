@@ -18,7 +18,7 @@ export function refuseDisposable(user: { email: string }): Promise<void>;
 
 /**
  * Where a sign-in may land: a path on this site, or `fallback` (default "/"). With `within`, only those paths and paths
- * under them.
+ * under them, checked after dot segments resolve ("/account/../admin" is "/admin").
  */
 export function safeNextPath(
   raw: unknown,

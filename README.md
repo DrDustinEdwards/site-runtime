@@ -1651,7 +1651,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   `emailLinkWords({ siteName, settings })` for the email-change page.
 - `safeNextPath(raw, { fallback, within })`: where a sign-in may land. A path on this site only, every check anchored
   at the start (an OAuth `next` legitimately carries `https://` in its query); absolute, `//host`, `/\host` and any
-  character outside printable ASCII fall back. `within` limits it to those paths and below.
+  character outside printable ASCII fall back. `within` limits it to those paths and below, after dot segments resolve.
 - `startSocialSignIn(auth, request, { provider, callbackURL, errorCallbackURL })`: the Google or Apple start from the
   page's form POST (`/auth/google`, `/auth/apple`), so the landing is decided on the server. Answers the provider's URL
   and Better Auth's state cookie, or null.
