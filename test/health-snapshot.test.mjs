@@ -7,7 +7,6 @@ import assert from "node:assert/strict";
 
 import {
   HEALTH_SNAPSHOT_EVERY_MINUTES,
-  formatAge,
   healthTile,
   snapshotFromBody,
 } from "../health-snapshot.mjs";
@@ -84,19 +83,6 @@ await test("A FUTURE TIMESTAMP IS REFUSED, not clamped to zero", () => {
   // It means the writer's clock or the shape is wrong, and neither is a state
   // to render a green tile from. Clamping would show it as freshest of all.
   assert.equal(healthTile(snapshotAgedBy(-60), NOW).state, "missing");
-});
-
-await test("formatAge never claims a precision the fifteen minute schedule lacks", () => {
-  assert.equal(formatAge(0), "under a minute ago");
-  assert.equal(formatAge(59), "under a minute ago");
-  assert.equal(formatAge(60), "1 minute ago");
-  assert.equal(formatAge(119), "1 minute ago");
-  assert.equal(formatAge(120), "2 minutes ago");
-  assert.equal(formatAge(3599), "59 minutes ago");
-  assert.equal(formatAge(3600), "1 hour ago");
-  assert.equal(formatAge(7200), "2 hours ago");
-  assert.equal(formatAge(86400), "1 day ago");
-  assert.equal(formatAge(86400 * 3), "3 days ago");
 });
 
 await test("snapshotFromBody keeps each /health check's name and status, and no detail", () => {

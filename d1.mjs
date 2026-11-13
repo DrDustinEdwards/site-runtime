@@ -50,22 +50,6 @@ export function chunked(items, size = IN_LIST_CHUNK) {
 }
 
 /**
- * Runs `run` once per slice of `items`, one after another, and returns every slice's rows in order. An empty
- * `items` runs nothing and returns `[]`, so `inArray` never sees an empty list.
- * @template T, R
- * @param {readonly T[]} items
- * @param {(part: T[]) => Promise<readonly R[]>} run
- * @param {number} [size]
- * @returns {Promise<R[]>}
- */
-export async function inChunks(items, run, size = IN_LIST_CHUNK) {
-  /** @type {R[]} */
-  const rows = [];
-  for (const part of chunked(items, size)) rows.push(...(await run(part)));
-  return rows;
-}
-
-/**
  * How many rows one INSERT may carry when every column is a bound parameter.
  * @param {number} columns
  */

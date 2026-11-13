@@ -23,8 +23,6 @@ export function healthTile(
   nowMs: number,
   options?: { everyMinutes?: number },
 ): HealthTile;
-/** An age in words, minutes at the finest. */
-export function formatAge(ageSeconds: number): string;
 /** Each check's name and status from a /health body, or null when it is not one. */
 export function snapshotFromBody(body: unknown, readAt: string): HealthSnapshot | null;
 /** Run the site's /health answer and store the snapshot; throws when nothing was stored. */

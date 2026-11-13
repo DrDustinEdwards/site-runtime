@@ -89,7 +89,6 @@ import {
 import { cookiePairs } from "./headers.mjs";
 import { clientIp, isWrite, textResponse } from "./http.mjs";
 import {
-  PREVIEW_TOKEN,
   errorMessage,
   logEvent,
   routeNamer,
@@ -98,7 +97,6 @@ import {
   withRequestLog,
 } from "./log.mjs";
 
-export { PREVIEW_TOKEN, tokenPattern };
 import { maintenanceOn, maintenanceResponse } from "./maintenance.mjs";
 import { countNotFound } from "./not-found.mjs";
 import { operatorResponse } from "./operator.mjs";

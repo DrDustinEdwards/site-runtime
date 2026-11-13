@@ -3,7 +3,6 @@ import type { CronJob } from "./cron.mjs";
 import type { OperatorTool } from "./operator.mjs";
 import type { Preconnect, Preload } from "./preload.mjs";
 
-export { PREVIEW_TOKEN, tokenPattern } from "./log.mjs";
 import type { AccessSecrets, AdminSettings } from "./access.mjs";
 
 /**

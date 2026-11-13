@@ -28,7 +28,6 @@
  * where only custom domains get functional cache operations) or `backupTtlMs` is 0, every request reads.
  */
 
-export { deployedAt, deployedSha } from "./deploy.mjs";
 import { PURGE_FAILED_KEY } from "./edge-cache.mjs";
 import { errorMessage, logEvent, scrubText } from "./log.mjs";
 import { authEventCounts } from "./sign-in-account.mjs";

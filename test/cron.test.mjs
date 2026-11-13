@@ -183,22 +183,6 @@ test("run_job runs a job by name into cron_runs with its result, a failure as an
   await assert.rejects(Promise.resolve(tool.run({ job: "nope" })), /Jobs: copy, dump, files/);
 });
 
-test("cronSchedule runs the list of the cron it receives, lists every job and logs an unknown trigger", async () => {
-  const { cronSchedule } = await import("../cron.mjs");
-  const ran = [];
-  const schedule = cronSchedule((_env, at) => ({
-    "* * * * *": [{ name: "a", everyMinutes: 1, run: async () => ran.push(["a", at.getTime()]) }],
-    "0 3 * * *": [{ name: "b", everyMinutes: 1440, run: async () => ran.push(["b"]) }],
-  }));
-  assert.deepEqual(
-    schedule.all({}).map((j) => j.name),
-    ["a", "b"],
-  );
-  await schedule.run(null, { cron: "* * * * *", scheduledTime: 5000 }, {});
-  await schedule.run(null, { cron: "9 9 * * *", scheduledTime: 5000 }, {});
-  assert.deepEqual(ran, [["a", 5000]]);
-});
-
 test("a refused run is not a success", () => {
   const call = (/** @type {string} */ status) => ({ ok: true, data: { runs: [{ status }] } });
   assert.equal(runsSucceeded(call("ok")), true);

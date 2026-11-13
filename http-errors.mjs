@@ -17,7 +17,7 @@
 import { logEvent } from "./log.mjs";
 
 /** The content type of every problem answer. */
-export const PROBLEM_TYPE = "application/problem+json; charset=utf-8";
+const PROBLEM_TYPE = "application/problem+json; charset=utf-8";
 
 /** The status phrases a problem's `title` takes when its `type` is about:blank. */
 const PHRASES = /** @type {Record<number, string>} */ ({
@@ -126,7 +126,7 @@ export function problemResponse({
  * @param {unknown} error
  * @returns {error is { status: number, code: string, message: string, extensions?: Record<string, unknown> }}
  */
-export function isKnownError(error) {
+function isKnownError(error) {
   if (!error || typeof error !== "object") return false;
   const { status, code } = /** @type {{ status?: unknown, code?: unknown }} */ (error);
   return (

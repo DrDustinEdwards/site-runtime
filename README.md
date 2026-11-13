@@ -486,8 +486,7 @@ return healthResponse({
 
 `./health-snapshot` keeps /health's verdict in KV for a page to show without running the checks. The site's scheduled
 job calls `storeHealthSnapshot({ kv, answer })` and is the only writer, so the snapshot's age is that job's liveness.
-`readHealthTile({ kv })` answers fresh, stale (after three intervals), missing or unreadable, and `formatAge` words the
-age.
+`readHealthTile({ kv })` answers fresh, stale (after three intervals), missing or unreadable.
 
 `./health-alert` mails a person once when a check changes state: `notifyOnChange({ db, results, send, site })` compares
 the results with D1 `health_state` (`HEALTH_STATE_SQL`), mails when a check flipped (a new one only when failing), and
@@ -1099,8 +1098,7 @@ so an IN list or a multi-row insert built from data goes through here. `inList(c
 `notInList(column, values)` bind the whole list as one JSON parameter (`IN (SELECT value FROM json_each(?))`,
 [JSON functions](https://developers.cloudflare.com/d1/sql-api/query-json/)): any length, one statement, so an UPDATE
 or DELETE stays atomic; an empty list matches nothing (inList) or everything (notInList). For inserts and loops: `chunked(items, size = IN_LIST_CHUNK)` (90,
-room for the statement's other parameters), `inChunks(items, (part) => query)` (one slice after another, rows in
-order, nothing run for an empty list) and `rowsPerInsert(columns)`. A LIKE pattern from what someone typed goes through
+room for the statement's other parameters), and `rowsPerInsert(columns)`. A LIKE pattern from what someone typed goes through
 `likeContains(column, text)` or `likeStartsWith(column, text)` (Drizzle SQL ending `ESCAPE '\'`), or `escapeLike(text)`
 for hand-written SQL, so `%` and `_` match themselves. A newest-first page goes by `encodeCursor(at, id)`, `decodeCursor(text)` and
 `olderThan(atColumn, idColumn, at, id)` (order by both, descending): a time alone skips the rows that share the last
@@ -1125,7 +1123,7 @@ entry of its own and never reaches a Worker bundle.
 
 `./deploy`: `deployedSha(env, { fallback? })` is the deployed commit from the DEPLOY_SHA var devkit's worker-deploy
 sets (trimmed, lowercased, 7 to 40 hex, else `fallback`, undefined by default), and `deployedAt(env)` is when this
-version was deployed, from the CF_VERSION_METADATA binding (cronCheck's `deployedAt`). `./health` re-exports both. The
+version was deployed, from the CF_VERSION_METADATA binding (cronCheck's `deployedAt`). The
 shared Worker's request log, the MCP doors and the static site read the sha through it.
 
 `./health-read`: reading another Worker's /health answer, the same way everywhere. `parseHealth(text)` and
