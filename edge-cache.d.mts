@@ -5,8 +5,10 @@
 
 export const SHARED_CACHE_CONTROL: "public, max-age=0";
 export const UNCACHED: "private, no-store";
-/** A private HTML page's `headers`: UNCACHED plus no-transform, so no Web Analytics beacon (and no edge compression). */
+/** Every private page's `headers`: UNCACHED plus no-transform, so no Web Analytics beacon; the Worker compresses it (compressUntransformed). */
 export const PRIVATE_PAGE_HEADERS: Readonly<{ "Cache-Control": "private, no-store, no-transform" }>;
+/** A no-transform text, JSON, JavaScript, XML or SVG answer with a body and no Content-Encoding, named br or gzip for this reader so the runtime encodes it, Vary: Accept-Encoding; anything else as it was. */
+export function compressUntransformed(response: Response, request?: Request): Response;
 export const EDGE_CACHE_HEADER: "Cloudflare-CDN-Cache-Control";
 export const PAGES_CACHE_TAG: "pages";
 
@@ -28,7 +30,7 @@ export function cacheKey(
   options?: { dimensions?: Record<string, string | undefined> },
 ): string;
 
-/** The Renderer's last step: anything not a shared 200, setting a cookie, or rendered for a request with one, leaves `private, no-store`; anything not shared gets an edge `no-store` and no tag. */
+/** The Renderer's last step: anything not a shared 200, setting a cookie, or rendered for a request with one, leaves `private, no-store` (keeping no-transform); anything not shared gets an edge `no-store` and no tag. */
 export function settleCacheHeaders(
   response: Response,
   request?: Request,

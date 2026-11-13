@@ -27,6 +27,7 @@ import { readCapped } from "./body.mjs";
 import { healthResponse } from "./health.mjs";
 import { redirectResponse } from "./http.mjs";
 import { deployedSha } from "./deploy.mjs";
+import { PRIVATE_PAGE_HEADERS, compressUntransformed } from "./edge-cache.mjs";
 import { escapeHtml as escape } from "./html.mjs";
 import { originOf, ownerPage, respond } from "./owner-page.mjs";
 import { ipKey } from "./rate-limit/limit.mjs";
@@ -225,14 +226,15 @@ ${target.local ? `<div class="cap-alert" data-tone="warn" role="alert"><span cla
     if (!client) return respond("Unknown OAuth client.", 400);
     const consent = await oauth.beginConsent(authRequest);
     consent.headers.set("content-type", "text/html; charset=utf-8");
-    // no-transform keeps Cloudflare from injecting anything into this page.
-    consent.headers.set("cache-control", "no-store, no-transform");
+    // A private page: Cloudflare injects nothing into it, and the Worker compresses it.
+    consent.headers.set("cache-control", PRIVATE_PAGE_HEADERS["Cache-Control"]);
     // A consent page another site can frame can be clickjacked into an approval.
     consent.headers.set("content-security-policy", "frame-ancestors 'none'");
     consent.headers.set("x-frame-options", "DENY");
-    return new Response(consentPage(client, authRequest, consent.handle), {
-      headers: consent.headers,
-    });
+    return compressUntransformed(
+      new Response(consentPage(client, authRequest, consent.handle), { headers: consent.headers }),
+      request,
+    );
   }
 
   /** @param {Request} request @param {E} env */

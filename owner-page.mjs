@@ -26,6 +26,7 @@ import { correlationId, recordAudit } from "./audit-log.mjs";
 import { readCapped } from "./body.mjs";
 import { safeEqual } from "./compare.mjs";
 import { sha256Hex, toHex } from "./encoding.mjs";
+import { PRIVATE_PAGE_HEADERS, compressUntransformed } from "./edge-cache.mjs";
 import { hostCookie, readCookie } from "./headers.mjs";
 import { escapeHtml as escape } from "./html.mjs";
 import { redirectResponse } from "./http.mjs";
@@ -45,9 +46,10 @@ const FORM_MAX_BYTES = 4096;
 const LOG_PAGE = 50;
 const GRANT_PAGES = 10;
 
-/** What every answer of an authenticated operator surface carries: never cached, indexed or framed. */
+/** What every answer of an authenticated operator surface carries: never cached, indexed, framed or counted (a
+ *  private page, ./edge-cache PRIVATE_PAGE_HEADERS). */
 const PRIVATE_HEADERS = {
-  "cache-control": "no-store",
+  "cache-control": PRIVATE_PAGE_HEADERS["Cache-Control"],
   "x-content-type-options": "nosniff",
   "referrer-policy": "no-referrer",
   "x-robots-tag": "noindex, nofollow",
@@ -406,7 +408,7 @@ export function ownerPage({ name, admit, server, readsLog = () => true }) {
           before,
           notice,
         });
-        return respond(html, 200, "text/html; charset=utf-8");
+        return compressUntransformed(respond(html, 200, "text/html; charset=utf-8"), request);
       }
       if (
         request.method !== "POST" ||

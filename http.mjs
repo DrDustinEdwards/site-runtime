@@ -110,6 +110,32 @@ export function mediaType(value) {
 }
 
 /**
+ * The coding to compress an answer with for this reader: br, else gzip, else null (RFC 9110 12.5.3; a q of 0 refuses,
+ * `*` stands for any coding not named). The reader's own header is `request.cf.clientAcceptEncoding`: Cloudflare
+ * rewrites the Accept-Encoding a Worker sees (developers.cloudflare.com/workers/runtime-apis/request/), so read alone it
+ * hands br to a reader who takes only gzip.
+ * @param {Request | undefined} request
+ * @returns {"br" | "gzip" | null}
+ */
+export function acceptedEncoding(request) {
+  const cf = /** @type {{ clientAcceptEncoding?: string } | undefined} */ (
+    /** @type {any} */ (request)?.cf
+  );
+  const header = cf?.clientAcceptEncoding ?? request?.headers.get("Accept-Encoding") ?? "";
+  /** @type {Map<string, number>} */
+  const weights = new Map();
+  for (const part of header.toLowerCase().split(",")) {
+    const [name, ...params] = part.split(";").map((piece) => piece.trim());
+    if (!name) continue;
+    const q = params.find((param) => param.startsWith("q="));
+    weights.set(name, q ? Number(q.slice(2)) : 1);
+  }
+  const takes = (/** @type {string} */ coding) =>
+    (weights.get(coding) ?? weights.get("*") ?? 0) > 0;
+  return takes("br") ? "br" : takes("gzip") ? "gzip" : null;
+}
+
+/**
  * @param {string} body
  * @param {number} status
  * @param {string} type

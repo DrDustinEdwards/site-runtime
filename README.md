@@ -706,9 +706,19 @@ An image entry may carry `imageSrcSet`, `imageSizes` and `fetchPriority` (`image
 `./edge-cache` stores a site's public pages at the edge through the Workers cache and drops them by tag when the site
 writes: the scheme dustinedwards.info runs. A stored page is handed to every reader, so only a page that is the same
 for all of them may be stored: its CSP trusts inline scripts by hash, not a per-request nonce, it sets no cookie and
-it shows nothing signed in. Everything else stays `private, no-store`. A private HTML page that Cloudflare must not
-touch exports `headers = () => PRIVATE_PAGE_HEADERS` (`private, no-store, no-transform`): no Web Analytics beacon is
-injected, so private and signed-in pages stay out of the count, and the edge leaves it uncompressed.
+it shows nothing signed in. Everything else stays `private, no-store`.
+
+**No analytics on private pages.** Cloudflare's Web Analytics injects its beacon into every HTML page of a zone with
+the automatic setup, and only public pages are counted. Every private page (admin, signed-in, any page drawn for one
+reader that is not public) exports `headers = () => PRIVATE_PAGE_HEADERS` (`private, no-store, no-transform`), most
+simply once on the layout its routes sit under: Cloudflare changes nothing in a `no-transform` answer, so it injects no
+beacon. It compresses nothing there either, so the gateway runs `compressUntransformed` on every answer: a
+`no-transform` page (or data, script or SVG) with no Content-Encoding gets the coding its reader takes (br, else gzip,
+from `request.cf.clientAcceptEncoding`, since Cloudflare rewrites the Accept-Encoding a Worker sees; `./http`
+`acceptedEncoding`) and the runtime encodes the body. `settleCacheHeaders` keeps `no-transform` on a private route's
+error page and on a render for a cookie. A Worker that is not `./worker` (Carrel, the Capsid Portal, the MCP consent
+page) sets the same header and runs `compressUntransformed` itself. A child route that exports `headers` of its own
+replaces its layout's, so it returns `PRIVATE_PAGE_HEADERS` too.
 
 ```jsonc
 // wrangler.jsonc: the gateway runs on every request; the Renderer's responses are stored. No `cross_version_cache`,
