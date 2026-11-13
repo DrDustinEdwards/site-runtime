@@ -76,7 +76,7 @@ const DASH = /\s*—\s*|\s+–\s+|\s--\s/gu;
  * one was in the 2026-10-25 sample; a phrase that stops turning up in fresh output comes off.
  * @type {[string, string, string][]}
  */
-export const TELLS = [
+export const TELLS = /* @__PURE__ */ (() => [
   // A companion's reply: the compliment, the reassurance before the answer, the offer after it.
   ["great question", "Answer the question. Cut the compliment.", SIGNS.collaborative],
   ["you're not wrong", "Cut the reassurance and give the answer.", SIGNS.collaborative],
@@ -106,7 +106,7 @@ export const TELLS = [
   ["no hard feelings", "Say what happens if they do nothing, and stop.", SIGNS.collaborative],
   ["that's completely fine", "Say what happens if they do nothing, and stop.", SIGNS.collaborative],
   ["that's okay too", "Say what happens if they do nothing, and stop.", SIGNS.collaborative],
-];
+])();
 
 /**
  * Words current models reach for in a blurb, a bio or an email that most writers rarely use. `checkProse` flags them in
@@ -133,7 +133,7 @@ export const OUT_OF_PLACE = [
  * outside code.
  * @type {PatternRule[]}
  */
-export const PATTERNS = [
+export const PATTERNS = /* @__PURE__ */ (() => [
   // "As an AI language model researcher" and "I'm sorry, but I can't help thinking" are a person's words: the model
   // phrase must not run on into a noun, and the refusal must name the request it refuses.
   {
@@ -166,7 +166,7 @@ export const PATTERNS = [
     re: /\boaicite\b|\bcontentReference\[|\bturn\d+(?:search|news|view|file)\d+\b|\butm_source=(?:chatgpt\.com|openai|copilot\.com)|\breferrer=grok\.com/giu,
     say: "A chatbot's citation markup or tracking tag. Remove it.",
   },
-];
+])();
 
 /** Up to twenty characters either side of a match. @param {string} line @param {number} at @param {number} length */
 function around(line, at, length) {

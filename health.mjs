@@ -256,7 +256,7 @@ export function authSpikeCheck(
 
 // The smallest GIF (1 x 1, transparent): what imagesCheck asks the Images binding to read.
 const PROBE_GIF = /* @__PURE__ */ Uint8Array.from(
-  atob("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"),
+  /* @__PURE__ */ atob("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"),
   (c) => c.charCodeAt(0),
 );
 

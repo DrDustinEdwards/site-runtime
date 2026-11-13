@@ -11,7 +11,7 @@ export const OWASP_SOURCE = /* @__PURE__ */ Object.freeze({
 });
 
 /** The headers OSHP recommends a response carry, as OSHP writes them. */
-export const OWASP_RECOMMENDED = Object.freeze({
+export const OWASP_RECOMMENDED = /* @__PURE__ */ Object.freeze({
   "Cache-Control": "no-store, max-age=0",
   "Clear-Site-Data": "\"cache\",\"cookies\",\"storage\"",
   "Content-Security-Policy": "default-src 'self'; form-action 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; upgrade-insecure-requests",

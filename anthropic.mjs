@@ -60,43 +60,43 @@ const DAY_MS = 86_400_000;
  * (build-with-claude/prompt-caching). Refresh from the page; never type a date from memory.
  * @type {Readonly<Record<string, Readonly<{ state: "active" | "deprecated" | "retired"; deprecated: string | null; retires: string | null; notBefore: string | null; cacheMin: number | null }>>>}
  */
-export const MODELS = Object.freeze({
-  "claude-sonnet-5": Object.freeze({
+export const MODELS = /* @__PURE__ */ Object.freeze({
+  "claude-sonnet-5": /* @__PURE__ */ Object.freeze({
     state: "active",
     deprecated: null,
     retires: null,
     notBefore: "2027-06-30",
     cacheMin: 1024,
   }),
-  "claude-opus-5-5": Object.freeze({
+  "claude-opus-5-5": /* @__PURE__ */ Object.freeze({
     state: "active",
     deprecated: null,
     retires: null,
     notBefore: "2027-09-22",
     cacheMin: 512,
   }),
-  "claude-opus-4-8": Object.freeze({
+  "claude-opus-4-8": /* @__PURE__ */ Object.freeze({
     state: "active",
     deprecated: null,
     retires: null,
     notBefore: "2027-05-28",
     cacheMin: 1024,
   }),
-  "claude-haiku-5-5": Object.freeze({
+  "claude-haiku-5-5": /* @__PURE__ */ Object.freeze({
     state: "active",
     deprecated: null,
     retires: null,
     notBefore: "2027-10-07",
     cacheMin: 512,
   }),
-  "claude-haiku-4-5-20251001": Object.freeze({
+  "claude-haiku-4-5-20251001": /* @__PURE__ */ Object.freeze({
     state: "active",
     deprecated: null,
     retires: null,
     notBefore: "2026-10-15",
     cacheMin: 4096,
   }),
-  "claude-sonnet-4-20250514": Object.freeze({
+  "claude-sonnet-4-20250514": /* @__PURE__ */ Object.freeze({
     state: "retired",
     deprecated: "2026-04-14",
     retires: "2026-06-15",
@@ -111,7 +111,7 @@ export const MODELS_CHECKED = "2026-11-07";
  * edit here and a release. `fast` for cheap, frequent calls (alt text, a score, a sample), `standard` for writing a
  * reader sees, `deep` for long reasoning. Each is a dated or pinned id in MODELS, never a family alias.
  */
-export const MODEL_IDS = Object.freeze({
+export const MODEL_IDS = /* @__PURE__ */ Object.freeze({
   fast: "claude-haiku-5-5",
   standard: "claude-sonnet-5",
   deep: "claude-opus-5-5",
@@ -234,7 +234,7 @@ export function modelStatus(id, now = Date.now()) {
 }
 
 /** What a reader may be shown for each kind of failure. */
-export const FAILURE_TEXT = Object.freeze({
+export const FAILURE_TEXT = /* @__PURE__ */ Object.freeze({
   truncated: "The answer was cut off before it finished.",
   context_window: "The request was too long for the assistant to answer.",
   refusal: "The assistant declined to answer this request.",

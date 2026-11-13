@@ -160,7 +160,7 @@ function check(schema, value) {
   throw errors.validation(schemaIssues(result.error.issues));
 }
 
-const CRLF2 = new Uint8Array([13, 10, 13, 10]);
+const CRLF2 = /* @__PURE__ */ new Uint8Array([13, 10, 13, 10]);
 // The longest a part's headers (or the preamble before the first boundary) may run before the body is refused.
 const PART_HEADER_LIMIT = 16 * 1024;
 

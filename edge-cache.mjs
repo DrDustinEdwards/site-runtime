@@ -33,7 +33,9 @@ export const UNCACHED = "private, no-store";
  * (developers.cloudflare.com/cache/concepts/cache-control/), so the Worker does (`compressUntransformed`, which the
  * gateway runs on every answer). It goes on pages, never on assets, which keep the edge's compression and cache.
  */
-export const PRIVATE_PAGE_HEADERS = Object.freeze({ "Cache-Control": `${UNCACHED}, no-transform` });
+export const PRIVATE_PAGE_HEADERS = /* @__PURE__ */ Object.freeze({
+  "Cache-Control": `${UNCACHED}, no-transform`,
+});
 
 const NO_TRANSFORM = /(?:^|,)\s*no-transform\s*(?:,|$)/i;
 

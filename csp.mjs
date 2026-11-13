@@ -79,7 +79,7 @@ export function buildPolicy(directives) {
  * new beacon, and a pinned hash would block it within weeks.
  */
 export const CLOUDFLARE_WEB_ANALYTICS = /* @__PURE__ */ Object.freeze({
-  script: Object.freeze([
+  script: /* @__PURE__ */ Object.freeze([
     "https://static.cloudflareinsights.com/beacon.min.js",
     "https://static.cloudflareinsights.com/beacon.min.js/",
   ]),
@@ -89,9 +89,9 @@ export const CLOUDFLARE_WEB_ANALYTICS = /* @__PURE__ */ Object.freeze({
    * It reports to cloudflareinsights.com, not the site's /cdn-cgi/rum, so connect-src names that origin
    * (developers.cloudflare.com/web-analytics/faq, "What do I need to add to my Content Security Policy").
    */
-  manual: Object.freeze({
-    script: Object.freeze(["https://static.cloudflareinsights.com/beacon.min.js"]),
-    connect: Object.freeze(["https://cloudflareinsights.com"]),
+  manual: /* @__PURE__ */ Object.freeze({
+    script: /* @__PURE__ */ Object.freeze(["https://static.cloudflareinsights.com/beacon.min.js"]),
+    connect: /* @__PURE__ */ Object.freeze(["https://cloudflareinsights.com"]),
   }),
 });
 

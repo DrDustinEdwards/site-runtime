@@ -17,7 +17,7 @@
  * cannot see remaining quota.
  */
 
-export const ENGINES = Object.freeze(["subscription", "api", "auto"]);
+export const ENGINES = /* @__PURE__ */ Object.freeze(["subscription", "api", "auto"]);
 
 /** @param {unknown} value */
 const isEngine = (value) => typeof value === "string" && ENGINES.includes(value);
@@ -79,14 +79,14 @@ export const PRICES_CHECKED = "2026-11-11";
  * @typedef {{ input: number, output: number, cacheWrite: number, cacheWrite1h: number, cacheRead: number }} Rates
  * @type {Readonly<Record<string, Readonly<Rates & { long?: Readonly<Rates & { above: number }> }>>>}
  */
-export const PRICES = Object.freeze({
-  "claude-haiku-5-5": Object.freeze({
+export const PRICES = /* @__PURE__ */ Object.freeze({
+  "claude-haiku-5-5": /* @__PURE__ */ Object.freeze({
     input: 0.1,
     output: 0.5,
     cacheWrite: 0.125,
     cacheWrite1h: 0.2,
     cacheRead: 0.01,
-    long: Object.freeze({
+    long: /* @__PURE__ */ Object.freeze({
       above: 100_000,
       input: 0.5,
       output: 2.5,
@@ -95,28 +95,28 @@ export const PRICES = Object.freeze({
       cacheRead: 0.05,
     }),
   }),
-  "claude-sonnet-5": Object.freeze({
+  "claude-sonnet-5": /* @__PURE__ */ Object.freeze({
     input: 2,
     output: 10,
     cacheWrite: 2.5,
     cacheWrite1h: 4,
     cacheRead: 0.2,
   }),
-  "claude-opus-5-5": Object.freeze({
+  "claude-opus-5-5": /* @__PURE__ */ Object.freeze({
     input: 4,
     output: 20,
     cacheWrite: 5,
     cacheWrite1h: 8,
     cacheRead: 0.2,
   }),
-  "claude-opus-4-8": Object.freeze({
+  "claude-opus-4-8": /* @__PURE__ */ Object.freeze({
     input: 5,
     output: 25,
     cacheWrite: 6.25,
     cacheWrite1h: 10,
     cacheRead: 0.5,
   }),
-  "claude-haiku-4-5-20251001": Object.freeze({
+  "claude-haiku-4-5-20251001": /* @__PURE__ */ Object.freeze({
     input: 1,
     output: 5,
     cacheWrite: 1.25,
