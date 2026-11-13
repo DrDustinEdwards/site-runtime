@@ -74,7 +74,7 @@ export function engineFor(settings, feature, now = Date.now()) {
 // higher price a request pays once its prompt passes `long.above` tokens; the page lists it for Haiku 5.5 only (over
 // 100,000 tokens, "Long context pricing"), and every other listed model bills its whole window at one rate.
 // Refresh from that page; never type a price from memory.
-export const PRICES_CHECKED = "2026-11-11";
+export const PRICES_CHECKED = "2026-11-13";
 /**
  * @typedef {{ input: number, output: number, cacheWrite: number, cacheWrite1h: number, cacheRead: number }} Rates
  * @type {Readonly<Record<string, Readonly<Rates & { long?: Readonly<Rates & { above: number }> }>>>}
@@ -94,6 +94,13 @@ export const PRICES = /* @__PURE__ */ Object.freeze({
       cacheWrite1h: 1,
       cacheRead: 0.05,
     }),
+  }),
+  "claude-sonnet-5-5": /* @__PURE__ */ Object.freeze({
+    input: 2,
+    output: 10,
+    cacheWrite: 2.5,
+    cacheWrite1h: 4,
+    cacheRead: 0.1,
   }),
   "claude-sonnet-5": /* @__PURE__ */ Object.freeze({
     input: 2,

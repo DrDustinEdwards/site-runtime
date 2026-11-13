@@ -225,7 +225,7 @@ test("the deprecations page's table, and what the daily check flags from it", ()
     "Intro | not a table row",
     "| API model name | Current state | Deprecated | Tentative retirement date |",
     "| :-- | :-- | :-- | :-- |",
-    "| claude-sonnet-5 | Active | N/A | Not sooner than June 30, 2027 |",
+    "| claude-sonnet-5-5 | Active | N/A | Not sooner than September 28, 2027 |",
     "| claude-opus-4-8 | Active | N/A | Not sooner than May 28, 2027 |",
     "| claude-haiku-4-5-20251001 | Deprecated | November 1, 2026 | December 20, 2026 |",
     "",
@@ -234,7 +234,7 @@ test("the deprecations page's table, and what the daily check flags from it", ()
   ].join("\n");
   const table = parseDeprecations(page);
   assert.deepEqual(Object.keys(table), [
-    "claude-sonnet-5",
+    "claude-sonnet-5-5",
     "claude-opus-4-8",
     "claude-haiku-4-5-20251001",
   ]);
