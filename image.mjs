@@ -648,9 +648,17 @@ export function defineImages({
         new Response("Method not allowed", { status: 405, headers: { allow: "GET, HEAD" } }),
       );
     const url = new URL(request.url);
-    const key = url.pathname.startsWith(prefix)
-      ? mediaKey(keyPrefix + originalKey(url.pathname.slice(prefix.length), url), within)
-      : null;
+    let key = null;
+    // The path is still percent-encoded; each segment is decoded as keyOfAddress decodes it, so a key with a space or
+    // another escaped character serves. A malformed escape is a 404.
+    if (url.pathname.startsWith(prefix)) {
+      try {
+        const path = url.pathname.slice(prefix.length).split("/").map(decodeURIComponent).join("/");
+        key = mediaKey(keyPrefix + originalKey(path, url), within);
+      } catch {
+        key = null;
+      }
+    }
     if (!key) return guarded(new Response("Not found", { status: 404 }));
     const object = await read(key);
     const policy =
