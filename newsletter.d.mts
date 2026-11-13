@@ -43,6 +43,7 @@ export function newsletter(options: {
   /** One mail per address in this window: 600000. */
   resendMs?: number;
 }): {
+  /** `email` is trimmed and lowercased first, so a change of case is the same row. */
   request(email: string, now?: Date): Promise<"sent" | "unavailable">;
   check(token: string | null, now?: Date): Promise<Confirmation>;
   confirm(token: string | null, now?: Date): Promise<Confirmation>;
