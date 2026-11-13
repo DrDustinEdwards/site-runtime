@@ -4,10 +4,10 @@
  * (./http-errors), so the app's `onError(honoErrorHandler())` answers it as problem details.
  */
 
-import { safeEqual } from "./compare.mjs";
 import { AppError, errors } from "./http-errors.mjs";
 import { clientIp } from "./http.mjs";
 import { OWASP_EVENTS, logEvent, requestFields } from "./log.mjs";
+import { operatorBearerProblem } from "./operator.mjs";
 import { limit, mustStop } from "./rate-limit/limit.mjs";
 
 /**
@@ -17,7 +17,8 @@ import { limit, mustStop } from "./rate-limit/limit.mjs";
 /**
  * The operator bearer: a Worker that calls this API (the admin MCP over a service binding) sends
  * `Authorization: Bearer <token>` and names the acting admin in `actorHeader`. The bearer proves the caller is the
- * operator and grants nothing by itself: `resolveActor` reads that admin from the site's own store, and the actor then
+ * operator and grants nothing by itself (held to ./operator's rules: a token shorter than MIN_TOKEN_LENGTH closes the
+ * door with a 503): `resolveActor` reads that admin from the site's own store, and the actor then
  * goes through the same checks a signed-in admin does. A request with no Authorization header passes untouched. Each
  * refusal is logged under OWASP's names with its reason, never the token.
  * @param {{ token: (c: Ctx) => string | undefined, actorHeader: string,
@@ -39,18 +40,18 @@ export function operatorBearer({ token, actorHeader, resolveActor, onActor, door
     const header = c.req.header("Authorization");
     if (header === undefined) return next();
     const request = c.req.raw;
-    const match = /^Bearer (\S+)$/.exec(header);
-    if (!match)
-      throw refused(
-        request,
-        "not bearer",
-        "Send the operator token as: Authorization: Bearer <token>.",
+    const problem = await operatorBearerProblem(header, token(c));
+    if (problem === "not configured") {
+      logEvent(
+        OWASP_EVENTS.signInFailure,
+        { ...requestFields(request), door, reason: problem },
+        { level: "warn" },
       );
-    const expected = token(c);
-    if (!expected)
-      throw refused(request, "not configured", "Operator access is not configured on this Worker.");
-    if (!(await safeEqual(match[1], expected)))
-      throw refused(request, "wrong token", "Operator token not recognized.");
+      throw errors.serviceUnavailable("Operator access is not configured on this Worker.");
+    }
+    if (problem === "not bearer")
+      throw refused(request, problem, "Send the operator token as: Authorization: Bearer <token>.");
+    if (problem) throw refused(request, problem, "Operator token not recognized.");
     const actorId = c.req.header(actorHeader)?.trim();
     if (!actorId)
       throw refused(request, "no actor", `Name the acting admin's user id in ${actorHeader}.`);

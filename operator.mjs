@@ -18,6 +18,7 @@
  * The site decides what its tools are and what each does; this owns only the door. `callOperator` is the caller's side
  * of the same wire format, so the two cannot drift.
  */
+import { bearerToken } from "./agent-keys.mjs";
 import { readCapped } from "./body.mjs";
 import { safeEqual } from "./compare.mjs";
 import { jsonResponse } from "./http.mjs";
@@ -50,21 +51,37 @@ function json(body, status = 200, headers = {}) {
 }
 
 /**
+ * Why an Authorization header does not open an operator door, or null when it does. Unset or shorter than
+ * MIN_TOKEN_LENGTH is "not configured" (the door is closed, whatever was sent); a presented token is refused on length
+ * before the hash, which an anonymous caller could otherwise ask for in any size. Shared by operatorResponse and
+ * ./hono operatorBearer, so both doors hold the same token to the same rules.
+ * @param {string | null | undefined} authorization
+ * @param {string | undefined} configured
+ * @returns {Promise<"not configured" | "not bearer" | "wrong token" | null>}
+ */
+export async function operatorBearerProblem(authorization, configured) {
+  if (!configured || configured.length < MIN_TOKEN_LENGTH) return "not configured";
+  const presented = bearerToken(authorization);
+  if (!presented) return "not bearer";
+  if (presented.length > configured.length * 2 || !(await safeEqual(presented, configured)))
+    return "wrong token";
+  return null;
+}
+
+/**
  * @param {Request} request
  * @param {string | undefined} configured
  * @returns {Promise<Response | null>}
  */
 async function bearerRefusal(request, configured) {
-  if (!configured || configured.length < MIN_TOKEN_LENGTH) {
+  const problem = await operatorBearerProblem(request.headers.get("authorization"), configured);
+  if (problem === "not configured") {
     return json(
       { ok: false, error: "The operator API is not configured on this deployment." },
       503,
     );
   }
-  const presented =
-    /^Bearer\s+(.+)$/i.exec((request.headers.get("authorization") ?? "").trim())?.[1] ?? "";
-  // Refused on length before the hash, which an anonymous caller could otherwise ask for in any size.
-  if (presented.length > configured.length * 2 || !(await safeEqual(presented, configured))) {
+  if (problem) {
     logEvent(
       OWASP_EVENTS.signInFailure,
       { ...requestFields(request), via: "operator-bearer" },

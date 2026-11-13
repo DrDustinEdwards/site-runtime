@@ -2249,8 +2249,8 @@ used, 410 expired. Claims are readable by whoever holds the token, so they carry
 ## Hono doors
 
 `./hono` has the middleware a Hono API shares, with no Hono import. `operatorBearer({ token, actorHeader, resolveActor,
-onActor })` is the operator door: a request with no Authorization header passes, a bearer is compared in constant time,
-the acting admin named in `actorHeader` is read by the site and set by `onActor`, and every refusal is logged under
+onActor })` is the operator door: a request with no Authorization header passes, a bearer is held to ./operator's
+rules (`operatorBearerProblem`: a token under MIN_TOKEN_LENGTH closes the door 503, constant-time compare), the acting admin named in `actorHeader` is read by the site and set by `onActor`, and every refusal is logged under
 OWASP's names and never with the token. `honoRateLimit({ limiter, bucket, rules, who, onUnavailable })` counts on the
 RateLimiter Durable Object per user (`who`) or edge address. Both throw ./http-errors' AppError.
 
