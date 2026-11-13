@@ -28,7 +28,7 @@ export const STRIPE_KEY_PATTERN = SECRET_SHAPES.stripeKey;
  * the text when it is cut off), a Slack token or webhook URL and an AWS access key id. redact.mjs is the stricter
  * reader for text relayed from outside; the shapes both know are its SECRET_SHAPES.
  */
-export const CREDENTIAL_PATTERN = new RegExp(
+export const CREDENTIAL_PATTERN = /* @__PURE__ */ new RegExp(
   [
     SECRET_SHAPES.anthropicKey,
     /\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,})/,
@@ -190,7 +190,7 @@ export function serverErrorHandler({ tokenPath = PREVIEW_TOKEN } = {}) {
 }
 
 /** serverErrorHandler with the preview link's token cut. */
-export const handleServerError = serverErrorHandler();
+export const handleServerError = /* @__PURE__ */ serverErrorHandler();
 
 /**
  * The fields that tie a log line to its request, for a site to spread into its lines: `request_id` (the `cf-ray`
