@@ -709,8 +709,8 @@ for all of them may be stored: its CSP trusts inline scripts by hash, not a per-
 it shows nothing signed in. Everything else stays `private, no-store`.
 
 **No analytics on private pages.** Cloudflare's Web Analytics injects its beacon into every HTML page of a zone with
-the automatic setup, and only public pages are counted. Every private page (admin, signed-in, any page drawn for one
-reader that is not public) exports `headers = () => PRIVATE_PAGE_HEADERS` (`private, no-store, no-transform`), most
+the automatic setup, and only public pages are counted. Every private page (admin pages, every signed-in page, the
+sign-in, sign-up and mailed-link confirm pages, account pages, and any page drawn for one reader) exports `headers = () => PRIVATE_PAGE_HEADERS` (`private, no-store, no-transform`), most
 simply once on the layout its routes sit under: Cloudflare changes nothing in a `no-transform` answer, so it injects no
 beacon. It compresses nothing there either, so the gateway runs `compressUntransformed` on every answer: a
 `no-transform` page (or data, script or SVG) with no Content-Encoding gets the coding its reader takes (br, else gzip,
@@ -719,7 +719,7 @@ from `request.cf.clientAcceptEncoding`, since Cloudflare rewrites the Accept-Enc
 error page and on a render for a cookie. A Worker that is not `./worker` (Carrel, the Capsid Portal, the MCP consent
 page) sets the same header and runs `compressUntransformed` itself. A child route that exports `headers` of its own
 replaces its layout's, so it returns `PRIVATE_PAGE_HEADERS` too. The signed-in crawl (`./signed-in-crawl`) fails a page it reads
-without `no-transform`.
+without `no-transform`, and the live sign-in check (`./sign-in-live`) fails a sign-in or confirm page without it.
 
 ```jsonc
 // wrangler.jsonc: the gateway runs on every request; the Renderer's responses are stored. No `cross_version_cache`,

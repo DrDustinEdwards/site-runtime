@@ -5,7 +5,7 @@
 
 export const SHARED_CACHE_CONTROL: "public, max-age=0";
 export const UNCACHED: "private, no-store";
-/** Every private page's `headers`: UNCACHED plus no-transform, so no Web Analytics beacon; the Worker compresses it (compressUntransformed). */
+/** Every private page's `headers` (admin, signed-in, sign-in, sign-up, link-confirm and account pages): UNCACHED plus no-transform, so no Web Analytics beacon; the Worker compresses it (compressUntransformed). */
 export const PRIVATE_PAGE_HEADERS: Readonly<{ "Cache-Control": "private, no-store, no-transform" }>;
 /** A no-transform text, JSON, JavaScript, XML or SVG answer with a body and no Content-Encoding, named br or gzip for this reader so the runtime encodes it, Vary: Accept-Encoding; anything else as it was. */
 export function compressUntransformed(response: Response, request?: Request): Response;
