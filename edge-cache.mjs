@@ -299,10 +299,17 @@ function notModified(response, request) {
 
 /**
  * A page rendered for one reader, on a path that never reaches the Renderer: whatever its route said, it leaves
- * `private, no-store` with no edge header and no tag, so neither the edge nor a browser keeps it.
+ * `private, no-store` with no edge header and no tag, so neither the edge nor a browser keeps it. A WebSocket upgrade
+ * (101, or a Response carrying its `webSocket`) is the socket itself, not a page, and comes back as it is: rebuilding
+ * it would drop the socket (the same rule as ./headers applyHeaderSet).
  * @param {Response} response
  */
 export function privateRender(response) {
+  if (
+    response.status === 101 ||
+    /** @type {Response & { webSocket?: unknown }} */ (response).webSocket
+  )
+    return response;
   const headers = new Headers(response.headers);
   headers.set("Cache-Control", UNCACHED);
   headers.delete(EDGE_CACHE_HEADER);

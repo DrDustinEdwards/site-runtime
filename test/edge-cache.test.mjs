@@ -7,6 +7,7 @@ import {
   compressUntransformed,
   forReader,
   forRenderer,
+  privateRender,
   publicPageHeaders,
   recordPurge,
   settleCacheHeaders,
@@ -255,6 +256,14 @@ test("a failed purge is kept until one succeeds, and /health warns with only its
 // A private page is kept out of Web Analytics by no-transform, which also stops the edge compressing it: the Worker
 // names the coding the reader takes (its own header, not the one Cloudflare rewrites) and keeps no-transform on an
 // error page or a cookie's render, where the beacon would otherwise get in.
+test("a WebSocket upgrade is not a page: privateRender returns it with its socket, a page it rebuilds as private", () => {
+  const upgrade = Object.assign(new Response(null), { webSocket: {} });
+  assert.equal(privateRender(upgrade), upgrade);
+  const page = new Response("ok", { headers: { "Cache-Control": "public, max-age=0" } });
+  assert.notEqual(privateRender(page), page);
+  assert.equal(privateRender(page).headers.get("Cache-Control"), "private, no-store");
+});
+
 test("a private page keeps no-transform and is compressed for the coding its reader takes", () => {
   const page = (/** @type {Record<string, string>} */ extra = {}) =>
     new Response("<p>mine</p>", {
