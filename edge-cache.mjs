@@ -26,7 +26,8 @@ export const SHARED_CACHE_CONTROL = "public, max-age=0";
 export const UNCACHED = "private, no-store";
 
 /**
- * The `headers` of every private page (admin, signed-in, any page drawn for one reader that is not public): UNCACHED
+ * The `headers` of every private page, the network's one definition of one: admin pages, every signed-in page, the
+ * sign-in, sign-up and mailed-link confirm pages, account pages, and any page drawn for one reader. UNCACHED
  * plus `no-transform`, so the Web Analytics beacon Cloudflare injects into HTML never reaches it
  * (developers.cloudflare.com/web-analytics/faq/) and only public pages are counted. Cloudflare then compresses nothing
  * (developers.cloudflare.com/cache/concepts/cache-control/), so the Worker does (`compressUntransformed`, which the

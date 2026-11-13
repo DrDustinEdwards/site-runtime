@@ -72,6 +72,8 @@ const json = (/** @type {Got} */ r) => {
   }
 };
 const noStore = (/** @type {Got} */ r) => /no-store/i.test(r.headers.get("cache-control") ?? "");
+const noTransform = (/** @type {Got} */ r) =>
+  /no-transform/i.test(r.headers.get("cache-control") ?? "");
 const noindex = (/** @type {Got} */ r) =>
   /noindex/i.test(r.headers.get("x-robots-tag") ?? "") ||
   [...r.body.matchAll(/<meta\b[^<>]*>/gi)].some(
@@ -131,8 +133,20 @@ export async function signInFindings({ origin, from, probes }) {
         `${what} has no Cache-Control: no-store (got "${r.headers.get("cache-control") ?? ""}")`,
       );
   };
+  // A sign-in or confirm page is a private page (PRIVATE_PAGE_HEADERS, ./edge-cache): without no-transform Cloudflare
+  // injects the Web Analytics beacon into it.
+  const privatePage = (/** @type {Got} */ r, /** @type {string} */ what) => {
+    private_(r, what);
+    if (!noTransform(r))
+      flag(
+        "analytics",
+        "error",
+        r.url,
+        `${what} has no Cache-Control: no-transform, so Cloudflare adds Web Analytics to it (use PRIVATE_PAGE_HEADERS)`,
+      );
+  };
 
-  // The sign-in page: noindex and no-store (D10), the email field offers passkeys (A2), Turnstile on the form (B5).
+  // The sign-in page: noindex, no-store (D10) and no-transform (analytics), the email field offers passkeys (A2), Turnstile on the form (B5).
   const pages = new Set();
   for (const path of ["/login", "/signin", "/sign-in"]) {
     const page = await follow(`${base}${path}`);
@@ -144,7 +158,7 @@ export async function signInFindings({ origin, from, probes }) {
       continue;
     pages.add(page.url);
     found.push(`sign-in page ${new URL(page.url).pathname}`);
-    private_(page, "the sign-in page");
+    privatePage(page, "the sign-in page");
     if (!noindex(page))
       flag(
         "D10",
@@ -262,7 +276,7 @@ export async function signInFindings({ origin, from, probes }) {
       (confirm.status === 200 && /<form\b[^>]*method=["']?post/i.test(confirm.body))
     ) {
       if (confirm.status === 200) {
-        private_(confirm, "the confirm page");
+        privatePage(confirm, "the confirm page");
         if (!noindex(confirm)) flag("D10", "error", confirm.url, "the confirm page has no noindex");
       }
     } else

@@ -19,7 +19,12 @@ const COOKIE =
 const routes = {
   "GET /login": (bad) => [
     200,
-    { "content-type": "text/html", ...PRIVATE, ...(bad ? {} : { "x-robots-tag": "noindex" }) },
+    {
+      "content-type": "text/html",
+      ...(bad
+        ? PRIVATE
+        : { "cache-control": "private, no-store, no-transform", "x-robots-tag": "noindex" }),
+    },
     `<form><input type="email" name="email" autocomplete="${bad ? "email" : "username webauthn"}">${bad ? "" : '<div data-key="0x4AAAAAAFsample00"></div>'}</form>`,
   ],
   "GET /api/auth/ok": () => [200, { "content-type": "application/json" }, '{"ok":true}'],
@@ -133,6 +138,7 @@ test("PLANT: each gap fails its own item, and no cookie value is printed", async
     "G1",
     "H2",
     "H4",
+    "analytics",
   ]);
   assert.doesNotMatch(JSON.stringify(result.findings), /=x\b/);
 });
