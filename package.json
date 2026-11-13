@@ -659,7 +659,7 @@
     "@better-auth/passkey": "1.7.18",
     "@cloudflare/workers-oauth-provider": "1.2.4",
     "@cloudflare/workers-types": "5.20261108.1",
-    "@dustinedwards/devkit": "github:DrDustinEdwards/devkit#v0.43.0",
+    "@dustinedwards/devkit": "github:DrDustinEdwards/devkit#v0.45.0",
     "@types/node": "24.19.2",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",

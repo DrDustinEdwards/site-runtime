@@ -1060,7 +1060,7 @@ parameters dropped), host and each public cookie; every other request is rendere
 `private, no-store` unless its route set a policy of its own. A route marks its page shared (`publicPageHeaders`); a site whose routes name
 no Cache-Control passes `publicPages(url, env)` instead, and the Renderer stores each such 200 under the tags it
 returns; a page marked shared with no edge lifetime of its own is stored for publicPageHeaders' day. A step's answer, like a
-live page, leaves `private, no-store` unless it set a policy of its own; no site hook rewrites Cache-Control. Each render sets `serverTimingContext` (./context;
+live page, leaves `private, no-store` unless it set a policy of its own; no site hook rewrites Cache-Control, and a step's WebSocket upgrade (101) is returned as it is, since rebuilding it would drop the socket. Each render sets `serverTimingContext` (./context;
 `timed(getTimings(context), name, fn)` in a loader adds a mark to the page's Server-Timing). Every render gets a nonce; a policy that names it is renewed
 per reader; a 304 leaves out the policy (RFC 9111 4.3.4: the browser updates its stored headers from a 304). Every HTML
 answer carries the Speculation-Rules header; a 404 goes through `onNotFound` (site-api's tombstones) and is counted
