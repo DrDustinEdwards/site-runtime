@@ -17,12 +17,12 @@ export function isDeferred(): boolean;
 export function isHydrated(): boolean;
 /** Marks <html> and dispatches HYDRATED_EVENT; ./deferred-scripts calls it. */
 export function markHydrated(): void;
-/** Runs the deferred boot now; the same promise on every call until one fails, then a fresh try. Resolves once the client entry has loaded. */
+/** Runs the deferred boot now; the same promise on every call, a failed one included (a boot is never retried). Resolves once the client entry has loaded. */
 export function hydrateNow(): Promise<void>;
 /**
  * Hydrates on the first press, hover or focus of a control matching `selector`, and hands the press on once the app is
- * live. `press` runs inside the press (return false when it needs no app); `warm` on hover or focus. False on a page
- * that hydrates on load.
+ * live. `press` runs inside the press (return false when it needs no app); `warm` on hover or focus. A failed boot
+ * turns the waiting press into a full page load and intercepts nothing after. False on a page that hydrates on load.
  */
 export function hydrateOnIntent(options: {
   selector: string;
