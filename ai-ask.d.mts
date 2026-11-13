@@ -30,6 +30,7 @@ export function guardAnswerStream(
     resolveVisible: (slugs: string[]) => Promise<Set<string>>;
     citedSlugs: (chunks: unknown[]) => string[];
     noAnswerText: string;
+    /** How long the upstream may send nothing before the answer ends: 20000 ms. */
     timeoutMs?: number;
     checkProse?: (paragraph: string) => Array<{ check: string; severity: string }>;
     onRefused?: () => void;
