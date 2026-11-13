@@ -12,6 +12,16 @@ export type RedactionKind =
   | "assignment"
   | "high-entropy";
 
+/** The secret shapes log.mjs's scrubText shares (global patterns). */
+export const SECRET_SHAPES: {
+  privateKey: RegExp;
+  anthropicKey: RegExp;
+  stripeKey: RegExp;
+  slackToken: RegExp;
+  slackWebhook: RegExp;
+  awsAccessKeyId: RegExp;
+};
+
 export interface Redacted {
   text: string;
   /** How many values of each kind were replaced; empty when none were. */

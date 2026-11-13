@@ -96,6 +96,32 @@ test("the canonical move, security.txt and a cross-site write are answered befor
   assert.equal(stored.length, 0);
 });
 
+test("a cross-site write is refused before a site step sees it; a bearer caller with no Origin passes", async () => {
+  /** @type {string[]} */
+  const reached = [];
+  const { fetch } = harness({
+    steps: [
+      (/** @type {Request} */ r) =>
+        (reached.push(r.method), new Response("ok")),
+    ],
+  });
+  const refused = await fetch(
+    new Request("https://example.com/api/app/save", {
+      method: "POST",
+      headers: { "Sec-Fetch-Site": "cross-site", Origin: "https://evil.example" },
+    }),
+  );
+  assert.equal(refused.status, 403);
+  assert.deepEqual(reached, []);
+  const bearer = await fetch(
+    new Request("https://example.com/api/app/save", {
+      method: "POST",
+      headers: { Authorization: "Bearer x" },
+    }),
+  );
+  assert.equal(await bearer.text(), "ok");
+});
+
 test("a site step answers first with the set, private unless it says otherwise; a cron's lists may be a promise", async () => {
   /** @type {unknown[]} */
   const crons = [];

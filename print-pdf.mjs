@@ -9,6 +9,8 @@
  * Either one checks that what came back is a PDF, so a 200 that is not one never replaces one that is.
  */
 
+import { withTimeout } from "./time.mjs";
+
 /** The attribute Paged.js's `after` hook sets on <html> when it has laid out every page. */
 export const PAGED_DONE_ATTRIBUTE = "data-pagedjs-done";
 
@@ -106,25 +108,6 @@ export async function quickPdf(
 }
 
 /**
- * Reject when `promise` has not settled in `ms`.
- * @template T
- * @param {Promise<T>} promise
- * @param {number} ms
- * @param {string} what
- * @returns {Promise<T>}
- */
-function within(promise, ms, what) {
-  /** @type {ReturnType<typeof setTimeout> | undefined} */
-  let timer;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${what} timed out after ${ms} ms.`)), ms);
-  });
-  return /** @type {Promise<T>} */ (Promise.race([promise, timeout])).finally(() =>
-    clearTimeout(timer),
-  );
-}
-
-/**
  * A PDF of a Paged.js page through a full browser. `origin` becomes the page's <base>, since the page has no address
  * of its own and names its scripts and fonts by path. Waits for the network, the fonts and Paged.js's completion mark,
  * then prints with the page's own @page size; the whole render is bounded by `timeoutMs`.
@@ -174,7 +157,11 @@ export async function pagedPdf(
       assertPdf(bytes, what);
       return bytes;
     };
-    return await within(render(), timeoutMs, `The render of ${what}`);
+    return await withTimeout(
+      render(),
+      timeoutMs,
+      `The render of ${what} timed out after ${timeoutMs} ms.`,
+    );
   } finally {
     await browser.close();
   }

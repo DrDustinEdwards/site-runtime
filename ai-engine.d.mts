@@ -51,6 +51,8 @@ export type CostCounts = {
   cacheWrite1h?: number;
 };
 
+/** Every input token of a request (input, cache reads and both cache writes): what a long-prompt price is decided on. */
+export function promptOf(usage: CostCounts): number;
 /** What one call cost in millionths of a dollar, or null for a model with no listed price. With `long` (anthropic.mjs
  * Usage), that part is priced at the model's long-prompt rate; without it, the usage is one request. */
 export function costMicros(model: string, usage: CostCounts & { long?: CostCounts }): number | null;

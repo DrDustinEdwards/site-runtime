@@ -68,6 +68,7 @@ import {
 } from "../anthropic.mjs";
 import { MCP_PER_MINUTE, toolListHash, toolListProblems } from "../mcp-server.mjs";
 import { checkProse } from "../prose.mjs";
+import { errorMessage } from "../log.mjs";
 
 const TIMEOUT_MS = 10_000;
 const VERSION = "2026-07-28";
@@ -168,7 +169,7 @@ async function get(url, init = {}) {
     const why =
       error instanceof Error && error.name === "TimeoutError"
         ? `no answer in ${TIMEOUT_MS / 1000} s`
-        : `could not fetch (${error instanceof Error ? error.message : String(error)})`;
+        : `could not fetch (${errorMessage(error)})`;
     return { url: requested, res: null, why };
   }
 }

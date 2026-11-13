@@ -5,6 +5,21 @@
  * Every encoder takes bytes (a Uint8Array or ArrayBuffer) or a string, which is encoded as UTF-8 first.
  */
 
+/**
+ * The parts' bytes one after another, in one new array.
+ * @param {readonly Uint8Array[]} parts
+ * @returns {Uint8Array<ArrayBuffer>}
+ */
+export function concatBytes(...parts) {
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let at = 0;
+  for (const p of parts) {
+    out.set(p, at);
+    at += p.length;
+  }
+  return out;
+}
+
 /** @param {Uint8Array | ArrayBuffer | string} input */
 function bytesOf(input) {
   return typeof input === "string" ? new TextEncoder().encode(input) : new Uint8Array(input);

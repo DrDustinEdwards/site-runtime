@@ -7,6 +7,8 @@
  * by the name `confirmationSatisfied` inside each destructive intent's branch.
  */
 
+import { textResponse } from "./http.mjs";
+
 /**
  * Whether the request says the person confirmed: `confirmed=1`, and the typed word (any case, trimmed) when the page
  * asked for one.
@@ -31,5 +33,5 @@ export function confirmationSatisfied(form, word) {
  * @returns {Response}
  */
 export function confirmationRequired() {
-  return new Response("Confirm this change first. Nothing was changed.", { status: 400 });
+  return textResponse("Confirm this change first. Nothing was changed.", 400);
 }

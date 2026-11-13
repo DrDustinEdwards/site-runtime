@@ -28,10 +28,10 @@
  * where only custom domains get functional cache operations) or `backupTtlMs` is 0, every request reads.
  */
 
-export { deployedAt, deployedSha } from "./deploy.mjs";
 import { PURGE_FAILED_KEY } from "./edge-cache.mjs";
-import { logEvent, scrubText } from "./log.mjs";
+import { errorMessage, logEvent, scrubText } from "./log.mjs";
 import { authEventCounts } from "./sign-in-account.mjs";
+import { withTimeout } from "./time.mjs";
 
 /** The longest `detail` a check reports. */
 export const CHECK_DETAIL_MAX = 200;
@@ -151,16 +151,11 @@ export async function healthResponse({
  * @returns {Promise<CheckResult>}
  */
 async function runCheck({ name, level = "fail", alert = false, run }, timeoutMs) {
-  /** @type {ReturnType<typeof setTimeout> | undefined} */
-  let timer;
   /** @type {string | undefined} */
   let detail;
   let failed = false;
   try {
-    const timeout = new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`timed out after ${timeoutMs} ms`)), timeoutMs);
-    });
-    const value = await Promise.race([Promise.resolve().then(run), timeout]);
+    const value = await withTimeout(Promise.resolve().then(run), timeoutMs);
     if (value === false) failed = true;
     else if (value && typeof value === "object" && "ok" in value && value.ok === false) {
       failed = true;
@@ -168,9 +163,7 @@ async function runCheck({ name, level = "fail", alert = false, run }, timeoutMs)
     }
   } catch (error) {
     failed = true;
-    detail = error instanceof Error ? error.message : String(error);
-  } finally {
-    clearTimeout(timer);
+    detail = errorMessage(error);
   }
   if (!failed) return { name, status: "pass" };
   const cut = detail === undefined ? undefined : scrubText(detail).slice(0, CHECK_DETAIL_MAX);

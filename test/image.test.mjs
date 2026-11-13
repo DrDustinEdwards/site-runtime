@@ -532,6 +532,19 @@ test("mediaKey refuses a path that climbs out, an empty segment or a key outside
     assert.equal(mediaKey(bad, "uploads/"), null, bad);
 });
 
+test("serve decodes the path, so the key keyOfAddress reads from an address is the one it serves", async () => {
+  /** @type {string[]} */
+  const read = [];
+  const serve = (/** @type {string} */ path) =>
+    images.serve(new Request(`https://example.com${path}`), {
+      read: async (key) => (read.push(key), object()),
+    });
+  assert.equal((await serve("/media/2026/a%20b.jpg")).status, 200);
+  assert.equal((await serve("/media/%zz.jpg")).status, 404);
+  assert.equal((await serve("/media/%2e%2e/a.jpg")).status, 404);
+  assert.deepEqual(read, ["2026/a b.jpg"]);
+});
+
 test("keyOfAddress and keysAtAddresses read a stored key back out of the addresses a page writes", async () => {
   const { keyOfAddress, keysAtAddresses } = await import("../image.mjs");
   const site = { origins: ["https://example.com"], keyPrefix: "media/", within: "media/" };

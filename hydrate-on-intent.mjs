@@ -105,12 +105,16 @@ function startContext(context) {
 
 /** @type {Promise<void> | null} */
 let running = null;
+/** Set once the boot has failed: the page stays as the server drew it and no press is intercepted again. */
+let failed = false;
 
 /**
  * Runs the page's React Router boot now: the module preloads, the context and its stream, the route modules, then the
  * client entry, which hydrates the page. Resolves once the entry has loaded (hydration follows; wait for
- * HYDRATED_EVENT for the app). Calling it again returns the same promise; on a page that hydrates on load it does
- * nothing.
+ * HYDRATED_EVENT for the app). Calling it again returns the same promise, a failed one included: a browser keeps a module
+ * that failed to load failed, and the loader-data stream cannot be started twice, so a boot is never retried (the
+ * presses fall back to the page's own behavior instead, as hydrateOnIntent does). On a page that hydrates on load it
+ * does nothing.
  * @returns {Promise<void>}
  */
 export function hydrateNow() {
@@ -147,7 +151,10 @@ export function hydrateNow() {
     );
     await load(boot.entry);
   })();
-  running.catch((error) => console.error("hydrate-on-intent: the app did not load", error));
+  running.catch((error) => {
+    failed = true;
+    console.error("hydrate-on-intent: the app did not load", error);
+  });
   return running;
 }
 
@@ -161,7 +168,10 @@ export function hydrateNow() {
  * - `warm(control)` runs when a pointer rests on a control or the focus reaches one, to ready the press.
  *
  * The control is found again by its position among the matches once the app is live, and gets the focus back if it
- * had it, then a click. Returns false on a page that hydrates on load, where nothing is listened for.
+ * had it, then a click. If the boot fails (a chunk that did not load on a flaky network), the press that was waiting
+ * becomes a full page load (a link's own address, else this page again), and later presses are no longer intercepted,
+ * so they do what the server's page does by itself. Returns false on a page that hydrates on load, where nothing is
+ * listened for.
  * @param {{ selector: string, press?: (control: HTMLElement) => boolean, warm?: (control: HTMLElement) => void }} options
  */
 export function hydrateOnIntent({ selector, press, warm }) {
@@ -174,7 +184,7 @@ export function hydrateOnIntent({ selector, press, warm }) {
     "click",
     (event) => {
       const found = control(event);
-      if (!(found instanceof HTMLElement)) return;
+      if (failed || !(found instanceof HTMLElement)) return;
       event.preventDefault();
       event.stopImmediatePropagation();
       pending =
@@ -184,13 +194,19 @@ export function hydrateOnIntent({ selector, press, warm }) {
               focused: document.activeElement === found,
             }
           : null;
-      void hydrateNow();
+      hydrateNow().catch(() => {
+        if (!pending) return;
+        pending = null;
+        // The press was held for an app that will not come: the server's page does it with a full load instead.
+        if (found instanceof HTMLAnchorElement && found.href) location.assign(found.href);
+        else location.reload();
+      });
     },
     true,
   );
   const ready = (/** @type {Event} */ event) => {
     const found = control(event);
-    if (!(found instanceof HTMLElement)) return;
+    if (failed || !(found instanceof HTMLElement)) return;
     warm?.(found);
     void hydrateNow();
   };

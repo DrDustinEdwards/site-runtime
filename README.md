@@ -486,8 +486,7 @@ return healthResponse({
 
 `./health-snapshot` keeps /health's verdict in KV for a page to show without running the checks. The site's scheduled
 job calls `storeHealthSnapshot({ kv, answer })` and is the only writer, so the snapshot's age is that job's liveness.
-`readHealthTile({ kv })` answers fresh, stale (after three intervals), missing or unreadable, and `formatAge` words the
-age.
+`readHealthTile({ kv })` answers fresh, stale (after three intervals), missing or unreadable.
 
 `./health-alert` mails a person once when a check changes state: `notifyOnChange({ db, results, send, site })` compares
 the results with D1 `health_state` (`HEALTH_STATE_SQL`), mails when a check flipped (a new one only when failing), and
@@ -966,7 +965,7 @@ fixed date with a test that fails a month before it lapses, the prompt to confir
 
 `./encoding` is the one set of byte encodings, Web APIs only (no Buffer, no `jose`): `toHex`/`fromHex`,
 `toBase64`/`fromBase64` (whitespace ignored, as GitHub wraps it), `base64url`/`fromBase64url` (no padding),
-`fromBase64Text`/`fromBase64urlText` (decoded to UTF-8 text) and `sha256`/`sha256Hex`, `hmacSha256`/`hmacSha256Hex(secret, payload)` (bytes or lowercase hex), `crc32(bytes)` (the IEEE check PNG and ZIP use, unsigned), `canonicalJson(value)` (keys sorted at every depth, undefined dropped: the input to a hash of a value, as `toolListHash` uses) and `fnv1a32` (a short fingerprint, never a security boundary). `pageCursor(scope, position)` is a list's opaque next-page cursor (base64url JSON of the tool or route it came from and a page or offset), and `readPageCursor(scope, cursor)` gives its position back, or null for a cursor another list issued. Every
+`fromBase64Text`/`fromBase64urlText` (decoded to UTF-8 text) and `sha256`/`sha256Hex`, `hmacSha256`/`hmacSha256Hex(secret, payload)` (bytes or lowercase hex), `concatBytes(...parts)` (one array of the parts in order), `crc32(bytes)` (the IEEE check PNG and ZIP use, unsigned), `canonicalJson(value)` (keys sorted at every depth, undefined dropped: the input to a hash of a value, as `toolListHash` uses) and `fnv1a32` (a short fingerprint, never a security boundary). `pageCursor(scope, position)` is a list's opaque next-page cursor (base64url JSON of the tool or route it came from and a page or offset), and `readPageCursor(scope, cursor)` gives its position back, or null for a cursor another list issued. Every
 encoder takes bytes or a string, which is encoded as UTF-8.
 
 ## The server entry
@@ -1053,8 +1052,8 @@ export default siteWorker(site);
 The gateway runs, in order: the canonical move (first, with the set built for where it points; `canonical.before` is
 a site's own earlier move and `canonical.keep(url)` keeps an address's slash), maintenance,
 `/.well-known/security.txt`, the standard files, the speculation rules file, CSP reports (per `clientIp` through
-`CSP_REPORT_RATE_LIMIT`; no binding drops them), the operator API, the site's steps, the cross-site write refusal (all
-but `crossSiteExempt`, default `/api/auth/`), then the page. A read with no cookie but `publicCookies` that `cacheable` does not
+`CSP_REPORT_RATE_LIMIT`; no binding drops them), the operator API, the cross-site write refusal (all
+but `crossSiteExempt`, default `/api/auth/`; a step's write is checked too), the site's steps, then the page. A read with no cookie but `publicCookies` that `cacheable` does not
 refuse goes to the Renderer, which the edge keeps only when it is shared (anything else carries an edge `no-store`), keyed on path, query (tracking
 parameters dropped), host and each public cookie; every other request is rendered live with its own nonce and leaves
 `private, no-store` unless its route set a policy of its own. A route marks its page shared (`publicPageHeaders`); a site whose routes name
@@ -1099,8 +1098,7 @@ so an IN list or a multi-row insert built from data goes through here. `inList(c
 `notInList(column, values)` bind the whole list as one JSON parameter (`IN (SELECT value FROM json_each(?))`,
 [JSON functions](https://developers.cloudflare.com/d1/sql-api/query-json/)): any length, one statement, so an UPDATE
 or DELETE stays atomic; an empty list matches nothing (inList) or everything (notInList). For inserts and loops: `chunked(items, size = IN_LIST_CHUNK)` (90,
-room for the statement's other parameters), `inChunks(items, (part) => query)` (one slice after another, rows in
-order, nothing run for an empty list) and `rowsPerInsert(columns)`. A LIKE pattern from what someone typed goes through
+room for the statement's other parameters), and `rowsPerInsert(columns)`. A LIKE pattern from what someone typed goes through
 `likeContains(column, text)` or `likeStartsWith(column, text)` (Drizzle SQL ending `ESCAPE '\'`), or `escapeLike(text)`
 for hand-written SQL, so `%` and `_` match themselves. A newest-first page goes by `encodeCursor(at, id)`, `decodeCursor(text)` and
 `olderThan(atColumn, idColumn, at, id)` (order by both, descending): a time alone skips the rows that share the last
@@ -1125,7 +1123,7 @@ entry of its own and never reaches a Worker bundle.
 
 `./deploy`: `deployedSha(env, { fallback? })` is the deployed commit from the DEPLOY_SHA var devkit's worker-deploy
 sets (trimmed, lowercased, 7 to 40 hex, else `fallback`, undefined by default), and `deployedAt(env)` is when this
-version was deployed, from the CF_VERSION_METADATA binding (cronCheck's `deployedAt`). `./health` re-exports both. The
+version was deployed, from the CF_VERSION_METADATA binding (cronCheck's `deployedAt`). The
 shared Worker's request log, the MCP doors and the static site read the sha through it.
 
 `./health-read`: reading another Worker's /health answer, the same way everywhere. `parseHealth(text)` and
@@ -1157,7 +1155,7 @@ on a ref that cannot exist answers 422). `PR_URL_SOURCE` and `parsePrUrl(url)` r
 
 `./time`: `parseSqlTime(value)` is epoch milliseconds of a stored time: D1's zoneless "YYYY-MM-DD HH:MM:SS" read as
 UTC, an ISO time with its zone kept, a bare day as its UTC midnight, and null for nothing or nonsense. `toDate(ms)` and
-`toMs(date)` convert Drizzle's nullable timestamps, keeping null as null. `toSqlTime(date)` is D1's "YYYY-MM-DD HH:MM:SS" in UTC, the inverse of `parseSqlTime`. `monthKey(date)` is its UTC month as "YYYY-MM".
+`toMs(date)` convert Drizzle's nullable timestamps, keeping null as null. `toSqlTime(date)` is D1's "YYYY-MM-DD HH:MM:SS" in UTC, the inverse of `parseSqlTime`. `monthKey(date)` is its UTC month as "YYYY-MM" and `dayKey(date)` its UTC day as "YYYY-MM-DD". `withTimeout(promise, ms, message?, onTimeout?)` is the one timeout race (cron jobs, health checks, the ask guard, PDF renders).
 
 `./google-service-account`: `parseServiceAccountKey(raw, name)` checks a pasted key file (JSON, a service account,
 a PKCS#8 key, Google's own token_uri) and gives `{ ok: true, key }` or `{ ok: false, state, detail }`;
@@ -1185,7 +1183,7 @@ Worker relays from outside (a CI log handed to an agent). It over-redacts on pur
 starting `=`, `+`, `-`, `@`, a tab, CR or LF, or the full-width ＝ ＋ － ＠, gets an apostrophe first, so a spreadsheet opens
 it as text ([OWASP CSV Injection](https://owasp.org/www-community/attacks/CSV_Injection)); a number, a date, or text
 that is only a number stays as it is. `parseCsv(text)` reads it back (BOM, CRLF, LF or CR, quoted fields).
-`csvResponse(csv, filename, init?)` is the download answer (`CSV_CONTENT_TYPE` and an RFC 6266 attachment name), and
+`csvResponse(csv, filename, init?)` is the download answer (./r2-object `attachmentResponse` with `CSV_CONTENT_TYPE`: nosniff and no-store unless `init` says otherwise), and
 `./csv-client` `downloadCsv(filename, csv)` saves one in the browser.
 
 ## Signed links
@@ -1589,13 +1587,13 @@ its own and the notices by passing one function.
 - The WebAuthn Signal API (A6), in `./sign-in-client`. Each call runs only where the browser has it (Chrome 132,
   Safari 26) and swallows a refusal; `rpId` defaults to the page's host. When a site calls each:
 
-  | Call                                                   | When                                                                                                                                                                                                                                                          |
-  | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | `signInWithPasskey(authClient, { autoFill })`          | every passkey button and autofill, in place of `authClient.signIn.passkey(...)`: on `PASSKEY_NOT_FOUND` (deleted elsewhere) it signals that credential unknown, and on success it keeps the passkey's user handle (`passkeyUserHandle()`) for the calls below |
-  | `signalPasskeys({ credentialIds, name, displayName })` | after a passkey sign-in lands, and each time the account page's passkey list loads, with the rows' `credentialId`s and the account's address as `name`                                                                                                        |
-  | `signalCurrentUserDetails({ name, displayName })`      | after the email change is made (on the page `emailLinkResult` says `done: "changed"`, `name` the new address) and after the person renames themselves                                                                                                         |
-  | `signalAllAcceptedCredentials({ credentialIds })`      | inside `signalPasskeys`; alone where only the list matters                                                                                                                                                                                                    |
-  | `signalUnknownCredential({ credentialId })`            | after the person deletes a passkey on the site, with that row's `credentialId`                                                                                                                                                                                |
+  | Call                                                         | When                                                                                                                                                                                                                                                                               |
+  | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `signInWithPasskey(authClient, { autoFill })`                | every passkey button and autofill, in place of `authClient.signIn.passkey(...)`: on `PASSKEY_NOT_FOUND` (deleted elsewhere) it signals that credential unknown, and on success it keeps the passkey's user handle with its account (`passkeyUserHandle(user)`) for the calls below |
+  | `signalPasskeys({ user, credentialIds, name, displayName })` | after a passkey sign-in lands, and each time the account page's passkey list loads, with the signed-in account's id as `user` (required; only that account's kept handle is used), the rows' `credentialId`s and the account's address as `name`                                   |
+  | `signalCurrentUserDetails({ user, name, displayName })`      | after the email change is made (on the page `emailLinkResult` says `done: "changed"`, `name` the new address) and after the person renames themselves                                                                                                                              |
+  | `signalAllAcceptedCredentials({ credentialIds })`            | inside `signalPasskeys`; alone where only the list matters                                                                                                                                                                                                                         |
+  | `signalUnknownCredential({ credentialId })`                  | after the person deletes a passkey on the site, with that row's `credentialId`                                                                                                                                                                                                     |
 
   `userId` is a passkey's user handle, and @better-auth/passkey 1.7.12 makes a new random handle for every passkey and
   stores none (`generate-register-options`), so the one handle a page can know is that of the passkey that signed in
@@ -1651,7 +1649,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   `emailLinkWords({ siteName, settings })` for the email-change page.
 - `safeNextPath(raw, { fallback, within })`: where a sign-in may land. A path on this site only, every check anchored
   at the start (an OAuth `next` legitimately carries `https://` in its query); absolute, `//host`, `/\host` and any
-  character outside printable ASCII fall back. `within` limits it to those paths and below.
+  character outside printable ASCII fall back. `within` limits it to those paths and below, after dot segments resolve.
 - `startSocialSignIn(auth, request, { provider, callbackURL, errorCallbackURL })`: the Google or Apple start from the
   page's form POST (`/auth/google`, `/auth/apple`), so the landing is decided on the server. Answers the provider's URL
   and Better Auth's state cookie, or null.
@@ -2249,8 +2247,8 @@ used, 410 expired. Claims are readable by whoever holds the token, so they carry
 ## Hono doors
 
 `./hono` has the middleware a Hono API shares, with no Hono import. `operatorBearer({ token, actorHeader, resolveActor,
-onActor })` is the operator door: a request with no Authorization header passes, a bearer is compared in constant time,
-the acting admin named in `actorHeader` is read by the site and set by `onActor`, and every refusal is logged under
+onActor })` is the operator door: a request with no Authorization header passes, a bearer is held to ./operator's
+rules (`operatorBearerProblem`: a token under MIN_TOKEN_LENGTH closes the door 503, constant-time compare), the acting admin named in `actorHeader` is read by the site and set by `onActor`, and every refusal is logged under
 OWASP's names and never with the token. `honoRateLimit({ limiter, bucket, rules, who, onUnavailable })` counts on the
 RateLimiter Durable Object per user (`who`) or edge address. Both throw ./http-errors' AppError.
 

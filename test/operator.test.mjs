@@ -2,6 +2,7 @@
 // reaches only a named tool. PLANT tests fail if the guard they name is removed.
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { operatorBearer } from "../hono.mjs";
 import { OperatorError, callOperator, operatorResponse } from "../operator.mjs";
 
 const TOKEN = "t".repeat(40);
@@ -134,4 +135,28 @@ test("callOperator speaks the door's format: data on success, the refusal by sta
     data: null,
     error: "backup_status did not complete: refused for [token]",
   });
+});
+
+test("PLANT: the Hono operator bearer is closed by a short token, as the operator door is", async () => {
+  const short = "short";
+  /** @type {unknown[]} */
+  const actors = [];
+  const door = operatorBearer({
+    token: () => short,
+    actorHeader: "X-Actor",
+    resolveActor: async () => ({ id: "admin" }),
+    onActor: (_c, actor) => void actors.push(actor),
+  });
+  const headers = new Headers({ Authorization: `Bearer ${short}`, "X-Actor": "admin" });
+  const c = {
+    req: {
+      raw: new Request("https://example.com/api/x", { headers }),
+      header: (/** @type {string} */ name) => headers.get(name) ?? undefined,
+    },
+  };
+  await assert.rejects(
+    door(c, async () => {}),
+    { status: 503 },
+  );
+  assert.deepEqual(actors, []);
 });

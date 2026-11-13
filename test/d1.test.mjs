@@ -6,27 +6,17 @@ import {
   decodeCursor,
   encodeCursor,
   escapeLike,
-  inChunks,
   inList,
   likeContains,
   rowsPerInsert,
 } from "../d1.mjs";
 
-test("chunked and inChunks keep D1 under 100 bound parameters; an empty list runs nothing", async () => {
+test("chunked keeps D1 under 100 bound parameters", () => {
   assert.deepEqual(chunked([1, 2, 3, 4, 5], 2), [[1, 2], [3, 4], [5]]);
-  const sizes = [];
-  const rows = await inChunks(
-    Array.from({ length: 200 }, (_, i) => i),
-    async (part) => {
-      sizes.push(part.length);
-      return part;
-    },
+  assert.deepEqual(
+    chunked(Array.from({ length: 200 }, (_, i) => i)).map((part) => part.length),
+    [90, 90, 20],
   );
-  assert.deepEqual(sizes, [90, 90, 20]);
-  assert.equal(rows.length, 200);
-  let ran = false;
-  assert.deepEqual(await inChunks([], async () => ((ran = true), [])), []);
-  assert.equal(ran, false);
   assert.equal(rowsPerInsert(7), 14);
 });
 

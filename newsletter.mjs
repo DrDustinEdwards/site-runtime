@@ -108,12 +108,13 @@ export function newsletter({
      * Ask for `email` to join: mail it a confirmation link. "sent" also answers an address already on the list or one
      * mailed in the last few minutes (no mail goes; the page says the same either way, so it reveals nothing).
      * "unavailable" is no key, or a mail that did not go (the send time is undone, so the person can try at once).
-     * @param {string} email
+     * @param {string} email trimmed and lowercased here, so a change of case is the same row and the same window
      * @param {Date} [now]
      * @returns {Promise<"sent" | "unavailable">}
      */
     async request(email, now = new Date()) {
       if (!configured()) return "unavailable";
+      email = email.trim().toLowerCase();
       const row = await store.find(email);
       if (row?.confirmedAt && !row.unsubscribedAt) return "sent";
       if (row?.confirmSentAt && now.getTime() - Date.parse(row.confirmSentAt) < resendMs)

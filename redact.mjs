@@ -14,6 +14,21 @@
  * @typedef {"private-key" | "anthropic-key" | "stripe-key" | "jwt" | "github-token" | "slack-token" | "aws-access-key-id" | "auth" | "assignment" | "high-entropy"} RedactionKind
  */
 
+/**
+ * The secret shapes log.mjs's scrubText cuts too, defined once here and shared: a PEM or PGP private key block (to the
+ * end of the text when it is cut off; its \1 and \2 are its own groups), an Anthropic key, Stripe secret, restricted
+ * and webhook-signing keys, a Slack token or webhook URL and an AWS access key id.
+ */
+export const SECRET_SHAPES = {
+  privateKey:
+    /-----BEGIN ([A-Z0-9 ]*?)PRIVATE KEY( BLOCK)?-----[\s\S]*?(?:-----END \1PRIVATE KEY\2-----|$)/g,
+  anthropicKey: /\bsk-ant-[A-Za-z0-9_-]{16,}/g,
+  stripeKey: /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]+|\bwhsec_[A-Za-z0-9]+/g,
+  slackToken: /\bxox[abposr]-[A-Za-z0-9-]{10,}/g,
+  slackWebhook: /https:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9/_-]+/g,
+  awsAccessKeyId: /\b(?:AKIA|ASIA|ABIA|ACCA|AGPA|AIDA|AIPA|ANPA|ANVA|AROA)[A-Z0-9]{16}\b/g,
+};
+
 /** @param {RedactionKind} kind */
 const marker = (kind) => `[REDACTED:${kind}]`;
 
@@ -32,11 +47,7 @@ const SECRET_NAME = String.raw`[A-Za-z0-9_.-]*(?:secret|token|passw(?:or)?d|api[
 const RULES = [
   // A PEM or PGP private key block, whole. An unterminated block (a log cut mid-key)
   // is redacted to the end of the text rather than left half-shown.
-  {
-    kind: "private-key",
-    pattern:
-      /-----BEGIN ([A-Z0-9 ]*?)PRIVATE KEY( BLOCK)?-----[\s\S]*?(?:-----END \1PRIVATE KEY\2-----|$)/g,
-  },
+  { kind: "private-key", pattern: SECRET_SHAPES.privateKey },
   // Header and payload are base64url JSON, so both start with eyJ ('{"').
   { kind: "jwt", pattern: /\beyJ[A-Za-z0-9_-]{5,}\.eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}/g },
   // Classic (ghp_ personal, gho_ OAuth, ghu_ user-to-server, ghs_ server-to-server,
@@ -45,12 +56,9 @@ const RULES = [
     kind: "github-token",
     pattern: /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/g,
   },
-  { kind: "slack-token", pattern: /\bxox[abposr]-[A-Za-z0-9-]{10,}/g },
-  { kind: "slack-token", pattern: /https:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9/_-]+/g },
-  {
-    kind: "aws-access-key-id",
-    pattern: /\b(?:AKIA|ASIA|ABIA|ACCA|AGPA|AIDA|AIPA|ANPA|ANVA|AROA)[A-Z0-9]{16}\b/g,
-  },
+  { kind: "slack-token", pattern: SECRET_SHAPES.slackToken },
+  { kind: "slack-token", pattern: SECRET_SHAPES.slackWebhook },
+  { kind: "aws-access-key-id", pattern: SECRET_SHAPES.awsAccessKeyId },
   // An Authorization header's value, with its scheme kept. The scheme word is never
   // taken as the value, so a header whose value an earlier rule already redacted is
   // left as it is.
@@ -71,8 +79,8 @@ const RULES = [
   },
   // Anthropic keys and Stripe secret, restricted and webhook-signing keys: the shapes log.mjs's scrubText knows, after the
   // header rules so a key sent as a Bearer value is named auth.
-  { kind: "anthropic-key", pattern: /\bsk-ant-[A-Za-z0-9_-]{16,}/g },
-  { kind: "stripe-key", pattern: /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]+|\bwhsec_[A-Za-z0-9]+/g },
+  { kind: "anthropic-key", pattern: SECRET_SHAPES.anthropicKey },
+  { kind: "stripe-key", pattern: SECRET_SHAPES.stripeKey },
   // NAME=value, NAME: value, "name": "value", ?name=value, for a secret-shaped name.
   {
     kind: "assignment",

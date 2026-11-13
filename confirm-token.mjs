@@ -19,12 +19,10 @@
 
 import { readSignedToken, signToken } from "./signed-token.mjs";
 import { canonicalJson, toHex } from "./encoding.mjs";
+import { KV_MIN_TTL } from "./kv-cache.mjs";
 
 /** How long a preview stays performable by default: ten minutes. */
 export const CONFIRM_TTL_SECONDS = 600;
-
-/** KV's own expiry floor. */
-const KV_TTL_FLOOR = 60;
 
 /**
  * Mint a token for exactly these claims.
@@ -97,7 +95,7 @@ export async function redeemConfirm({
     if ((await kv.get(key)) !== null)
       return refuse(409, "the confirmation was already used: preview again.");
     const left = Math.ceil(exp - now / 1000);
-    await kv.put(key, "1", { expirationTtl: Math.max(KV_TTL_FLOOR, left + KV_TTL_FLOOR) });
+    await kv.put(key, "1", { expirationTtl: Math.max(KV_MIN_TTL, left + KV_MIN_TTL) });
   }
   return { ok: true, claims: signed };
 }

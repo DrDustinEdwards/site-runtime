@@ -25,6 +25,7 @@ import { CONSENT_STYLE, isAdminUser } from "./mcp-login.mjs";
 import { OWNER_STYLE } from "./owner-page.mjs";
 import { originRefusal, originVerdict } from "./origin.mjs";
 import { securityTxtResponse } from "./security-txt.mjs";
+import { errorMessage } from "./log.mjs";
 
 // ---------------------------------------------------------------------------------------------------------------------
 // THE ERA ROUTER, and the prior-era shim.
@@ -242,10 +243,7 @@ export async function callApi(env, leg, path, init = {}) {
       });
   } catch (cause) {
     if (init.signal?.aborted) throw canceled();
-    throw new ApiLegError(
-      `${leg.api} could not be reached: ${cause instanceof Error ? cause.message : String(cause)}`,
-      "unreachable",
-    );
+    throw new ApiLegError(`${leg.api} could not be reached: ${errorMessage(cause)}`, "unreachable");
   }
   const raw = await response.text();
   try {
@@ -579,7 +577,7 @@ export async function invokeTool(env, server, { caller, tool, args, meta, signal
     await appendAudit(env, { ...row, phase: "started" });
   } catch (cause) {
     return failed(
-      `Refused: the tool-call log could not be written (${cause instanceof Error ? cause.message : String(cause)}), ` +
+      `Refused: the tool-call log could not be written (${errorMessage(cause)}), ` +
         `and no tool runs unlogged. Nothing was sent to ${server.site}.`,
     );
   }
@@ -600,7 +598,7 @@ export async function invokeTool(env, server, { caller, tool, args, meta, signal
     output = await run(signal);
   } catch (error) {
     // A handler that throws still ends its call in the log; the error goes on to the SDK, which answers it.
-    const text = `threw: ${error instanceof Error ? error.message : String(error)}`.slice(0, 1000);
+    const text = `threw: ${errorMessage(error)}`.slice(0, 1000);
     await recordAudit(env, {
       ...row,
       phase: "finished",

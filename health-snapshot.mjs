@@ -53,20 +53,6 @@ export function healthTile(snapshot, nowMs, { everyMinutes = HEALTH_SNAPSHOT_EVE
 }
 
 /**
- * An age in words, with no seconds: on a fifteen-minute schedule "47 seconds ago" claims a precision it lacks.
- * @param {number} ageSeconds
- */
-export function formatAge(ageSeconds) {
-  if (ageSeconds < 60) return "under a minute ago";
-  const minutes = Math.floor(ageSeconds / 60);
-  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
-  const days = Math.floor(hours / 24);
-  return `${days} day${days === 1 ? "" : "s"} ago`;
-}
-
-/**
  * Each check's name and status, as public as /health itself, and no detail. Null for a body that is not a /health
  * answer, so a refusal or an error page is never stored as a verdict.
  * @param {unknown} body the parsed /health body

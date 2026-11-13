@@ -1,5 +1,6 @@
 import { sha256Hex } from "../encoding.mjs";
 import { ipBucket } from "../http.mjs";
+import { errorMessage } from "../log.mjs";
 
 /**
  * @typedef {"ok" | "limited" | "unavailable"} Status
@@ -59,7 +60,7 @@ export async function limit(namespace, key, rules, options) {
       window: hit.window,
     };
   } catch (error) {
-    return unavailable(error instanceof Error ? error.message : String(error));
+    return unavailable(errorMessage(error));
   }
 }
 

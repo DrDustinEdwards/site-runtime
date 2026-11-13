@@ -11,6 +11,7 @@
 import { sha256Hex } from "./encoding.mjs";
 import { logEvent } from "./log.mjs";
 import { checkProse as defaultCheckProse } from "./prose.mjs";
+import { withTimeout } from "./time.mjs";
 
 /** The event the guard sends after an answer the model did not finish, so the reader is told it was cut. */
 export const CUT_EVENT = "cut";
@@ -144,7 +145,8 @@ const DONE_FRAME = "data: [DONE]\n\n";
  * - A paragraph `checkProse` flags at high severity is not shown.
  * - An answer the model did not finish (a `finish_reason` other than `stop`) is shown as far as it got, then a `cut` event
  *   names the reason; `onCut` hears it, and the caller must not cache that answer either.
- * - A stalled upstream ends the answer after `timeoutMs`.
+ * - A stalled upstream ends the answer once `timeoutMs` passes with nothing read (an idle timeout: an answer that keeps
+ *   streaming is never cut for its length).
  * @param {ReadableStream} upstream
  * @param {{
  *   resolveVisible: (slugs: string[]) => Promise<Set<string>>,
@@ -199,20 +201,11 @@ export function guardAnswerStream(
   }
 
   /**
-   * The next read, or a rejection once `deadline` passes.
+   * The next read, or a rejection once `timeoutMs` passes without one.
    * @param {ReadableStreamDefaultReader} reader
-   * @param {number} deadline
    */
-  function readBy(reader, deadline) {
-    /** @type {ReturnType<typeof setTimeout> | undefined} */
-    let timer;
-    const late = new Promise((_, reject) => {
-      timer = setTimeout(
-        () => reject(new Error(`the answer took longer than ${timeoutMs} ms`)),
-        deadline - Date.now(),
-      );
-    });
-    return Promise.race([reader.read(), late]).finally(() => clearTimeout(timer));
+  function readBy(reader) {
+    return withTimeout(reader.read(), timeoutMs, `the answer sent nothing for ${timeoutMs} ms`);
   }
 
   return new ReadableStream({
@@ -220,7 +213,6 @@ export function guardAnswerStream(
       /** @param {string} text */
       const send = (text) => controller.enqueue(encoder.encode(text));
       const reader = upstream.getReader();
-      const deadline = Date.now() + timeoutMs;
       let buffer = "";
       // Answer text not yet checked: the unfinished paragraph.
       let text = "";
@@ -256,7 +248,7 @@ export function guardAnswerStream(
 
       try {
         for (;;) {
-          const { done, value } = await readBy(reader, deadline);
+          const { done, value } = await readBy(reader);
           // At the end, a closing blank line finishes a last frame the upstream left open.
           buffer += done ? `${decoder.decode()}\n\n` : decoder.decode(value, { stream: true });
           const frames = buffer.split("\n\n");

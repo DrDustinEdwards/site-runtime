@@ -1,5 +1,7 @@
 /** Byte encodings (encoding.mjs). A string input is encoded as UTF-8 first. */
 type Input = Uint8Array | ArrayBuffer | string;
+/** The parts' bytes one after another, in one new array. */
+export function concatBytes(...parts: readonly Uint8Array[]): Uint8Array<ArrayBuffer>;
 /** Lowercase hex, two digits a byte. */
 export function toHex(input: Input): string;
 /** The bytes of a hex string; throws on an odd length or a non-hex character. */

@@ -10,6 +10,8 @@
  * the Worker made (an export).
  */
 
+import { textResponse } from "./http.mjs";
+
 /** @typedef {import("./r2-object.mjs").R2BucketLike} R2BucketLike */
 /** @typedef {import("./r2-object.mjs").R2FileOptions} R2FileOptions */
 
@@ -93,13 +95,9 @@ function matches(header, etag) {
  * @returns {Promise<Response>}
  */
 export async function r2ObjectResponse(request, bucket, key, options = {}) {
-  const notFound = () =>
-    new Response(options.notFound ?? "Not found", {
-      status: 404,
-      headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
-    });
+  const notFound = () => textResponse(options.notFound ?? "Not found", 404);
   if (request.method !== "GET" && request.method !== "HEAD")
-    return new Response("Method not allowed", { status: 405, headers: { allow: "GET, HEAD" } });
+    return textResponse("Method not allowed", 405, { allow: "GET, HEAD" });
 
   if (request.method === "HEAD") {
     const head = await bucket.head(key);

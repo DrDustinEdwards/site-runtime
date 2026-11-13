@@ -32,15 +32,22 @@ const pageHost = () =>
   /** @type {string | undefined} */ (/** @type {any} */ (globalThis).location?.hostname);
 
 /**
- * The user handle of the passkey that last signed in on this browser (`signInWithPasskey` keeps it), or null. It is
- * what the Signal API calls below take as `userId` when the page passes none. Kept in localStorage, so Clear-Site-Data
- * at sign-out removes it with the rest.
+ * The user handle of the passkey that last signed in on this browser (`signInWithPasskey` keeps it with the account it
+ * signed in), or null. Only `user`'s own: a browser can still hold another account's handle (a session that expired
+ * never runs Clear-Site-Data), and a signal sent under that handle would tell the provider to hide that account's
+ * passkeys. It is what the Signal API calls below take as `userId` when the page passes none. Kept in localStorage, so
+ * Clear-Site-Data at sign-out removes it with the rest.
+ * @param {string | null | undefined} user the signed-in account's id
  * @param {string} [rpId]
  * @returns {string | null}
  */
-export function passkeyUserHandle(rpId = pageHost() ?? "") {
+export function passkeyUserHandle(user, rpId = pageHost() ?? "") {
+  if (!user) return null;
   try {
-    return /** @type {any} */ (globalThis).localStorage?.getItem(HANDLE_KEY + rpId) ?? null;
+    const kept = JSON.parse(
+      /** @type {any} */ (globalThis).localStorage?.getItem(HANDLE_KEY + rpId) ?? "null",
+    );
+    return kept?.user === user && typeof kept.handle === "string" ? kept.handle : null;
   } catch {
     return null;
   }
@@ -51,11 +58,17 @@ export function passkeyUserHandle(rpId = pageHost() ?? "") {
  * list. `userId` is the passkey's user handle, base64url, as the sign-in gave it (`webauthn.response.response.userHandle`,
  * which signInWithPasskey keeps: the default): @better-auth/passkey 1.7.12 makes a new random handle for each passkey
  * and stores none, so a handle reaches only the passkey made with it. `credentialIds` are the account's credential ids
- * (`accountPasskeys` rows' `credentialId`). Resolves true when the browser took the signal; false with no handle.
- * @param {{ rpId?: string, userId?: string | null, credentialIds: string[] }} options
+ * (`accountPasskeys` rows' `credentialId`). `user` is the signed-in account's id, which picks the kept handle when
+ * `userId` is not passed. Resolves true when the browser took the signal; false with no handle.
+ * @param {{ rpId?: string, userId?: string | null, user: string | null, credentialIds: string[] }} options
  */
-export async function signalAllAcceptedCredentials({ rpId = pageHost(), userId, credentialIds }) {
-  const handle = userId ?? passkeyUserHandle(rpId);
+export async function signalAllAcceptedCredentials({
+  rpId = pageHost(),
+  userId,
+  user,
+  credentialIds,
+}) {
+  const handle = userId ?? passkeyUserHandle(user, rpId);
   if (!rpId || !handle) return false;
   return signal("signalAllAcceptedCredentials", {
     rpId,
@@ -66,12 +79,18 @@ export async function signalAllAcceptedCredentials({ rpId = pageHost(), userId, 
 
 /**
  * Tells the provider the name and display name to show on this user's passkey: after the email changes (`name` the new
- * address) and after the person renames themselves. `userId` as for signalAllAcceptedCredentials. Resolves true when
- * the browser took the signal; false with no handle.
- * @param {{ rpId?: string, userId?: string | null, name: string, displayName?: string }} options
+ * address) and after the person renames themselves. `userId` and `user` as for signalAllAcceptedCredentials. Resolves
+ * true when the browser took the signal; false with no handle.
+ * @param {{ rpId?: string, userId?: string | null, user: string | null, name: string, displayName?: string }} options
  */
-export async function signalCurrentUserDetails({ rpId = pageHost(), userId, name, displayName }) {
-  const handle = userId ?? passkeyUserHandle(rpId);
+export async function signalCurrentUserDetails({
+  rpId = pageHost(),
+  userId,
+  user,
+  name,
+  displayName,
+}) {
+  const handle = userId ?? passkeyUserHandle(user, rpId);
   if (!rpId || !handle) return false;
   return signal("signalCurrentUserDetails", {
     rpId,
@@ -83,20 +102,22 @@ export async function signalCurrentUserDetails({ rpId = pageHost(), userId, name
 
 /**
  * Both of the above: after a passkey sign-in lands, and each time the account page's passkey list loads. Without a
- * handle (none passed, none kept) it does nothing; after a delete, signal the deleted one with signalUnknownCredential.
- * @param {{ rpId?: string, userId?: string | null, credentialIds: string[], name?: string, displayName?: string }} options
+ * handle (none passed, none kept for `user`) it does nothing; after a delete, signal the deleted one with
+ * signalUnknownCredential.
+ * @param {{ rpId?: string, userId?: string | null, user: string | null, credentialIds: string[], name?: string, displayName?: string }} options
  */
 export async function signalPasskeys({
   rpId = pageHost(),
   userId,
+  user,
   credentialIds,
   name,
   displayName,
 }) {
-  const handle = userId ?? passkeyUserHandle(rpId);
+  const handle = userId ?? passkeyUserHandle(user, rpId);
   if (!rpId || !handle) return;
-  await signalAllAcceptedCredentials({ rpId, userId: handle, credentialIds });
-  if (name) await signalCurrentUserDetails({ rpId, userId: handle, name, displayName });
+  await signalAllAcceptedCredentials({ rpId, userId: handle, user, credentialIds });
+  if (name) await signalCurrentUserDetails({ rpId, userId: handle, user, name, displayName });
 }
 
 /**
@@ -116,7 +137,7 @@ export function signalUnknownCredential({ rpId, credentialId }) {
  * device) it tells the provider with signalUnknownCredential, so the browser stops offering it; when it signs in, it
  * keeps the passkey's user handle (`passkeyUserHandle`) for the other signals. Returns Better Auth's answer. `rpId`
  * defaults to the page's host, which is the relying party `./sign-in` sets.
- * @template {{ error?: object | null, webauthn?: { response?: { id?: string, response?: { userHandle?: string | null } } } }} R
+ * @template {{ error?: object | null, data?: { user?: { id?: string } } | null, webauthn?: { response?: { id?: string, response?: { userHandle?: string | null } } } }} R
  * @param {{ signIn: { passkey(options?: Record<string, unknown>): Promise<R> } }} client
  * @param {Record<string, unknown> & { rpId?: string }} [options] the passkey sign-in's own options (`autoFill`, `fetchOptions`)
  * @returns {Promise<R>}
@@ -129,9 +150,13 @@ export async function signInWithPasskey(client, { rpId, ...options } = {}) {
   if (code === "PASSKEY_NOT_FOUND" && credentialId && host)
     await signalUnknownCredential({ rpId: host, credentialId });
   const handle = result?.webauthn?.response?.response?.userHandle;
-  if (!result?.error && host && typeof handle === "string" && handle) {
+  const user = result?.data?.user?.id;
+  if (!result?.error && host && typeof handle === "string" && handle && user) {
     try {
-      /** @type {any} */ (globalThis).localStorage?.setItem(HANDLE_KEY + host, handle);
+      /** @type {any} */ (globalThis).localStorage?.setItem(
+        HANDLE_KEY + host,
+        JSON.stringify({ user, handle }),
+      );
     } catch {
       // A browser that refuses storage simply sends no later signals.
     }
@@ -161,7 +186,7 @@ export async function canOfferPasskey() {
  * leaves the browser's list. The signal never holds up the sign-in. Answers the client's error, or null when signed in.
  * @param {{ signIn: { passkey(options?: Record<string, unknown>): Promise<any> },
  *   passkey: { listUserPasskeys(): Promise<{ data?: { credentialID: string }[] | null }> },
- *   getSession(): Promise<{ data?: { user?: { email?: string } } | null }> }} client
+ *   getSession(): Promise<{ data?: { user?: { id?: string, email?: string } } | null }> }} client
  * @param {{ autoFill?: boolean }} [options]
  * @returns {Promise<object | null>}
  */
@@ -175,6 +200,7 @@ export async function passkeySignIn(client, { autoFill = false } = {}) {
     ]);
     if (list.data)
       await signalPasskeys({
+        user: session.data?.user?.id ?? null,
         credentialIds: list.data.map((p) => p.credentialID),
         name: session.data?.user?.email,
       });

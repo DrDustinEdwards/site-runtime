@@ -242,6 +242,24 @@ export function hostCookie(
 const cookiePrefix = (path) => (path === "/" ? "__Host-" : "__Secure-");
 
 /**
+ * Every cookie the request carries, as [name, value] in the order sent, both trimmed. A part with no "=" is a value with
+ * an empty name (RFC 6265bis 5.6), so it never matches a name and still counts as a cookie.
+ * @param {Request} request
+ * @returns {[string, string][]}
+ */
+export function cookiePairs(request) {
+  /** @type {[string, string][]} */
+  const pairs = [];
+  for (const part of (request.headers.get("Cookie") ?? "").split(";")) {
+    const pair = part.trim();
+    if (!pair) continue;
+    const eq = pair.indexOf("=");
+    pairs.push(eq < 0 ? ["", pair] : [pair.slice(0, eq).trim(), pair.slice(eq + 1).trim()]);
+  }
+  return pairs;
+}
+
+/**
  * The value of a cookie hostCookie wrote, by its name without the prefix: `__Host-<name>`, else `__Secure-<name>`.
  * A bare `<name>` is never read, since any sibling subdomain or plaintext page could have set it. The first of a
  * repeated name wins, as browsers send the most specific path first (RFC 6265 5.4). Null when there is none.
@@ -250,16 +268,9 @@ const cookiePrefix = (path) => (path === "/" ? "__Host-" : "__Secure-");
  * @returns {string | null}
  */
 export function readCookie(request, name) {
-  const header = request.headers.get("Cookie");
-  if (!header) return null;
   /** @type {Map<string, string>} */
   const jar = new Map();
-  for (const part of header.split(";")) {
-    const eq = part.indexOf("=");
-    if (eq === -1) continue;
-    const key = part.slice(0, eq).trim();
-    if (!jar.has(key)) jar.set(key, part.slice(eq + 1).trim());
-  }
+  for (const [key, value] of cookiePairs(request)) if (!jar.has(key)) jar.set(key, value);
   return jar.get(`__Host-${name}`) ?? jar.get(`__Secure-${name}`) ?? null;
 }
 

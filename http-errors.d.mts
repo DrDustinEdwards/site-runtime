@@ -1,7 +1,5 @@
 /** RFC 9457 problem details, the one error answer every site's JSON API gives (http-errors.mjs). */
 
-export const PROBLEM_TYPE: string;
-
 /** An error a route throws for the caller to see. */
 export class AppError extends Error {
   constructor(status: number, code: string, message: string, extensions?: Record<string, unknown>);
@@ -36,11 +34,6 @@ export function problemResponse(problem: {
   extensions?: Record<string, unknown>;
   headers?: HeadersInit;
 }): Response;
-
-/** Whether an error carries a 4xx/5xx `status` and a string `code`. */
-export function isKnownError(
-  error: unknown,
-): error is { status: number; code: string; message: string; extensions?: Record<string, unknown> };
 
 /** The answer for anything a route threw: known errors as they say, schema errors as 422, the rest logged and 500. */
 export function errorResponse(

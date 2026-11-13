@@ -44,7 +44,9 @@ export async function notifyOnChange({ db, results, send, site, now = () => new 
         Boolean(r.ok),
       ]),
     );
-  } catch {
+  } catch (error) {
+    // Every check then reads as changed, so the alerts may repeat: logged, so the cause is seen.
+    logEvent("health_state_read_failed", { error }, { level: "error" });
     previous = new Map();
   }
   const changed = results.filter((r) => {

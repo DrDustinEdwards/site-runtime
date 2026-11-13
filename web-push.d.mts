@@ -32,7 +32,7 @@ export function vapidJwt(
   subject: string,
   now: Date,
 ): Promise<string>;
-/** Encrypt and send one payload; never throws on the push service's answer (a network error is status 0). */
+/** Encrypt and send one payload; never throws on the push service's answer (a network error or a stall past timedFetch's timeout is status 0). `fetcher` defaults to ./http timedFetch. */
 export function sendPush(
   vapid: VapidKey,
   subject: string,

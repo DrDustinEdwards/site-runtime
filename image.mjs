@@ -50,7 +50,8 @@
  */
 
 import { applyHeaderSet, corpFor, UPLOAD_HEADERS } from "./headers.mjs";
-import { mediaType } from "./http.mjs";
+import { mediaType, textResponse } from "./http.mjs";
+import { errorMessage } from "./log.mjs";
 
 /**
  * Astro's "limited" screen widths, the set it uses for images it generates ahead of time. A site's closed set starts
@@ -570,7 +571,7 @@ export function defineImages({
         JSON.stringify({
           alert: "image-transform-failed",
           url: request.url,
-          detail: error instanceof Error ? error.message : String(error),
+          detail: errorMessage(error),
         }),
       );
       // The body above is spent, so the original is read again. Short-lived: this URL should hold the size once the
@@ -634,24 +635,22 @@ export function defineImages({
       cacheControl = versionedCache(),
     },
   ) {
-    const guarded = (/** @type {Response} */ response) => {
-      const headers = new Headers(response.headers);
-      applyHeaderSet(headers, UPLOAD_HEADERS);
-      return new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers,
-      });
-    };
+    const guarded = (/** @type {Response} */ response) => applyHeaderSet(response, UPLOAD_HEADERS);
     if (request.method !== "GET" && request.method !== "HEAD")
-      return guarded(
-        new Response("Method not allowed", { status: 405, headers: { allow: "GET, HEAD" } }),
-      );
+      return guarded(textResponse("Method not allowed", 405, { allow: "GET, HEAD" }));
     const url = new URL(request.url);
-    const key = url.pathname.startsWith(prefix)
-      ? mediaKey(keyPrefix + originalKey(url.pathname.slice(prefix.length), url), within)
-      : null;
-    if (!key) return guarded(new Response("Not found", { status: 404 }));
+    let key = null;
+    // The path is still percent-encoded; each segment is decoded as keyOfAddress decodes it, so a key with a space or
+    // another escaped character serves. A malformed escape is a 404.
+    if (url.pathname.startsWith(prefix)) {
+      try {
+        const path = url.pathname.slice(prefix.length).split("/").map(decodeURIComponent).join("/");
+        key = mediaKey(keyPrefix + originalKey(path, url), within);
+      } catch {
+        key = null;
+      }
+    }
+    if (!key) return guarded(textResponse("Not found", 404));
     const object = await read(key);
     const policy =
       object && typeof cacheControl === "function"

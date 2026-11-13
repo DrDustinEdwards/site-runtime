@@ -3,6 +3,12 @@ export const MIN_TOKEN_LENGTH: 32;
 export const OPERATOR_BODY_MAX: number;
 export const OPERATOR_RULES: import("./rate-limit/core.mjs").Rule[];
 
+/** Why an Authorization header does not open an operator door, or null when it does; operatorResponse and ./hono operatorBearer share it. */
+export function operatorBearerProblem(
+  authorization: string | null | undefined,
+  configured: string | undefined,
+): Promise<"not configured" | "not bearer" | "wrong token" | null>;
+
 /** Thrown by a tool to refuse with a message the caller should read (answered 400). Any other throw is answered "The tool failed (ref ...)" and logged. */
 export class OperatorError extends Error {
   constructor(message: string);

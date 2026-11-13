@@ -1,5 +1,6 @@
 import { checkSecurityHeaders } from "./check.mjs";
 import { siteForOrigin } from "./sites.mjs";
+import { errorMessage } from "./log.mjs";
 
 // THE SIGNED-IN CRAWL. A stranger's live check (bin/site-runtime-security.mjs) sees only the sign-in redirect of an app
 // behind a sign-in. An app grades the pages behind it itself, where the credential already lives, and publishes the
@@ -181,10 +182,7 @@ export async function guardedCrawl(run) {
         {
           severity: "error",
           check: "crawl",
-          detail: `could not run: ${error instanceof Error ? error.message : String(error)}`.slice(
-            0,
-            300,
-          ),
+          detail: `could not run: ${errorMessage(error)}`.slice(0, 300),
         },
       ],
     };

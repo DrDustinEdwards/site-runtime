@@ -53,11 +53,11 @@ test("quotes, commas, line breaks and lists are written and read back the same",
   ]);
 });
 
-test("a download keeps a file name with any character", () => {
-  const r = csvResponse("a\r\n", 'Résumé "x".csv');
+test("a download is never cached unless the route says so, and never sniffed", () => {
+  const r = csvResponse("a\r\n", "x.csv");
   assert.equal(r.headers.get("content-type"), "text/csv; charset=utf-8");
-  assert.equal(
-    r.headers.get("content-disposition"),
-    `attachment; filename="R_sum_ _x_.csv"; filename*=UTF-8''R%C3%A9sum%C3%A9%20%22x%22.csv`,
-  );
+  assert.equal(r.headers.get("cache-control"), "no-store");
+  assert.equal(r.headers.get("x-content-type-options"), "nosniff");
+  const shared = csvResponse("a\r\n", "x.csv", { headers: { "cache-control": "public" } });
+  assert.equal(shared.headers.get("cache-control"), "public");
 });

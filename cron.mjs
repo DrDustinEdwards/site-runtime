@@ -34,6 +34,7 @@
  */
 
 import { logEvent, scrubText } from "./log.mjs";
+import { withTimeout } from "./time.mjs";
 
 /** The longest error stored. */
 export const CRON_ERROR_MAX = 500;
@@ -66,7 +67,7 @@ CREATE INDEX IF NOT EXISTS cron_run_log_name ON cron_run_log (name, id);
 `;
 
 /** The longest reason kept, one line. */
-export const CRON_REASON_MAX = 300;
+const CRON_REASON_MAX = 300;
 
 /** How long a failure of an event job (`everyMinutes: null`) counts as current: a day. */
 export const CRON_EVENT_WINDOW_MS = 24 * 60 * 60_000;
@@ -193,18 +194,9 @@ async function runOne(
   };
   const limit = own ?? timeoutMs;
   const controller = new AbortController();
-  /** @type {ReturnType<typeof setTimeout> | undefined} */
-  let timer;
   const work = Promise.resolve().then(() => run(controller.signal, { startedAt: started }));
   try {
-    const timeout = new Promise((_, reject) => {
-      timer = setTimeout(() => {
-        const error = new Error(`timed out after ${limit} ms`);
-        controller.abort(error);
-        reject(error);
-      }, limit);
-    });
-    const value = await Promise.race([work, timeout]);
+    const value = await withTimeout(work, limit, undefined, (error) => controller.abort(error));
     const at = now();
     const verdict = history
       ? verdictOf(value)
@@ -251,8 +243,6 @@ async function runOne(
       logEvent("cron_job_overran", { name, ms: now() - started }, { level: "error" });
     }
     return { job: name, status: "failed", ms: at - started, error: stored };
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -327,7 +317,7 @@ export function runJobTool(db, jobs, options = {}) {
         .map((j) => j.name + (j.backup ? " (backup)" : ""))
         .join(
           ", ",
-        )}. Answers { runs: [{ job, status: ok | skipped | failed, ms, result?, error? }] }.`,
+        )}. Answers { runs: [{ job, status: ok | skipped | failed | refused, ms, result?, reason?, error? }] }.`,
     run: async (args) => {
       const all = list();
       if (args.backup === true && args.job === undefined) {
@@ -400,13 +390,17 @@ export function describeRuns(what, call) {
 
 /**
  * Whether a `run_job` answer shows every run succeeded or skipped by its own gate: false for a failed call, an answer
- * without its runs, or any run that failed.
+ * without its runs, or any run that failed or was refused (a run that failed without throwing).
  * @param {{ ok: boolean, data: unknown }} call
  * @returns {boolean}
  */
 export function runsSucceeded(call) {
   const runs = /** @type {{ runs?: Array<{ status?: unknown }> } | null} */ (call.data)?.runs;
-  return call.ok && Array.isArray(runs) && runs.every((r) => r.status !== "failed");
+  return (
+    call.ok &&
+    Array.isArray(runs) &&
+    runs.every((r) => r.status !== "failed" && r.status !== "refused")
+  );
 }
 
 /** The 24 hours a nightly job's interval is, in minutes. */
@@ -602,29 +596,4 @@ export function cronStates(jobs, runs, now, { quietPeriods = 2 } = {}) {
       flag = "quiet";
     return { name, everyMinutes, flag, recent };
   });
-}
-
-/**
- * A site's jobs keyed by the cron that fires them, as the three things a Worker does with that list: runs the list for
- * the cron it received, hands every job to /health and the operator's run_job, and logs a trigger with no list. Four
- * sites each wrote the same `Object.values(cronJobs(env)).flat()` and the same `scheduled` body.
- * @template Env
- * @param {(env: Env, scheduledTime: Date) => Record<string, CronJob[]>} jobsFor the jobs of each cron (wrangler.jsonc triggers.crons)
- * @returns {{
- *   all: (env: Env) => CronJob[],
- *   run: (db: D1Like | (() => D1Like) | null, controller: { cron: string, scheduledTime: number }, env: Env) => Promise<void>,
- * }}
- */
-export function cronSchedule(jobsFor) {
-  return {
-    all: (env) => Object.values(jobsFor(env, new Date())).flat(),
-    run: async (db, controller, env) => {
-      const jobs = jobsFor(env, new Date(controller.scheduledTime))[controller.cron];
-      if (!jobs) {
-        logEvent("cron_unknown", { cron: controller.cron }, { level: "warn" });
-        return;
-      }
-      await runJobs(db, jobs);
-    },
-  };
 }

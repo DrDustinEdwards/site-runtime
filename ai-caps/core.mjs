@@ -8,13 +8,15 @@
  * read-modify-write that races).
  */
 
+import { dayKey, monthKey } from "../time.mjs";
+
 /**
  * The window a use is counted in, as the key it is stored under: the UTC date, or the UTC month.
  * @param {"day" | "month"} window
  * @param {Date} now
  */
 export function windowKey(window, now) {
-  return now.toISOString().slice(0, window === "month" ? 7 : 10);
+  return window === "month" ? monthKey(now) : dayKey(now);
 }
 
 /**

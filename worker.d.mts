@@ -3,7 +3,6 @@ import type { CronJob } from "./cron.mjs";
 import type { OperatorTool } from "./operator.mjs";
 import type { Preconnect, Preload } from "./preload.mjs";
 
-export { PREVIEW_TOKEN, tokenPattern } from "./log.mjs";
 import type { AccessSecrets, AdminSettings } from "./access.mjs";
 
 /**
@@ -96,7 +95,7 @@ export interface SiteOptions<E> {
   speculationExclude?: string[];
   /** The operator API's tools, served at /api/operator behind OPERATOR_TOKEN and RATE_LIMITER. */
   operator?: (env: E, ctx: ExecutionContext) => Record<string, OperatorTool>;
-  /** The site's own steps, in order, before the cross-site check and the page. */
+  /** The site's own steps, in order, after the cross-site check and before the page. */
   steps?: GatewayStep<E>[];
   /** Path prefixes a cross-site write may reach (default ["/api/auth/"]). */
   crossSiteExempt?: string[];

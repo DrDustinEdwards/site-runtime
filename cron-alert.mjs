@@ -16,6 +16,7 @@
 import { cronFindings } from "./cron.mjs";
 import { sendEmail } from "./email.mjs";
 import { logEvent } from "./log.mjs";
+import { dayKey } from "./time.mjs";
 
 /** The migration: a D1 site adds it as its next file. `key` is what the alert is about (a job's name, a queue), `day`
  *  the UTC date, YYYY-MM-DD. */
@@ -69,7 +70,7 @@ export function describeAge(ms) {
  */
 export async function alertOnce({ db, key, kind, detail, now, send }) {
   const at = now ?? new Date();
-  const day = at.toISOString().slice(0, 10);
+  const day = dayKey(at);
   if (!(await claim(db, key, kind, day, detail ?? null, at.getTime())))
     return { sent: false, reason: "deduped" };
   /** @type {string} */
@@ -118,7 +119,7 @@ export async function cronAlert({
   now,
 }) {
   const at = now ?? new Date();
-  const day = at.toISOString().slice(0, 10);
+  const day = dayKey(at);
   const deliver =
     send ??
     (async (/** @type {CronAlertItem[]} */ alerts) =>
@@ -153,10 +154,11 @@ export async function cronAlert({
   try {
     await db
       .prepare(PRUNE)
-      .bind(new Date(at.getTime() - KEEP_DAYS * 86_400_000).toISOString().slice(0, 10))
+      .bind(dayKey(new Date(at.getTime() - KEEP_DAYS * 86_400_000)))
       .run();
-  } catch {
-    // Housekeeping only.
+  } catch (error) {
+    // Housekeeping only: the alerts still go.
+    logEvent("cron_alert_prune_failed", { error }, { level: "warn" });
   }
   /** @type {string[]} */
   const deduped = [];
@@ -174,6 +176,12 @@ export async function cronAlert({
       });
       if (outcome.sent) alerted.push(item.name);
       else if (outcome.reason === "deduped") deduped.push(item.name);
+      else
+        logEvent(
+          "cron_alert_send_failed",
+          { item: item.name, error: outcome.error },
+          { level: "error" },
+        );
     }
     return { found, alerted, deduped, mailed: alerted.length > 0 };
   }
@@ -188,6 +196,15 @@ export async function cronAlert({
   try {
     const outcome = await deliver(fresh);
     sent = outcome === true || (typeof outcome === "object" && outcome?.sent === true);
+    if (!sent)
+      logEvent(
+        "cron_alert_send_failed",
+        {
+          items: fresh.map((f) => f.name),
+          error: (typeof outcome === "object" && outcome?.error) || "not sent",
+        },
+        { level: "error" },
+      );
   } catch (error) {
     logEvent("cron_alert_send_failed", { error }, { level: "error" });
   }
@@ -231,5 +248,6 @@ async function release(db, key, kind, day) {
     .prepare(RELEASE)
     .bind(key, kind, day)
     .run()
-    .catch(() => undefined);
+    // A slot not given back keeps that alert from going out again today, so the failure is logged.
+    .catch((error) => logEvent("alert_release_failed", { key, error }, { level: "warn" }));
 }

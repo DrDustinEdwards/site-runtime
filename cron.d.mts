@@ -6,8 +6,6 @@ export const CRON_ERROR_MAX: number;
 export const CRON_TIMEOUT_MS: number;
 /** The migration for the opt-in history: `cron_run_log` (name, started_at, finished_at, outcome, reason; epoch ms), indexed by name. */
 export const CRON_LOG_SQL: string;
-/** The longest reason kept: 300 characters, one line. */
-export const CRON_REASON_MAX: number;
 /** How long the failure of an event job (`everyMinutes: null`) counts as current: 86400000 (a day). */
 export const CRON_EVENT_WINDOW_MS: number;
 /** The migration: `cron_runs` (name, every_minutes, first_started_at, last_started_at, last_ok_at, last_failed_at, last_error; epoch ms). */
@@ -126,7 +124,7 @@ export function describeRuns(
   what: string,
   call: { ok: boolean; status: number; data: unknown; error: string | null },
 ): string;
-/** Whether every run in a run_job answer succeeded or was skipped; false for a failed call or one without its runs. */
+/** Whether every run in a run_job answer succeeded or was skipped; false for a failed call, one without its runs, or a failed or refused run. */
 export function runsSucceeded(call: { ok: boolean; data: unknown }): boolean;
 /** `backup_status` and `run_job` together, for a site's operatorResponse tools; `history` as the site's runJobs has it. */
 export function operatorJobTools(options: {
@@ -211,17 +209,3 @@ export function cronCheck(
   db: D1Like | (() => D1Like),
   options?: CronFindingsOptions,
 ): { name: "cron"; level: "warn"; run: () => Promise<true | { ok: false; detail: string }> };
-/**
- * A site's jobs keyed by the cron that fires them: `all(env)` is every job (for /health's cronCheck and the operator's
- * run_job), `run(db, controller, env)` is the body of the Worker's `scheduled` handler (a trigger with no list is logged).
- */
-export function cronSchedule<Env>(
-  jobsFor: (env: Env, scheduledTime: Date) => Record<string, CronJob[]>,
-): {
-  all: (env: Env) => CronJob[];
-  run: (
-    db: D1Like | (() => D1Like) | null,
-    controller: { cron: string; scheduledTime: number },
-    env: Env,
-  ) => Promise<void>;
-};

@@ -49,9 +49,11 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 import { parsePolicy } from "../check.mjs";
+import { concatBytes } from "../encoding.mjs";
 import { htmlAttributes, sitemapLocs } from "../html.mjs";
 import { mediaType } from "../http.mjs";
 import { AVIF_MAX_EDGE, RASTER_PATH, RASTER_TYPES } from "../image.mjs";
+import { errorMessage } from "../log.mjs";
 
 const MAX_PAGES = 25;
 const MAX_SIZE_URLS = 6;
@@ -770,13 +772,7 @@ async function fetchBytes(get, url, limit, headers) {
       length += value.length;
     }
     await reader.cancel();
-    const bytes = new Uint8Array(length);
-    let at = 0;
-    for (const chunk of chunks) {
-      bytes.set(chunk, at);
-      at += chunk.length;
-    }
-    return { ...head, bytes };
+    return { ...head, bytes: concatBytes(...chunks) };
   } catch (error) {
     return {
       status: 0,
@@ -784,7 +780,7 @@ async function fetchBytes(get, url, limit, headers) {
       headers: new Headers(),
       bytes: empty,
       url,
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage(error),
     };
   }
 }
@@ -1552,9 +1548,7 @@ if (import.meta.url === invokedAs) {
   try {
     report = await auditImages({ origin, from: from ?? undefined });
   } catch (error) {
-    console.error(
-      `site-runtime-images: could not run: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    console.error(`site-runtime-images: could not run: ${errorMessage(error)}`);
     process.exit(2);
   }
   for (const finding of report.findings) console.log(annotation(finding));

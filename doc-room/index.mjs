@@ -297,7 +297,9 @@ export class DocRoom extends YServer {
     }));
     void super.onConnect(conn, ctx);
     this.#sendPeople();
-    void this.#sendComments(conn);
+    this.#sendComments(conn).catch((/** @type {unknown} */ error) =>
+      logEvent("room_comments_send_failed", { error: String(error) }, { level: "error" }),
+    );
   }
 
   /**

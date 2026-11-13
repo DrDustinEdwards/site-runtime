@@ -25,5 +25,5 @@ export function recordsCsv(
 ): string;
 /** The fields of a CSV text: BOM dropped, CRLF/LF/CR, quoted fields with doubled quotes and line breaks. */
 export function parseCsv(text: string): string[][];
-/** A download answer with the CSV type and `attachment; filename=...; filename*=UTF-8''...`. */
+/** A download answer: attachmentResponse with the CSV type (nosniff, no-store); `init`'s headers replace its own. */
 export function csvResponse(csv: string, filename: string, init?: ResponseInit): Response;
