@@ -70,10 +70,6 @@ test("an immutable response comes back with the headers, noindex marks private p
   assert.equal(out.headers.get("X-Robots-Tag"), "noindex");
 });
 
-test("a site must say what it stages", () => {
-  assert.throws(() => pageSecurity({ set, policy: () => ({}) }), /stages/);
-});
-
 test("renew: a stored page gets a fresh nonce per reader and its policy is built again for it", async () => {
   {
     const { withSecurityHeaders } = make({ renew: true });

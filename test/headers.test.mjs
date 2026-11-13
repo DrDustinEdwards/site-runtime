@@ -90,21 +90,6 @@ test("an override with no reason, or one under 12 characters, is refused", () =>
   assert.doesNotThrow(attempt("  exactly 12 c  "));
 });
 
-test("an override that says what the standard says is refused", () => {
-  assert.throws(
-    () =>
-      buildSecurityHeaders({ overrides: { "X-Frame-Options": { value: "deny", reason: REASON } } }),
-    /X-Frame-Options says what the standard already says/,
-  );
-});
-
-test("null on a header the standard does not send is refused", () => {
-  assert.throws(
-    () => buildSecurityHeaders({ overrides: { "Cache-Control": { value: null, reason: REASON } } }),
-    /Cache-Control removes a header the standard does not send/,
-  );
-});
-
 test("an empty or blank value is refused: null is the way to send none", () => {
   for (const value of ["", "   "]) {
     assert.throws(

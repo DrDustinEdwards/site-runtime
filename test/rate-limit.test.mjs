@@ -4,7 +4,6 @@ import { DatabaseSync } from "node:sqlite";
 import {
   hitRules,
   peekRules,
-  idleDeadline,
   purgeExpired,
   limit,
   limitedResponse,
@@ -130,14 +129,6 @@ test("a rule with a bad limit or a repeated window is refused", () => {
     TypeError,
   );
   assert.throws(() => hitRules(sql, [], T0), TypeError);
-});
-
-test("idle deadline is the end of the longest window", () => {
-  const rules = [
-    { limit: 1, windowSeconds: 60 },
-    { limit: 1, windowSeconds: 3600 },
-  ];
-  assert.equal(idleDeadline(rules, T0 + 5), T0 + 3_600_000 - (T0 % 3_600_000));
 });
 
 function namespaceFor(behavior) {

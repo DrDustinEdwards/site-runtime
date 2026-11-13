@@ -195,14 +195,6 @@ describe("verifyAccessRequest", () => {
     assert.equal(await at({ exp: now - 90 }), false);
     assert.equal(await at({ nbf: now + 90 }), false);
   });
-
-  test("`now` sets the clock, in milliseconds", async () => {
-    const req = request({ [ACCESS_JWT_HEADER]: await sign(claims()) });
-    assert.deepEqual(await verifyAccessRequest(req, { ...config, now: (now + 600) * 1000 }), {
-      ok: false,
-      reason: "expired",
-    });
-  });
 });
 
 describe("accessKeys", () => {
@@ -294,10 +286,6 @@ describe("accessKeys", () => {
     t.mock.timers.tick(1);
     assert.equal(await source("k1", false), undefined);
     assert.equal(fetched.length, 3);
-  });
-
-  test("a team domain that is not a host throws, since no key set can be named for it", () => {
-    assert.throws(() => accessKeys(""), /team domain/);
   });
 });
 

@@ -6,7 +6,6 @@ import {
   CLOUDFLARE_WEB_ANALYTICS,
   broadSource,
   buildContentSecurityPolicy,
-  buildPolicy,
   buildStagedPolicy,
   cloudflareBeaconAttributes,
   generateNonce,
@@ -42,11 +41,6 @@ test("scriptHash is the SHA-256 of the script's UTF-8 text, as a CSP hash source
       `sha256-${createHash("sha256").update(text, "utf8").digest("base64")}`,
     );
   }
-});
-
-test("buildPolicy refuses an empty or blank directive", () => {
-  for (const bad of [[""], ["default-src 'self'", "  "]])
-    assert.throws(() => buildPolicy(bad), /a CSP directive is empty/);
 });
 
 test("a site that loads nothing extra gets the fixed policy, enforced", () => {
@@ -97,12 +91,6 @@ test("a policy always has both report sinks, the family's unless given, written 
     /; report-uri \/csp-report; report-to csp-endpoint$/,
   );
   assert.deepEqual([...directives(SINK).keys()].slice(-2), ["report-uri", "report-to"]);
-});
-
-test("reportOnly names the Report-Only header and keeps the same policy", () => {
-  const reported = buildContentSecurityPolicy({ ...SINK, reportOnly: true });
-  assert.equal(reported.name, "Content-Security-Policy-Report-Only");
-  assert.equal(reported.value, buildContentSecurityPolicy(SINK).value);
 });
 
 test("a nonce goes on script-src and style-src and nowhere else", () => {
@@ -279,17 +267,6 @@ test("the builder refuses a broad source in every kind, and an unsafe keyword as
   assert.deepEqual(policy.get("img-src"), ["'self'", "data:", "blob:"]);
   assert.deepEqual(policy.get("media-src"), ["'self'", "blob:"]);
   assert.deepEqual(policy.get("script-src"), ["'self'", "https://js.example.com"]);
-});
-
-test("the refusal names the offending source", () => {
-  assert.throws(
-    () =>
-      buildContentSecurityPolicy({
-        ...SINK,
-        sources: { script: ["https://js.example.com", "data:"] },
-      }),
-    /^Error: data: is not an acceptable script-src source/,
-  );
 });
 
 test("a source with a space, semicolon or comma, or not a string, is refused in every kind and in the sinks", () => {

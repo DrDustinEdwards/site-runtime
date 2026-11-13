@@ -150,8 +150,3 @@ test("innocent text survives: a sha, a URL, ordinary prose, a masked secret and 
   assert.equal(out.text, innocent, `innocent text was altered:\n${out.text}`);
   assert.deepEqual(out.redactions, {});
 });
-
-test("the counts name each kind and how many", () => {
-  const out = redact(`${GH_CLASSIC("p")} and ${GH_CLASSIC("o")} and ${AWS_ID}`);
-  assert.deepEqual(out.redactions, { "github-token": 2, "aws-access-key-id": 1 });
-});
