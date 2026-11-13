@@ -63,13 +63,29 @@ export function monthKey(date) {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
+/** @type {Map<string, Intl.DateTimeFormat>} */
+const dayFormats = new Map();
+
 /**
- * The UTC calendar day of a Date as "YYYY-MM-DD": a day bucket, a once-a-day key.
- * @param {Date} date
+ * The calendar day of a moment in a zone as "YYYY-MM-DD": a day bucket, a once-a-day key, a meeting's own day. Without a
+ * zone it is the runtime's (UTC in a Worker, the viewer's in a browser), so a key that must be UTC says "UTC". A string
+ * is read as `parseSqlTime` reads it (zoneless is UTC). Throws a RangeError for a value that is not a time.
+ * @param {Date | number | string} at a Date, epoch milliseconds or a stored time
+ * @param {string} [zone] an IANA zone, such as "UTC" or "America/Chicago"
  * @returns {string}
  */
-export function dayKey(date) {
-  return date.toISOString().slice(0, 10);
+export function dayKey(at, zone = "") {
+  let format = dayFormats.get(zone);
+  if (!format) {
+    format = new Intl.DateTimeFormat("en-CA", {
+      timeZone: zone || undefined,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    dayFormats.set(zone, format);
+  }
+  return format.format(typeof at === "string" ? (parseSqlTime(at) ?? Number.NaN) : at);
 }
 
 /**
