@@ -26,7 +26,7 @@
 
 import { agentPrincipal, agentScopes } from "./agent-keys.mjs";
 import { auditLogCheck, exportAuditLog, recordAudit } from "./audit-log.mjs";
-import { runJobTool, runJobs } from "./cron.mjs";
+import { DAILY_MINUTES, runJobTool, runJobs } from "./cron.mjs";
 import { durableObjectCheck, healthResponse, kvCheck, r2Check } from "./health.mjs";
 import { deployedSha } from "./deploy.mjs";
 import { errorMessage, logEvent, withRequestLog } from "./log.mjs";
@@ -63,7 +63,7 @@ export function adminMcpJobs(env) {
   return [
     {
       name: "tool-call-log-export",
-      everyMinutes: 1440,
+      everyMinutes: DAILY_MINUTES,
       timeoutMs: 10 * 60_000,
       run: async () => {
         if (!env.AUDIT_BUCKET)

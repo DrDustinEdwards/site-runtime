@@ -9,6 +9,9 @@ import { DISPOSABLE_EMAIL, SIGN_IN_EXPIRES_IN_WORDS } from "./sign-in-link.mjs";
 export const EMAIL_CHANGE_EXPIRES_IN_SECONDS = 60 * 60;
 export const EMAIL_CHANGE_EXPIRES_IN_WORDS = "1 hour";
 
+/** The refusal of a disposable address, on the sign-in page and the account page alike. */
+const DISPOSABLE_WORDS = "Use a real email address. Disposable email addresses are not allowed.";
+
 /** The words every site's sign-in pages say, by answer. */
 export const SIGN_IN_WORDS = Object.freeze({
   noEmail: "Enter your email address.",
@@ -31,7 +34,7 @@ export const SIGN_IN_WORDS = Object.freeze({
       "Too many tries for this address. Try again later, or use the link in the email.",
     unavailable:
       "Codes can't be checked right now. Use the link in the email, or try again in a few minutes.",
-    disposable: "Use a real email address. Disposable email addresses are not allowed.",
+    disposable: DISPOSABLE_WORDS,
     failed: "That sign-in did not complete. Try again, or use the link in the email.",
   }),
   passkey: Object.freeze({
@@ -45,7 +48,7 @@ export const SIGN_IN_WORDS = Object.freeze({
 export const ACCOUNT_WORDS = Object.freeze({
   noEmail: "Enter an email address.",
   sameEmail: "That is already your email address.",
-  disposable: "Use a real email address. Disposable email addresses are not allowed.",
+  disposable: DISPOSABLE_WORDS,
   unverified: "Sign in with an email link first, then change your address.",
   emailFailed: "The email was not sent. Try again in a minute.",
   /** The current address the first email-change link went to, and the time both links last. */

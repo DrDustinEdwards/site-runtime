@@ -64,6 +64,15 @@ export function monthKey(date) {
 }
 
 /**
+ * The UTC calendar day of a Date as "YYYY-MM-DD": a day bucket, a once-a-day key.
+ * @param {Date} date
+ * @returns {string}
+ */
+export function dayKey(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+/**
  * `promise`, or a rejection with `new Error(message)` when `ms` pass first; the timer is cleared either way, so a
  * settled call leaves nothing pending. `onTimeout` hears the error before the rejection (to abort the work it raced).
  * @template T

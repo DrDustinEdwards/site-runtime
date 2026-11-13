@@ -154,6 +154,9 @@ test("PLANT: the Hono operator bearer is closed by a short token, as the operato
       header: (/** @type {string} */ name) => headers.get(name) ?? undefined,
     },
   };
-  await assert.rejects(door(c, async () => {}), { status: 503 });
+  await assert.rejects(
+    door(c, async () => {}),
+    { status: 503 },
+  );
   assert.deepEqual(actors, []);
 });

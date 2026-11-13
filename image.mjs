@@ -50,7 +50,7 @@
  */
 
 import { applyHeaderSet, corpFor, UPLOAD_HEADERS } from "./headers.mjs";
-import { mediaType } from "./http.mjs";
+import { mediaType, textResponse } from "./http.mjs";
 import { errorMessage } from "./log.mjs";
 
 /**
@@ -635,19 +635,9 @@ export function defineImages({
       cacheControl = versionedCache(),
     },
   ) {
-    const guarded = (/** @type {Response} */ response) => {
-      const headers = new Headers(response.headers);
-      applyHeaderSet(headers, UPLOAD_HEADERS);
-      return new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers,
-      });
-    };
+    const guarded = (/** @type {Response} */ response) => applyHeaderSet(response, UPLOAD_HEADERS);
     if (request.method !== "GET" && request.method !== "HEAD")
-      return guarded(
-        new Response("Method not allowed", { status: 405, headers: { allow: "GET, HEAD" } }),
-      );
+      return guarded(textResponse("Method not allowed", 405, { allow: "GET, HEAD" }));
     const url = new URL(request.url);
     let key = null;
     // The path is still percent-encoded; each segment is decoded as keyOfAddress decodes it, so a key with a space or
@@ -660,7 +650,7 @@ export function defineImages({
         key = null;
       }
     }
-    if (!key) return guarded(new Response("Not found", { status: 404 }));
+    if (!key) return guarded(textResponse("Not found", 404));
     const object = await read(key);
     const policy =
       object && typeof cacheControl === "function"

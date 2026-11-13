@@ -131,7 +131,9 @@ export function parseCsv(text) {
  * @param {ResponseInit} [init]
  */
 export function csvResponse(csv, filename, init = {}) {
-  const headers = new Headers(attachmentResponse(csv, { filename, type: CSV_CONTENT_TYPE }).headers);
+  const headers = new Headers(
+    attachmentResponse(csv, { filename, type: CSV_CONTENT_TYPE }).headers,
+  );
   new Headers(init.headers).forEach((value, name) => headers.set(name, value));
   return new Response(csv, { ...init, headers });
 }

@@ -34,6 +34,8 @@ export function hostCookie(
 ): string;
 /** A cookie hostCookie wrote, by its name without the prefix (`__Host-`, else `__Secure-`); never the bare name. */
 export function readCookie(request: Request, name: string): string | null;
+/** Every cookie the request carries, as [name, value] in the order sent; a part with no "=" has the empty name. */
+export function cookiePairs(request: Request): [string, string][];
 /** What an uploaded file is served with: nosniff and `sandbox; default-src 'none'; style-src 'unsafe-inline'`. */
 export const UPLOAD_HEADERS: Readonly<Record<string, string>>;
 /**

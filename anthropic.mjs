@@ -38,7 +38,7 @@
  */
 
 const ANTHROPIC_ORIGIN = "https://api.anthropic.com";
-import { priceOf } from "./ai-engine.mjs";
+import { priceOf, promptOf } from "./ai-engine.mjs";
 import { retryAfterSeconds } from "./http.mjs";
 import { logEvent, scrubText } from "./log.mjs";
 
@@ -774,8 +774,7 @@ function add(total, usage, model) {
   // A model with a long-prompt price (Haiku 5.5 over 100,000 tokens) prices each request on its own prompt, so the
   // requests over the line are kept apart for ai-engine costMicros.
   const above = priceOf(model)?.long?.above;
-  if (above !== undefined && one.input + one.cacheRead + one.cacheWrite + one.cacheWrite1h > above)
-    sum(total.long, one);
+  if (above !== undefined && promptOf(one) > above) sum(total.long, one);
 }
 
 /** @returns {Counts} */

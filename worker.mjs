@@ -86,6 +86,7 @@ import {
   settleCacheHeaders,
   withPurgePages,
 } from "./edge-cache.mjs";
+import { cookiePairs } from "./headers.mjs";
 import { clientIp, isWrite, textResponse } from "./http.mjs";
 import {
   PREVIEW_TOKEN,
@@ -244,17 +245,11 @@ const DEFAULT_EDGE_LIFETIME = publicPageHeaders()[EDGE_CACHE_HEADER];
  * @returns {Record<string, string> | null} the public cookies' values, or null when any other cookie is present
  */
 function publicCookieValues(request, publicCookies) {
-  const header = request.headers.get("Cookie");
   /** @type {Record<string, string>} */
   const values = {};
-  if (!header) return values;
-  for (const part of header.split(";")) {
-    const pair = part.trim();
-    if (!pair) continue;
-    const eq = pair.indexOf("=");
-    const name = eq < 0 ? pair : pair.slice(0, eq);
+  for (const [name, value] of cookiePairs(request)) {
     if (!publicCookies.includes(name)) return null;
-    values[name] = eq < 0 ? "" : pair.slice(eq + 1);
+    values[name] = value;
   }
   return values;
 }

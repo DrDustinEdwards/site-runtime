@@ -100,7 +100,10 @@ test("a cross-site write is refused before a site step sees it; a bearer caller 
   /** @type {string[]} */
   const reached = [];
   const { fetch } = harness({
-    steps: [(/** @type {Request} */ r) => (reached.push(r.method), new Response("ok"))],
+    steps: [
+      (/** @type {Request} */ r) =>
+        (reached.push(r.method), new Response("ok")),
+    ],
   });
   const refused = await fetch(
     new Request("https://example.com/api/app/save", {

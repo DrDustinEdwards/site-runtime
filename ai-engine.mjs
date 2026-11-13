@@ -154,7 +154,7 @@ function micros(u, r) {
 }
 
 /** Every input token of a request: the page counts cache reads and both cache writes toward its prompt length. */
-function promptOf(/** @type {Counts} */ u) {
+export function promptOf(/** @type {Counts} */ u) {
   return u.input + u.cacheRead + u.cacheWrite + (u.cacheWrite1h ?? 0);
 }
 

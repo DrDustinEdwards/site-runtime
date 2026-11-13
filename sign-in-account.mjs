@@ -25,6 +25,7 @@
  *   people with none who have not just said "Not now"; `needsSecondPasskey` is the nudge toward a second one.
  */
 import { logEvent, OWASP_EVENTS } from "./log.mjs";
+import { DAILY_MINUTES } from "./cron.mjs";
 import { emailKey } from "./rate-limit/index.mjs";
 
 /** What `sendSecurityNotice` is called for. */
@@ -859,7 +860,7 @@ export async function pruneExpiredAuth(db, now = Date.now()) {
 export function pruneAuthEventsJob(db) {
   return {
     name: "prune-auth-events",
-    everyMinutes: 1440,
+    everyMinutes: DAILY_MINUTES,
     timeoutMs: 60_000,
     run: async () => {
       await pruneAuthEvents(db);

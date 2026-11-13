@@ -19,6 +19,7 @@
  */
 
 import { redirectResponse } from "./http.mjs";
+import { DAILY_MINUTES } from "./cron.mjs";
 import { logEvent } from "./log.mjs";
 
 /** The longest path stored: a crawler probing for exploits sends very long URLs, each a row of that size. */
@@ -180,7 +181,7 @@ export async function pruneNotFound(db, { days = 90, now = new Date() } = {}) {
 export function pruneNotFoundJob(db, { days = 90 } = {}) {
   return {
     name: "prune-404",
-    everyMinutes: 1440,
+    everyMinutes: DAILY_MINUTES,
     timeoutMs: 60_000,
     run: () => pruneNotFound(db, { days }),
   };

@@ -18,6 +18,8 @@
  *   check is the fallback the cheat sheet calls mandatory, for a browser that sends none.
  */
 
+import { isWrite } from "./http.mjs";
+
 /** The refusal's text. */
 export const ORIGIN_REFUSAL = "Cross-origin requests are not accepted.";
 
@@ -56,8 +58,6 @@ export function originRefusal(headers = {}) {
   });
 }
 
-const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
-
 /**
  * For an admin or resource route: null when the request may go on, else the refusal to return. A GET, HEAD or OPTIONS
  * goes on. Any other method goes on when Sec-Fetch-Site is `same-origin` or `none` (the reader's own action), or
@@ -69,7 +69,7 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
  * @returns {Response | null}
  */
 export function refuseCrossSite(request, headers, { sameSite = false } = {}) {
-  if (SAFE_METHODS.has(request.method)) return null;
+  if (!isWrite(request)) return null;
   const site = request.headers.get("Sec-Fetch-Site");
   const ok =
     site === null
