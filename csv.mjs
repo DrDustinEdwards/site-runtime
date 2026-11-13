@@ -11,6 +11,8 @@
  * guard; Foxhound, Capsid, dustinedwards.info and Capsomer each had a writer (the 2026-11-11 third audit pass).
  */
 
+import { attachmentResponse } from "./r2-object.mjs";
+
 /** The Content-Type of a CSV answer. */
 export const CSV_CONTENT_TYPE = "text/csv; charset=utf-8";
 
@@ -121,27 +123,15 @@ export function parseCsv(text) {
 }
 
 /**
- * `attachment` with the name: ASCII in `filename`, the exact name in `filename*` (RFC 6266, RFC 5987).
- * @param {string} filename
- */
-function disposition(filename) {
-  const ascii = filename.replace(/[^\x20-\x7E]/g, "_").replace(/["\\]/g, "_");
-  const exact = encodeURIComponent(filename).replace(
-    /['()*]/g,
-    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
-  );
-  return `attachment; filename="${ascii}"; filename*=UTF-8''${exact}`;
-}
-
-/**
- * A download answer: the CSV type and an attachment with this file name; `init` adds status and headers.
+ * A download answer: ./r2-object attachmentResponse with the CSV type (attachment with this file name, nosniff,
+ * no-store, so an export of private rows is never cached by a heuristic); `init` adds status and headers, and its
+ * Cache-Control replaces no-store for an export meant to be shared.
  * @param {string} csv
  * @param {string} filename
  * @param {ResponseInit} [init]
  */
 export function csvResponse(csv, filename, init = {}) {
-  const headers = new Headers(init.headers);
-  headers.set("content-type", CSV_CONTENT_TYPE);
-  headers.set("content-disposition", disposition(filename));
+  const headers = new Headers(attachmentResponse(csv, { filename, type: CSV_CONTENT_TYPE }).headers);
+  new Headers(init.headers).forEach((value, name) => headers.set(name, value));
   return new Response(csv, { ...init, headers });
 }

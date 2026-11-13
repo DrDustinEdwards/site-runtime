@@ -1185,7 +1185,7 @@ Worker relays from outside (a CI log handed to an agent). It over-redacts on pur
 starting `=`, `+`, `-`, `@`, a tab, CR or LF, or the full-width ＝ ＋ － ＠, gets an apostrophe first, so a spreadsheet opens
 it as text ([OWASP CSV Injection](https://owasp.org/www-community/attacks/CSV_Injection)); a number, a date, or text
 that is only a number stays as it is. `parseCsv(text)` reads it back (BOM, CRLF, LF or CR, quoted fields).
-`csvResponse(csv, filename, init?)` is the download answer (`CSV_CONTENT_TYPE` and an RFC 6266 attachment name), and
+`csvResponse(csv, filename, init?)` is the download answer (./r2-object `attachmentResponse` with `CSV_CONTENT_TYPE`: nosniff and no-store unless `init` says otherwise), and
 `./csv-client` `downloadCsv(filename, csv)` saves one in the browser.
 
 ## Signed links

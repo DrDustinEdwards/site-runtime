@@ -1,6 +1,6 @@
 /** The browser side of ./csv: hand the reader a CSV text as a file to save. */
 
-const CSV_CONTENT_TYPE = "text/csv; charset=utf-8";
+import { CSV_CONTENT_TYPE } from "./csv.mjs";
 
 /**
  * Saves `csv` as a file named `filename`: a Blob of the CSV type, an object URL, a hidden `<a download>` clicked, the
