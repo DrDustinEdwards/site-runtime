@@ -60,7 +60,7 @@ export function passkeyUserHandle(user, rpId = pageHost() ?? "") {
  * and stores none, so a handle reaches only the passkey made with it. `credentialIds` are the account's credential ids
  * (`accountPasskeys` rows' `credentialId`). `user` is the signed-in account's id, which picks the kept handle when
  * `userId` is not passed. Resolves true when the browser took the signal; false with no handle.
- * @param {{ rpId?: string, userId?: string | null, user?: string | null, credentialIds: string[] }} options
+ * @param {{ rpId?: string, userId?: string | null, user: string | null, credentialIds: string[] }} options
  */
 export async function signalAllAcceptedCredentials({
   rpId = pageHost(),
@@ -81,7 +81,7 @@ export async function signalAllAcceptedCredentials({
  * Tells the provider the name and display name to show on this user's passkey: after the email changes (`name` the new
  * address) and after the person renames themselves. `userId` and `user` as for signalAllAcceptedCredentials. Resolves
  * true when the browser took the signal; false with no handle.
- * @param {{ rpId?: string, userId?: string | null, user?: string | null, name: string, displayName?: string }} options
+ * @param {{ rpId?: string, userId?: string | null, user: string | null, name: string, displayName?: string }} options
  */
 export async function signalCurrentUserDetails({
   rpId = pageHost(),
@@ -104,7 +104,7 @@ export async function signalCurrentUserDetails({
  * Both of the above: after a passkey sign-in lands, and each time the account page's passkey list loads. Without a
  * handle (none passed, none kept for `user`) it does nothing; after a delete, signal the deleted one with
  * signalUnknownCredential.
- * @param {{ rpId?: string, userId?: string | null, user?: string | null, credentialIds: string[], name?: string, displayName?: string }} options
+ * @param {{ rpId?: string, userId?: string | null, user: string | null, credentialIds: string[], name?: string, displayName?: string }} options
  */
 export async function signalPasskeys({
   rpId = pageHost(),
@@ -116,8 +116,8 @@ export async function signalPasskeys({
 }) {
   const handle = userId ?? passkeyUserHandle(user, rpId);
   if (!rpId || !handle) return;
-  await signalAllAcceptedCredentials({ rpId, userId: handle, credentialIds });
-  if (name) await signalCurrentUserDetails({ rpId, userId: handle, name, displayName });
+  await signalAllAcceptedCredentials({ rpId, userId: handle, user, credentialIds });
+  if (name) await signalCurrentUserDetails({ rpId, userId: handle, user, name, displayName });
 }
 
 /**
@@ -200,7 +200,7 @@ export async function passkeySignIn(client, { autoFill = false } = {}) {
     ]);
     if (list.data)
       await signalPasskeys({
-        user: session.data?.user?.id,
+        user: session.data?.user?.id ?? null,
         credentialIds: list.data.map((p) => p.credentialID),
         name: session.data?.user?.email,
       });

@@ -13,7 +13,8 @@ export function passkeyUserHandle(user: string | null | undefined, rpId?: string
 export function signalAllAcceptedCredentials(options: {
   rpId?: string;
   userId?: string | null;
-  user?: string | null;
+  /** The signed-in account's id: required, so a call written before it existed fails to typecheck rather than sending nothing. */
+  user: string | null;
   credentialIds: string[];
 }): Promise<boolean>;
 
@@ -21,7 +22,8 @@ export function signalAllAcceptedCredentials(options: {
 export function signalCurrentUserDetails(options: {
   rpId?: string;
   userId?: string | null;
-  user?: string | null;
+  /** The signed-in account's id: required, so a call written before it existed fails to typecheck rather than sending nothing. */
+  user: string | null;
   name: string;
   displayName?: string;
 }): Promise<boolean>;
@@ -34,7 +36,8 @@ export function signalCurrentUserDetails(options: {
 export function signalPasskeys(options: {
   rpId?: string;
   userId?: string | null;
-  user?: string | null;
+  /** The signed-in account's id: required, so a call written before it existed fails to typecheck rather than sending nothing. */
+  user: string | null;
   credentialIds: string[];
   name?: string;
   displayName?: string;
