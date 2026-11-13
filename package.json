@@ -649,7 +649,8 @@
     "bloat": "devkit-no-bloat",
     "lint": "oxlint --type-aware --deny-warnings --report-unused-disable-directives-severity=error",
     "format": "oxfmt",
-    "format:check": "oxfmt --check"
+    "format:check": "oxfmt --check",
+    "changeset": "changeset"
   },
   "dependencies": {
     "isbot": "5.2.2",
@@ -657,9 +658,10 @@
   },
   "devDependencies": {
     "@better-auth/passkey": "1.7.18",
+    "@changesets/cli": "3.0.3",
     "@cloudflare/workers-oauth-provider": "1.2.4",
     "@cloudflare/workers-types": "5.20261108.1",
-    "@dustinedwards/devkit": "github:DrDustinEdwards/devkit#v0.45.0",
+    "@dustinedwards/devkit": "github:DrDustinEdwards/devkit#v0.48.0",
     "@types/node": "24.19.2",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
