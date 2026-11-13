@@ -1,7 +1,4 @@
 {
-  "tools": {
-    "knip": "knip@6.45.1"
-  },
   "baseline": {
     "measured_at": "619a250",
     "knip": {
