@@ -16,7 +16,7 @@ import { dayKey, monthKey } from "../time.mjs";
  * @param {Date} now
  */
 export function windowKey(window, now) {
-  return window === "month" ? monthKey(now) : dayKey(now);
+  return window === "month" ? monthKey(now) : dayKey(now, "UTC");
 }
 
 /**

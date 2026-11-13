@@ -70,7 +70,7 @@ export function describeAge(ms) {
  */
 export async function alertOnce({ db, key, kind, detail, now, send }) {
   const at = now ?? new Date();
-  const day = dayKey(at);
+  const day = dayKey(at, "UTC");
   if (!(await claim(db, key, kind, day, detail ?? null, at.getTime())))
     return { sent: false, reason: "deduped" };
   /** @type {string} */
@@ -119,7 +119,7 @@ export async function cronAlert({
   now,
 }) {
   const at = now ?? new Date();
-  const day = dayKey(at);
+  const day = dayKey(at, "UTC");
   const deliver =
     send ??
     (async (/** @type {CronAlertItem[]} */ alerts) =>
@@ -154,7 +154,7 @@ export async function cronAlert({
   try {
     await db
       .prepare(PRUNE)
-      .bind(dayKey(new Date(at.getTime() - KEEP_DAYS * 86_400_000)))
+      .bind(dayKey(at.getTime() - KEEP_DAYS * 86_400_000, "UTC"))
       .run();
   } catch (error) {
     // Housekeeping only: the alerts still go.

@@ -1155,7 +1155,7 @@ on a ref that cannot exist answers 422). `PR_URL_SOURCE` and `parsePrUrl(url)` r
 
 `./time`: `parseSqlTime(value)` is epoch milliseconds of a stored time: D1's zoneless "YYYY-MM-DD HH:MM:SS" read as
 UTC, an ISO time with its zone kept, a bare day as its UTC midnight, and null for nothing or nonsense. `toDate(ms)` and
-`toMs(date)` convert Drizzle's nullable timestamps, keeping null as null. `toSqlTime(date)` is D1's "YYYY-MM-DD HH:MM:SS" in UTC, the inverse of `parseSqlTime`. `monthKey(date)` is its UTC month as "YYYY-MM" and `dayKey(date)` its UTC day as "YYYY-MM-DD". `withTimeout(promise, ms, message?, onTimeout?)` is the one timeout race (cron jobs, health checks, the ask guard, PDF renders).
+`toMs(date)` convert Drizzle's nullable timestamps, keeping null as null. `toSqlTime(date)` is D1's "YYYY-MM-DD HH:MM:SS" in UTC, the inverse of `parseSqlTime`. `monthKey(date)` is its UTC month as "YYYY-MM" and `dayKey(at, zone?)` the calendar day of a Date, epoch milliseconds or stored time as "YYYY-MM-DD" in an IANA zone (the runtime's without one, so a UTC key says "UTC"). `withTimeout(promise, ms, message?, onTimeout?)` is the one timeout race (cron jobs, health checks, the ask guard, PDF renders).
 
 `./google-service-account`: `parseServiceAccountKey(raw, name)` checks a pasted key file (JSON, a service account,
 a PKCS#8 key, Google's own token_uri) and gives `{ ok: true, key }` or `{ ok: false, state, detail }`;
