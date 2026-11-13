@@ -305,7 +305,10 @@ function notModified(response, request) {
  * @param {Response} response
  */
 export function privateRender(response) {
-  if (response.status === 101 || /** @type {Response & { webSocket?: unknown }} */ (response).webSocket)
+  if (
+    response.status === 101 ||
+    /** @type {Response & { webSocket?: unknown }} */ (response).webSocket
+  )
     return response;
   const headers = new Headers(response.headers);
   headers.set("Cache-Control", UNCACHED);
