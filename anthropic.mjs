@@ -54,13 +54,20 @@ const DAY_MS = 86_400_000;
 
 /**
  * The models the family calls, as platform.claude.com/docs/en/about-claude/model-deprecations listed them on
- * 2026-10-30. `retires` is a set retirement date (a deprecated or retired model); `notBefore` is the page's "not sooner
+ * 2026-11-13. `retires` is a set retirement date (a deprecated or retired model); `notBefore` is the page's "not sooner
  * than" floor for an active model, which is not a date it stops (Anthropic gives at least 60 days' notice, and a
  * deprecation puts a set date in the table). `cacheMin` is the minimum cacheable prompt in tokens
  * (build-with-claude/prompt-caching). Refresh from the page; never type a date from memory.
  * @type {Readonly<Record<string, Readonly<{ state: "active" | "deprecated" | "retired"; deprecated: string | null; retires: string | null; notBefore: string | null; cacheMin: number | null }>>>}
  */
 export const MODELS = /* @__PURE__ */ Object.freeze({
+  "claude-sonnet-5-5": /* @__PURE__ */ Object.freeze({
+    state: "active",
+    deprecated: null,
+    retires: null,
+    notBefore: "2027-09-28",
+    cacheMin: 512,
+  }),
   "claude-sonnet-5": /* @__PURE__ */ Object.freeze({
     state: "active",
     deprecated: null,
@@ -104,7 +111,7 @@ export const MODELS = /* @__PURE__ */ Object.freeze({
     cacheMin: null,
   }),
 });
-export const MODELS_CHECKED = "2026-11-07";
+export const MODELS_CHECKED = "2026-11-13";
 
 /**
  * The model each kind of call uses, in one place (C8): a site names the role, never an id, so a model change is one
@@ -113,7 +120,7 @@ export const MODELS_CHECKED = "2026-11-07";
  */
 export const MODEL_IDS = /* @__PURE__ */ Object.freeze({
   fast: "claude-haiku-5-5",
-  standard: "claude-sonnet-5",
+  standard: "claude-sonnet-5-5",
   deep: "claude-opus-5-5",
 });
 

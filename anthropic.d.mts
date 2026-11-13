@@ -18,6 +18,7 @@ export type ModelEntry = Readonly<{
 /** The models the family calls, from the model-deprecations page as read on MODELS_CHECKED. */
 export const MODELS: Readonly<
   Record<
+    | "claude-sonnet-5-5"
     | "claude-sonnet-5"
     | "claude-opus-5-5"
     | "claude-opus-4-8"
@@ -32,7 +33,7 @@ export const MODELS_CHECKED: string;
 /** The model for each kind of call (C8): name the role, never an id. Each is in MODELS. */
 export const MODEL_IDS: Readonly<{
   fast: "claude-haiku-5-5";
-  standard: "claude-sonnet-5";
+  standard: "claude-sonnet-5-5";
   deep: "claude-opus-5-5";
 }>;
 /** The deprecations page as Markdown. */
