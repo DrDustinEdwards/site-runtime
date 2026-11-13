@@ -31,64 +31,71 @@ const LATIN1 =
 /**
  * The named references mail and CMS markup carries: the markup five, Latin-1, typographic quotes, dashes and spaces,
  * arrows and the Latin-extended letters. Names are case-sensitive, as in HTML (`&Eacute;` is not `&eacute;`).
- * @type {Readonly<Record<string, string>>}
+ * @returns {Readonly<Record<string, string>>}
  */
-const NAMED = Object.freeze({
-  ...Object.fromEntries(LATIN1.split(" ").map((name, i) => [name, String.fromCodePoint(0xa0 + i)])),
-  quot: '"',
-  QUOT: '"',
-  apos: "'",
-  lt: "<",
-  LT: "<",
-  gt: ">",
-  GT: ">",
-  amp: "&",
-  AMP: "&",
-  COPY: "\u00a9",
-  REG: "\u00ae",
-  trade: "\u2122",
-  lsquo: "\u2018",
-  rsquo: "\u2019",
-  sbquo: "\u201a",
-  ldquo: "\u201c",
-  rdquo: "\u201d",
-  bdquo: "\u201e",
-  lsaquo: "\u2039",
-  rsaquo: "\u203a",
-  ndash: "\u2013",
-  mdash: "\u2014",
-  minus: "\u2212",
-  hellip: "\u2026",
-  bull: "\u2022",
-  dagger: "\u2020",
-  Dagger: "\u2021",
-  permil: "\u2030",
-  prime: "\u2032",
-  Prime: "\u2033",
-  euro: "\u20ac",
-  ensp: "\u2002",
-  emsp: "\u2003",
-  thinsp: "\u2009",
-  zwnj: "\u200c",
-  zwj: "\u200d",
-  larr: "\u2190",
-  rarr: "\u2192",
-  uarr: "\u2191",
-  darr: "\u2193",
-  check: "\u2713",
-  OElig: "\u0152",
-  oelig: "\u0153",
-  Scaron: "\u0160",
-  scaron: "\u0161",
-  Yuml: "\u0178",
-  fnof: "\u0192",
-  circ: "\u02c6",
-  tilde: "\u02dc",
-});
+function namedReferences() {
+  return Object.freeze({
+    ...Object.fromEntries(
+      LATIN1.split(" ").map((name, i) => [name, String.fromCodePoint(0xa0 + i)]),
+    ),
+    quot: '"',
+    QUOT: '"',
+    apos: "'",
+    lt: "<",
+    LT: "<",
+    gt: ">",
+    GT: ">",
+    amp: "&",
+    AMP: "&",
+    COPY: "\u00a9",
+    REG: "\u00ae",
+    trade: "\u2122",
+    lsquo: "\u2018",
+    rsquo: "\u2019",
+    sbquo: "\u201a",
+    ldquo: "\u201c",
+    rdquo: "\u201d",
+    bdquo: "\u201e",
+    lsaquo: "\u2039",
+    rsaquo: "\u203a",
+    ndash: "\u2013",
+    mdash: "\u2014",
+    minus: "\u2212",
+    hellip: "\u2026",
+    bull: "\u2022",
+    dagger: "\u2020",
+    Dagger: "\u2021",
+    permil: "\u2030",
+    prime: "\u2032",
+    Prime: "\u2033",
+    euro: "\u20ac",
+    ensp: "\u2002",
+    emsp: "\u2003",
+    thinsp: "\u2009",
+    zwnj: "\u200c",
+    zwj: "\u200d",
+    larr: "\u2190",
+    rarr: "\u2192",
+    uarr: "\u2191",
+    darr: "\u2193",
+    check: "\u2713",
+    OElig: "\u0152",
+    oelig: "\u0153",
+    Scaron: "\u0160",
+    scaron: "\u0161",
+    Yuml: "\u0178",
+    fnof: "\u0192",
+    circ: "\u02c6",
+    tilde: "\u02dc",
+  });
+}
+
+/** @type {Readonly<Record<string, string>> | undefined} */
+let named;
 
 /**
  * `text` with its character references read: decimal and hex numeric ones (a code point outside 1 to 0x10FFFF, or a
- * lone surrogate, stays as written) and the named ones in `NAMED` (the markup five, Latin-1, typographic quotes, dashes,
+ * lone surrogate, stays as written) and the named ones in `namedReferences` (the markup five, Latin-1, typographic quotes, dashes,
  * spaces and arrows), in one pass, so `&amp;lt;` becomes `&lt;`, not `<`. Any other name stays as written. For reading a
  * page or an email back, never for making output safe.
  * @param {string} text
@@ -98,7 +105,10 @@ export function unescapeHtml(text) {
   return text.replace(
     /&(?:#[xX]([0-9a-fA-F]+)|#(\d+)|([a-zA-Z][a-zA-Z0-9]*));/g,
     (whole, hex, dec, name) => {
-      if (name) return Object.hasOwn(NAMED, name) ? (NAMED[name] ?? whole) : whole;
+      if (name) {
+        named ??= namedReferences();
+        return Object.hasOwn(named, name) ? (named[name] ?? whole) : whole;
+      }
       const code = Number.parseInt(hex ?? dec, hex ? 16 : 10);
       return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff)
         ? String.fromCodePoint(code)
