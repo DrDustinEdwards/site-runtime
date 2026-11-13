@@ -3,7 +3,8 @@ import { test } from "node:test";
 import { crawlApp } from "../signed-in-crawl.mjs";
 
 // The crawl's verdicts on a fake app: one that never got past the sign-in is "error", never a pass; a JSON action that
-// reads a text/plain or form body (R4) is an error, while a cross-origin load is a warning only.
+// reads a text/plain or form body (R4) and a page Web Analytics would count are errors, while a cross-origin load is a
+// warning only.
 
 const ORIGIN = "https://portal.dustinedwards.info";
 const page = (/** @type {string} */ html) =>
@@ -53,6 +54,8 @@ test("PLANT: a sign-in redirect is an error; an action that is not 415 to a form
         f.detail.includes("https://cdn.example.com"),
     ),
   );
+  // The page went out without no-transform, so Cloudflare would count it in Web Analytics.
+  assert.ok(result.findings.some((f) => f.check === "analytics" && f.severity === "error"));
   // The page, its first same-origin script, then the two probes: nothing else is sent.
   assert.deepEqual(methods, [
     "GET",

@@ -10,7 +10,8 @@ import { siteForOrigin } from "./sites.mjs";
 // grades each response with checkSecurityHeaders against the app's registry entry, and grades the first same-origin
 // script a page names and each JSON read. On JSON actions it probes R4: a text/plain and a form body must get 415, so a
 // cross-site form never reaches the action as a simple request. Every cross-origin subresource a page names is a
-// warning (what COEP or default-src 'none' would have to allow). A crawl that never got past the sign-in is "error",
+// warning (what COEP or default-src 'none' would have to allow). A page without Cache-Control no-transform is an error:
+// Cloudflare would inject the Web Analytics beacon into it. A crawl that never got past the sign-in is "error",
 // never a pass. Findings name a URL, a status and an item; never a page body, a cookie or a token.
 
 export const SIGNED_IN_CHECK = "signed-in-security";
@@ -129,6 +130,16 @@ export async function crawlApp(opts) {
     const html = /text\/html/i.test(response.headers.get("Content-Type") ?? "")
       ? await response.text()
       : "";
+    // A signed-in page Cloudflare may transform gets the Web Analytics beacon: private pages are never counted.
+    if (
+      html &&
+      !/(?:^|,)\s*no-transform\s*(?:,|$)/i.test(response.headers.get("Cache-Control") ?? "")
+    )
+      findings.push({
+        severity: "error",
+        check: "analytics",
+        detail: `${url} (${response.status}) has no Cache-Control no-transform, so Web Analytics counts it (./edge-cache PRIVATE_PAGE_HEADERS)`,
+      });
     if (!html) await response.body?.cancel();
     findings.push(...crossOriginLoads(opts.origin, url, html));
     script ??= firstScript(opts.origin, url, html);
