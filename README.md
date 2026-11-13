@@ -718,7 +718,8 @@ from `request.cf.clientAcceptEncoding`, since Cloudflare rewrites the Accept-Enc
 `acceptedEncoding`) and the runtime encodes the body. `settleCacheHeaders` keeps `no-transform` on a private route's
 error page and on a render for a cookie. A Worker that is not `./worker` (Carrel, the Capsid Portal, the MCP consent
 page) sets the same header and runs `compressUntransformed` itself. A child route that exports `headers` of its own
-replaces its layout's, so it returns `PRIVATE_PAGE_HEADERS` too.
+replaces its layout's, so it returns `PRIVATE_PAGE_HEADERS` too. The signed-in crawl (`./signed-in-crawl`) fails a page it reads
+without `no-transform`.
 
 ```jsonc
 // wrangler.jsonc: the gateway runs on every request; the Renderer's responses are stored. No `cross_version_cache`,
