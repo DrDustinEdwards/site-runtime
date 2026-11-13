@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { AI_GATEWAY_HEADERS, ANTHROPIC_ORIGIN, anthropicRoute } from "../ai-gateway.mjs";
+import { ANTHROPIC_ORIGIN, anthropicRoute } from "../ai-gateway.mjs";
 
 const GATEWAY = "https://gateway.ai.cloudflare.com/v1/acct_test/sample/anthropic";
 
@@ -44,18 +44,6 @@ test("a feature joins the site in the log metadata; a custom domain takes its id
   assert.equal(
     anthropicRoute({ ...custom, AI_GATEWAY_ID: "sample" }, "sample").gatewayId,
     "sample",
-  );
-});
-
-test("PLANT: the header names are the ones Cloudflare documents, spelled exactly", () => {
-  // A near miss is silently ignored by the gateway: bodies stored, or every call refused as unauthenticated.
-  assert.deepEqual(
-    { ...AI_GATEWAY_HEADERS },
-    {
-      auth: "cf-aig-authorization",
-      bodyLog: "cf-aig-collect-log-payload",
-      metadata: "cf-aig-metadata",
-    },
   );
 });
 

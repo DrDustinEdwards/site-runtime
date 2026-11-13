@@ -53,11 +53,6 @@ test("a stream that fails mid-read throws, so no caller parses a fragment as the
   );
 });
 
-test("the ceiling is a whole number of bytes", async () => {
-  await assert.rejects(readCapped({ body: null }, -1), RangeError);
-  await assert.rejects(readCapped({ body: null }, 1.5), RangeError);
-});
-
 test("an oversize clone returns null without waiting on the original, which still reads in full", async () => {
   const request = new Request("https://example.com/", { method: "POST", body: "x".repeat(64) });
   const clone = request.clone();

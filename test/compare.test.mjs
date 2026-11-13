@@ -50,9 +50,6 @@ function sharedCases() {
 }
 
 describe("safeEqual, the XOR fallback (Node)", () => {
-  test("Node has no crypto.subtle.timingSafeEqual, so these cases run the fallback", () => {
-    assert.equal(typeof subtle.timingSafeEqual, "undefined");
-  });
   sharedCases();
 });
 

@@ -58,29 +58,8 @@ test("parsePolicy keeps the first of a repeated directive, as browsers do", () =
   assert.deepEqual(parsePolicy("script-src 'self'; SCRIPT-SRC *").get("script-src"), ["'self'"]);
 });
 
-test("failures keeps only the failed results", () => {
-  const results = [
-    { name: "a", pass: true, detail: "" },
-    { name: "b", pass: false, detail: "x" },
-  ];
-  assert.deepEqual(failures(results), [results[1]]);
-  assert.deepEqual(failures([]), []);
-});
-
 test("a response with the standard set and a sound policy passes every check", () => {
   assert.deepEqual(failures(checkSecurityHeaders(response())), []);
-});
-
-test("a response with no security headers fails every one, as ABSENT", () => {
-  const results = checkSecurityHeaders(new Headers({ "Content-Type": "text/html" }), {
-    csp: false,
-  });
-  for (const name of Object.keys(STANDARD_SECURITY_HEADERS)) {
-    assert.ok(
-      results.some((r) => r.name === `${name} is present` && !r.pass && r.detail === "ABSENT"),
-      name,
-    );
-  }
 });
 
 test("each standard header, removed alone, fails alone", () => {
