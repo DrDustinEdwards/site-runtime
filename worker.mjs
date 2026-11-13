@@ -129,6 +129,7 @@ export function defineSite(options) {
   const requestHandler = createRequestHandler(options.serverBuild, options.mode);
   /** @type {((request: Request) => string | undefined) | undefined} */
   let nameRoute;
+  let namerFailureLogged = false;
   /** @type {string[] | undefined} */
   let stylesheetHrefs;
   /** @type {string | undefined} */
@@ -169,8 +170,12 @@ export function defineSite(options) {
       if (nameRoute) return;
       try {
         nameRoute = routeNamer((await build()).routes);
-      } catch {
+      } catch (error) {
         // This request's line goes unnamed; the next request tries again.
+        if (!namerFailureLogged) {
+          namerFailureLogged = true;
+          logEvent("route_namer_failed", { error: errorMessage(error) }, { level: "warn" });
+        }
       }
     },
     routeName(request) {

@@ -8,7 +8,7 @@
 const FROM_EDGE = new Set(["HIT", "STALE", "REVALIDATED", "UPDATING"]);
 
 /** Core Web Vitals at the 75th percentile (web.dev/articles/vitals) and the lab bar of the checklist. */
-export const BAR = {
+const BAR = {
   lcpMs: 2500,
   inpMs: 200,
   cls: 0.1,

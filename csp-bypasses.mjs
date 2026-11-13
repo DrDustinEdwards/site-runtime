@@ -6,7 +6,7 @@
 // it, so the list stays out of a Worker that builds its policy.
 
 /** Scheme-relative URLs (`//host/path`) that bypass a script-src listing their host, or a path prefix of them. */
-export const ALLOWLIST_BYPASSES = Object.freeze([
+const ALLOWLIST_BYPASSES = Object.freeze([
   "//bebezoo.1688.com/fragment/index.htm",
   "//googleads.g.doubleclick.net/pagead/conversion/1036918760/wcm",
   "//www.google.com/tools/feedback/escalation-options",

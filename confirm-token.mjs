@@ -18,29 +18,13 @@
  */
 
 import { readSignedToken, signToken } from "./signed-token.mjs";
-import { toHex } from "./encoding.mjs";
+import { canonicalJson, toHex } from "./encoding.mjs";
 
 /** How long a preview stays performable by default: ten minutes. */
 export const CONFIRM_TTL_SECONDS = 600;
 
 /** KV's own expiry floor. */
 const KV_TTL_FLOOR = 60;
-
-/**
- * JSON with every object's keys sorted and undefined members left out.
- * @param {unknown} value
- * @returns {string}
- */
-export function canonicalJson(value) {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value && typeof value === "object") {
-    const entries = Object.entries(/** @type {Record<string, unknown>} */ (value))
-      .filter(([, v]) => v !== undefined)
-      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "null";
-}
 
 /**
  * Mint a token for exactly these claims.
