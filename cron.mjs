@@ -327,7 +327,7 @@ export function runJobTool(db, jobs, options = {}) {
         .map((j) => j.name + (j.backup ? " (backup)" : ""))
         .join(
           ", ",
-        )}. Answers { runs: [{ job, status: ok | skipped | failed, ms, result?, error? }] }.`,
+        )}. Answers { runs: [{ job, status: ok | skipped | failed | refused, ms, result?, reason?, error? }] }.`,
     run: async (args) => {
       const all = list();
       if (args.backup === true && args.job === undefined) {
@@ -400,13 +400,13 @@ export function describeRuns(what, call) {
 
 /**
  * Whether a `run_job` answer shows every run succeeded or skipped by its own gate: false for a failed call, an answer
- * without its runs, or any run that failed.
+ * without its runs, or any run that failed or was refused (a run that failed without throwing).
  * @param {{ ok: boolean, data: unknown }} call
  * @returns {boolean}
  */
 export function runsSucceeded(call) {
   const runs = /** @type {{ runs?: Array<{ status?: unknown }> } | null} */ (call.data)?.runs;
-  return call.ok && Array.isArray(runs) && runs.every((r) => r.status !== "failed");
+  return call.ok && Array.isArray(runs) && runs.every((r) => r.status !== "failed" && r.status !== "refused");
 }
 
 /** The 24 hours a nightly job's interval is, in minutes. */

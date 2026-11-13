@@ -12,6 +12,7 @@ import {
   readCronRuns,
   runJobTool,
   runJobs,
+  runsSucceeded,
 } from "../cron.mjs";
 
 /** A D1-shaped wrapper over node:sqlite. */
@@ -196,4 +197,11 @@ test("cronSchedule runs the list of the cron it receives, lists every job and lo
   await schedule.run(null, { cron: "* * * * *", scheduledTime: 5000 }, {});
   await schedule.run(null, { cron: "9 9 * * *", scheduledTime: 5000 }, {});
   assert.deepEqual(ran, [["a", 5000]]);
+});
+
+test("a refused run is not a success", () => {
+  const call = (/** @type {string} */ status) => ({ ok: true, data: { runs: [{ status }] } });
+  assert.equal(runsSucceeded(call("ok")), true);
+  assert.equal(runsSucceeded(call("skipped")), true);
+  assert.equal(runsSucceeded(call("refused")), false);
 });

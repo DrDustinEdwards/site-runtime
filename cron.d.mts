@@ -126,7 +126,7 @@ export function describeRuns(
   what: string,
   call: { ok: boolean; status: number; data: unknown; error: string | null },
 ): string;
-/** Whether every run in a run_job answer succeeded or was skipped; false for a failed call or one without its runs. */
+/** Whether every run in a run_job answer succeeded or was skipped; false for a failed call, one without its runs, or a failed or refused run. */
 export function runsSucceeded(call: { ok: boolean; data: unknown }): boolean;
 /** `backup_status` and `run_job` together, for a site's operatorResponse tools; `history` as the site's runJobs has it. */
 export function operatorJobTools(options: {
