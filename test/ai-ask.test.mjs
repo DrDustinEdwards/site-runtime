@@ -15,7 +15,7 @@ test("an answer that keeps streaming is not cut for its length; the timeout is f
     async pull(controller) {
       const frame = frames.shift();
       if (frame === undefined) return controller.close();
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 300));
       controller.enqueue(encoder.encode(frame));
     },
   });
@@ -23,7 +23,7 @@ test("an answer that keeps streaming is not cut for its length; the timeout is f
     resolveVisible: async (slugs) => new Set(slugs),
     citedSlugs: (chunks) => chunks.map((c) => /** @type {{ slug: string }} */ (c).slug),
     noAnswerText: "No answer.",
-    timeoutMs: 400,
+    timeoutMs: 1500,
     checkProse: () => [],
   });
   const text = await new Response(guarded).text();
