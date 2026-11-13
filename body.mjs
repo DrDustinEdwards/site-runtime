@@ -1,3 +1,4 @@
+import { concatBytes } from "./encoding.mjs";
 import { mediaType, textResponse } from "./http.mjs";
 import { errors, schemaIssues } from "./http-errors.mjs";
 import { errorMessage } from "./log.mjs";
@@ -42,13 +43,7 @@ export async function readCappedBytes(source, max) {
       cause: error,
     });
   }
-  const joined = new Uint8Array(total);
-  let at = 0;
-  for (const chunk of chunks) {
-    joined.set(chunk, at);
-    at += chunk.byteLength;
-  }
-  return joined;
+  return concatBytes(...chunks);
 }
 
 /**
@@ -199,17 +194,6 @@ function bytesIndexOf(haystack, needle) {
 }
 
 /**
- * @param {Uint8Array} a
- * @param {Uint8Array} b
- */
-function joinBytes(a, b) {
-  const out = new Uint8Array(a.length + b.length);
-  out.set(a);
-  out.set(b, a.length);
-  return out;
-}
-
-/**
  * The boundary from a multipart/form-data Content-Type, or null for any other type.
  * @param {string | null} contentType
  * @returns {string | null}
@@ -249,7 +233,7 @@ export async function* readMultipart(request, max) {
       void reader.cancel().catch(() => {});
       throw payloadTooLarge();
     }
-    buf = buf.length ? joinBytes(buf, value) : value;
+    buf = buf.length ? concatBytes(buf, value) : value;
   }
 
   /** @param {Uint8Array} needle */
@@ -318,7 +302,7 @@ export async function partText(part, max = 64 * 1024) {
   /** @type {Uint8Array} */
   let bytes = new Uint8Array(0);
   for await (const chunk of part.chunks()) {
-    bytes = joinBytes(bytes, chunk);
+    bytes = concatBytes(bytes, chunk);
     if (bytes.length > max) throw malformedUpload(`The ${part.name} field is too long.`);
   }
   return new TextDecoder().decode(bytes);

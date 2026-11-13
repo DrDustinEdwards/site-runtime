@@ -49,6 +49,7 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 import { parsePolicy } from "../check.mjs";
+import { concatBytes } from "../encoding.mjs";
 import { htmlAttributes, sitemapLocs } from "../html.mjs";
 import { mediaType } from "../http.mjs";
 import { AVIF_MAX_EDGE, RASTER_PATH, RASTER_TYPES } from "../image.mjs";
@@ -771,13 +772,7 @@ async function fetchBytes(get, url, limit, headers) {
       length += value.length;
     }
     await reader.cancel();
-    const bytes = new Uint8Array(length);
-    let at = 0;
-    for (const chunk of chunks) {
-      bytes.set(chunk, at);
-      at += chunk.length;
-    }
-    return { ...head, bytes };
+    return { ...head, bytes: concatBytes(...chunks) };
   } catch (error) {
     return {
       status: 0,

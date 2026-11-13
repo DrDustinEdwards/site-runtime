@@ -7,7 +7,7 @@
  * browser when it subscribes).
  */
 
-import { base64url, fromBase64url } from "./encoding.mjs";
+import { base64url, concatBytes, fromBase64url } from "./encoding.mjs";
 import { timedFetch } from "./http.mjs";
 import { signJwt } from "./jwt.mjs";
 
@@ -25,20 +25,6 @@ const PUSH_HOSTS = [
   /^[a-z0-9-]+\.push\.apple\.com$/,
   /^[a-z0-9-]+\.notify\.windows\.com$/,
 ];
-
-/**
- * @param {Uint8Array[]} parts
- * @returns {Uint8Array<ArrayBuffer>}
- */
-function concat(...parts) {
-  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
-  let at = 0;
-  for (const p of parts) {
-    out.set(p, at);
-    at += p.length;
-  }
-  return out;
-}
 
 const utf8 = (/** @type {string} */ s) => new Uint8Array(new TextEncoder().encode(s));
 
@@ -88,7 +74,7 @@ export function readVapidKey(secret) {
     return "VAPID_PRIVATE_KEY is not a P-256 private key as a JWK (kty EC, crv P-256, d, x and y).";
   let point;
   try {
-    point = concat(new Uint8Array([4]), fromBase64url(jwk.x), fromBase64url(jwk.y));
+    point = concatBytes(new Uint8Array([4]), fromBase64url(jwk.x), fromBase64url(jwk.y));
   } catch {
     return "VAPID_PRIVATE_KEY's x and y are not base64url.";
   }
@@ -130,7 +116,7 @@ export async function encryptPayload(sub, plaintext, fixed = {}) {
   let asPublic;
   if (fixed.privateJwk) {
     asPrivate = await crypto.subtle.importKey("jwk", fixed.privateJwk, ecdh, false, ["deriveBits"]);
-    asPublic = concat(
+    asPublic = concatBytes(
       new Uint8Array([4]),
       fromBase64url(fixed.privateJwk.x ?? ""),
       fromBase64url(fixed.privateJwk.y ?? ""),
@@ -154,7 +140,7 @@ export async function encryptPayload(sub, plaintext, fixed = {}) {
   const ikm = await hkdf(
     authSecret,
     shared,
-    concat(utf8("WebPush: info\0"), uaPublic, asPublic),
+    concatBytes(utf8("WebPush: info\0"), uaPublic, asPublic),
     32,
   );
   const salt = fixed.salt ?? crypto.getRandomValues(new Uint8Array(16));
@@ -170,14 +156,14 @@ export async function encryptPayload(sub, plaintext, fixed = {}) {
     await crypto.subtle.encrypt(
       { name: "AES-GCM", iv: nonce },
       key,
-      concat(plaintext, new Uint8Array([2])),
+      concatBytes(plaintext, new Uint8Array([2])),
     ),
   );
   const header = new Uint8Array(16 + 4 + 1);
   header.set(salt, 0);
   new DataView(header.buffer).setUint32(16, RECORD_SIZE);
   header[20] = asPublic.length;
-  return concat(header, asPublic, sealed);
+  return concatBytes(header, asPublic, sealed);
 }
 
 /**

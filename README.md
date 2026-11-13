@@ -966,7 +966,7 @@ fixed date with a test that fails a month before it lapses, the prompt to confir
 
 `./encoding` is the one set of byte encodings, Web APIs only (no Buffer, no `jose`): `toHex`/`fromHex`,
 `toBase64`/`fromBase64` (whitespace ignored, as GitHub wraps it), `base64url`/`fromBase64url` (no padding),
-`fromBase64Text`/`fromBase64urlText` (decoded to UTF-8 text) and `sha256`/`sha256Hex`, `hmacSha256`/`hmacSha256Hex(secret, payload)` (bytes or lowercase hex), `crc32(bytes)` (the IEEE check PNG and ZIP use, unsigned), `canonicalJson(value)` (keys sorted at every depth, undefined dropped: the input to a hash of a value, as `toolListHash` uses) and `fnv1a32` (a short fingerprint, never a security boundary). `pageCursor(scope, position)` is a list's opaque next-page cursor (base64url JSON of the tool or route it came from and a page or offset), and `readPageCursor(scope, cursor)` gives its position back, or null for a cursor another list issued. Every
+`fromBase64Text`/`fromBase64urlText` (decoded to UTF-8 text) and `sha256`/`sha256Hex`, `hmacSha256`/`hmacSha256Hex(secret, payload)` (bytes or lowercase hex), `concatBytes(...parts)` (one array of the parts in order), `crc32(bytes)` (the IEEE check PNG and ZIP use, unsigned), `canonicalJson(value)` (keys sorted at every depth, undefined dropped: the input to a hash of a value, as `toolListHash` uses) and `fnv1a32` (a short fingerprint, never a security boundary). `pageCursor(scope, position)` is a list's opaque next-page cursor (base64url JSON of the tool or route it came from and a page or offset), and `readPageCursor(scope, cursor)` gives its position back, or null for a cursor another list issued. Every
 encoder takes bytes or a string, which is encoded as UTF-8.
 
 ## The server entry
