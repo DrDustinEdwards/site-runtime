@@ -29,7 +29,7 @@ import { DAILY_MINUTES } from "./cron.mjs";
 import { emailKey } from "./rate-limit/index.mjs";
 
 /** What `sendSecurityNotice` is called for. */
-export const SECURITY_NOTICE_KINDS = Object.freeze([
+export const SECURITY_NOTICE_KINDS = /* @__PURE__ */ Object.freeze([
   "passkey-added",
   "passkey-removed",
   "sign-in-linked",

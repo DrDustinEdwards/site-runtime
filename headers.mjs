@@ -36,20 +36,20 @@ export const OWASP_SKIPPED = /* @__PURE__ */ Object.freeze({
  *
  * @type {Readonly<Record<string, string>>}
  */
-export const STANDARD_SECURITY_HEADERS = Object.freeze(
-  Object.fromEntries(
-    Object.entries(OWASP_RECOMMENDED).filter(([name]) => !(name in OWASP_SKIPPED)),
-  ),
-);
+export const STANDARD_SECURITY_HEADERS = /* @__PURE__ */ (() =>
+  Object.freeze(
+    Object.fromEntries(
+      Object.entries(OWASP_RECOMMENDED).filter(([name]) => !(name in OWASP_SKIPPED)),
+    ),
+  ))();
 
 /**
  * The headers OSHP recommends for a logout response only (Clear-Site-Data), for a site that has one.
  *
  * @type {Readonly<Record<string, string>>}
  */
-export const LOGOUT_HEADERS = /* @__PURE__ */ Object.freeze({
-  "Clear-Site-Data": OWASP_RECOMMENDED["Clear-Site-Data"] ?? "",
-});
+export const LOGOUT_HEADERS = /* @__PURE__ */ (() =>
+  Object.freeze({ "Clear-Site-Data": OWASP_RECOMMENDED["Clear-Site-Data"] ?? "" }))();
 
 /**
  * OSHP's Permissions-Policy with each named feature allowed for the site's own pages, from the parsed list rather
@@ -68,8 +68,8 @@ export function permissionsAllowingSelf(...features) {
 
 /** The override a site that offers passkey sign-in (./sign-in) applies; OSHP's `publickey-credentials-get=()` refuses every passkey. */
 export const PASSKEY_OVERRIDES = /* @__PURE__ */ Object.freeze({
-  "Permissions-Policy": Object.freeze({
-    value: permissionsAllowingSelf("publickey-credentials-get"),
+  "Permissions-Policy": /* @__PURE__ */ Object.freeze({
+    value: /* @__PURE__ */ permissionsAllowingSelf("publickey-credentials-get"),
     reason:
       "Passkey sign-in (./sign-in) calls navigator.credentials.get, which OSHP's publickey-credentials-get=() refuses; allowed for the site's own pages only.",
   }),

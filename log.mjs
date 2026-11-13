@@ -28,22 +28,23 @@ export const STRIPE_KEY_PATTERN = SECRET_SHAPES.stripeKey;
  * the text when it is cut off), a Slack token or webhook URL and an AWS access key id. redact.mjs is the stricter
  * reader for text relayed from outside; the shapes both know are its SECRET_SHAPES.
  */
-export const CREDENTIAL_PATTERN = /* @__PURE__ */ new RegExp(
-  [
-    SECRET_SHAPES.anthropicKey,
-    /\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,})/,
-    /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/,
-    /\bBearer\s+[A-Za-z0-9._~+/=-]{16,}/,
-    // The private key's backreferences are \1 and \2: nothing before it may capture.
-    SECRET_SHAPES.privateKey,
-    SECRET_SHAPES.slackToken,
-    SECRET_SHAPES.slackWebhook,
-    SECRET_SHAPES.awsAccessKeyId,
-  ]
-    .map((pattern) => pattern.source)
-    .join("|"),
-  "g",
-);
+export const CREDENTIAL_PATTERN = /* @__PURE__ */ (() =>
+  new RegExp(
+    [
+      SECRET_SHAPES.anthropicKey,
+      /\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,})/,
+      /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/,
+      /\bBearer\s+[A-Za-z0-9._~+/=-]{16,}/,
+      // The private key's backreferences are \1 and \2: nothing before it may capture.
+      SECRET_SHAPES.privateKey,
+      SECRET_SHAPES.slackToken,
+      SECRET_SHAPES.slackWebhook,
+      SECRET_SHAPES.awsAccessKeyId,
+    ]
+      .map((pattern) => pattern.source)
+      .join("|"),
+    "g",
+  ))();
 // DrizzleQueryError's message is "Failed query: <sql>\nparams: <values>".
 const DRIZZLE_PARAMS = /\nparams: [\s\S]*$/;
 // The query string or fragment of a full URL inside free text.

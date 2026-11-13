@@ -98,7 +98,7 @@ const HASHED = [
 ];
 
 // PKCS #8 for an Ed25519 private key is this fixed prefix and the 32-byte seed (RFC 8410, section 7).
-const PKCS8_ED25519 = Uint8Array.from([
+const PKCS8_ED25519 = /* @__PURE__ */ Uint8Array.from([
   0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20,
 ]);
 const KDF_INFO = "site-runtime audit-log chain key v1";
