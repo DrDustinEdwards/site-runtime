@@ -109,8 +109,8 @@ let running = null;
 /**
  * Runs the page's React Router boot now: the module preloads, the context and its stream, the route modules, then the
  * client entry, which hydrates the page. Resolves once the entry has loaded (hydration follows; wait for
- * HYDRATED_EVENT for the app). Calling it again returns the same promise; on a page that hydrates on load it does
- * nothing.
+ * HYDRATED_EVENT for the app). Calling it again returns the same promise, unless that one failed, when it tries again; on
+ * a page that hydrates on load it does nothing.
  * @returns {Promise<void>}
  */
 export function hydrateNow() {
@@ -147,8 +147,14 @@ export function hydrateNow() {
     );
     await load(boot.entry);
   })();
-  running.catch((error) => console.error("hydrate-on-intent: the app did not load", error));
-  return running;
+  const attempt = running;
+  // A chunk that failed to load (a flaky network) is not the end: the next press tries again rather than getting the
+  // same rejected promise, which would leave every press swallowed until a reload.
+  attempt.catch((error) => {
+    if (running === attempt) running = null;
+    console.error("hydrate-on-intent: the app did not load", error);
+  });
+  return attempt;
 }
 
 /**
