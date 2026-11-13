@@ -466,7 +466,7 @@ export function needsSecondPasskey(/** @type {unknown[]} */ passkeys) {
 /** How long a "Not now" on the passkey offer holds: 30 days. */
 export const PASSKEY_OFFER_DAYS = 30;
 /** The `auth_events` event of a "Not now" on the passkey offer: no log line, not in the security history. */
-export const PASSKEY_OFFER_DISMISSED = "passkey_offer_dismissed";
+const PASSKEY_OFFER_DISMISSED = "passkey_offer_dismissed";
 
 /**
  * Records a "Not now" on the passkey offer, as an `auth_events` row for the person (so it holds on every device), and
@@ -690,7 +690,7 @@ CREATE INDEX IF NOT EXISTS auth_events_at ON auth_events (at, event);
  * @param {D1Like} db
  * @param {{ event: string, fields: Record<string, unknown>, userAgent?: string | null, request?: Request | null, at?: number, deviceId?: string | null }} row
  */
-export async function recordAuthEvent(
+async function recordAuthEvent(
   db,
   { event, fields, userAgent, request, at = Date.now(), deviceId },
 ) {
@@ -873,7 +873,7 @@ export function pruneAuthEventsJob(db) {
 const PROVIDER_NAMES = /** @type {Record<string, string>} */ ({ google: "Google", apple: "Apple" });
 
 /** @param {string | undefined} providerId */
-export const providerName = (providerId) =>
+const providerName = (providerId) =>
   (providerId && PROVIDER_NAMES[providerId]) || providerId || "A sign-in method";
 
 /**

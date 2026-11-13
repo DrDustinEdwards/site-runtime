@@ -2,9 +2,6 @@
 
 export const CONFIRM_TTL_SECONDS: number;
 
-/** JSON with every object's keys sorted and undefined members left out. */
-export function canonicalJson(value: unknown): string;
-
 /** Mint a token for exactly these claims (hex keys, newest first). */
 export function mintConfirm(options: {
   keys: readonly (string | null | undefined)[];

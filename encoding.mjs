@@ -186,11 +186,10 @@ export function crc32(bytes) {
 export function canonicalJson(value) {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   if (value && typeof value === "object") {
-    return `{${Object.keys(value)
-      .filter((key) => /** @type {any} */ (value)[key] !== undefined)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${canonicalJson(/** @type {any} */ (value)[key])}`)
-      .join(",")}}`;
+    const entries = Object.entries(/** @type {Record<string, unknown>} */ (value))
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(",")}}`;
   }
   return JSON.stringify(value) ?? "null";
 }

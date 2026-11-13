@@ -53,18 +53,6 @@ export type D1Like = {
 };
 /** The migration for `auth_events`: one row per auth event, no address, token or code. */
 export const AUTH_EVENTS_SQL: string;
-/** Writes one event's row; a failed write is logged (`auth_event_write_failed`) and never throws. */
-export function recordAuthEvent(
-  db: D1Like,
-  row: {
-    event: string;
-    fields: Record<string, unknown>;
-    userAgent?: string | null;
-    request?: Request | null;
-    at?: number;
-    deviceId?: string | null;
-  },
-): Promise<void>;
 export type SecurityHistoryEntry = {
   kind:
     | "sign-in"
@@ -240,8 +228,6 @@ export function needsSecondPasskey(passkeys: unknown[]): boolean;
 
 /** How long a "Not now" on the passkey offer holds: 30 days. */
 export const PASSKEY_OFFER_DAYS: 30;
-/** The `auth_events` event of a "Not now" on the passkey offer. */
-export const PASSKEY_OFFER_DISMISSED: "passkey_offer_dismissed";
 /** Records a "Not now" on the passkey offer for the person; never throws. */
 export function dismissPasskeyOffer(
   db: D1Like,
@@ -287,9 +273,6 @@ export function logAuthEvent(
     deviceId?: string | null;
   },
 ): Promise<void>;
-
-/** "Google", "Apple", else the provider id. */
-export function providerName(providerId: string | undefined): string;
 
 export type NoticeDetail = {
   /** For the subject: "A passkey was added to your account". */
