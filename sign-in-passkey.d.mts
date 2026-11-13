@@ -1,14 +1,19 @@
 /** The browser's passkey calls (sign-in-passkey.mjs), with no dependency. */
-/** The user handle of the passkey that last signed in on this browser (kept by signInWithPasskey), or null. */
-export function passkeyUserHandle(rpId?: string): string | null;
+/**
+ * The user handle of the passkey that last signed in on this browser (kept by signInWithPasskey with its account), or
+ * null when there is none or it belongs to an account other than `user`.
+ */
+export function passkeyUserHandle(user: string | null | undefined, rpId?: string): string | null;
 
 /**
  * The Signal API's signalAllAcceptedCredentials: the passkeys the site still accepts for this user handle. `rpId`
- * defaults to the page's host and `userId` to passkeyUserHandle(); false when there is no handle.
+ * defaults to the page's host and `userId` to passkeyUserHandle(user), `user` being the signed-in account's id; false
+ * when there is no handle.
  */
 export function signalAllAcceptedCredentials(options: {
   rpId?: string;
   userId?: string | null;
+  user?: string | null;
   credentialIds: string[];
 }): Promise<boolean>;
 
@@ -16,17 +21,20 @@ export function signalAllAcceptedCredentials(options: {
 export function signalCurrentUserDetails(options: {
   rpId?: string;
   userId?: string | null;
+  user?: string | null;
   name: string;
   displayName?: string;
 }): Promise<boolean>;
 
 /**
  * Both of the above, after a passkey sign-in lands and when the passkey list loads. `userId` is the passkey's user
- * handle (base64url), by default the one signInWithPasskey kept; without one, nothing is signaled.
+ * handle (base64url), by default the one signInWithPasskey kept for `user` (the signed-in account's id); without one,
+ * nothing is signaled.
  */
 export function signalPasskeys(options: {
   rpId?: string;
   userId?: string | null;
+  user?: string | null;
   credentialIds: string[];
   name?: string;
   displayName?: string;
@@ -45,7 +53,11 @@ export function signalUnknownCredential(options: {
  */
 /** `R` is the client's own answer; the error is any object, since Better Auth's client error has no `code` in its type. */
 export function signInWithPasskey<
-  R extends { error?: object | null; webauthn?: { response?: { id?: string } } },
+  R extends {
+    error?: object | null;
+    data?: { user?: { id?: string } } | null;
+    webauthn?: { response?: { id?: string } };
+  },
 >(
   client: { signIn: { passkey(options?: Record<string, unknown>): Promise<R> } },
   options?: Record<string, unknown> & { rpId?: string },
@@ -59,7 +71,7 @@ export function passkeySignIn(
   client: {
     signIn: { passkey(options?: Record<string, unknown>): Promise<{ error?: object | null }> };
     passkey: { listUserPasskeys(): Promise<{ data?: { credentialID: string }[] | null }> };
-    getSession(): Promise<{ data?: { user?: { email?: string } } | null }>;
+    getSession(): Promise<{ data?: { user?: { id?: string; email?: string } } | null }>;
   },
   options?: { autoFill?: boolean },
 ): Promise<object | null>;
