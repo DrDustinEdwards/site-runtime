@@ -1053,8 +1053,8 @@ export default siteWorker(site);
 The gateway runs, in order: the canonical move (first, with the set built for where it points; `canonical.before` is
 a site's own earlier move and `canonical.keep(url)` keeps an address's slash), maintenance,
 `/.well-known/security.txt`, the standard files, the speculation rules file, CSP reports (per `clientIp` through
-`CSP_REPORT_RATE_LIMIT`; no binding drops them), the operator API, the site's steps, the cross-site write refusal (all
-but `crossSiteExempt`, default `/api/auth/`), then the page. A read with no cookie but `publicCookies` that `cacheable` does not
+`CSP_REPORT_RATE_LIMIT`; no binding drops them), the operator API, the cross-site write refusal (all
+but `crossSiteExempt`, default `/api/auth/`; a step's write is checked too), the site's steps, then the page. A read with no cookie but `publicCookies` that `cacheable` does not
 refuse goes to the Renderer, which the edge keeps only when it is shared (anything else carries an edge `no-store`), keyed on path, query (tracking
 parameters dropped), host and each public cookie; every other request is rendered live with its own nonce and leaves
 `private, no-store` unless its route set a policy of its own. A route marks its page shared (`publicPageHeaders`); a site whose routes name

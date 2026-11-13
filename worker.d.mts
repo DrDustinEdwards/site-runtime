@@ -96,7 +96,7 @@ export interface SiteOptions<E> {
   speculationExclude?: string[];
   /** The operator API's tools, served at /api/operator behind OPERATOR_TOKEN and RATE_LIMITER. */
   operator?: (env: E, ctx: ExecutionContext) => Record<string, OperatorTool>;
-  /** The site's own steps, in order, before the cross-site check and the page. */
+  /** The site's own steps, in order, after the cross-site check and before the page. */
   steps?: GatewayStep<E>[];
   /** Path prefixes a cross-site write may reach (default ["/api/auth/"]). */
   crossSiteExempt?: string[];

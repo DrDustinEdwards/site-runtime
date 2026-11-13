@@ -18,11 +18,13 @@
  * 6. CSP reports (./csp-report): limited per caller address (./http clientIp) through the CSP_REPORT_RATE_LIMIT binding;
  *    with no binding, or over the limit, a report is dropped (still 204).
  * 7. The operator API (./operator) at /api/operator, when the site passes `operator`.
- * 8. The site's own steps (`steps`: its media files, Carrel's site API, an app's API), in order; the first answer wins.
+ * 8. A cross-site write is refused (./origin refuseCrossSite) on every path but `crossSiteExempt` (default /api/auth/,
+ *    where Better Auth checks its own origins and Apple's form_post arrives cross-site), before the steps, so an
+ *    app's own cookie-authenticated API gets the check too. A bearer or server-to-server caller sends no Origin and
+ *    no Sec-Fetch-Site, so it passes.
+ * 9. The site's own steps (`steps`: its media files, Carrel's site API, an app's API), in order; the first answer wins.
  *    A step's answer gets the security set (a policy the answer carries itself is kept). A write a step accepts purges
  *    the stored pages when the step says so (`kit.purgeAfterWrite`).
- * 9. A cross-site write is refused (./origin refuseCrossSite) on every path but `crossSiteExempt` (default /api/auth/,
- *    where Better Auth checks its own origins and Apple's form_post arrives cross-site).
  * 10. The page. A read (GET or HEAD) with no cookie but `publicCookies`, not refused by the site's `cacheable`, goes
  *     to the Renderer through the Workers cache (a file path too: a shared feed or sitemap is stored and purged like a
  *     page, and anything not shared leaves with an edge no-store, so the cache keeps nothing else), keyed on the path, the
@@ -393,6 +395,11 @@ export function siteWorker(site) {
       );
     }
 
+    if (!exempt.some((prefix) => url.pathname.startsWith(prefix))) {
+      const refused = refuseCrossSite(request);
+      if (refused) return secure(refused, request, undefined, env);
+    }
+
     /** @type {import("./worker.d.mts").GatewayKit} */
     const kit = {
       url,
@@ -404,11 +411,6 @@ export function siteWorker(site) {
     for (const step of options.steps ?? []) {
       const answer = await step(request, env, ctx, kit);
       if (answer) return forOneReader(secure(answer, request, undefined, env));
-    }
-
-    if (!exempt.some((prefix) => url.pathname.startsWith(prefix))) {
-      const refused = refuseCrossSite(request);
-      if (refused) return secure(refused, request, undefined, env);
     }
 
     const cookies = publicCookieValues(request, publicCookies);
