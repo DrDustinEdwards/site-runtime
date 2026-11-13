@@ -26,6 +26,7 @@
  */
 
 import { retryAfterSeconds } from "./http.mjs";
+import { errorMessage } from "./log.mjs";
 
 const FIRE_URL =
   /^https:\/\/api\.anthropic\.com\/v1\/claude_code\/routines\/(trig_[A-Za-z0-9_-]{8,64})\/fire$/;
@@ -96,7 +97,7 @@ export async function fireRoutine(config, text, fetcher = fetch) {
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     const failure =
       /** @type {{ code?: unknown, cause?: { code?: unknown } } | null | undefined} */ (error);
     const code = failure?.cause?.code ?? failure?.code;
@@ -327,7 +328,7 @@ export async function fireOnce(store, jobKey, config, text, options = {}) {
           ),
         );
   } catch (error) {
-    return { ...fired, unrecorded: error instanceof Error ? error.message : String(error) };
+    return { ...fired, unrecorded: errorMessage(error) };
   }
   return fired;
 }

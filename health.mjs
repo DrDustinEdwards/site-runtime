@@ -30,7 +30,7 @@
 
 export { deployedAt, deployedSha } from "./deploy.mjs";
 import { PURGE_FAILED_KEY } from "./edge-cache.mjs";
-import { logEvent, scrubText } from "./log.mjs";
+import { errorMessage, logEvent, scrubText } from "./log.mjs";
 import { authEventCounts } from "./sign-in-account.mjs";
 
 /** The longest `detail` a check reports. */
@@ -168,7 +168,7 @@ async function runCheck({ name, level = "fail", alert = false, run }, timeoutMs)
     }
   } catch (error) {
     failed = true;
-    detail = error instanceof Error ? error.message : String(error);
+    detail = errorMessage(error);
   } finally {
     clearTimeout(timer);
   }

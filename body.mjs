@@ -1,5 +1,6 @@
 import { mediaType, textResponse } from "./http.mjs";
 import { errors, schemaIssues } from "./http-errors.mjs";
+import { errorMessage } from "./log.mjs";
 
 /**
  * A request body read to a byte ceiling, counted as the chunks arrive. The declared Content-Length can be absent or
@@ -37,10 +38,9 @@ export async function readCappedBytes(source, max) {
       chunks.push(value);
     }
   } catch (error) {
-    throw new Error(
-      `the body stream failed after ${total} bytes: ${error instanceof Error ? error.message : String(error)}`,
-      { cause: error },
-    );
+    throw new Error(`the body stream failed after ${total} bytes: ${errorMessage(error)}`, {
+      cause: error,
+    });
   }
   const joined = new Uint8Array(total);
   let at = 0;

@@ -8,6 +8,7 @@
  * This is only the call and the reading of the answer. Which people are on the list, where the outcome is kept and what
  * the page says stay the app's own. The key goes in the Authorization header and is never put in a result.
  */
+import { errorMessage } from "./log.mjs";
 
 /** Where Capsid answers unless an app names another origin (a preview Capsid). */
 export const CAPSID_ORIGIN = "https://mcp.dustinedwards.info";
@@ -94,7 +95,7 @@ export async function postAccessSync({
     // The body can fail after the headers arrive (a timeout, a dropped connection), so the read is inside the try.
     return {
       ok: false,
-      refusal: `Capsid could not be reached: ${error instanceof Error ? error.message : String(error)}`,
+      refusal: `Capsid could not be reached: ${errorMessage(error)}`,
     };
   }
 }

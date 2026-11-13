@@ -12,7 +12,7 @@
 
 import { CAPSID_ORIGIN } from "./access-sync.mjs";
 import { timedFetch } from "./http.mjs";
-import { logEvent } from "./log.mjs";
+import { errorMessage, logEvent } from "./log.mjs";
 
 /** Where the report goes, on Capsid's origin. */
 export const INBOX_REPORT_PATH = "/ops/inbox/report";
@@ -66,7 +66,7 @@ export async function reportInbox({
     if (!response.ok) throw new Error(`Capsid answered ${response.status}`);
     return { state: "sent", detail: `${body.items.length} item(s) reported.` };
   } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
+    const detail = errorMessage(error);
     logEvent("inbox_report_failed", { namespace, error: detail }, { level: "error" });
     return { state: "failed", detail };
   }

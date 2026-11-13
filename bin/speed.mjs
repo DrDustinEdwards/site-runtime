@@ -28,6 +28,7 @@ import { parseArgs } from "node:util";
 import { sitemapLocs } from "../html.mjs";
 import { retryAfterSeconds } from "../http.mjs";
 import { speedFindings } from "../speed.mjs";
+import { errorMessage } from "../log.mjs";
 
 const { values } = parseArgs({
   options: {
@@ -191,7 +192,7 @@ async function informational(url) {
   try {
     socket = await h2Socket(u);
   } catch (error) {
-    return { error: error instanceof Error ? error.message : String(error) };
+    return { error: errorMessage(error) };
   }
   return new Promise((resolve) => {
     const session = connect(u.origin, { createConnection: () => socket });
@@ -321,7 +322,7 @@ async function pagespeed(url) {
           );
       } catch (error) {
         out[strategy] = {
-          error: `PageSpeed Insights could not be reached: ${error instanceof Error ? error.message : String(error)}`,
+          error: `PageSpeed Insights could not be reached: ${errorMessage(error)}`,
         };
         if (attempt < PSI_TRIES) await sleep(2 ** attempt * 1000);
       }

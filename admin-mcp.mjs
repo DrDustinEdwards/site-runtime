@@ -29,7 +29,7 @@ import { auditLogCheck, exportAuditLog, recordAudit } from "./audit-log.mjs";
 import { runJobTool, runJobs } from "./cron.mjs";
 import { durableObjectCheck, healthResponse, kvCheck, r2Check } from "./health.mjs";
 import { deployedSha } from "./deploy.mjs";
-import { logEvent, withRequestLog } from "./log.mjs";
+import { errorMessage, logEvent, withRequestLog } from "./log.mjs";
 import { operatorResponse } from "./operator.mjs";
 import {
   DCR_CALLBACKS,
@@ -373,11 +373,7 @@ export function adminMcpWorker({
       try {
         return await route(request, env, /** @type {ExecutionContext} */ (ctx));
       } catch (error) {
-        logEvent(
-          "unhandled_error",
-          { detail: error instanceof Error ? error.message : String(error) },
-          { level: "error" },
-        );
+        logEvent("unhandled_error", { detail: errorMessage(error) }, { level: "error" });
         return refuse("Internal error. The request was not completed.", 500);
       }
     },

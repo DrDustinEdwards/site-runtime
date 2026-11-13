@@ -51,6 +51,7 @@
 
 import { applyHeaderSet, corpFor, UPLOAD_HEADERS } from "./headers.mjs";
 import { mediaType } from "./http.mjs";
+import { errorMessage } from "./log.mjs";
 
 /**
  * Astro's "limited" screen widths, the set it uses for images it generates ahead of time. A site's closed set starts
@@ -570,7 +571,7 @@ export function defineImages({
         JSON.stringify({
           alert: "image-transform-failed",
           url: request.url,
-          detail: error instanceof Error ? error.message : String(error),
+          detail: errorMessage(error),
         }),
       );
       // The body above is spent, so the original is read again. Short-lived: this URL should hold the size once the
