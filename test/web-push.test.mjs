@@ -106,6 +106,10 @@ test("the VAPID key is read from its JWK, and a broken secret says why", () => {
   assert.match(readVapidKey(undefined), /not set/);
   assert.match(readVapidKey("nope"), /not JSON/);
   assert.match(readVapidKey(JSON.stringify({ kty: "RSA" })), /P-256/);
+  assert.match(
+    readVapidKey(JSON.stringify({ kty: "EC", crv: "P-256", d: "d", x: "!!!", y: "!!!" })),
+    /not base64url/,
+  );
   const key = readVapidKey(JSON.stringify(jwkOf(AS_PRIVATE, AS_PUBLIC)));
   assert.ok(typeof key !== "string");
   assert.equal(key.publicKey, AS_PUBLIC);

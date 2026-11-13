@@ -8,6 +8,7 @@
  */
 
 import { base64url, fromBase64url } from "./encoding.mjs";
+import { timedFetch } from "./http.mjs";
 import { signJwt } from "./jwt.mjs";
 
 const RECORD_SIZE = 4096;
@@ -85,7 +86,12 @@ export function readVapidKey(secret) {
   }
   if (jwk.kty !== "EC" || jwk.crv !== "P-256" || !jwk.d || !jwk.x || !jwk.y)
     return "VAPID_PRIVATE_KEY is not a P-256 private key as a JWK (kty EC, crv P-256, d, x and y).";
-  const point = concat(new Uint8Array([4]), fromBase64url(jwk.x), fromBase64url(jwk.y));
+  let point;
+  try {
+    point = concat(new Uint8Array([4]), fromBase64url(jwk.x), fromBase64url(jwk.y));
+  } catch {
+    return "VAPID_PRIVATE_KEY's x and y are not base64url.";
+  }
   if (point.length !== 65) return "VAPID_PRIVATE_KEY's x and y are not 32 bytes each.";
   return {
     jwk: { kty: "EC", crv: "P-256", d: jwk.d, x: jwk.x, y: jwk.y },
@@ -201,10 +207,10 @@ export function vapidJwt(vapid, audience, subject, now) {
  * @param {import("./web-push.d.mts").PushSubscriptionKeys} sub
  * @param {unknown} payload
  * @param {Date} now
- * @param {typeof fetch} [fetcher]
+ * @param {typeof fetch} [fetcher] default ./http timedFetch, so a push service that stalls cannot hold the cron open
  * @returns {Promise<import("./web-push.d.mts").PushSent>}
  */
-export async function sendPush(vapid, subject, sub, payload, now, fetcher = fetch) {
+export async function sendPush(vapid, subject, sub, payload, now, fetcher = timedFetch) {
   const problem = subscriptionProblem(sub);
   if (problem) return { status: 0, gone: true };
   const body = await encryptPayload(sub, utf8(JSON.stringify(payload)));
