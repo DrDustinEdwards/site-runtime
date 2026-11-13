@@ -31,6 +31,10 @@ test("unescapeHtml reads numeric and named references once; htmlAttributes and s
     unescapeHtml("a &amp;lt; &#x41;&#66; &quot;&apos;&gt; &bogus; &#0;"),
     "a &lt; AB \"'> &bogus; &#0;",
   );
+  assert.equal(
+    unescapeHtml("&rsquo;&eacute;&Eacute;&mdash;&nbsp;&AMP;&Amp;&#xD800;"),
+    "\u2019\u00e9\u00c9\u2014\u00a0&&Amp;&#xD800;",
+  );
   assert.deepEqual(htmlAttributes(`<a HREF="/x?a=1&amp;b=2" hidden class=c class='d'>`), {
     "<a": "",
     href: "/x?a=1&b=2",

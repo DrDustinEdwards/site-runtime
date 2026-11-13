@@ -346,7 +346,7 @@ text field (64 KiB by default). `multipartBoundary(contentType)` is the boundary
 
 ## HTML escaping
 
-`./html` is the one `escapeHtml`, and its reading counterparts: `unescapeHtml(text)` (decimal, hex and the six named references, in one pass), `htmlAttributes(tagText)` (a tag's attributes by lowercased name, values unescaped, the first of a repeated name winning) and `sitemapLocs(xml)` (the `<loc>` addresses of a sitemap or index).
+`./html` is the one `escapeHtml`, and its reading counterparts: `unescapeHtml(text)` (decimal, hex and the named references mail and CMS markup carry: the markup five, Latin-1, typographic quotes, dashes, spaces and arrows, case-sensitive, in one pass), `htmlAttributes(tagText)` (a tag's attributes by lowercased name, values unescaped, the first of a repeated name winning) and `sitemapLocs(xml)` (the `<loc>` addresses of a sitemap or index).
 
 ```js
 import { escapeHtml } from "@dustinedwards/site-runtime/html";
