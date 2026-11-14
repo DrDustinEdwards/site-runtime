@@ -310,6 +310,16 @@ test("cloudflareWebAnalytics lets the beacon run and report", () => {
     !manual.get("script-src")?.includes("https://static.cloudflareinsights.com/beacon.min.js/"),
   );
   assert.deepEqual(manual.get("connect-src"), ["'self'", "https://cloudflareinsights.com"]);
+  for (const cloudflareWebAnalytics of [true, "manual"])
+    assert.throws(
+      () =>
+        buildContentSecurityPolicy({
+          ...SINK,
+          cloudflareWebAnalytics,
+          sources: { connect: ["https://cloudflareinsights.com"] },
+        }),
+      /not a connect source to pass/,
+    );
   assert.throws(
     () => buildContentSecurityPolicy({ ...SINK, cloudflareWebAnalytics: "auto" }),
     /true, "manual"/,

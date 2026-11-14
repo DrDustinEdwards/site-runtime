@@ -599,7 +599,7 @@ export const enarratio = {
     denyUnlisted: {
       value: true,
       reason:
-        "The gallery loads its own files, data: images and the beacon, and reports to cloudflareinsights.com.",
+        "The gallery loads its own files, data: images and the beacon, which reports to the gallery's own /cdn-cgi/rum.",
     },
     coep: coepCredentialless,
     integrityPolicy: integrityStagedStatic,
@@ -608,7 +608,7 @@ export const enarratio = {
   deviations: { C3: beaconNotStrict },
   assets: {
     skipWorker: /* @__PURE__ */ staticPages(["/fonts/*"], "wrangler.jsonc"),
-    policy: { sources: { img: ["data:"], connect: ["https://cloudflareinsights.com"] } },
+    policy: { sources: { img: ["data:"] } },
     // File names are not hashed (record 0008), so five minutes.
     paths: { "/*": { "Cache-Control": "public, max-age=300, must-revalidate" } },
   },
@@ -679,12 +679,7 @@ export const capsomer = {
   assets: {
     skipWorker: /* @__PURE__ */ staticPages(["/assets/*"], "wrangler.jsonc"),
     policy: {
-      sources: {
-        img: ["data:"],
-        connect: [
-          "https://raw.githubusercontent.com/DrDustinEdwards/capsomer/results/results.json",
-        ],
-      },
+      sources: { img: ["data:"] },
     },
     paths: /* @__PURE__ */ hashed("/assets/*"),
   },
