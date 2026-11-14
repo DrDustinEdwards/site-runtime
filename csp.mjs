@@ -293,6 +293,17 @@ export function buildContentSecurityPolicy(site) {
       "strictDynamic cannot go with cloudflareWebAnalytics: 'strict-dynamic' ignores host sources, and the edge injects the beacon with no nonce, so it would be blocked",
     );
   }
+  // connect-src names only what a page reaches (OWASP CSP Cheat Sheet: connect-src 'self'). The beacon's origin is the
+  // builder's to add: the automatic beacon reports to the site's own /cdn-cgi/rum, the manual one to
+  // cloudflareinsights.com (developers.cloudflare.com/web-analytics/faq), so a site listing it is either unneeded or a copy.
+  if (
+    (sources.connect ?? []).some((s) =>
+      /^https:\/\/([^/]*\.)?cloudflareinsights\.com(\/|$)/i.test(s),
+    )
+  )
+    throw new Error(
+      'cloudflareinsights.com is not a connect source to pass: the automatic beacon reports to the site itself, and cloudflareWebAnalytics: "manual" adds it',
+    );
   if (nonce !== undefined && !/^[A-Za-z0-9+/_-]{16,}={0,2}$/.test(nonce))
     throw new Error("the nonce is not a base64 value of at least 16 characters");
   if (noForms && formTargets.length > 0)
