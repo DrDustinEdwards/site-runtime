@@ -657,7 +657,7 @@
     "web-vitals": "6.2.3"
   },
   "devDependencies": {
-    "@better-auth/passkey": "1.7.18",
+    "@better-auth/passkey": "1.7.22",
     "@changesets/cli": "3.0.3",
     "@cloudflare/workers-oauth-provider": "1.2.4",
     "@cloudflare/workers-types": "5.20261108.1",
@@ -665,7 +665,7 @@
     "@types/node": "24.19.2",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
-    "better-auth": "1.7.18",
+    "better-auth": "1.7.22",
     "drizzle-orm": "0.45.4",
     "lib0": "0.2.119",
     "oxfmt": "0.77.0",
