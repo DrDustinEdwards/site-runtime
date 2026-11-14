@@ -14,7 +14,8 @@
  * - On a page: the preload `Link` header, which Early Hints answers with a 103 (`./preload`); `Server-Timing` for the
  *   asset read; charset=utf-8; and any header of `headers` the page's own `_headers` rules left out.
  * - A path with no file gets the site's 404 page (`notFound`, `/404` by default) with status 404 and
- *   `private, no-store`, so no browser or proxy keeps a "not found" after the page exists. A page answered to a request
+ *   `private, no-store` and `X-Robots-Tag: noindex`, so no browser or proxy keeps a "not found" after the page exists and
+ *   no index lists it. A page answered to a request
  *   carrying a cookie is `private, no-store` too; the 404 page's own address answers 404 as well, never a 200 a crawler
  *   could index as a soft 404, as on the rendered sites (`./edge-cache` forReader).
  *
@@ -208,6 +209,8 @@ export function staticSite({
       out.append("Server-Timing", serverTiming([{ name: "asset", ms }]));
       if (response.status >= 400 || request.headers.has("Cookie"))
         out.set("Cache-Control", UNCACHED);
+      // An error page is never a result, as the rendered sites' 404s say in their robots meta.
+      if (response.status >= 400) out.set("X-Robots-Tag", "noindex");
       const page = new Response(response.body, {
         status: response.status,
         statusText: response.statusText,

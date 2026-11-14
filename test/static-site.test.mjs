@@ -59,6 +59,7 @@ test("a page gets the speed headers, a missing path the 404 page uncached, and a
   assert.equal(missing.status, 404);
   assert.equal(await missing.text(), "<p>gone");
   assert.equal(missing.headers.get("Cache-Control"), "private, no-store");
+  assert.equal(missing.headers.get("X-Robots-Tag"), "noindex");
   assert.equal(missing.headers.get("Content-Security-Policy"), "default-src 'none'");
   assert.equal(missing.headers.get("Link"), null);
 
