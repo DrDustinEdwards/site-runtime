@@ -653,7 +653,7 @@
     "changeset": "changeset"
   },
   "dependencies": {
-    "isbot": "5.2.2",
+    "isbot": "5.2.3",
     "web-vitals": "6.2.3"
   },
   "devDependencies": {
@@ -667,7 +667,7 @@
     "@types/react-dom": "19.3.0",
     "better-auth": "1.7.22",
     "drizzle-orm": "0.45.4",
-    "lib0": "0.2.119",
+    "lib0": "0.2.120",
     "oxfmt": "0.77.0",
     "oxlint": "1.92.0",
     "oxlint-tsgolint": "7.0.2006",
