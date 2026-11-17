@@ -1,10 +1,10 @@
-// What a site's Sentry report carries, proved through the real SDK pipeline: withSiteSentry around a handler, an
-// error-level log line and a throw inside it, and the envelopes the SDK posts read off a stubbed fetch.
+// What a site's Sentry report carries, proved through the real SDK pipeline: withSiteSentry around a logged handler,
+// an error-level log line and a throw inside it, and the envelopes the SDK posts read off a stubbed fetch.
 import assert from "node:assert/strict";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { test } from "node:test";
 
-import { logEvent, tokenPattern } from "../log.mjs";
+import { logEvent, tokenPattern, withRequestLog } from "../log.mjs";
 import { withSiteSentry } from "../sentry.mjs";
 
 /** Runs `fetch` under withSiteSentry with `env`, and returns the bodies the SDK sent. */
@@ -30,7 +30,8 @@ async function sentBy(env, fetch) {
     props: {},
   };
   try {
-    const worker = withSiteSentry({ fetch }, { tokenPath: tokenPattern(["u"]) });
+    const tokenPath = tokenPattern(["u"]);
+    const worker = withSiteSentry({ fetch: withRequestLog(fetch, { tokenPath }) }, { tokenPath });
     const request = new Request(
       "https://example.com/u/tok_SECRET123?token=QTOKEN&email=jane@example.com",
       {
@@ -67,6 +68,8 @@ test("an error line and a throw are reported, with nothing personal in them", as
   assert.match(text, /"event":"billing_failed"/);
   assert.match(text, /boom for \[email\]/);
   assert.doesNotMatch(text, /"type":"transaction"/);
+  // The 500's access line is not a second report.
+  assert.doesNotMatch(text, /"event":"request"/);
   for (const needle of [
     "tok_SECRET123",
     "tok_PATH",

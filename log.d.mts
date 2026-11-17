@@ -21,11 +21,11 @@ export function scrubFields(
   fields: Record<string, unknown>,
   options?: ScrubOptions,
 ): Record<string, unknown>;
-/** Writes one JSON line, `{ event, ...fields }` scrubbed, at `level` (default "log"). */
+/** Writes one JSON line, `{ event, ...fields }` scrubbed, at `level` (default "log"); an error line is also an error report unless `report` is false. */
 export function logEvent(
   event: string,
   fields?: Record<string, unknown>,
-  options?: ScrubOptions & { level?: "log" | "warn" | "error" },
+  options?: ScrubOptions & { level?: "log" | "warn" | "error"; report?: boolean },
 ): void;
 /** `{ request_id, method, path, status?, sha? }` for a log line: `cf-ray` (or ""), the method, the scrubbed pathname. */
 export function requestFields(

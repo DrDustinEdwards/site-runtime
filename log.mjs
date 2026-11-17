@@ -137,15 +137,19 @@ export function errorMessage(error) {
  * `console.warn` for "warn", else `console.log`. An error line is also one Sentry report once ./sentry is loaded. A field named `event` cannot replace the event's name.
  * @param {string} event
  * @param {Record<string, unknown>} [fields]
- * @param {ScrubOptions & { level?: "log" | "warn" | "error" }} [options]
+ * @param {ScrubOptions & { level?: "log" | "warn" | "error", report?: boolean }} [options]
  */
-export function logEvent(event, fields = {}, { level = "log", ...scrub } = {}) {
+export function logEvent(
+  event,
+  fields = {},
+  { level = "log", report: reported = true, ...scrub } = {},
+) {
   const { event: _ignored, ...rest } = fields;
   const scrubbed = scrubFields(rest, scrub);
   const line = JSON.stringify({ event, ...scrubbed });
   if (level === "error") {
     console.error(line);
-    report(event, rest.error, scrubbed);
+    if (reported) report(event, rest.error, scrubbed);
   } else if (level === "warn") console.warn(line);
   else console.log(line);
 }
@@ -271,7 +275,13 @@ export function withRequestLog(handler, { sha, route, inputValidation = true, ..
       logEvent(
         "request",
         { ...fields, ms: Date.now() - started },
-        { level: status >= 500 ? "error" : status >= 400 ? "warn" : "log", ...scrub },
+        // A 5xx is an error line but not an error report: what failed is reported where it failed (server_error, a
+        // throw), and a 501 or 503 a handler meant is no fault, so a report per access line would only spend quota.
+        {
+          level: status >= 500 ? "error" : status >= 400 ? "warn" : "log",
+          report: false,
+          ...scrub,
+        },
       );
       if (inputValidation && (status === 400 || status === 422))
         logEvent("input_validation_fail", fields, { level: "warn", ...scrub });

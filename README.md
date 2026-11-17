@@ -1080,7 +1080,8 @@ none nothing is sent. `siteWorker` (with the handlers passed to it) wraps itself
 and the Renderer runs each fetch in `withSentryRequest`, which keeps a site's subclass (its `purgePages`) intact; a Worker built without them wraps its default export:
 `export default withSiteSentry({ fetch, scheduled }, { tokenPath })`. Under it, a throw that leaves a handler and every
 `logEvent` line at level `"error"` (`gateway_error`, `server_error`, a failed cron job, a site's own) is one report: the
-Error with its stack, else the event's name, tagged `event`, with the line's scrubbed fields. Errors only:
+Error with its stack, else the event's name, tagged `event`, with the line's scrubbed fields; `report: false` keeps an
+error line out (withRequestLog's 5xx `request` line, since what failed is reported where it failed). Errors only:
 `tracesSampleRate` is 0 and nothing runs in the browser. `sentryOptions` cuts each report as ./log cuts a line (emails,
 queries, keys, Drizzle params, the token routes) and drops the request's headers, cookies, query and body and the user;
 a scrubber that throws drops the report. ./log never loads the SDK itself: ./sentry hands it the report
