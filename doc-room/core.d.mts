@@ -36,6 +36,8 @@ export type DocModel = {
   settle(json: unknown): unknown;
   /** How many suggestions each person (by id as a string) has in the JSON. */
   suggestionCounts(json: unknown): Map<string, number>;
+  /** A comment's anchor on the text from `from` to `to` (Capsomer collab-editor's anchorAt), for threads brought in with a document. */
+  anchor?(doc: Y.Doc, from: number, to: number): string | null;
 };
 
 /** One stored comment, as the store keeps it. */

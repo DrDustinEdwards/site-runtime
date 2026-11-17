@@ -6,6 +6,31 @@ import type { CommentStore, DocModel, RoomMeta, RoomViewer } from "./core.mjs";
 export * from "./core.mjs";
 
 /**
+ * A comment thread brought in with a document: the words it is on (`from` to `to`, the document's
+ * positions), then its comments in order, the first the thread and the rest its replies.
+ */
+export type BroughtThread = {
+  from: number;
+  to: number;
+  quote: string;
+  comments: { personId: number; body: string; createdAt?: string }[];
+};
+
+export type ReplaceInput = {
+  markdown: string;
+  version: string | null;
+  by: string;
+  expectedVersion?: string | null;
+  unsaved?: boolean;
+  expectedMarkdown?: string;
+  saved?: string;
+  /** The editor's JSON, loaded instead of `markdown` read: a document brought in with its suggestions. */
+  doc?: unknown;
+  /** Its comment threads, anchored by the model's `anchor` once the document is in. */
+  threads?: BroughtThread[];
+};
+
+/**
  * The room an app extends and exports as its Durable Object class (SQLite-backed). It gives `model` and
  * `access`, and `comments` and `mirror` when it keeps them.
  */
@@ -32,15 +57,7 @@ export declare class DocRoom<E = Cloudflare.Env> extends YServer<E> {
     input: { markdown: string; version: string | null; saved?: string } & Record<string, unknown>,
   ): Promise<boolean>;
   /** Replaces the whole text for everyone; false when a precondition no longer holds. */
-  replace(input: {
-    markdown: string;
-    version: string | null;
-    by: string;
-    expectedVersion?: string | null;
-    unsaved?: boolean;
-    expectedMarkdown?: string;
-    saved?: string;
-  }): Promise<boolean>;
+  replace(input: ReplaceInput): Promise<boolean>;
   /** What a save writes now, its version, and who changed it since the last save. */
   snapshot(): Promise<{
     seeded: boolean;

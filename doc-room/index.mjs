@@ -26,7 +26,16 @@ import { YServer } from "y-partyserver";
 import * as Y from "yjs";
 
 import { logEvent } from "../log.mjs";
-import { applyComment, readViewer, ROLE_RECHECK_MS, suggestOnly, withinLimit } from "./core.mjs";
+import {
+  applyComment,
+  MAX_ANCHOR,
+  MAX_COMMENT,
+  MAX_QUOTE,
+  readViewer,
+  ROLE_RECHECK_MS,
+  suggestOnly,
+  withinLimit,
+} from "./core.mjs";
 
 export * from "./core.mjs";
 
@@ -203,7 +212,9 @@ export class DocRoom extends YServer {
    * `expectedVersion`, when given, must still be the room's, so two people asking for the newer version
    * cannot load it twice over someone's new work. A merge also gives `expectedMarkdown`, the text it was
    * merged from, so nothing typed since is replaced, and `saved`, the text it now stands on.
-   * @param {{ markdown: string; version: string | null; by: string; expectedVersion?: string | null; unsaved?: boolean; expectedMarkdown?: string; saved?: string }} input
+   * `doc`, the editor's JSON, goes in instead of the Markdown read (a document brought in from elsewhere,
+   * with its suggestions), and `threads` are its comment threads (`#bringThreads`).
+   * @param {import("./index.d.mts").ReplaceInput} input
    */
   async replace(input) {
     await this.__unsafe_ensureInitialized();
@@ -223,10 +234,45 @@ export class DocRoom extends YServer {
       markdown: input.markdown,
       version: input.version,
       ...(saved !== undefined ? { saved } : {}),
+      ...(input.doc !== undefined ? { doc: input.doc } : {}),
     });
     await this.#persist();
     this.#broadcast({ t: "replaced", by: input.by });
+    if (input.threads?.length) await this.#bringThreads(input.threads);
     return true;
+  }
+
+  /**
+   * Comment threads that came with a brought-in document, each anchored on its words in the copy just
+   * loaded (the model's `anchor`), its first comment the thread and the rest its replies, in order.
+   * @param {import("./index.d.mts").BroughtThread[]} threads
+   */
+  async #bringThreads(threads) {
+    const store = this.comments;
+    if (!store) return;
+    const now = new Date().toISOString();
+    for (const thread of threads) {
+      const anchor = this.model.anchor
+        ? this.model.anchor(this.document, thread.from, thread.to)
+        : null;
+      let parentId = null;
+      for (const c of thread.comments) {
+        const body = c.body.trim().slice(0, MAX_COMMENT);
+        if (!body) continue;
+        const id = crypto.randomUUID();
+        await store.add({
+          id,
+          parentId,
+          personId: c.personId,
+          body,
+          anchor: parentId ? null : anchor && anchor.length <= MAX_ANCHOR ? anchor : null,
+          quote: parentId ? "" : thread.quote.slice(0, MAX_QUOTE),
+          createdAt: c.createdAt ?? now,
+        });
+        parentId ??= id;
+      }
+    }
+    await this.#sendComments();
   }
 
   /** What a save writes now, the version it must be checked against, and who has changed it since the last save. */
