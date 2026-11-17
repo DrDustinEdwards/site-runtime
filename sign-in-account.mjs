@@ -24,6 +24,7 @@
  *   `eventsDb`); `shouldOfferPasskey` and `dismissPasskeyOffer` keep the offer of a passkey after another sign-in to
  *   people with none who have not just said "Not now"; `needsSecondPasskey` is the nudge toward a second one.
  */
+import { isRecipientSuppressed } from "./email.mjs";
 import { logEvent, OWASP_EVENTS } from "./log.mjs";
 import { DAILY_MINUTES } from "./cron.mjs";
 import { emailKey } from "./rate-limit/index.mjs";
@@ -959,7 +960,9 @@ export function noticeDetail(
 
 /**
  * Calls the site's sender and never throws: a failure is logged (`security_notice_failed`, the kind and the error with
- * any address cut out) and the change it tells of stands.
+ * any address cut out) and the change it tells of stands. A recipient on Email Service's suppression list (`./email`
+ * isRecipientSuppressed) is a known state of the address, not a fault, so it is a warning,
+ * `security_notice_undeliverable`; the sign-in page says so the next time a link is asked for.
  * @param {SendSecurityNotice} send
  * @param {string} kind
  * @param {{ user: NoticeUser, request?: Request, detail: NoticeDetail }} notice
@@ -968,10 +971,17 @@ export async function sendNoticeSafely(send, kind, notice) {
   try {
     await send(kind, notice);
   } catch (error) {
-    logEvent(
-      "security_notice_failed",
-      { kind, user_id: notice.user.id, error },
-      { level: "error" },
-    );
+    if (isRecipientSuppressed(error))
+      logEvent(
+        "security_notice_undeliverable",
+        { kind, user_id: notice.user.id },
+        { level: "warn" },
+      );
+    else
+      logEvent(
+        "security_notice_failed",
+        { kind, user_id: notice.user.id, error },
+        { level: "error" },
+      );
   }
 }

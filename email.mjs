@@ -11,7 +11,11 @@
  * - A link, token or code in the mail signs someone in, and a provider can echo the message in its error. Each of
  *   `secrets`, and every recipient, is cut out of the error before it is returned or logged.
  * - A failure is logged once, as `email_send_failed` with its code and the cut message (./log scrubs it again). The
- *   body is never logged.
+ *   body is never logged. A suppressed recipient (RECIPIENT_SUPPRESSED) is a warning, not an error: Email Service
+ *   refuses it by design, before any delivery attempt, because mail to the address bounced or was reported as spam
+ *   (developers.cloudflare.com/email-service/concepts/suppressions/), so no code of the site's failed.
+ * - A caller that must fail when the mail is not sent throws `EmailNotSent`, which carries the code and none of the
+ *   provider's words, so ./sign-in can tell a suppressed address (`isRecipientSuppressed`) from an outage.
  */
 
 import { logEvent } from "./log.mjs";
@@ -34,6 +38,37 @@ const EMAIL_ADDRESS =
  */
 export function isEmail(value) {
   return typeof value === "string" && value.length <= 254 && EMAIL_ADDRESS.test(value);
+}
+
+/**
+ * The binding's code for a recipient on the account's suppression list, with the sending domain's "Drop suppressed
+ * recipients" setting off, its default (developers.cloudflare.com/email-service/configuration/domains/). The entry comes
+ * from a hard bounce, a spam complaint or a manual suppression; a hard bounce for a mailbox or domain that does not
+ * exist, and a complaint, never expire (developers.cloudflare.com/email-service/concepts/suppressions/).
+ */
+export const RECIPIENT_SUPPRESSED = "E_RECIPIENT_SUPPRESSED";
+
+/** A send that did not go out, thrown by a caller that must fail with it. Its message holds only the code. */
+export class EmailNotSent extends Error {
+  /** @param {string} code */
+  constructor(code) {
+    super(`Email not sent (${code}).`);
+    this.name = "EmailNotSent";
+    this.code = code;
+  }
+}
+
+/**
+ * Whether `error` is a send refused because the recipient is suppressed: an EmailNotSent, or anything carrying the
+ * binding's code.
+ * @param {unknown} error
+ */
+export function isRecipientSuppressed(error) {
+  return (
+    !!error &&
+    typeof error === "object" &&
+    /** @type {{ code?: unknown }} */ (error).code === RECIPIENT_SUPPRESSED
+  );
 }
 
 // The binding's codes are short names (E_SENDER_NOT_VERIFIED); anything else is reported as "unknown".
@@ -82,7 +117,7 @@ function refused(code, error) {
   logEvent(
     "email_send_failed",
     { code, error },
-    { level: code === "not_configured" ? "warn" : "error" },
+    { level: code === "not_configured" || code === RECIPIENT_SUPPRESSED ? "warn" : "error" },
   );
   return { sent: false, code, error };
 }

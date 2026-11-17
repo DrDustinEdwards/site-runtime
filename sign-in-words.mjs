@@ -3,7 +3,11 @@
  * too: `./sign-in-form` answers with them on the server, and Capsomer's sign-in screen shows them (and the passkey's,
  * which only the browser knows).
  */
-import { DISPOSABLE_EMAIL, SIGN_IN_EXPIRES_IN_WORDS } from "./sign-in-link.mjs";
+import {
+  DISPOSABLE_EMAIL,
+  SIGN_IN_EXPIRES_IN_WORDS,
+  UNDELIVERABLE_EMAIL,
+} from "./sign-in-link.mjs";
 
 /** How long each email-change link works: an hour, Better Auth's default, and the words the mails say. */
 export const EMAIL_CHANGE_EXPIRES_IN_SECONDS = 60 * 60;
@@ -11,6 +15,10 @@ export const EMAIL_CHANGE_EXPIRES_IN_WORDS = "1 hour";
 
 /** The refusal of a disposable address, on the sign-in page and the account page alike. */
 const DISPOSABLE_WORDS = "Use a real email address. Disposable email addresses are not allowed.";
+
+/** An address Email Service will not mail (`UNDELIVERABLE_EMAIL`): earlier mail to it bounced or was marked as spam. */
+const UNDELIVERABLE_WORDS =
+  "Email to this address can't be delivered: an earlier email to it bounced or was marked as spam. Check the address for a typo, or use another way to sign in.";
 
 /** The words every site's sign-in pages say, by answer. */
 export const SIGN_IN_WORDS = Object.freeze({
@@ -21,6 +29,7 @@ export const SIGN_IN_WORDS = Object.freeze({
     "email-limited": "Too many sign-in requests for this address. Try again later.",
     "check-failed": "Complete the check, then send the link again.",
     unavailable: "Sign-in links can't be sent right now. Use a passkey, or try again later.",
+    undeliverable: UNDELIVERABLE_WORDS,
     failed: "We could not send the link. Check the address and try again.",
   }),
   code: Object.freeze({
@@ -51,6 +60,9 @@ export const ACCOUNT_WORDS = Object.freeze({
   disposable: DISPOSABLE_WORDS,
   unverified: "Sign in with an email link first, then change your address.",
   emailFailed: "The email was not sent. Try again in a minute.",
+  /** The current address the approval link goes to is on Email Service's suppression list. */
+  emailUndeliverable:
+    "Email to your current address can't be delivered (an earlier email to it bounced or was marked as spam), so the change can't be approved from it.",
   /** The current address the first email-change link went to, and the time both links last. */
   emailSent: (/** @type {string} */ to) =>
     `We sent a link to ${to}. Open it within ${EMAIL_CHANGE_EXPIRES_IN_WORDS} to approve the change; we then send one to the new address to confirm it.`,
@@ -84,6 +96,7 @@ export const ACCOUNT_WORDS = Object.freeze({
 export function signInErrorWords(code, { siteName, settings }) {
   if (!code) return null;
   if (code === DISPOSABLE_EMAIL) return SIGN_IN_WORDS.code.disposable;
+  if (code === UNDELIVERABLE_EMAIL) return SIGN_IN_WORDS.link.undeliverable;
   // Accounts are joined only by a signed-in person (`./sign-in`), never by a matching email at sign-in, so this one has
   // a way forward.
   if (code === "account_not_linked")
@@ -92,7 +105,12 @@ export function signInErrorWords(code, { siteName, settings }) {
   return "That sign-in did not complete. Try again, or use another way.";
 }
 
-export { DISPOSABLE_EMAIL, SIGN_IN_EXPIRES_IN_WORDS, SIGN_IN_LINK_WORDS } from "./sign-in-link.mjs";
+export {
+  DISPOSABLE_EMAIL,
+  SIGN_IN_EXPIRES_IN_WORDS,
+  SIGN_IN_LINK_WORDS,
+  UNDELIVERABLE_EMAIL,
+} from "./sign-in-link.mjs";
 
 /**
  * The words for a passkey sign-in that did not sign in, from the error Better Auth's client returned, or null when the

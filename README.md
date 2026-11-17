@@ -1545,7 +1545,8 @@ its own and the notices by passing one function.
   ```
 
   A send that throws is logged (`security_notice_failed`, the kind and the error with any address cut out) and the
-  change stands: every hook catches its own error (`auth_event_failed`), because a throw from an after hook would turn
+  change stands; a recipient on Email Service's suppression list (the sender threw `./email` EmailNotSent with
+  RECIPIENT_SUPPRESSED) is the warning `security_notice_undeliverable` instead, since nothing of the site's failed: every hook catches its own error (`auth_event_failed`), because a throw from an after hook would turn
   a change already made into an error answer. The send goes through Better Auth's `runInBackgroundOrAwait`, so with
   `advanced: { ...signIn.advanced, backgroundTasks: { handler: (p) => ctx.waitUntil(p) } }` the answer does not wait
   for the mail. A linked or unlinked provider, the two addresses of an email change and a deleted user's address come
@@ -2202,7 +2203,15 @@ if (!outcome.sent) throw new Error(`Email not sent (${outcome.code}).`);
   the sender's choosing; a subject's line breaks fold to one space, and a display name loses its quotes.
 - Each of `secrets` and every recipient is cut out of `error`, so a provider that echoes the message cannot put a sign-in
   link in a log or a database row. `redact(text, secrets)` is the same cut for an error from elsewhere.
-- A failure writes one `email_send_failed` line (`./log`) with the code and the cut error, never the body.
+- A failure writes one `email_send_failed` line (`./log`) with the code and the cut error, never the body: a warning for
+  `not_configured` and for `RECIPIENT_SUPPRESSED` (`E_RECIPIENT_SUPPRESSED`: the address is on the account's suppression
+  list after a hard bounce, a spam complaint or a manual entry, and Email Service refuses it before any delivery
+  attempt; developers.cloudflare.com/email-service/concepts/suppressions/), an error for anything else.
+- A caller that must fail when a mail is not sent throws `new EmailNotSent(outcome.code)`: its message holds only the
+  code. `isRecipientSuppressed(error)` tells a suppressed recipient from an outage. `./sign-in` turns one on the sign-in
+  link or the app's code into a 422 `UNDELIVERABLE_EMAIL` (`undeliverable_email`), which `requestSignInLink` answers as
+  `"undeliverable"` and `SIGN_IN_WORDS.link.undeliverable` puts in words, and the account page's email change into
+  `ACCOUNT_WORDS.emailUndeliverable`, so the person learns no mail reaches that address instead of waiting for one.
 
 The `emailCheck` in `./health` checks the binding is present without sending.
 

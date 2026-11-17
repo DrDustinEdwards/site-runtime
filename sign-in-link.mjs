@@ -15,6 +15,12 @@
 /** Better Auth's error code when a new account's address is at a disposable domain (`./sign-in-form` refuseDisposable). */
 export const DISPOSABLE_EMAIL = "disposable_email";
 
+/**
+ * The error code (422) when a sign-in mail is refused because Email Service has the address on its suppression list
+ * (`./email` RECIPIENT_SUPPRESSED): mail to it bounced or was reported as spam, so no link or code can reach it.
+ */
+export const UNDELIVERABLE_EMAIL = "undeliverable_email";
+
 /** Where the mailed sign-in link opens unless the site names another page: "/sign-in/confirm". */
 export const CONFIRM_PATH = "/sign-in/confirm";
 

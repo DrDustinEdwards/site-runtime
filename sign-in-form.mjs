@@ -16,10 +16,10 @@
 import { APIError } from "better-auth/api";
 
 import { DISPOSABLE_DOMAINS } from "./disposable-domains.mjs";
-import { isEmail } from "./email.mjs";
+import { isEmail, isRecipientSuppressed } from "./email.mjs";
 import { OWASP_EVENTS, logEvent, requestFields } from "./log.mjs";
 import { SessionNotFresh, requireFreshSession, revokeSessionById } from "./sign-in-account.mjs";
-import { emailConfirmURL } from "./sign-in-link.mjs";
+import { UNDELIVERABLE_EMAIL, emailConfirmURL } from "./sign-in-link.mjs";
 import { isSameOriginPath } from "./url.mjs";
 import {
   ACCOUNT_WORDS,
@@ -158,7 +158,7 @@ async function errorCode(res) {
 
 /**
  * @typedef {{ handler: (request: Request) => Promise<Response>, options?: { baseURL?: unknown, basePath?: string } }} AuthLike
- * @typedef {"sent" | "limited" | "email-limited" | "check-failed" | "unavailable" | "failed"} LinkResult
+ * @typedef {"sent" | "limited" | "email-limited" | "check-failed" | "unavailable" | "undeliverable" | "failed"} LinkResult
  * @typedef {"wrong" | "expired" | "spent" | "limited" | "email-limited" | "unavailable" | "disposable" | "failed"} CodeRefusal
  */
 
@@ -195,6 +195,8 @@ export async function requestSignInLink(auth, request, link) {
     if (code === "MISSING_RESPONSE" || code === "VERIFICATION_FAILED") return "check-failed";
     // Turnstile's keys are missing (TURNSTILE_NOT_SET, failing closed), or the per-address counter is down.
     if (res.status === 503) return "unavailable";
+    // Email Service has the address on its suppression list (./sign-in, UNDELIVERABLE_EMAIL); ./email logged it.
+    if (code === UNDELIVERABLE_EMAIL) return "undeliverable";
     logEvent(
       "sign_in_link_failed",
       { ...requestFields(request), status: res.status, reason: code },
@@ -324,7 +326,9 @@ export async function signInFormAction(auth, request, form, site) {
       ? 400
       : result === "unavailable"
         ? 503
-        : 500;
+        : result === "undeliverable"
+          ? 422
+          : 500;
   return answer({ error: SIGN_IN_WORDS.link[result] }, status);
 }
 
@@ -530,6 +534,9 @@ export async function accountFormAction(auth, request, form, site) {
       await auth.api.changeEmail({ body: { newEmail }, headers });
     } catch (error) {
       if (isNotFresh(error)) return stale();
+      // The current address is suppressed (./email logged it as a warning): no approval link can reach it.
+      if (isRecipientSuppressed(error))
+        return answer({ error: ACCOUNT_WORDS.emailUndeliverable }, 422);
       logEvent(
         "email_change_failed",
         { ...requestFields(request), reason: errorCodeOf(error) },

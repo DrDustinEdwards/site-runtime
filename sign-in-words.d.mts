@@ -1,4 +1,8 @@
-export { SIGN_IN_EXPIRES_IN_WORDS, SIGN_IN_LINK_WORDS } from "./sign-in-link.mjs";
+export {
+  SIGN_IN_EXPIRES_IN_WORDS,
+  SIGN_IN_LINK_WORDS,
+  UNDELIVERABLE_EMAIL,
+} from "./sign-in-link.mjs";
 
 /** How long each email-change link works, in seconds and in the mails' words. */
 export const EMAIL_CHANGE_EXPIRES_IN_SECONDS: number;
@@ -12,7 +16,10 @@ export const SIGN_IN_WORDS: Readonly<{
   noEmail: string;
   noCode: string;
   link: Readonly<
-    Record<"limited" | "email-limited" | "check-failed" | "unavailable" | "failed", string>
+    Record<
+      "limited" | "email-limited" | "check-failed" | "unavailable" | "undeliverable" | "failed",
+      string
+    >
   >;
   code: Readonly<
     Record<
@@ -37,6 +44,7 @@ export const ACCOUNT_WORDS: Readonly<{
   disposable: string;
   unverified: string;
   emailFailed: string;
+  emailUndeliverable: string;
   emailSent: (to: string) => string;
   stale: Readonly<Record<"change-email" | "sign-out-device" | "delete-account", string>>;
   deviceFailed: string;
