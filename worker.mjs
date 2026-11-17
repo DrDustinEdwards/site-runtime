@@ -44,6 +44,9 @@
  * under /api/ or /preview/, and a 404 goes through the site's `onNotFound` (site-api's tombstones, a 410). A gateway
  * that throws answers a plain 500 with the security set and logs `gateway_error`, never the runtime's 1101 page.
  *
+ * A render whose route failed because D1 was down (a page, a .data request or a resource route) answers 503 with
+ * Retry-After and no-store instead of React Router's 500 (./log databaseDownStatus).
+ *
  * Around the gateway, outermost first: the request log (./log; the deployed commit from DEPLOY_SHA, a preview token cut
  * from the path, the route named from the React Router build, loaded and awaited inside the request, since a promise
  * left from a finished request can stay unsettled in workerd), the site's `wrap` (Prelum's markdownCopies), then the
@@ -89,6 +92,7 @@ import {
 import { cookiePairs } from "./headers.mjs";
 import { clientIp, isWrite, textResponse } from "./http.mjs";
 import {
+  databaseDownStatus,
   errorMessage,
   logEvent,
   routeNamer,
@@ -153,7 +157,13 @@ export function defineSite(options) {
         context.set(serverTimingContext, marks);
         return requestHandler(request, context);
       });
-      return dev && nonce ? withViteNonce(page, nonce) : page;
+      // A route that failed on D1 down (./log databaseDownStatus) answers 503 with Retry-After: a page, a .data
+      // request and a resource route alike, since React Router gives a resource route's error no hook after it.
+      // timedRender leaves the headers writable.
+      const status = databaseDownStatus(request, page.status, page.headers);
+      const answer =
+        status === page.status ? page : new Response(page.body, { status, headers: page.headers });
+      return dev && nonce ? withViteNonce(answer, nonce) : answer;
     },
     async stylesheets() {
       stylesheetHrefs ??= pageStylesheets(await build(), options.stylesheetRoutes).map(

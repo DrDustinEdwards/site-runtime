@@ -65,6 +65,7 @@ test("a check that hangs fails at the timeout; a warn check never makes it 503, 
       { name: "kv", level: "warn", run: () => new Promise(() => {}) },
       { name: "drift", level: "warn", run: async () => ({ ok: false, detail: "2 posts differ" }) },
       { name: "auth-spike", level: "warn", alert: true, run: async () => false },
+      { name: "stalled-spike", level: "warn", alert: true, run: () => new Promise(() => {}) },
     ],
     checkTimeoutMs: 20,
   });
@@ -74,6 +75,8 @@ test("a check that hangs fails at the timeout; a warn check never makes it 503, 
     { name: "kv", status: "warn", detail: "timed out after 20 ms" },
     { name: "drift", status: "warn", detail: "2 posts differ" },
     { name: "auth-spike", status: "warn", alert: true },
+    // An alert check that timed out measured nothing (FOXING-3: a D1 stall the db check already reported): no page.
+    { name: "stalled-spike", status: "warn", detail: "could not run: timed out after 20 ms" },
   ]);
   // An alert stays a warning (ok, 200: no rollback) and is named for the watcher to mail on.
   assert.deepEqual([body.ok, body.alerts], [true, ["auth-spike"]]);

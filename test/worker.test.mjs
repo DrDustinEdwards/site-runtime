@@ -180,3 +180,50 @@ test("a CSP report and the request log cut a token route's token, the preview li
   assert.match(all, /\/e\/c\/\[token\]/);
   assert.match(all, /\/preview\/\[token\]/);
 });
+
+test("a resource route that fails on D1 down answers 503 with Retry-After, not React Router's 500", async () => {
+  const { handleServerError } = await import("../log.mjs");
+  const importing = () => {
+    throw new Error("Failed query: select 1", {
+      cause: new Error("D1_ERROR: Currently processing a long-running import."),
+    });
+  };
+  // A real React Router handler on a build of one page and one resource route (no default export, as /cv/charts.json).
+  const routerBuild = {
+    entry: {
+      module: { default: async () => new Response("page"), handleError: handleServerError },
+    },
+    routes: {
+      root: { id: "root", path: "", module: { default: () => null } },
+      "routes/charts": {
+        id: "routes/charts",
+        parentId: "root",
+        path: "charts.json",
+        module: { loader: importing },
+      },
+    },
+    assets: {
+      routes: { root: { css: [] } },
+      url: "/m.js",
+      version: "1",
+      entry: { module: "/e.js", imports: [] },
+    },
+    publicPath: "/",
+    future: {},
+    ssr: true,
+    prerender: [],
+    routeDiscovery: { mode: "lazy", manifestPath: "/__manifest" },
+    basename: "/",
+  };
+  const { fetch } = harness({
+    serverBuild: async () => /** @type {any} */ (routerBuild),
+    mode: "production",
+  });
+  const answer = await fetch(
+    new Request("https://example.com/charts.json", { headers: { Cookie: "session=x" } }),
+  );
+  assert.deepEqual(
+    [answer.status, answer.headers.get("Retry-After"), answer.headers.get("Cache-Control")],
+    [503, "60", "no-store"],
+  );
+});

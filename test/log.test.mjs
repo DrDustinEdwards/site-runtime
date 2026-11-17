@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
-  documentStatus,
+  databaseDownStatus,
   handleServerError,
   logEvent,
   routeNamer,
@@ -119,9 +119,9 @@ test("withRequestLog names the route and a refused input also writes input_valid
     [{ event: "server_error", path: "/blog/robots.txt", error: "Error: boom" }],
   );
 
-  // A document whose route failed because D1 was down answers 503 with Retry-After; any other failure keeps its status.
+  // An answer whose route failed because D1 was down answers 503 with Retry-After; any other failure keeps its status.
   const headers = new Headers();
-  assert.equal(documentStatus(request, 500, headers), 500);
+  assert.equal(databaseDownStatus(request, 500, headers), 500);
   const importing = new Request("https://example.com/teaching");
   handleServerError(
     new Error("Failed query: select 1", {
@@ -129,7 +129,7 @@ test("withRequestLog names the route and a refused input also writes input_valid
     }),
     { request: importing },
   );
-  assert.equal(documentStatus(importing, 500, headers), 503);
+  assert.equal(databaseDownStatus(importing, 500, headers), 503);
   assert.equal(headers.get("Retry-After"), "60");
   assert.equal(headers.get("Cache-Control"), "no-store");
 });

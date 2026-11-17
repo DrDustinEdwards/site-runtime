@@ -2072,9 +2072,12 @@ storage timeout, lost connection, an import holding the database; `isDatabaseDow
 `Retry-After: 60`, and returns any other error unchanged, so a loader writes `catch (error) { throw databaseDown(error); }`.
 A thrown Response reaches the error boundary intact on the client too, where Capsomer's `ErrorPage` reads the statusText
 and says the site's data is briefly unavailable instead of "Something went wrong". For every loader at once,
-entry.server's `handleRequest` sets `responseStatusCode = documentStatus(request, responseStatusCode, responseHeaders)`
-(`./log`): when `handleServerError` saw that request's route fail on a database-down error, the page answers 503 with
-`Retry-After` and `no-store`; any other failure keeps its status.
+`databaseDownStatus(request, status, headers)` (`./log`) gives the request handler's answer 503 with `Retry-After` and
+`no-store` when `handleServerError` saw that request's route fail on a database-down error; any other failure keeps its
+status. `./worker`'s render applies it to every answer, a page, a `.data` request and a resource route (whose error
+React Router turns into a plain 500 with no hook after it), so a site on `siteWorker` writes nothing; a site with its
+own Worker sets it where it calls React Router's request handler:
+`new Response(page.body, { status: databaseDownStatus(request, page.status, page.headers), headers: page.headers })`.
 
 **Tests.** `test/log.test.mjs`, `test/url.test.mjs` (a `//` path stays on the site, the gone list, a rename chain) and `test/not-found.test.mjs` (on
 an in-memory SQLite with `NOT_FOUND_SQL`, and with a first-shape table upgraded by `NOT_FOUND_UPGRADE_SQL`; the probe

@@ -89,10 +89,11 @@ export function handleServerError(error: unknown, args: { request: Request }): v
 /** Seconds a reader or crawler is told to wait while D1 is down (`Retry-After`). */
 export const DATABASE_DOWN_RETRY_AFTER: number;
 /**
- * The status entry.server's handleRequest answers with: 503 (Retry-After and no-store set on `headers`) when
- * serverErrorHandler saw this request's route fail because D1 was down, else `status` unchanged.
+ * The status a React Router answer (a page, a `.data` request, a resource route) leaves with: 503 (Retry-After and
+ * no-store set on `headers`) when serverErrorHandler saw this request's route fail because D1 was down, else `status`
+ * unchanged. ./worker's render applies it; a site with its own Worker applies it to its request handler's answer.
  */
-export function documentStatus(request: Request, status: number, headers: Headers): number;
+export function databaseDownStatus(request: Request, status: number, headers: Headers): number;
 /** The message of a thrown value: an Error's own message, anything else as a string. */
 export function errorMessage(error: unknown): string;
 
