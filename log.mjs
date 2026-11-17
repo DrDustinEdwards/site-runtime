@@ -124,6 +124,27 @@ function scrubValue(key, value, options, depth) {
 }
 
 /**
+ * D1's messages for a database that is down or reset for a moment, as Cloudflare's D1 docs list them ("Error list",
+ * "Retry a query"), with the Workers runtime's lost connection, and the refusal D1 answers while an import holds the
+ * database ("Currently processing a long-running import.": wrangler d1 execute --remote --file and the import API). A wrong query (no such table, a constraint) is not one.
+ */
+const DATABASE_DOWN =
+  /D1 DB is overloaded|D1 DB's isolate exceeded its memory limit|D1 DB exceeded its CPU time limit|D1 DB storage operation exceeded timeout|Internal error (?:while starting up|in) D1 DB storage|Cannot resolve D1 DB due to transient issue|D1 DB reset because its code was updated|Network connection lost|Currently processing a long-running import|D1_ERROR:.*(?:reset|overloaded|unavailable|timed? ?out)/i;
+
+/**
+ * Whether an error is the database being down or reset for a moment, read from the error and its causes.
+ * @param {unknown} error
+ * @returns {boolean}
+ */
+export function isDatabaseDown(error) {
+  for (let e = error, depth = 0; e && depth < 5; e = /** @type {any} */ (e).cause, depth++) {
+    const message = e instanceof Error ? e.message : typeof e === "string" ? e : "";
+    if (DATABASE_DOWN.test(message)) return true;
+  }
+  return false;
+}
+
+/**
  * The message of a thrown value: an Error's own message, anything else as a string.
  * @param {unknown} error
  * @returns {string}
@@ -213,12 +234,37 @@ export function serverErrorHandler({ tokenPath = PREVIEW_TOKEN } = {}) {
     )
       return;
     const cause = /** @type {{ error?: unknown } | null} */ (error)?.error;
+    if (isDatabaseDown(cause ?? error)) DATABASE_DOWN_REQUESTS.add(request);
     logEvent(
       "server_error",
       { ...requestFields(request, { tokenPath }), error: cause ?? error },
       { level: "error", tokenPath },
     );
   };
+}
+
+/** The requests whose route failed because D1 was down, as serverErrorHandler saw them. Weak: gone with the request. */
+const DATABASE_DOWN_REQUESTS = new WeakSet();
+
+/** Seconds a reader or crawler is told to wait while D1 is down (`Retry-After`). */
+export const DATABASE_DOWN_RETRY_AFTER = 60;
+
+/**
+ * The status entry.server's handleRequest answers with: 503, with `Retry-After` and `no-store` set on `headers`, when
+ * serverErrorHandler saw this request's route fail because D1 was down (isDatabaseDown), else `status` unchanged.
+ * Read here because React Router replaces a production route error with a bare "Unexpected Server Error" before
+ * handleRequest runs; handleError is the one place that sees the error itself. A 503 tells a crawler and a reader to
+ * come back instead of recording a broken page (MDN, 503 Service Unavailable). The error is logged either way.
+ * @param {Request} request
+ * @param {number} status
+ * @param {Headers} headers
+ * @returns {number}
+ */
+export function documentStatus(request, status, headers) {
+  if (status < 500 || !DATABASE_DOWN_REQUESTS.has(request)) return status;
+  headers.set("Retry-After", String(DATABASE_DOWN_RETRY_AFTER));
+  headers.set("Cache-Control", "no-store");
+  return 503;
 }
 
 /** serverErrorHandler with the preview link's token cut. */

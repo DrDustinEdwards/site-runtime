@@ -29,7 +29,13 @@
  */
 
 import { PURGE_FAILED_KEY } from "./edge-cache.mjs";
-import { errorMessage, logEvent, scrubText } from "./log.mjs";
+import {
+  DATABASE_DOWN_RETRY_AFTER,
+  errorMessage,
+  isDatabaseDown,
+  logEvent,
+  scrubText,
+} from "./log.mjs";
 import { authEventCounts } from "./sign-in-account.mjs";
 import { withTimeout } from "./time.mjs";
 
@@ -343,25 +349,8 @@ function bindingCheck(name, present) {
   };
 }
 
-/**
- * D1's messages for a database that is down or reset for a moment, as Cloudflare's D1 docs list them ("Error list",
- * "Retry a query"), with the Workers runtime's lost connection. A wrong query (no such table, a constraint) is not one.
- */
-const DATABASE_DOWN =
-  /D1 DB is overloaded|D1 DB's isolate exceeded its memory limit|D1 DB exceeded its CPU time limit|D1 DB storage operation exceeded timeout|Internal error (?:while starting up|in) D1 DB storage|Cannot resolve D1 DB due to transient issue|D1 DB reset because its code was updated|Network connection lost|D1_ERROR:.*(?:reset|overloaded|unavailable|timed? ?out)/i;
-
-/**
- * Whether an error is the database being down or reset for a moment, read from the error and its causes.
- * @param {unknown} error
- * @returns {boolean}
- */
-export function isDatabaseDown(error) {
-  for (let e = error, depth = 0; e && depth < 5; e = /** @type {any} */ (e).cause, depth++) {
-    const message = e instanceof Error ? e.message : typeof e === "string" ? e : "";
-    if (DATABASE_DOWN.test(message)) return true;
-  }
-  return false;
-}
+// isDatabaseDown lives in ./log (cron reads it too, and ./cron cannot import this module); exported here as before.
+export { isDatabaseDown };
 
 /** The statusText Capsomer's ErrorPage reads to say the database is down. */
 export const DATABASE_DOWN_STATUS_TEXT = "Database unavailable";
@@ -380,6 +369,6 @@ export function databaseDown(error) {
   return new Response(null, {
     status: 503,
     statusText: DATABASE_DOWN_STATUS_TEXT,
-    headers: { "Retry-After": "60", "Cache-Control": "no-store" },
+    headers: { "Retry-After": String(DATABASE_DOWN_RETRY_AFTER), "Cache-Control": "no-store" },
   });
 }

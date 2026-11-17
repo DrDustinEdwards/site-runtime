@@ -86,6 +86,13 @@ export function serverErrorHandler(
  * serverErrorHandler with the preview link's token cut.
  */
 export function handleServerError(error: unknown, args: { request: Request }): void;
+/** Seconds a reader or crawler is told to wait while D1 is down (`Retry-After`). */
+export const DATABASE_DOWN_RETRY_AFTER: number;
+/**
+ * The status entry.server's handleRequest answers with: 503 (Retry-After and no-store set on `headers`) when
+ * serverErrorHandler saw this request's route fail because D1 was down, else `status` unchanged.
+ */
+export function documentStatus(request: Request, status: number, headers: Headers): number;
 /** The message of a thrown value: an Error's own message, anything else as a string. */
 export function errorMessage(error: unknown): string;
 
@@ -93,3 +100,5 @@ export function errorMessage(error: unknown): string;
 export function reportErrorLines(
   reporter: (event: string, error: unknown, fields: Record<string, unknown>) => void,
 ): void;
+/** Whether an error, or one of its causes, is D1 down or reset for a moment (overloaded, reset, an import holding it), not a wrong query. */
+export function isDatabaseDown(error: unknown): boolean;
