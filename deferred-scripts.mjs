@@ -27,6 +27,7 @@ import {
   UNSAFE_FrameworkContext,
 } from "react-router";
 import { HOLDER_ID, STREAM_BUFFER_SCRIPT, markHydrated } from "./hydrate-on-intent.mjs";
+import { scriptJson } from "./html.mjs";
 
 /**
  * True when a matched route hydrates on load: its `handle.hydrate` is true, or a function of its loader data that
@@ -43,19 +44,6 @@ export function routeHydrates(matches) {
 }
 
 const IMPORT_MAP_ID = "hydrate-on-intent-import-map";
-
-const ESCAPES = /** @type {Record<string, string>} */ ({
-  "&": "\\u0026",
-  ">": "\\u003e",
-  "<": "\\u003c",
-  "\u2028": "\\u2028",
-  "\u2029": "\\u2029",
-});
-
-/** JSON that is safe inside a <script> element: no "<", ">" or "&" (React Router's own escaping). */
-export function scriptJson(/** @type {unknown} */ value) {
-  return JSON.stringify(value).replace(/[&><\u2028\u2029]/g, (c) => ESCAPES[c] ?? c);
-}
 
 /**
  * The route ids of the manifest a lazily discovered app starts with: the matched routes and those of every parent

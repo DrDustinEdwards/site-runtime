@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { escapeHtml, htmlAttributes, sitemapLocs, unescapeHtml } from "../html.mjs";
+import { escapeHtml, htmlAttributes, scriptJson, sitemapLocs, unescapeHtml } from "../html.mjs";
 
 test("escapes the five characters, each to the entity the copies it replaces used", () => {
   assert.equal(escapeHtml(`&<>"'`), "&amp;&lt;&gt;&quot;&#39;");
@@ -37,4 +37,10 @@ test("unescapeHtml reads numeric and named references once; htmlAttributes and s
     sitemapLocs("<loc> https://e.com/a?x=1&amp;y=2 </loc><LOC>https://e.com/b</LOC>"),
     ["https://e.com/a?x=1&y=2", "https://e.com/b"],
   );
+});
+
+test("scriptJson keeps a value from closing or breaking its <script>", () => {
+  const json = scriptJson({ a: "</script><b>&\u2028\u2029" });
+  assert.equal(json, '{"a":"\\u003c/script\\u003e\\u003cb\\u003e\\u0026\\u2028\\u2029"}');
+  assert.deepEqual(JSON.parse(json), { a: "</script><b>&\u2028\u2029" });
 });

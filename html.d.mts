@@ -7,3 +7,5 @@ export function unescapeHtml(text: string): string;
 export function htmlAttributes(text: string): Record<string, string | undefined>;
 /** The `<loc>` addresses of a sitemap or sitemap index, in order, trimmed and with character references read. */
 export function sitemapLocs(xml: string): string[];
+/** JSON that is safe inside a <script> element (no "<", ">" or "&"; U+2028 and U+2029 escaped). */
+export function scriptJson(value: unknown): string;
