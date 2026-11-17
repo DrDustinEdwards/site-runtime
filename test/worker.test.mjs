@@ -136,7 +136,7 @@ test("a site step answers first with the set, private unless it says otherwise; 
   assert.equal(await media.text(), "img");
   assert.equal(media.headers.get("X-Set"), "1");
   assert.equal(media.headers.get("Cache-Control"), "private, no-store");
-  const ctx = /** @type {any} */ ({ tag: "ctx" });
+  const ctx = /** @type {any} */ ({ tag: "ctx", waitUntil() {} });
   await worker.scheduled(/** @type {any} */ ({ cron: "1 2 * * *", scheduledTime: 0 }), env, ctx);
   assert.deepEqual(crons, ["ctx"]);
 });

@@ -3,8 +3,7 @@
  * with an `event` key first (`{"event":"share_card_failed","error":"..."}`), so Workers Logs and a tail can filter on
  * the event's name.
  *
- * What is cut, before the line is written, from every string field (the same scrubbers Foxhound's Sentry options
- * used, moved here so a site's logs and its error reports cut the same things):
+ * What is cut, before the line is written, from every string field (./sentry cuts the same from every error report):
  * - email addresses, to `[email]`;
  * - a URL's query string and fragment, in free text and in a field whose name holds `url` or `path` (a query can carry a
  *   magic-link token, a reset code or an unsubscribe token);
@@ -135,17 +134,45 @@ export function errorMessage(error) {
 
 /**
  * Writes one JSON line, `{ event, ...fields }` scrubbed, to the console: `console.error` for `level: "error"`,
- * `console.warn` for "warn", else `console.log`. A field named `event` cannot replace the event's name.
+ * `console.warn` for "warn", else `console.log`. An error line is also one Sentry report once ./sentry is loaded. A field named `event` cannot replace the event's name.
  * @param {string} event
  * @param {Record<string, unknown>} [fields]
  * @param {ScrubOptions & { level?: "log" | "warn" | "error" }} [options]
  */
 export function logEvent(event, fields = {}, { level = "log", ...scrub } = {}) {
   const { event: _ignored, ...rest } = fields;
-  const line = JSON.stringify({ event, ...scrubFields(rest, scrub) });
-  if (level === "error") console.error(line);
-  else if (level === "warn") console.warn(line);
+  const scrubbed = scrubFields(rest, scrub);
+  const line = JSON.stringify({ event, ...scrubbed });
+  if (level === "error") {
+    console.error(line);
+    report(event, rest.error, scrubbed);
+  } else if (level === "warn") console.warn(line);
   else console.log(line);
+}
+
+/** @type {((event: string, error: unknown, fields: Record<string, unknown>) => void) | undefined} */
+let errorReporter;
+
+/**
+ * Sets what an error line also does beyond the console: ./sentry sets its report here when it is loaded, so ./log
+ * itself never loads the SDK (a Worker that never imports ./sentry or ./worker needs no AsyncLocalStorage).
+ * @param {(event: string, error: unknown, fields: Record<string, unknown>) => void} reporter
+ */
+export function reportErrorLines(reporter) {
+  errorReporter = reporter;
+}
+
+/**
+ * @param {string} event
+ * @param {unknown} error
+ * @param {Record<string, unknown>} fields
+ */
+function report(event, error, fields) {
+  try {
+    errorReporter?.(event, error, fields);
+  } catch {
+    // The log line is written; a failed report is not a second failure.
+  }
 }
 
 /** A preview link's token (Carrel's /preview/<token>), cut from a logged path. */

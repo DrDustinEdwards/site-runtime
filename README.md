@@ -1046,7 +1046,7 @@ const site = defineSite<Env>({
   cron: cronJobs,
 });
 export class Renderer extends siteRenderer(WorkerEntrypoint, site) {}
-export default siteWorker(site);
+export default siteWorker(site, { queue }); // a site's queue consumer, or a scheduled of its own, goes here
 ```
 
 The gateway runs, in order: the canonical move (first, with the set built for where it points; `canonical.before` is
@@ -1072,6 +1072,20 @@ A preview link's token is cut from the request log, a `gateway_error` line and e
 the page it came from), as `/preview/[token]`; `tokenRoutes` (`["u", "e/c"]`) adds the site's own token routes, cut
 the same way (`tokenPattern(routes)` in ./log is the pattern; a route error's `server_error` line is entry.server's
 `handleError`, under Server entry).
+
+## Error reports (Sentry)
+
+One Sentry project per site; a site turns its reports on by setting the `SENTRY_DSN` secret on its Worker, and with
+none nothing is sent. `siteWorker` (with the handlers passed to it) wraps itself with `withSiteSentry` (`./sentry`),
+and the Renderer runs each fetch in `withSentryRequest`, which keeps a site's subclass (its `purgePages`) intact; a Worker built without them wraps its default export:
+`export default withSiteSentry({ fetch, scheduled }, { tokenPath })`. Under it, a throw that leaves a handler and every
+`logEvent` line at level `"error"` (`gateway_error`, `server_error`, a failed cron job, a site's own) is one report: the
+Error with its stack, else the event's name, tagged `event`, with the line's scrubbed fields. Errors only:
+`tracesSampleRate` is 0 and nothing runs in the browser. `sentryOptions` cuts each report as ./log cuts a line (emails,
+queries, keys, Drizzle params, the token routes) and drops the request's headers, cookies, query and body and the user;
+a scrubber that throws drops the report. ./log never loads the SDK itself: ./sentry hands it the report
+(`reportErrorLines`) when loaded, so only a Worker that imports ./sentry or ./worker needs `AsyncLocalStorage`
+(`nodejs_compat` or `nodejs_als`).
 
 ## KV read-through
 

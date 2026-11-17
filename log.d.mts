@@ -88,3 +88,8 @@ export function serverErrorHandler(
 export function handleServerError(error: unknown, args: { request: Request }): void;
 /** The message of a thrown value: an Error's own message, anything else as a string. */
 export function errorMessage(error: unknown): string;
+
+/** What an error line also does beyond the console; ./sentry sets its report here. */
+export function reportErrorLines(
+  reporter: (event: string, error: unknown, fields: Record<string, unknown>) => void,
+): void;
