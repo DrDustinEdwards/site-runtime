@@ -93,3 +93,5 @@ export function errorMessage(error: unknown): string;
 export function reportErrorLines(
   reporter: (event: string, error: unknown, fields: Record<string, unknown>) => void,
 ): void;
+/** Whether an error, or one of its causes, is D1 down or reset for a moment (overloaded, reset, an import holding it), not a wrong query. */
+export function isDatabaseDown(error: unknown): boolean;

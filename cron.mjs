@@ -33,7 +33,7 @@
  *   has never run at all (a trigger that never fires it), so an outside probe of /health notices a cron that stopped.
  */
 
-import { logEvent, scrubText } from "./log.mjs";
+import { isDatabaseDown, logEvent, scrubText } from "./log.mjs";
 import { withTimeout } from "./time.mjs";
 
 /** The longest error stored. */
@@ -142,7 +142,13 @@ function recorder(db) {
         .bind(...values)
         .run();
     } catch (error) {
-      logEvent("cron_run_write_failed", { name: values[0], error }, { level: "error" });
+      // D1 down for a moment (overloaded, reset, an import holding it) is a warning: the record is missed this once,
+      // and a database that stays down still fails the cron check (cronFindings) and the database health check.
+      logEvent(
+        "cron_run_write_failed",
+        { name: values[0], error },
+        { level: isDatabaseDown(error) ? "warn" : "error" },
+      );
     }
   };
 }
@@ -232,7 +238,12 @@ async function runOne(
     };
   } catch (error) {
     const at = now();
-    logEvent("cron_job_failed", { name, ms: at - started, error }, { level: "error" });
+    // Recorded failed either way; only the level differs, as for the record write above.
+    logEvent(
+      "cron_job_failed",
+      { name, ms: at - started, error },
+      { level: isDatabaseDown(error) ? "warn" : "error" },
+    );
     const text = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
     const stored = scrubText(text).slice(0, CRON_ERROR_MAX);
     await write(FAILED, name, every, at, stored);

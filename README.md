@@ -2067,7 +2067,7 @@ await addRedirect(env.DB, { from: "/old-post", to: "/blog/new-post" });
   `listRedirects(db)` are the rest of the admin screen. A trailing slash is ignored on both sides.
 
 **The database down.** `databaseDown(error)` (`./health`) turns D1's documented transient errors (overloaded, reset,
-storage timeout, lost connection; `isDatabaseDown`) into a 503 `Response` with statusText `Database unavailable` and
+storage timeout, lost connection, an import holding the database; `isDatabaseDown`, also in `./log`) into a 503 `Response` with statusText `Database unavailable` and
 `Retry-After: 60`, and returns any other error unchanged, so a loader writes `catch (error) { throw databaseDown(error); }`.
 A thrown Response reaches the error boundary intact on the client too, where Capsomer's `ErrorPage` reads the statusText
 and says the site's data is briefly unavailable instead of "Something went wrong".

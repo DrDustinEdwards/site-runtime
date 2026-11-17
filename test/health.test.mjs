@@ -101,6 +101,11 @@ test("a database-down error becomes a 503 the error page reads; a wrong query st
   assert.ok(response instanceof Response);
   assert.equal(response.status, 503);
   assert.equal(response.statusText, "Database unavailable");
+  // DUSTINEDWARDS-1: a Drizzle "Failed query" whose cause is D1 refusing queries while an import holds it.
+  const importing = new Error("Failed query: select 1", {
+    cause: new Error("D1_ERROR: Currently processing a long-running import."),
+  });
+  assert.equal(/** @type {Response} */ (databaseDown(importing)).status, 503);
   const wrong = new Error("D1_ERROR: no such table: posts");
   assert.equal(databaseDown(wrong), wrong);
 });

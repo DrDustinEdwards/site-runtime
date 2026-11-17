@@ -124,6 +124,27 @@ function scrubValue(key, value, options, depth) {
 }
 
 /**
+ * D1's messages for a database that is down or reset for a moment, as Cloudflare's D1 docs list them ("Error list",
+ * "Retry a query"), with the Workers runtime's lost connection, and the refusal D1 answers while an import holds the
+ * database ("Currently processing a long-running import.": wrangler d1 execute --remote --file and the import API). A wrong query (no such table, a constraint) is not one.
+ */
+const DATABASE_DOWN =
+  /D1 DB is overloaded|D1 DB's isolate exceeded its memory limit|D1 DB exceeded its CPU time limit|D1 DB storage operation exceeded timeout|Internal error (?:while starting up|in) D1 DB storage|Cannot resolve D1 DB due to transient issue|D1 DB reset because its code was updated|Network connection lost|Currently processing a long-running import|D1_ERROR:.*(?:reset|overloaded|unavailable|timed? ?out)/i;
+
+/**
+ * Whether an error is the database being down or reset for a moment, read from the error and its causes.
+ * @param {unknown} error
+ * @returns {boolean}
+ */
+export function isDatabaseDown(error) {
+  for (let e = error, depth = 0; e && depth < 5; e = /** @type {any} */ (e).cause, depth++) {
+    const message = e instanceof Error ? e.message : typeof e === "string" ? e : "";
+    if (DATABASE_DOWN.test(message)) return true;
+  }
+  return false;
+}
+
+/**
  * The message of a thrown value: an Error's own message, anything else as a string.
  * @param {unknown} error
  * @returns {string}
