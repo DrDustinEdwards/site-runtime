@@ -1,5 +1,23 @@
 # @dustinedwards/site-runtime
 
+## 0.163.0
+
+### Minor Changes
+
+- A suppressed recipient is a known state, not a fault. `./email` exports `RECIPIENT_SUPPRESSED`, `EmailNotSent` (what a
+  site's sender throws, with the code and none of the provider's words) and `isRecipientSuppressed`, and logs
+  `email_send_failed` for a suppressed address as a warning. `./sign-in` answers a sign-in link or app code for a
+  suppressed address with 422 `UNDELIVERABLE_EMAIL`, `requestSignInLink` returns `"undeliverable"` with
+  `SIGN_IN_WORDS.link.undeliverable`, the account page's email change says `ACCOUNT_WORDS.emailUndeliverable`, and a
+  security notice to a suppressed address is the warning `security_notice_undeliverable` instead of the error
+  `security_notice_failed`.
+
+### Patch Changes
+
+- `./health`: an alert check (`alert: true`, such as `authSpikeCheck`) that throws or times out no longer raises `health_alert` or carries `alert: true`, since it measured nothing. It reports its level with the detail `could not run: ...` and logs the warning `health_check_unavailable`. On foxing.app a D1 stall timed the auth-spike check out and paged a person (FOXING-3) while the db check already reported the outage. A check that runs and measures a spike still alerts as before.
+- `isDatabaseDown` also reads D1's "Currently processing a long-running import." as the database down for a moment, so `databaseDown` answers 503 for it. It now lives in `./log` and `./health` re-exports it. A cron record write or job that fails because D1 is down logs `cron_run_write_failed` or `cron_job_failed` at warn instead of error, so it is no longer a Sentry report. The run is still recorded as failed, and a database that stays down still fails the cron and database health checks.
+  New in `./log`: `databaseDownStatus(request, status, headers)`. It gives a React Router answer whose route failed on a database-down error (as `handleServerError` saw it) a 503 with `Retry-After: 60` and `no-store` instead of 500. `./worker`'s render applies it to every answer, a page, a `.data` request and a resource route alike (React Router turns a resource route's thrown error into a plain-text 500 with no hook after it), so a site on `siteWorker` changes nothing; a site with its own Worker applies it to its request handler's answer (README, "The database down").
+
 ## 0.162.0
 
 ### Minor Changes
