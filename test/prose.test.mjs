@@ -252,10 +252,21 @@ describe("slopScan", () => {
     );
     assert.equal(slopScan("The river was up.", ["Too short to measure."]).instruction, null);
     // A line of unclosed openers is linear: 100,000 of each took 12 s, 2 s and 9 s before the runs were bounded.
-    const t0 = performance.now();
-    for (const opener of ["![", "[a](", "<"])
-      slopScan(opener.repeat(100000 / opener.length), BASELINE);
-    assert.ok(performance.now() - t0 < 2500);
+    // Compare 4x the input against 1x (best of 3) so machine speed cancels: linear is about 4x, quadratic 16x.
+    const best = (text) => {
+      let min = Infinity;
+      for (let i = 0; i < 3; i++) {
+        const t0 = performance.now();
+        slopScan(text, BASELINE);
+        min = Math.min(min, performance.now() - t0);
+      }
+      return min;
+    };
+    for (const opener of ["![", "[a](", "<"]) {
+      const small = best(opener.repeat(20000 / opener.length));
+      const large = best(opener.repeat(80000 / opener.length));
+      assert.ok(large < 8 * Math.max(small, 5), `${opener}: ${small} ms, then ${large} ms at 4x`);
+    }
   });
 
   test("CLEAN TWIN: the author's own words, ranges, real lists and their own pages pass", () => {
