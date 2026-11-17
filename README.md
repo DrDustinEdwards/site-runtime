@@ -1076,8 +1076,8 @@ the same way (`tokenPattern(routes)` in ./log is the pattern; a route error's `s
 ## Error reports (Sentry)
 
 One Sentry project per site; a site turns its reports on by setting the `SENTRY_DSN` secret on its Worker, and with
-none nothing is sent. `siteWorker` (with the handlers passed to it) and `siteRenderer` wrap themselves with
-`withSiteSentry` (`./sentry`); a Worker built without them wraps its default export:
+none nothing is sent. `siteWorker` (with the handlers passed to it) wraps itself with `withSiteSentry` (`./sentry`),
+and the Renderer runs each fetch in `withSentryRequest`, which keeps a site's subclass (its `purgePages`) intact; a Worker built without them wraps its default export:
 `export default withSiteSentry({ fetch, scheduled }, { tokenPath })`. Under it, a throw that leaves a handler and every
 `logEvent` line at level `"error"` (`gateway_error`, `server_error`, a failed cron job, a site's own) is one report: the
 Error with its stack, else the event's name, tagged `event`, with the line's scrubbed fields. Errors only:

@@ -13,7 +13,7 @@
  * are dropped. A scrubber that throws drops the report.
  */
 
-import { withSentry } from "@sentry/cloudflare";
+import { withSentry, wrapRequestHandler } from "@sentry/cloudflare";
 import { scrubFields, scrubText, scrubUrl } from "./log.mjs";
 
 /**
@@ -92,4 +92,18 @@ export function withSiteSentry(handler, scrub = {}) {
   return /** @type {T} */ (
     withSentry((/** @type {any} */ env) => sentryOptions(env, scrub), /** @type {any} */ (handler))
   );
+}
+
+/**
+ * One request under its own Sentry client, for a WorkerEntrypoint's fetch that a site may subclass (the Renderer):
+ * withSiteSentry on the class would construct the base and drop the subclass's overrides.
+ * @param {Request} request
+ * @param {{ SENTRY_DSN?: string }} env
+ * @param {ExecutionContext} ctx
+ * @param {import("./log.d.mts").ScrubOptions} scrub
+ * @param {() => Promise<Response>} handler
+ * @returns {Promise<Response>}
+ */
+export function withSentryRequest(request, env, ctx, scrub, handler) {
+  return wrapRequestHandler({ options: sentryOptions(env, scrub), request, context: ctx }, handler);
 }

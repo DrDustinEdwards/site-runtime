@@ -111,7 +111,7 @@ import { securityTxtResponse } from "./security-txt.mjs";
 import { timedRender } from "./server-timing.mjs";
 import { canonicalRedirect } from "./url.mjs";
 import { deployedSha } from "./deploy.mjs";
-import { withSiteSentry } from "./sentry.mjs";
+import { withSentryRequest, withSiteSentry } from "./sentry.mjs";
 
 /** The security.txt path (RFC 9116 section 3). */
 export const SECURITY_TXT_PATH = "/.well-known/security.txt";
@@ -210,11 +210,12 @@ function gatewayRoute(path, extra) {
 export function siteRenderer(Base, site) {
   const { options } = site;
   const Purging = withPurgePages(Base, options.purgeKv ? { kv: options.purgeKv } : {});
-  // Its own invocation, so its own Sentry client: a cached page's render error is reported from here.
-  return withSiteSentry(
-    class Renderer extends Purging {
-      /** @param {Request} request */
-      async fetch(request) {
+  const tokenPath = tokenPattern(options.tokenRoutes);
+  return class Renderer extends Purging {
+    /** @param {Request} request */
+    fetch(request) {
+      // Its own invocation, so its own Sentry client: a cached page's render error is reported from here.
+      return withSentryRequest(request, this.env, this.ctx, { tokenPath }, async () => {
         const nonce = generateNonce();
         const shared = options.publicPages?.(new URL(request.url), this.env);
         const rendered = await site.render(request, this.env, this.ctx, { nonce });
@@ -233,10 +234,9 @@ export function siteRenderer(Base, site) {
           options.withSecurityHeaders(rendered, request, pageNonce(rendered, nonce), this.env),
         );
         return settleCacheHeaders(secured, request, { publicCookies: options.publicCookies ?? [] });
-      }
-    },
-    { tokenPath: tokenPattern(options.tokenRoutes) },
-  );
+      });
+    }
+  };
 }
 
 /** publicPageHeaders' edge lifetime: a day fresh, a week stale. */
