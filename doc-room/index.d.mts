@@ -59,7 +59,8 @@ export declare class DocRoom<E = Cloudflare.Env> extends YServer<E> {
   /** Replaces the whole text for everyone; false when a precondition no longer holds. */
   replace(input: ReplaceInput): Promise<boolean>;
   /** The working copy as the editor's JSON, suggestions and all; null before the room is seeded. */
-  json(): Promise<unknown>;
+  /** The editor's JSON as text, or null before the room was seeded. */
+  json(): Promise<string | null>;
   /** What a save writes now, its version, and who changed it since the last save. */
   snapshot(): Promise<{
     seeded: boolean;
