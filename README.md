@@ -882,23 +882,23 @@ its test.
 
 ## Share cards
 
-`./share-card` draws a site's own card HTML to the PNG a link preview shows. workers-og (Satori and resvg) stays the
-site's dependency and is passed in: `renderShareCard(ImageResponse, html, { fonts, width, height, headers })` removes the
-whitespace between tags (Satori makes it a flex child), draws the card inside a box of its size (so a root at
-`width:100%` fills the card rather than shrinking to its text), reads the whole PNG so a failed render is `null` (logged as
+`./share-card` draws a site's own card HTML to the PNG a link preview shows. Takumi (WASM) draws it:
+`drawShareCard` from `./share-card-draw` is passed in (a Worker bundle imports its `.wasm`; Node cannot): `renderShareCard(drawShareCard, html, { fonts, width, height, headers })` removes the
+whitespace between tags (it can become a flex child), draws the card inside a box of its size (so a root at
+`width:100%` fills the card rather than shrinking to its text), so a failed render is `null` (logged as
 `share_card_failed`) rather than an empty image, and answers `image/png` (`SHARE_CARD_TYPE`, the page's og:image:type)
 cached a week at the edge with `Cross-Origin-Resource-Policy: cross-origin`, and `headers` added. `cardText(value)` leaves `&` as is and turns `<` and `>` into
-‹ and ›: workers-og shows entities literally, so `escapeHtml` would put "&amp;" or "&lt;" on the card. `googleFont(family, weight, { cache, cacheOrigin })`
-fetches one static weight as WOFF (Satori reads TTF, OTF and WOFF, not WOFF2 or a variable font) and keeps it a year in
+‹ and ›: entities show literally, so `escapeHtml` would put "&amp;" or "&lt;" on the card. `googleFont(family, weight, { cache, cacheOrigin })`
+fetches one static weight as WOFF (TTF, OTF and WOFF are read, not WOFF2 or a variable font) and keeps it a year in
 `cache`. The design, colors and fonts are each site's own. 1200 by 630 is `SHARE_CARD_WIDTH` by `SHARE_CARD_HEIGHT`.
 
-`shareCardResponse(ImageResponse, { html, fonts, cacheKey, cache, ctx, width, height, headers })` is the whole card route:
+`shareCardResponse(drawShareCard, { html, fonts, cacheKey, cache, ctx, width, height, headers })` is the whole card route:
 
 ```js
 import { googleFont, shareCardResponse } from "@dustinedwards/site-runtime/share-card";
-import { ImageResponse } from "workers-og";
+import { drawShareCard } from "@dustinedwards/site-runtime/share-card-draw";
 
-return shareCardResponse(ImageResponse, {
+return shareCardResponse(drawShareCard, {
   cacheKey: `https://og.example.com/book/${book.slug}?v=${book.updatedAt}`, // whatever changes the card
   html: () => cardHtml(book), // called on a miss only
   fonts: async () => [
@@ -922,7 +922,7 @@ fetches no font. A route that wants another fallback (Foxing redirects to the bo
 `cardLayout({ brand, title, description, kicker, footer, mark, colors, fontFamily })` is the card most sites want, so a
 site passes its tokens and a mark (html it wrote: a logo, an svg) and not a layout of its own: the kicker and mark
 above, the title in the largest of three sizes it fits (72, 54 or 42 px by length: `CARD_TITLE_SIZES`, `titleFontSize`),
-a two-line description and a band at the foot. `clampTitle(text, max)` cuts at a word, because Satori's line clamp does
+a two-line description and a band at the foot. `clampTitle(text, max)` cuts at a word, because a line clamp does
 nothing; `cardLayout` applies it (150 and 132 characters), and `titleFontSize` throws for a title past the last rung
 rather than fall back. `cardKey({ slug, parts, version, prefix })` is `og/<slug>-<hash>.png` over what the card draws, for
 a cache key or a stored object that changes when the picture would; bump `version` when the template changes. All from

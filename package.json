@@ -92,6 +92,8 @@
     "session-check.mjs",
     "share-card.mjs",
     "share-card.d.mts",
+    "share-card-draw.mjs",
+    "share-card-draw.d.mts",
     "maintenance.mjs",
     "maintenance.d.mts",
     "security-txt.mjs",
@@ -323,6 +325,10 @@
     "./share-card": {
       "types": "./share-card.d.mts",
       "default": "./share-card.mjs"
+    },
+    "./share-card-draw": {
+      "types": "./share-card-draw.d.mts",
+      "default": "./share-card-draw.mjs"
     },
     "./maintenance": {
       "types": "./maintenance.d.mts",
@@ -660,7 +666,9 @@
   },
   "dependencies": {
     "@sentry/cloudflare": "10.78.0",
+    "@takumi-rs/wasm": "2.20.0",
     "isbot": "5.2.3",
+    "takumi-js": "2.20.0",
     "web-vitals": "6.2.3"
   },
   "devDependencies": {
