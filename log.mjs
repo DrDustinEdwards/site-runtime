@@ -218,8 +218,9 @@ export function tokenPattern(routes = []) {
 /**
  * React Router's `handleError` export for entry.server: the framework's default prints every route error to the
  * console, including the "No route matches URL" error of each scanner's 404, an error-level stack trace with no
- * request on it. A 404 is not a failure (the 404 counter in `./not-found` keeps count), so it is not logged here; any
- * other error is one scrubbed `server_error` line at error level with the request's fields, a token route's token cut
+ * request on it. A 404 is not a failure (the 404 counter in `./not-found` keeps count), nor is any route error
+ * response under 500 (RR's 405 for a scanner's POST to a route with no action), so neither is logged here; any other
+ * error is one scrubbed `server_error` line at error level with the request's fields, a token route's token cut
  * (`tokenPath`, as tokenPattern builds it; the preview link's by default).
  * @param {ScrubOptions} [options]
  * @returns {(error: unknown, args: { request: Request }) => void}
@@ -227,12 +228,10 @@ export function tokenPattern(routes = []) {
 export function serverErrorHandler({ tokenPath = PREVIEW_TOKEN } = {}) {
   return (error, { request }) => {
     if (request.signal.aborted) return;
-    // A route error response (a thrown 404 Response, or RR's own no-route-match), not an Error instance.
-    if (
-      !(error instanceof Error) &&
-      /** @type {{ status?: unknown } | null} */ (error)?.status === 404
-    )
-      return;
+    // A route error response under 500 (a thrown 404 Response, RR's own no-route-match, or its 405 for a POST to a
+    // route with no action) is the client's fault, not the server's: not an Error instance, so not logged.
+    const status = /** @type {{ status?: unknown } | null} */ (error)?.status;
+    if (!(error instanceof Error) && typeof status === "number" && status < 500) return;
     const cause = /** @type {{ error?: unknown } | null} */ (error)?.error;
     if (isDatabaseDown(cause ?? error)) DATABASE_DOWN_REQUESTS.add(request);
     logEvent(
