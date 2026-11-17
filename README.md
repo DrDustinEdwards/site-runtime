@@ -2070,7 +2070,10 @@ await addRedirect(env.DB, { from: "/old-post", to: "/blog/new-post" });
 storage timeout, lost connection, an import holding the database; `isDatabaseDown`, also in `./log`) into a 503 `Response` with statusText `Database unavailable` and
 `Retry-After: 60`, and returns any other error unchanged, so a loader writes `catch (error) { throw databaseDown(error); }`.
 A thrown Response reaches the error boundary intact on the client too, where Capsomer's `ErrorPage` reads the statusText
-and says the site's data is briefly unavailable instead of "Something went wrong".
+and says the site's data is briefly unavailable instead of "Something went wrong". For every loader at once,
+entry.server's `handleRequest` sets `responseStatusCode = documentStatus(request, responseStatusCode, responseHeaders)`
+(`./log`): when `handleServerError` saw that request's route fail on a database-down error, the page answers 503 with
+`Retry-After` and `no-store`; any other failure keeps its status.
 
 **Tests.** `test/log.test.mjs`, `test/url.test.mjs` (a `//` path stays on the site, the gone list, a rename chain) and `test/not-found.test.mjs` (on
 an in-memory SQLite with `NOT_FOUND_SQL`, and with a first-shape table upgraded by `NOT_FOUND_UPGRADE_SQL`; the probe

@@ -29,7 +29,13 @@
  */
 
 import { PURGE_FAILED_KEY } from "./edge-cache.mjs";
-import { errorMessage, isDatabaseDown, logEvent, scrubText } from "./log.mjs";
+import {
+  DATABASE_DOWN_RETRY_AFTER,
+  errorMessage,
+  isDatabaseDown,
+  logEvent,
+  scrubText,
+} from "./log.mjs";
 import { authEventCounts } from "./sign-in-account.mjs";
 import { withTimeout } from "./time.mjs";
 
@@ -363,6 +369,6 @@ export function databaseDown(error) {
   return new Response(null, {
     status: 503,
     statusText: DATABASE_DOWN_STATUS_TEXT,
-    headers: { "Retry-After": "60", "Cache-Control": "no-store" },
+    headers: { "Retry-After": String(DATABASE_DOWN_RETRY_AFTER), "Cache-Control": "no-store" },
   });
 }

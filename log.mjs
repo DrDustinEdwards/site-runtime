@@ -234,12 +234,37 @@ export function serverErrorHandler({ tokenPath = PREVIEW_TOKEN } = {}) {
     )
       return;
     const cause = /** @type {{ error?: unknown } | null} */ (error)?.error;
+    if (isDatabaseDown(cause ?? error)) DATABASE_DOWN_REQUESTS.add(request);
     logEvent(
       "server_error",
       { ...requestFields(request, { tokenPath }), error: cause ?? error },
       { level: "error", tokenPath },
     );
   };
+}
+
+/** The requests whose route failed because D1 was down, as serverErrorHandler saw them. Weak: gone with the request. */
+const DATABASE_DOWN_REQUESTS = new WeakSet();
+
+/** Seconds a reader or crawler is told to wait while D1 is down (`Retry-After`). */
+export const DATABASE_DOWN_RETRY_AFTER = 60;
+
+/**
+ * The status entry.server's handleRequest answers with: 503, with `Retry-After` and `no-store` set on `headers`, when
+ * serverErrorHandler saw this request's route fail because D1 was down (isDatabaseDown), else `status` unchanged.
+ * Read here because React Router replaces a production route error with a bare "Unexpected Server Error" before
+ * handleRequest runs; handleError is the one place that sees the error itself. A 503 tells a crawler and a reader to
+ * come back instead of recording a broken page (MDN, 503 Service Unavailable). The error is logged either way.
+ * @param {Request} request
+ * @param {number} status
+ * @param {Headers} headers
+ * @returns {number}
+ */
+export function documentStatus(request, status, headers) {
+  if (status < 500 || !DATABASE_DOWN_REQUESTS.has(request)) return status;
+  headers.set("Retry-After", String(DATABASE_DOWN_RETRY_AFTER));
+  headers.set("Cache-Control", "no-store");
+  return 503;
 }
 
 /** serverErrorHandler with the preview link's token cut. */
