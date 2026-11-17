@@ -22,6 +22,7 @@
   ],
   "exclude": [
     "turnstile.mjs",
+    "share-card-draw.mjs",
     "sign-in-client.mjs",
     "sign-in-passkey.mjs",
     "vitals-client.mjs",

@@ -1,24 +1,23 @@
 /**
- * Share cards: the PNG a link preview shows (og:image), drawn from a site's own card HTML by workers-og (Satori and
- * resvg). Each site keeps its own design; this module is the part every card needs the same way.
+ * Share cards: the PNG a link preview shows (og:image), drawn from a site's own card HTML by Takumi
+ * (`drawShareCard` in ./share-card-draw). Each site keeps its own design; this module is the part every card needs the
+ * same way.
  *
- * workers-og is the site's dependency, passed in as its ImageResponse class, so this package stays free of WASM.
+ * The renderer is passed in as `draw`, because it imports WASM that only a Worker bundle can load.
  *
  * What the renderer needs, learned on Foxhound and Foxing:
- * - workers-og does not decode entities in text: "&amp;" shows on the card as five characters, and "&lt;" as four. So
- *   card text keeps `&` as is, and `<` and `>`, which would start a tag, become the look-alike marks ‹ and ›. Card text
- *   sits only in element content, never in an attribute.
- * - Whitespace between two tags becomes a text child of the flex box, which takes part in justify-content and needs
- *   display:flex on its parent. `renderShareCard` removes it.
- * - A render error happens while the PNG streams, after ImageResponse returns, and used to end as an empty image.
- *   `renderShareCard` reads the whole PNG first, so a failure is a null the route can answer with a fallback.
+ * - Card text is HTML, so `<` and `>`, which would start a tag, become the look-alike marks ‹ and › (`cardText`); `&` stays as it is
+ *   (Takumi decodes entities, so "&amp;" would also draw as "&"). Card text sits only in element content, never in an attribute.
+ * - Whitespace between two tags can become a text child of the flex box, which takes part in justify-content. `renderShareCard` removes it.
+ * - A failed render must never end as an empty image: `renderShareCard` answers null, which the route turns into a
+ *   fallback.
  * - A card's root sized `width:100%;height:100%` has nothing to be a percentage of and shrinks to its content (Foxing's
  *   cards did). `renderShareCard` draws the card inside a box of the card's size, so a percentage resolves.
- * - Fonts are TTF, OTF or WOFF, one static weight per file: Satori cannot read WOFF2 or a variable font.
+ * - Fonts are TTF, OTF or WOFF, one static weight per file: WOFF2 is not read.
  *
  * `cardLayout` is the card most sites want, so a site passes its colors and mark and not a layout of its own: the title
- * set in the largest of three sizes it fits (`titleFontSize`), both texts cut at a word (`clampTitle`) because Satori's
- * line clamp does nothing, and `cardKey` for a cache key that changes when the picture would. From dustinedwards.info's
+ * set in the largest of three sizes it fits (`titleFontSize`), both texts cut at a word (`clampTitle`) because a line clamp is not
+ * reliable here, and `cardKey` for a cache key that changes when the picture would. From dustinedwards.info's
  * build-og.mjs and og-card-text.mjs, measured off rendered 1200x630 cards. A bespoke card passes its own html instead.
  *
  * `shareCardResponse` is the whole route around the render, as Foxhound's /og and Foxing's card routes had it: the edge
@@ -111,7 +110,7 @@ export function cardKey({ slug, parts = [], version = 1, prefix = "og/" }) {
 /**
  * A card's html for renderShareCard: a `mark` (raw html: a logo, an svg) and the `kicker` above, the title in the size it
  * fits, the description, and a band at the foot with `brand` and `footer`. Every text goes through cardText, and the
- * title and description are cut with clampTitle. Satori reads only inline styles with flex layout, so this is one.
+ * title and description are cut with clampTitle. Cards use inline styles with flex layout, so this is one.
  * @param {{
  *   brand: string,
  *   title: string,
@@ -146,7 +145,7 @@ export function cardLayout({
     mark || kicker
       ? `<div style="display:flex;align-items:center;margin-bottom:28px;color:${accent};font-size:24px;font-weight:600;letter-spacing:0.12em;">${mark}${kicker ? `<span style="display:flex;${mark ? "margin-left:20px;" : ""}">${cardText(kicker).toUpperCase()}</span>` : ""}</div>`
       : "",
-    // Satori honors wordBreak but ignores overflowWrap.
+    // wordBreak, not overflowWrap, breaks a long word.
     `<div style="display:flex;font-size:${titleFontSize(drawnTitle, titleSizes)}px;font-weight:600;color:${colors.ink};line-height:1.12;word-break:break-word;">${cardText(drawnTitle)}</div>`,
     drawnDescription
       ? `<div style="display:flex;margin-top:18px;font-size:26px;color:${colors.muted};line-height:1.4;word-break:break-word;">${cardText(drawnDescription)}</div>`
@@ -164,21 +163,20 @@ export function cardLayout({
 /**
  * The card's PNG, or null when the render fails. `headers` are added to the PNG's (Content-Type image/png,
  * SHARE_CARD_HEADERS, and a week at the edge unless `headers` sets Cache-Control).
- * @param {new (html: string, options: { width: number, height: number, fonts: unknown[] }) => Response} ImageResponse
+ * @param {(html: string, options: { width: number, height: number, fonts: unknown[] }) => Promise<Uint8Array | ArrayBuffer>} draw
  * @param {string} html
  * @param {{ fonts: unknown[], width?: number, height?: number, headers?: Record<string, string> }} options
  * @returns {Promise<Response | null>}
  */
 export async function renderShareCard(
-  ImageResponse,
+  draw,
   html,
   { fonts, width = SHARE_CARD_WIDTH, height = SHARE_CARD_HEIGHT, headers = {} },
 ) {
   try {
     const card = html.replace(/>\s+</g, "><").trim();
     const sized = `<div style="display:flex;width:${width}px;height:${height}px;">${card}</div>`;
-    const image = new ImageResponse(sized, { width, height, fonts });
-    const png = await new Response(image.body).arrayBuffer();
+    const png = await draw(sized, { width, height, fonts });
     if (png.byteLength === 0) throw new Error("empty PNG");
     return new Response(png, {
       headers: {
@@ -195,7 +193,7 @@ export async function renderShareCard(
 }
 
 /**
- * One weight of a Google Font as bytes Satori reads (WOFF: an old browser's User-Agent makes Google Fonts serve it in
+ * One weight of a Google Font as bytes the renderer reads (WOFF: an old browser's User-Agent makes Google Fonts serve it in
  * place of WOFF2), or null when it cannot be fetched. With `cache`, the file is kept for a year under `cacheOrigin`.
  * @param {string} family
  * @param {number} weight
@@ -239,7 +237,7 @@ export async function googleFont(
  * (each may be a function, called only on a miss, so a hit fetches no font and builds no HTML), kept in `cache` (in
  * `ctx.waitUntil` when given), or a 503 (`Retry-After: 300`, `no-store`) when the render fails. `cache` defaults to the
  * Workers zone cache; with no `cacheKey` nothing is cached. `headers` are added to the PNG's (after SHARE_CARD_HEADERS).
- * @param {new (html: string, options: { width: number, height: number, fonts: unknown[] }) => Response} ImageResponse
+ * @param {(html: string, options: { width: number, height: number, fonts: unknown[] }) => Promise<Uint8Array | ArrayBuffer>} draw
  * @param {{
  *   html: string | (() => string | Promise<string>),
  *   fonts: unknown[] | (() => unknown[] | Promise<unknown[]>),
@@ -253,7 +251,7 @@ export async function googleFont(
  * @returns {Promise<Response>}
  */
 export async function shareCardResponse(
-  ImageResponse,
+  draw,
   { html, fonts, cacheKey, cache = zoneCache(), ctx, width, height, headers = {} },
 ) {
   const store = cacheKey !== undefined ? cache : undefined;
@@ -265,7 +263,7 @@ export async function shareCardResponse(
       typeof html === "function" ? html() : html,
       typeof fonts === "function" ? fonts() : fonts,
     ]);
-    png = await renderShareCard(ImageResponse, cardHtml, {
+    png = await renderShareCard(draw, cardHtml, {
       fonts: cardFonts,
       width,
       height,

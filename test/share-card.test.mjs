@@ -3,22 +3,12 @@ import { test } from "node:test";
 
 import { cardText, googleFont, renderShareCard, shareCardResponse } from "../share-card.mjs";
 
-/** A stand-in for workers-og's ImageResponse: it records the HTML, and streams `bytes` or fails mid-stream. */
-function fakeImageResponse(/** @type {Uint8Array | Error} */ out, /** @type {string[]} */ seen) {
-  return class extends Response {
-    constructor(/** @type {string} */ html) {
-      seen.push(html);
-      const body = new ReadableStream({
-        pull(c) {
-          if (out instanceof Error) c.error(out);
-          else {
-            c.enqueue(out);
-            c.close();
-          }
-        },
-      });
-      super(body);
-    }
+/** A stand-in renderer: it records the HTML, and returns `out` or fails. */
+function fakeDraw(/** @type {Uint8Array | Error} */ out, /** @type {string[]} */ seen) {
+  return async (/** @type {string} */ html) => {
+    seen.push(html);
+    if (out instanceof Error) throw out;
+    return out;
   };
 }
 
@@ -26,7 +16,7 @@ test("a card's text keeps & and cannot open a tag; whitespace between tags goes;
   assert.equal(cardText("Pride & Prejudice <i>"), "Pride & Prejudice \u2039i\u203a");
   const seen = [];
   const png = await renderShareCard(
-    fakeImageResponse(new Uint8Array([137, 80]), seen),
+    fakeDraw(new Uint8Array([137, 80]), seen),
     "<div>\n  <div>A</div>\n</div>",
     {
       fonts: [],
@@ -41,11 +31,11 @@ test("a card's text keeps & and cannot open a tag; whitespace between tags goes;
   assert.equal(png?.headers.get("Cross-Origin-Resource-Policy"), "cross-origin");
   assert.equal((await png?.arrayBuffer())?.byteLength, 2);
   assert.equal(
-    await renderShareCard(fakeImageResponse(new Error("font"), []), "<div></div>", { fonts: [] }),
+    await renderShareCard(fakeDraw(new Error("font"), []), "<div></div>", { fonts: [] }),
     null,
   );
   assert.equal(
-    await renderShareCard(fakeImageResponse(new Uint8Array(), []), "<div></div>", { fonts: [] }),
+    await renderShareCard(fakeDraw(new Uint8Array(), []), "<div></div>", { fonts: [] }),
     null,
   );
 });
@@ -82,7 +72,7 @@ test("the card route serves the cache, renders and keeps a miss, and answers a f
   );
   let built = 0;
   const html = () => (built++, "<div></div>");
-  const ok = fakeImageResponse(new Uint8Array([137, 80]), []);
+  const ok = fakeDraw(new Uint8Array([137, 80]), []);
   const first = await shareCardResponse(ok, {
     html,
     fonts: [],
@@ -96,7 +86,7 @@ test("the card route serves the cache, renders and keeps a miss, and answers a f
     200,
   );
   assert.equal(built, 1);
-  const failed = await shareCardResponse(fakeImageResponse(new Error("font"), []), {
+  const failed = await shareCardResponse(fakeDraw(new Error("font"), []), {
     html,
     fonts: [],
     cacheKey: "https://og.invalid/b",
