@@ -36,6 +36,7 @@ export type LinkResult =
   | "email-limited"
   | "check-failed"
   | "unavailable"
+  | "undeliverable"
   | "failed";
 export type CodeRefusal =
   | "wrong"

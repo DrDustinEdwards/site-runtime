@@ -38,6 +38,8 @@ export type SignInLinkProblem =
   | "failed";
 /** Better Auth's error code for a disposable address (refuseDisposable). */
 export const DISPOSABLE_EMAIL: "disposable_email";
+/** The error code (422) for a sign-in mail refused because the address is on Email Service's suppression list. */
+export const UNDELIVERABLE_EMAIL: "undeliverable_email";
 /** What went wrong with a sign-in link, from the confirm page's URL (`error`, `sent`, `token`), or null for the button. */
 export function signInLinkProblem(
   url: string | URL,

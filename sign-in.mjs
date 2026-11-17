@@ -89,6 +89,7 @@ import { captcha, emailOTP, magicLink } from "better-auth/plugins";
 
 import { appleClientSecret } from "./apple-secret.mjs";
 import { base64url, fromBase64urlText } from "./encoding.mjs";
+import { isRecipientSuppressed } from "./email.mjs";
 import { LOGOUT_HEADERS } from "./headers.mjs";
 import { OWASP_EVENTS, logEvent } from "./log.mjs";
 import { emailKey, limit, mustStop } from "./rate-limit/index.mjs";
@@ -111,7 +112,12 @@ import {
   signedInDeviceIds,
   signedInDevices,
 } from "./sign-in-account.mjs";
-import { CONFIRM_PATH, SIGN_IN_EXPIRES_IN_SECONDS, confirmLinkURL } from "./sign-in-link.mjs";
+import {
+  CONFIRM_PATH,
+  SIGN_IN_EXPIRES_IN_SECONDS,
+  UNDELIVERABLE_EMAIL,
+  confirmLinkURL,
+} from "./sign-in-link.mjs";
 import { refuseDisposable } from "./sign-in-form.mjs";
 
 export {
@@ -296,7 +302,7 @@ export async function signInOptions(
     sendVerificationOTP: async ({ email, otp: code, type }, ctx) => {
       if (!appCode || !sendSignInCode)
         throw new Error("sign-in codes are sent only with the sign-in link");
-      if (type === "sign-in") await sendSignInCode({ email, code }, ctx);
+      if (type === "sign-in") await refuseUndeliverable(sendSignInCode({ email, code }, ctx));
     },
   });
   const link = magicLink({
@@ -311,9 +317,16 @@ export async function signInOptions(
         // @ts-expect-error the endpoint context Better Auth hands a plugin's hook
         context,
       });
-      await sendMagicLink(
-        { email: data.email, url: confirmLinkURL(data.url, confirmPath), token: data.token, code },
-        ctx,
+      await refuseUndeliverable(
+        sendMagicLink(
+          {
+            email: data.email,
+            url: confirmLinkURL(data.url, confirmPath),
+            token: data.token,
+            code,
+          },
+          ctx,
+        ),
       );
     },
   });
@@ -403,6 +416,25 @@ export async function signInOptions(
     // Apple returns to the site with a form POST from its own origin.
     trustedOrigins: socialProviders.apple ? ["https://appleid.apple.com"] : [],
   };
+}
+
+/**
+ * Awaits a sign-in mail's send. A recipient on Email Service's suppression list (the site's sender threw `./email`
+ * EmailNotSent, or anything with its code) becomes a 422 UNDELIVERABLE_EMAIL, so the page can say no mail can reach that
+ * address instead of "check your inbox"; Email Service refuses it before any delivery attempt
+ * (developers.cloudflare.com/email-service/concepts/email-lifecycle/). Any other failure is thrown as it came.
+ * @param {unknown} sending a promise of the send, or what a synchronous sender returned
+ */
+async function refuseUndeliverable(sending) {
+  try {
+    await sending;
+  } catch (error) {
+    if (!isRecipientSuppressed(error)) throw error;
+    throw new APIError("UNPROCESSABLE_ENTITY", {
+      code: UNDELIVERABLE_EMAIL,
+      message: "Email to this address can't be delivered.",
+    });
+  }
 }
 
 /**

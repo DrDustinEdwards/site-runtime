@@ -35,13 +35,26 @@ export type SendOutcome =
 /**
  * Send one mail through the binding. Never throws. An address with a line break is refused, a subject's line breaks
  * fold to a space and a display name loses its quotes. On failure, `secrets` and the recipients are cut out of the
- * error, and one `email_send_failed` line is logged with the code and that error, never the body.
+ * error, and one `email_send_failed` line is logged with the code and that error, never the body: a warning for a
+ * suppressed recipient or a missing binding, else an error.
  */
 export function sendEmail(
   binding: EmailBinding | null | undefined,
   mail: Mail,
   options?: { secrets?: readonly (string | null | undefined)[] },
 ): Promise<SendOutcome>;
+
+/** The binding's code for a recipient on the account's suppression list (a hard bounce, a spam complaint or a manual entry). */
+export const RECIPIENT_SUPPRESSED: "E_RECIPIENT_SUPPRESSED";
+
+/** A send that did not go out, thrown by a caller that must fail with it. Its message holds only the code. */
+export class EmailNotSent extends Error {
+  constructor(code: string);
+  readonly code: string;
+}
+
+/** Whether `error` is a send refused because the recipient is suppressed (an EmailNotSent, or anything with that code). */
+export function isRecipientSuppressed(error: unknown): boolean;
 
 /** Each of `secrets` cut out of `text`, as `[redacted]`. Empty entries are skipped. */
 export function redact(text: string, secrets?: readonly (string | null | undefined)[]): string;

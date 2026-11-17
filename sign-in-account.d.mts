@@ -317,7 +317,7 @@ export type SendSecurityNotice = (
   kind: SecurityNoticeKind,
   notice: { user: NoticeUser; request?: Request; detail: NoticeDetail },
 ) => Promise<void> | void;
-/** Calls the sender and never throws; a failure is logged as `security_notice_failed`. */
+/** Calls the sender and never throws; a failure is logged as `security_notice_failed`, a suppressed recipient as the warning `security_notice_undeliverable`. */
 export function sendNoticeSafely(
   send: SendSecurityNotice,
   kind: SecurityNoticeKind,

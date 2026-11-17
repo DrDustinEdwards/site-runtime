@@ -219,6 +219,35 @@ test("both email-change mails carry the site's confirm page, never Better Auth's
   assert.ok(options.disabledPaths.includes("/delete-user"));
 });
 
+test("a suppressed address gets the undeliverable words from the real Better Auth, not a check-your-inbox", async () => {
+  const { betterAuth } = await import("better-auth");
+  const { memoryAdapter } = await import("better-auth/adapters/memory");
+  const { signInOptions } = await import("../sign-in.mjs");
+  const { EmailNotSent, RECIPIENT_SUPPRESSED } = await import("../email.mjs");
+  const options = await signInOptions(
+    { BETTER_AUTH_URL: "https://example.com" },
+    {
+      siteName: "Sample",
+      turnstile: "off-until-keys",
+      sendMagicLink: async () => {
+        throw new EmailNotSent(RECIPIENT_SUPPRESSED);
+      },
+    },
+  );
+  const auth = betterAuth({
+    database: memoryAdapter({ user: [], session: [], account: [], verification: [] }),
+    secret: "sample-secret-sample-secret-sample-secret",
+    baseURL: "https://example.com",
+    rateLimit: { enabled: false },
+    plugins: options.plugins.filter((plugin) => ["magic-link", "email-otp"].includes(plugin.id)),
+  });
+  const result = await signInFormAction(auth, request(), page({ email: "a@example.com" }), site);
+  assert.deepEqual(result, {
+    state: { sent: null, error: SIGN_IN_WORDS.link.undeliverable, codeError: null },
+    status: 422,
+  });
+});
+
 test("a new account at a disposable address is refused by the real Better Auth, beside a site's own user hook", async () => {
   const { betterAuth } = await import("better-auth");
   const { memoryAdapter } = await import("better-auth/adapters/memory");
