@@ -53,7 +53,7 @@ test("a Google Font is read once, then from the cache", async () => {
     async (url) => {
       calls++;
       return String(url).startsWith("https://fonts.googleapis.com/")
-        ? new Response("src: url(https://fonts.gstatic.com/f.woff) format('woff');")
+        ? new Response("src: url(https://fonts.gstatic.com/f.ttf) format('truetype');")
         : new Response(new Uint8Array([1, 2, 3]));
     }
   );
