@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { escapeHtml, htmlAttributes, sitemapLocs, unescapeHtml } from "../html.mjs";
+import { escapeHtml, htmlAttributes, scriptJson, sitemapLocs, unescapeHtml } from "../html.mjs";
 
 test("escapes the five characters, each to the entity the copies it replaces used", () => {
   assert.equal(escapeHtml(`&<>"'`), "&amp;&lt;&gt;&quot;&#39;");
+  // JSON in a <script> gets its own encoding: "<", ">", "&", U+2028 and U+2029.
+  assert.equal(scriptJson({ a: "</s>&\u2028" }), '{"a":"\\u003c/s\\u003e\\u0026\\u2028"}');
 });
 
 test("an ampersand is escaped once, so an entity in the text shows as typed", () => {

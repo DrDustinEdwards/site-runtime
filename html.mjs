@@ -3,7 +3,7 @@
  *
  * The five characters that can end a text run or an attribute value: & < > " and '. The result is safe as element
  * content and as a single- or double-quoted attribute value. It is not safe in an unquoted attribute, in a URL
- * attribute that may hold `javascript:`, or inside <script> or <style>: those need their own encoding.
+ * attribute that may hold `javascript:`, or inside <script> or <style>: those need their own encoding (`scriptJson`, for JSON in a <script>).
  */
 
 /** @type {Readonly<Record<string, string>>} */
@@ -141,4 +141,22 @@ export function htmlAttributes(text) {
  */
 export function sitemapLocs(xml) {
   return [...xml.matchAll(/<loc>\s*([^<]*?)\s*<\/loc>/gi)].map((m) => unescapeHtml(m[1] ?? ""));
+}
+
+const SCRIPT_ESCAPES = /** @type {Record<string, string>} */ ({
+  "&": "\\u0026",
+  ">": "\\u003e",
+  "<": "\\u003c",
+  "\u2028": "\\u2028",
+  "\u2029": "\\u2029",
+});
+
+/**
+ * JSON that is safe inside a <script> element: no "<", ">" or "&", and U+2028 and U+2029 escaped (React Router's own
+ * escaping). Use it for a `<script type="application/json">` or a JSON-LD block.
+ * @param {unknown} value
+ * @returns {string}
+ */
+export function scriptJson(value) {
+  return JSON.stringify(value).replace(/[&><\u2028\u2029]/g, (c) => SCRIPT_ESCAPES[c] ?? c);
 }

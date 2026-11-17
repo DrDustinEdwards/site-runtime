@@ -5,8 +5,6 @@ import type { ReactElement } from "react";
 export function routeHydrates(
   matches: readonly { handle?: unknown; loaderData?: unknown }[],
 ): boolean;
-/** JSON that is safe inside a <script> element (no "<", ">" or "&"). */
-export function scriptJson(value: unknown): string;
 /** The boot JSON's text; exported for the test. */
 export function bootJson(input: {
   manifest: import("react-router").UNSAFE_AssetsManifest;
