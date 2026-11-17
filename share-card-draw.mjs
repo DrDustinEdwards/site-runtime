@@ -7,6 +7,7 @@
  * is tested without it.
  */
 import { render } from "takumi-js";
+// @ts-expect-error TypeScript has no types for a .wasm module; the bundler compiles it.
 import wasm from "@takumi-rs/wasm/takumi_wasm_bg.wasm";
 
 /**
