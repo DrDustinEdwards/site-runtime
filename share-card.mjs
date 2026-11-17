@@ -215,9 +215,7 @@ export async function googleFont(
         headers: { "User-Agent": "Mozilla/4.0" },
       },
     ).then((r) => r.text());
-    const url = css.match(
-      /src:\s*url\((.+?)\)\s*format\(['"]?(?:truetype|opentype)['"]?\)/,
-    )?.[1];
+    const url = css.match(/src:\s*url\((.+?)\)\s*format\(['"]?(?:truetype|opentype)['"]?\)/)?.[1];
     if (!url) return null;
     const res = await get(url);
     if (!res.ok) return null;
