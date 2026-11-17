@@ -111,6 +111,7 @@ import { securityTxtResponse } from "./security-txt.mjs";
 import { timedRender } from "./server-timing.mjs";
 import { canonicalRedirect } from "./url.mjs";
 import { deployedSha } from "./deploy.mjs";
+import { withSiteSentry } from "./sentry.mjs";
 
 /** The security.txt path (RFC 9116 section 3). */
 export const SECURITY_TXT_PATH = "/.well-known/security.txt";
@@ -209,29 +210,33 @@ function gatewayRoute(path, extra) {
 export function siteRenderer(Base, site) {
   const { options } = site;
   const Purging = withPurgePages(Base, options.purgeKv ? { kv: options.purgeKv } : {});
-  return class Renderer extends Purging {
-    /** @param {Request} request */
-    async fetch(request) {
-      const nonce = generateNonce();
-      const shared = options.publicPages?.(new URL(request.url), this.env);
-      const rendered = await site.render(request, this.env, this.ctx, { nonce });
-      // A site whose routes name no Cache-Control of their own stores each 200 under the tags it names.
-      if (shared && rendered.status === 200 && !rendered.headers.has("Cache-Control"))
-        for (const [name, value] of Object.entries(publicPageHeaders(await shared)))
-          rendered.headers.set(name, value);
-      // A route that marks its answer shared but names no edge lifetime gets publicPageHeaders' day: with none, the
-      // Workers cache reads `max-age=0` and keeps nothing a purge would ever need to reach.
-      if (
-        rendered.headers.get("Cache-Control") === SHARED_CACHE_CONTROL &&
-        !rendered.headers.has(EDGE_CACHE_HEADER)
-      )
-        rendered.headers.set(EDGE_CACHE_HEADER, DEFAULT_EDGE_LIFETIME);
-      const secured = await site.earlyHints(
-        options.withSecurityHeaders(rendered, request, pageNonce(rendered, nonce), this.env),
-      );
-      return settleCacheHeaders(secured, request, { publicCookies: options.publicCookies ?? [] });
-    }
-  };
+  // Its own invocation, so its own Sentry client: a cached page's render error is reported from here.
+  return withSiteSentry(
+    class Renderer extends Purging {
+      /** @param {Request} request */
+      async fetch(request) {
+        const nonce = generateNonce();
+        const shared = options.publicPages?.(new URL(request.url), this.env);
+        const rendered = await site.render(request, this.env, this.ctx, { nonce });
+        // A site whose routes name no Cache-Control of their own stores each 200 under the tags it names.
+        if (shared && rendered.status === 200 && !rendered.headers.has("Cache-Control"))
+          for (const [name, value] of Object.entries(publicPageHeaders(await shared)))
+            rendered.headers.set(name, value);
+        // A route that marks its answer shared but names no edge lifetime gets publicPageHeaders' day: with none, the
+        // Workers cache reads `max-age=0` and keeps nothing a purge would ever need to reach.
+        if (
+          rendered.headers.get("Cache-Control") === SHARED_CACHE_CONTROL &&
+          !rendered.headers.has(EDGE_CACHE_HEADER)
+        )
+          rendered.headers.set(EDGE_CACHE_HEADER, DEFAULT_EDGE_LIFETIME);
+        const secured = await site.earlyHints(
+          options.withSecurityHeaders(rendered, request, pageNonce(rendered, nonce), this.env),
+        );
+        return settleCacheHeaders(secured, request, { publicCookies: options.publicCookies ?? [] });
+      }
+    },
+    { tokenPath: tokenPattern(options.tokenRoutes) },
+  );
 }
 
 /** publicPageHeaders' edge lifetime: a day fresh, a week stale. */
@@ -300,11 +305,13 @@ function forOneReader(answer) {
 }
 
 /**
- * The Worker's default export: `{ fetch, scheduled }`.
+ * The Worker's default export: `{ fetch, scheduled }` and the site's own `handlers` (a `queue`, or a `scheduled` of its
+ * own), all under Sentry (./sentry).
  * @template E
  * @param {import("./worker.d.mts").Site<E>} site
+ * @param {import("./worker.d.mts").SiteHandlers<E>} [handlers]
  */
-export function siteWorker(site) {
+export function siteWorker(site, handlers = {}) {
   const { options } = site;
   const secure = options.withSecurityHeaders;
   const exempt = options.crossSiteExempt ?? ["/api/auth/"];
@@ -507,21 +514,25 @@ export function siteWorker(site) {
     },
   );
 
-  return {
-    fetch,
-    /**
-     * @param {ScheduledController} controller
-     * @param {E} env
-     * @param {ExecutionContext} ctx
-     */
-    async scheduled(controller, env, ctx) {
-      const lists = await options.cron?.(env, new Date(controller.scheduledTime), ctx);
-      const jobs = lists?.[controller.cron];
-      if (!jobs) {
-        logEvent("cron_unknown", { cron: controller.cron }, { level: "warn" });
-        return;
-      }
-      await runJobs(/** @type {any} */ (env).DB, jobs);
+  return withSiteSentry(
+    {
+      fetch,
+      /**
+       * @param {ScheduledController} controller
+       * @param {E} env
+       * @param {ExecutionContext} ctx
+       */
+      async scheduled(controller, env, ctx) {
+        const lists = await options.cron?.(env, new Date(controller.scheduledTime), ctx);
+        const jobs = lists?.[controller.cron];
+        if (!jobs) {
+          logEvent("cron_unknown", { cron: controller.cron }, { level: "warn" });
+          return;
+        }
+        await runJobs(/** @type {any} */ (env).DB, jobs);
+      },
+      ...handlers,
     },
-  };
+    { tokenPath },
+  );
 }

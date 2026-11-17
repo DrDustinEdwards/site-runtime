@@ -176,8 +176,15 @@ export function siteRenderer<T extends abstract new (...args: any[]) => object>(
     purgePages(why: string, tags?: string[]): Promise<boolean | null>;
   });
 
-/** The Worker's default export. */
-export function siteWorker<E>(site: Site<E>): {
+/** A site's own handlers beside the shared fetch: a queue consumer, or a scheduled of its own in place of `cron`. */
+// oxlint-disable-next-line typescript/no-explicit-any -- a queue's message type is the site's own
+export type SiteHandlers<E> = Pick<ExportedHandler<E, any>, "queue" | "scheduled" | "email">;
+
+/** The Worker's default export, under Sentry (./sentry). */
+export function siteWorker<E, H extends SiteHandlers<E> = {}>(
+  site: Site<E>,
+  handlers?: H,
+): {
   fetch: FetchHandler<E>;
   scheduled(controller: ScheduledController, env: E, ctx: ExecutionContext): Promise<void>;
-};
+} & H;
