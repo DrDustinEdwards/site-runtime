@@ -13,8 +13,21 @@
  * are dropped. A scrubber that throws drops the report.
  */
 
-import { withSentry, wrapRequestHandler } from "@sentry/cloudflare";
-import { scrubFields, scrubText, scrubUrl } from "./log.mjs";
+import {
+  captureException,
+  captureMessage,
+  withSentry,
+  wrapRequestHandler,
+} from "@sentry/cloudflare";
+import { reportErrorLines, scrubFields, scrubText, scrubUrl } from "./log.mjs";
+
+// An error line's report: the thrown Error with its stack, else the event's name, tagged with the event and carrying
+// the line's scrubbed fields. Outside a wrapped handler, or with no SENTRY_DSN, there is no client and nothing is sent.
+reportErrorLines((event, error, extra) => {
+  const context = { tags: { event }, extra };
+  if (error instanceof Error) captureException(error, context);
+  else captureMessage(event, { level: "error", ...context });
+});
 
 /**
  * @param {import("./log.d.mts").ScrubOptions} scrub

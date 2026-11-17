@@ -1083,8 +1083,9 @@ and the Renderer runs each fetch in `withSentryRequest`, which keeps a site's su
 Error with its stack, else the event's name, tagged `event`, with the line's scrubbed fields. Errors only:
 `tracesSampleRate` is 0 and nothing runs in the browser. `sentryOptions` cuts each report as ./log cuts a line (emails,
 queries, keys, Drizzle params, the token routes) and drops the request's headers, cookies, query and body and the user;
-a scrubber that throws drops the report. The SDK reads `AsyncLocalStorage`, so the Worker needs `nodejs_compat` or
-`nodejs_als`.
+a scrubber that throws drops the report. ./log never loads the SDK itself: ./sentry hands it the report
+(`reportErrorLines`) when loaded, so only a Worker that imports ./sentry or ./worker needs `AsyncLocalStorage`
+(`nodejs_compat` or `nodejs_als`).
 
 ## KV read-through
 

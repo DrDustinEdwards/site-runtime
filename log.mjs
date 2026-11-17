@@ -15,7 +15,6 @@
  * Never put a token, a code or a secret in a field on purpose; the scrubbers are the net, not the rule.
  */
 
-import { captureException, captureMessage } from "@sentry/cloudflare";
 import { SECRET_SHAPES } from "./redact.mjs";
 
 /** An email address inside any text. */
@@ -135,7 +134,7 @@ export function errorMessage(error) {
 
 /**
  * Writes one JSON line, `{ event, ...fields }` scrubbed, to the console: `console.error` for `level: "error"`,
- * `console.warn` for "warn", else `console.log`. An error line is also one Sentry report (./sentry). A field named `event` cannot replace the event's name.
+ * `console.warn` for "warn", else `console.log`. An error line is also one Sentry report once ./sentry is loaded. A field named `event` cannot replace the event's name.
  * @param {string} event
  * @param {Record<string, unknown>} [fields]
  * @param {ScrubOptions & { level?: "log" | "warn" | "error" }} [options]
@@ -151,19 +150,26 @@ export function logEvent(event, fields = {}, { level = "log", ...scrub } = {}) {
   else console.log(line);
 }
 
+/** @type {((event: string, error: unknown, fields: Record<string, unknown>) => void) | undefined} */
+let errorReporter;
+
 /**
- * An error line's Sentry report (./sentry): the thrown Error with its stack, else the event's name, tagged with the
- * event and carrying the line's scrubbed fields. Outside a handler withSiteSentry wraps, or with no SENTRY_DSN, there is
- * no client and this sends nothing. A report never stops the line.
+ * Sets what an error line also does beyond the console: ./sentry sets its report here when it is loaded, so ./log
+ * itself never loads the SDK (a Worker that never imports ./sentry or ./worker needs no AsyncLocalStorage).
+ * @param {(event: string, error: unknown, fields: Record<string, unknown>) => void} reporter
+ */
+export function reportErrorLines(reporter) {
+  errorReporter = reporter;
+}
+
+/**
  * @param {string} event
  * @param {unknown} error
- * @param {Record<string, unknown>} extra
+ * @param {Record<string, unknown>} fields
  */
-function report(event, error, extra) {
-  const context = { tags: { event }, extra };
+function report(event, error, fields) {
   try {
-    if (error instanceof Error) captureException(error, context);
-    else captureMessage(event, { level: "error", ...context });
+    errorReporter?.(event, error, fields);
   } catch {
     // The log line is written; a failed report is not a second failure.
   }
