@@ -2818,8 +2818,8 @@ export class DocRoom extends Room<Env> {
   every five seconds) and handed to `mirror`. Who changed it since the last save is kept, and `saved` gives them back for
   the app's authorship record.
 - The door's calls (RPC on the stub): `status()`, `seed(input)` once, `replace(input)` with `expectedVersion` and
-  `expectedMarkdown` guards, `snapshot()` before a save, `saved(input)` after one, and `rebase(input)` after a write that
-  sent no text.
+  `expectedMarkdown` guards, `json()` (the editor's JSON, suggestions and all), `snapshot()` before a save, `saved(input)`
+  after one, and `rebase(input)` after a write that sent no text.
 - Bringing a document in from elsewhere (Carrel's Google Docs round trip): `replace` takes `doc`, the editor's JSON with its
   pending suggestions, in place of the Markdown read, and `threads`, its comment threads (`{ from, to, quote, comments }`,
   positions in that document). Each thread is anchored with the model's `anchor` (Capsomer's `anchorAt`, given as

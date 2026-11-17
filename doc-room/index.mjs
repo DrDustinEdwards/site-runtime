@@ -275,6 +275,12 @@ export class DocRoom extends YServer {
     await this.#sendComments();
   }
 
+  /** The working copy as the editor's JSON, suggestions and all (`model.json`): for sending it elsewhere with them. */
+  async json() {
+    await this.__unsafe_ensureInitialized();
+    return this.model.isSeeded(this.document) ? this.model.json(this.document) : null;
+  }
+
   /** What a save writes now, the version it must be checked against, and who has changed it since the last save. */
   async snapshot() {
     await this.__unsafe_ensureInitialized();
