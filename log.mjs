@@ -3,8 +3,7 @@
  * with an `event` key first (`{"event":"share_card_failed","error":"..."}`), so Workers Logs and a tail can filter on
  * the event's name.
  *
- * What is cut, before the line is written, from every string field (the same scrubbers Foxhound's Sentry options
- * used, moved here so a site's logs and its error reports cut the same things):
+ * What is cut, before the line is written, from every string field (./sentry cuts the same from every error report):
  * - email addresses, to `[email]`;
  * - a URL's query string and fragment, in free text and in a field whose name holds `url` or `path` (a query can carry a
  *   magic-link token, a reset code or an unsubscribe token);
@@ -16,6 +15,7 @@
  * Never put a token, a code or a secret in a field on purpose; the scrubbers are the net, not the rule.
  */
 
+import { captureException, captureMessage } from "@sentry/cloudflare";
 import { SECRET_SHAPES } from "./redact.mjs";
 
 /** An email address inside any text. */
@@ -135,17 +135,38 @@ export function errorMessage(error) {
 
 /**
  * Writes one JSON line, `{ event, ...fields }` scrubbed, to the console: `console.error` for `level: "error"`,
- * `console.warn` for "warn", else `console.log`. A field named `event` cannot replace the event's name.
+ * `console.warn` for "warn", else `console.log`. An error line is also one Sentry report (./sentry). A field named `event` cannot replace the event's name.
  * @param {string} event
  * @param {Record<string, unknown>} [fields]
  * @param {ScrubOptions & { level?: "log" | "warn" | "error" }} [options]
  */
 export function logEvent(event, fields = {}, { level = "log", ...scrub } = {}) {
   const { event: _ignored, ...rest } = fields;
-  const line = JSON.stringify({ event, ...scrubFields(rest, scrub) });
-  if (level === "error") console.error(line);
-  else if (level === "warn") console.warn(line);
+  const scrubbed = scrubFields(rest, scrub);
+  const line = JSON.stringify({ event, ...scrubbed });
+  if (level === "error") {
+    console.error(line);
+    report(event, rest.error, scrubbed);
+  } else if (level === "warn") console.warn(line);
   else console.log(line);
+}
+
+/**
+ * An error line's Sentry report (./sentry): the thrown Error with its stack, else the event's name, tagged with the
+ * event and carrying the line's scrubbed fields. Outside a handler withSiteSentry wraps, or with no SENTRY_DSN, there is
+ * no client and this sends nothing. A report never stops the line.
+ * @param {string} event
+ * @param {unknown} error
+ * @param {Record<string, unknown>} extra
+ */
+function report(event, error, extra) {
+  const context = { tags: { event }, extra };
+  try {
+    if (error instanceof Error) captureException(error, context);
+    else captureMessage(event, { level: "error", ...context });
+  } catch {
+    // The log line is written; a failed report is not a second failure.
+  }
 }
 
 /** A preview link's token (Carrel's /preview/<token>), cut from a logged path. */
