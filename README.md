@@ -2759,6 +2759,7 @@ check. Moved from Carrel (the 2026-11-11 shared-code audit, item 31).
 ```ts
 import { DocRoom as Room, type CommentStore } from "@dustinedwards/site-runtime/doc-room";
 import {
+  anchorAt,
   isSeeded,
   loadMarkdown,
   markSaved,
@@ -2781,6 +2782,7 @@ const model = {
   json: roomJson,
   settle: (json) => settle(schema, json),
   suggestionCounts: (json) => suggestionCounts(schema, json),
+  anchor: anchorAt,
 };
 
 export class DocRoom extends Room<Env> {
@@ -2817,8 +2819,12 @@ export class DocRoom extends Room<Env> {
   every five seconds) and handed to `mirror`. Who changed it since the last save is kept, and `saved` gives them back for
   the app's authorship record.
 - The door's calls (RPC on the stub): `status()`, `seed(input)` once, `replace(input)` with `expectedVersion` and
-  `expectedMarkdown` guards, `snapshot()` before a save, `saved(input)` after one, and `rebase(input)` after a write that
-  sent no text.
+  `expectedMarkdown` guards, `json()` (the editor's JSON as text, suggestions and all), `snapshot()` before a save, `saved(input)`
+  after one, and `rebase(input)` after a write that sent no text.
+- Bringing a document in from elsewhere (Carrel's Google Docs round trip): `replace` takes `doc`, the editor's JSON with its
+  pending suggestions, in place of the Markdown read, and `threads`, its comment threads (`{ from, to, quote, comments }`,
+  positions in that document). Each thread is anchored with the model's `anchor` (Capsomer's `anchorAt`, given as
+  `anchor: anchorAt` in the model) and stored through `comments.add`, its first comment the thread and the rest replies.
 - An app keeps its Durable Object class name (a rename needs a migration), so open rooms keep their unsaved text.
 - y-partyserver, partyserver, yjs and lib0 are the app's own dependencies.
 
