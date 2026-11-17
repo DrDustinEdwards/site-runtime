@@ -250,17 +250,21 @@ const DATABASE_DOWN_REQUESTS = new WeakSet();
 export const DATABASE_DOWN_RETRY_AFTER = 60;
 
 /**
- * The status entry.server's handleRequest answers with: 503, with `Retry-After` and `no-store` set on `headers`, when
+ * The status a React Router answer leaves with: 503, with `Retry-After` and `no-store` set on `headers`, when
  * serverErrorHandler saw this request's route fail because D1 was down (isDatabaseDown), else `status` unchanged.
- * Read here because React Router replaces a production route error with a bare "Unexpected Server Error" before
- * handleRequest runs; handleError is the one place that sees the error itself. A 503 tells a crawler and a reader to
- * come back instead of recording a broken page (MDN, 503 Service Unavailable). The error is logged either way.
+ * ./worker's render applies it to every answer of the request handler, a page, a `.data` request and a resource route
+ * alike, so a site on siteWorker writes nothing; a site with its own Worker applies it where it calls the handler.
+ * Read there because React Router replaces a production route error with a bare "Unexpected Server Error" (a resource
+ * route's a plain-text 500, with no hook after it: reactrouter.com/how-to/resource-routes, "Error Handling"), and
+ * handleError is the one place that sees the error itself. It is keyed on the request object handleError is given,
+ * which is the one passed to the request handler. A 503 tells a crawler and a reader to come back instead of recording
+ * a broken page (MDN, 503 Service Unavailable). The error is logged either way.
  * @param {Request} request
  * @param {number} status
  * @param {Headers} headers
  * @returns {number}
  */
-export function documentStatus(request, status, headers) {
+export function databaseDownStatus(request, status, headers) {
   if (status < 500 || !DATABASE_DOWN_REQUESTS.has(request)) return status;
   headers.set("Retry-After", String(DATABASE_DOWN_RETRY_AFTER));
   headers.set("Cache-Control", "no-store");

@@ -151,7 +151,9 @@ export async function healthResponse({
 
 /**
  * Runs one check against the timeout. It fails when `run` throws, rejects, times out, resolves `false` or resolves
- * `{ ok: false, detail? }`; a failed "fail" check is logged as `health_check_failed`.
+ * `{ ok: false, detail? }`; a failed "fail" check is logged as `health_check_failed`. An alert check raises its alert
+ * (`health_alert`, `alert: true`) only when it ran and measured a failure; one that threw or timed out is its level with
+ * the detail "could not run: ...", logged as the warning `health_check_unavailable`.
  * @param {HealthCheck} check
  * @param {number} timeoutMs
  * @returns {Promise<CheckResult>}
@@ -160,6 +162,9 @@ async function runCheck({ name, level = "fail", alert = false, run }, timeoutMs)
   /** @type {string | undefined} */
   let detail;
   let failed = false;
+  // An alert reports what it measured. One that threw or timed out measured nothing (the database stalling, which the
+  // db check reports), so it is a warning that it could not run, never an alert that pages a person.
+  let ran = true;
   try {
     const value = await withTimeout(Promise.resolve().then(run), timeoutMs);
     if (value === false) failed = true;
@@ -169,21 +174,30 @@ async function runCheck({ name, level = "fail", alert = false, run }, timeoutMs)
     }
   } catch (error) {
     failed = true;
+    ran = false;
     detail = errorMessage(error);
   }
   if (!failed) return { name, status: "pass" };
-  const cut = detail === undefined ? undefined : scrubText(detail).slice(0, CHECK_DETAIL_MAX);
+  const raised = alert && ran;
+  const cut =
+    detail === undefined
+      ? undefined
+      : scrubText(alert && !ran ? `could not run: ${detail}` : detail).slice(0, CHECK_DETAIL_MAX);
   if (level === "fail" || alert)
     logEvent(
-      alert ? "health_alert" : "health_check_failed",
+      raised
+        ? "health_alert"
+        : level === "fail"
+          ? "health_check_failed"
+          : "health_check_unavailable",
       { check: name, detail: cut },
-      { level: "error" },
+      { level: level === "fail" || raised ? "error" : "warn" },
     );
   return {
     name,
     status: level,
     ...(cut ? { detail: cut } : {}),
-    ...(alert ? { alert: /** @type {const} */ (true) } : {}),
+    ...(raised ? { alert: /** @type {const} */ (true) } : {}),
   };
 }
 
