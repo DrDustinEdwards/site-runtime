@@ -112,6 +112,8 @@ test("withRequestLog names the route and a refused input also writes input_valid
   lines.length = 0;
   const request = new Request("https://example.com/blog/robots.txt?token=abc");
   handleServerError({ status: 404, error: new Error("No route matches URL") }, { request });
+  // A POST to a route with no action is RR's 405: the client's fault, as a scanner's POST /index.php is.
+  handleServerError({ status: 405, error: new Error("You made a POST request") }, { request });
   assert.equal(lines.length, 0);
   handleServerError(new Error("boom"), { request });
   assert.deepEqual(

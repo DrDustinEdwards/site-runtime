@@ -74,9 +74,9 @@ export const PREVIEW_TOKEN: RegExp;
 /** PREVIEW_TOKEN with the site's token routes ("u", "e/c"): each match is logged as `/<route>/[token]`. */
 export function tokenPattern(routes?: readonly string[]): RegExp;
 /**
- * React Router's `handleError` for entry.server: a route 404 is not logged; any other error is one scrubbed
- * `server_error` line at error level with the request's fields, the token of a `tokenPath` route cut (preview's by
- * default).
+ * React Router's `handleError` for entry.server: a route error response under 500 (a 404, RR's 405) is not logged;
+ * any other error is one scrubbed `server_error` line at error level with the request's fields, the token of a
+ * `tokenPath` route cut (preview's by default).
  */
 export function serverErrorHandler(
   options?: ScrubOptions,
