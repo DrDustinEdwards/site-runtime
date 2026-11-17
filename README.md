@@ -889,7 +889,7 @@ whitespace between tags (it can become a flex child), draws the card inside a bo
 `share_card_failed`) rather than an empty image, and answers `image/png` (`SHARE_CARD_TYPE`, the page's og:image:type)
 cached a week at the edge with `Cross-Origin-Resource-Policy: cross-origin`, and `headers` added. `cardText(value)` leaves `&` as is and turns `<` and `>` into
 ‹ and ›: entities show literally, so `escapeHtml` would put "&amp;" or "&lt;" on the card. `googleFont(family, weight, { cache, cacheOrigin })`
-fetches one static weight as WOFF (TTF, OTF and WOFF are read, not WOFF2 or a variable font) and keeps it a year in
+fetches one static weight as TTF (the file Google serves to an ancient User-Agent, every glyph in one file) and keeps it a year in
 `cache`. The design, colors and fonts are each site's own. 1200 by 630 is `SHARE_CARD_WIDTH` by `SHARE_CARD_HEIGHT`.
 
 `shareCardResponse(drawShareCard, { html, fonts, cacheKey, cache, ctx, width, height, headers })` is the whole card route:

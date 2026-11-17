@@ -13,7 +13,7 @@
  *   fallback.
  * - A card's root sized `width:100%;height:100%` has nothing to be a percentage of and shrinks to its content (Foxing's
  *   cards did). `renderShareCard` draws the card inside a box of the card's size, so a percentage resolves.
- * - Fonts are TTF, OTF or WOFF, one static weight per file: WOFF2 is not read.
+ * - Fonts are TTF or OTF, one static weight per file.
  *
  * `cardLayout` is the card most sites want, so a site passes its colors and mark and not a layout of its own: the title
  * set in the largest of three sizes it fits (`titleFontSize`), both texts cut at a word (`clampTitle`) because a line clamp is not
@@ -193,8 +193,8 @@ export async function renderShareCard(
 }
 
 /**
- * One weight of a Google Font as bytes the renderer reads (WOFF: an old browser's User-Agent makes Google Fonts serve it in
- * place of WOFF2), or null when it cannot be fetched. With `cache`, the file is kept for a year under `cacheOrigin`.
+ * One weight of a Google Font as bytes the renderer reads (TTF: an ancient browser's User-Agent makes Google Fonts serve one file with every glyph, in place of
+ * WOFF2 split by script), or null when it cannot be fetched. With `cache`, the file is kept for a year under `cacheOrigin`.
  * @param {string} family
  * @param {number} weight
  * @param {{ cache?: Cache, cacheOrigin?: string, fetch?: typeof fetch }} [options]
@@ -205,18 +205,18 @@ export async function googleFont(
   weight,
   { cache, cacheOrigin = "https://share-card.invalid", fetch: get = fetch } = {},
 ) {
-  const key = `${cacheOrigin}/${encodeURIComponent(family)}-${weight}.font`;
+  const key = `${cacheOrigin}/${encodeURIComponent(family)}-${weight}.ttf`;
   const hit = await cache?.match(key);
   if (hit) return hit.arrayBuffer();
   try {
     const css = await get(
       `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family)}:wght@${weight}`,
       {
-        headers: { "User-Agent": "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1)" },
+        headers: { "User-Agent": "Mozilla/4.0" },
       },
     ).then((r) => r.text());
     const url = css.match(
-      /src:\s*url\((.+?)\)\s*format\(['"]?(?:woff|truetype|opentype)['"]?\)/,
+      /src:\s*url\((.+?)\)\s*format\(['"]?(?:truetype|opentype)['"]?\)/,
     )?.[1];
     if (!url) return null;
     const res = await get(url);

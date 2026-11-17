@@ -66,7 +66,7 @@ export function renderShareCard(
   options: { fonts: unknown[]; width?: number; height?: number; headers?: Record<string, string> },
 ): Promise<Response | null>;
 
-/** One weight of a Google Font as WOFF bytes the renderer reads, or null; kept a year in `cache` when given. */
+/** One weight of a Google Font as TTF bytes the renderer reads, or null; kept a year in `cache` when given. */
 export function googleFont(
   family: string,
   weight: number,
