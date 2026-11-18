@@ -92,7 +92,8 @@ export async function readText(request, max) {
 
 /**
  * The body parsed as a form, read to `max` bytes as it arrives (`request.formData()` holds the whole body in memory
- * before anything can refuse it). Over the ceiling, throws the 413; a body that is no form throws as formData() does.
+ * before anything can refuse it). Over the ceiling, throws the 413; a Content-Type that is not a form type throws a 415
+ * (as readJson does) and a form body that does not parse a 400, so a stray POST is a refusal and no reported error.
  * @param {Request} request
  * @param {number} max the ceiling in bytes
  * @returns {Promise<FormData>}
@@ -100,9 +101,16 @@ export async function readText(request, max) {
 export async function readForm(request, max) {
   const bytes = await readCappedBytes(request, max);
   if (bytes === null) throw payloadTooLarge();
-  return new Response(/** @type {Uint8Array<ArrayBuffer>} */ (bytes), {
-    headers: { "Content-Type": request.headers.get("Content-Type") ?? "" },
-  }).formData();
+  const type = mediaType(request.headers.get("Content-Type"));
+  if (type !== "multipart/form-data" && type !== "application/x-www-form-urlencoded")
+    throw textResponse("This route takes a form.", 415);
+  try {
+    return await new Response(/** @type {Uint8Array<ArrayBuffer>} */ (bytes), {
+      headers: { "Content-Type": request.headers.get("Content-Type") ?? "" },
+    }).formData();
+  } catch {
+    throw malformedUpload("Could not read the form.");
+  }
 }
 
 /**
