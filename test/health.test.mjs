@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { databaseDown, healthResponse } from "../health.mjs";
+import { aiOutcomeCheck, databaseDown, healthResponse, recordAiOutcome } from "../health.mjs";
 
 test("a stale backup warns at 200 with ok true; a database that throws fails at 503; the backup read is kept in the cache for the TTL", async () => {
   let reads = 0;
@@ -111,4 +111,35 @@ test("a database-down error becomes a 503 the error page reads; a wrong query st
   assert.equal(/** @type {Response} */ (databaseDown(importing)).status, 503);
   const wrong = new Error("D1_ERROR: no such table: posts");
   assert.equal(databaseDown(wrong), wrong);
+});
+
+const memoryKv = () => {
+  const map = new Map();
+  return {
+    get: async (k) => map.get(k) ?? null,
+    put: async (k, v) => void map.set(k, v),
+    delete: async (k) => void map.delete(k),
+  };
+};
+
+test("aiOutcomeCheck fails after a failed call and passes again once a call succeeds", async () => {
+  const kv = memoryKv();
+  const check = aiOutcomeCheck("ask", kv);
+  assert.equal(check.name, "ai-ask");
+  assert.equal(await check.run(), true);
+  await recordAiOutcome(kv, "ask", { ok: false, kind: "spend_limit" });
+  const failed = await check.run();
+  assert.equal(failed.ok, false);
+  assert.match(failed.detail, /spend_limit/);
+  await recordAiOutcome(kv, "ask", { ok: true });
+  assert.equal(await check.run(), true);
+});
+
+test("recordAiOutcome never throws when the KV does", async () => {
+  const broken = {
+    get: async () => {
+      throw new Error("down");
+    },
+  };
+  await recordAiOutcome(broken, "ask", { ok: true }, () => {});
 });

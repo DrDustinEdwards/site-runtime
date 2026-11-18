@@ -50,6 +50,26 @@ export function healthResponse(probe?: {
 export function r2Check(name: string, bucket: { head(key: string): Promise<unknown> }): HealthCheck;
 /** A check that a KV namespace answers: a `get` of a fixed key; null passes, a throw fails. */
 export function kvCheck(name: string, kv: { get(key: string): Promise<unknown> }): HealthCheck;
+/** Keeps whether an AI feature's last real call worked in KV (a failure with its kind and time until a call succeeds; a success clears it). Never throws; runs no model. `result` is an `onResult` record from ./anthropic or `{ ok, kind }`. */
+export function recordAiOutcome(
+  kv:
+    | {
+        get(key: string): Promise<string | null>;
+        put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
+        delete(key: string): Promise<void>;
+      }
+    | undefined,
+  feature: string,
+  result: { ok: boolean; kind?: string | null },
+  log?: (line: string) => void,
+): Promise<void>;
+
+/** A check that an AI feature's last real call worked (`recordAiOutcome` keeps the last failure in KV, for a day or until a call succeeds): level warn, named `ai-<feature>`, the detail the kind and time only. */
+export function aiOutcomeCheck(
+  feature: string,
+  kv: { get(key: string): Promise<string | null> },
+): HealthCheck;
+
 /** A check that no cache purge is outstanding (`recordPurge` in ./edge-cache keeps the last failed one in KV): level warn, named "cache-purge", the detail only the time. */
 export function purgeCheck(kv: { get(key: string): Promise<string | null> }): HealthCheck;
 /**

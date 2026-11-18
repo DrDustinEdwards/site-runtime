@@ -468,6 +468,11 @@ return healthResponse({
 - `r2Check(name, bucket)` and `kvCheck(name, kv)` are the binding checks: a `head` or `get` of a fixed key, where no
   object is fine and a throw fails. `purgeCheck(kv)` is the "cache-purge" warn check: a failed cache purge (kept in KV by
   `withPurgePages`'s `kv` option, see Purging) shows until a later purge succeeds; its detail names only the time.
+- `aiOutcomeCheck(feature, kv)` is the `ai-<feature>` warn check, fed by `recordAiOutcome(kv, feature, result)` after each
+  real call (a `./anthropic` `onResult` record, or `{ ok, kind }` from any other model). A feature that fails every
+  call (a spend cap, a revoked key, a removed model) shows here while its bindings, which `aiCheck` proves, still look
+  fine. A failure is kept for a day or until a call succeeds; the detail names the kind and time, never the
+  provider's message. It runs no model.
 - `imagesCheck(name, env.IMAGES)` asks the Images binding for `info` on a 1 x 1 GIF (it reads the header and
   transforms nothing). `durableObjectCheck(name, env.ROOM)` proves the namespace is bound and mints an id with
   `idFromName`; it sends no request, which would wake an object and bill it. `queueCheck(name, env.QUEUE)`,
