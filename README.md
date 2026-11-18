@@ -1713,7 +1713,7 @@ and the delete clearing the cookies).
 `sign-in-live.mjs`) is the daily live check for sign-in and access (devkit `live/areas.json`, area 3). It sees what an
 outside request can: it sends no mail, makes no account and holds no token, and each part runs only when the site has it.
 
-- Sign-in page (`SIGN_IN_PATH`, `/login`, the same on every site): `no-store` and `noindex` (D10), an email field whose autocomplete has
+- Sign-in page (`SIGN_IN_PATH`, `/login`, the same on every site; `./sign-in-path` holds it and `CONFIRM_PATH` with no Better Auth import, for pages and links): `no-store` and `noindex` (D10), an email field whose autocomplete has
   `webauthn` (A2; a warning when it does not start with `username`), Turnstile on the page and allowed by the CSP (B5).
 - Better Auth (`/api/auth/ok`): the passkey's `rpId` is the site's host, not a workers.dev one (A1); sign-out sends
   `Clear-Site-Data` (D4); a sign-out from another origin with a cookie is 403 (D8); every cookie set is `__Secure-` or

@@ -3,10 +3,7 @@
  * acts. The sign-in link, and the email change's two links. Re-exported by `./sign-in`.
  */
 
-/** Where every site's sign-in page lives: "/login". */
-export const SIGN_IN_PATH: "/login";
-/** Where the mailed sign-in link opens unless the site names another page: "/sign-in/confirm". */
-export const CONFIRM_PATH: "/sign-in/confirm";
+export { CONFIRM_PATH, SIGN_IN_PATH } from "./sign-in-path.mjs";
 /** Where the email-change links open unless the site names another page: "/email/confirm". */
 export const EMAIL_CONFIRM_PATH: "/email/confirm";
 /** How long a sign-in link and its code work: 10 minutes. */
