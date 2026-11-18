@@ -35,6 +35,13 @@ export const EMAIL_CONFIRM_PATH = "/email/confirm";
  */
 export const SIGN_IN_EXPIRES_IN_SECONDS = 10 * 60;
 
+/**
+ * The cookie that ties a sign-in code to the browser that asked for it (`./sign-in`'s codeBrowser): Better Auth's
+ * signed cookie under its prefix, so `better-auth.code_browser` (`__Secure-` on https). A site whose server posts the
+ * code for the browser (`./sign-in-form`) passes this one cookie through, and the mail's link is not tied to it.
+ */
+export const CODE_COOKIE = "code_browser";
+
 /** The same, in words, for the mail and the page that says a link was sent. */
 export const SIGN_IN_EXPIRES_IN_WORDS = "10 minutes";
 

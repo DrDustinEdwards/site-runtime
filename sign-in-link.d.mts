@@ -9,6 +9,8 @@ export const CONFIRM_PATH: "/sign-in/confirm";
 export const EMAIL_CONFIRM_PATH: "/email/confirm";
 /** How long a sign-in link and its code work: 10 minutes. */
 export const SIGN_IN_EXPIRES_IN_SECONDS: number;
+/** The cookie name (under Better Auth's prefix) that ties a sign-in code to the browser that asked: "code_browser". */
+export const CODE_COOKIE: "code_browser";
 /** The same, in words: "10 minutes". */
 export const SIGN_IN_EXPIRES_IN_WORDS: string;
 

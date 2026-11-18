@@ -30,8 +30,7 @@ export type AuthLike = {
   options?: { baseURL?: unknown; basePath?: string };
 };
 
-export type LinkResult =
-  | "sent"
+export type LinkRefusal =
   | "limited"
   | "email-limited"
   | "check-failed"
@@ -46,9 +45,13 @@ export type CodeRefusal =
   | "email-limited"
   | "unavailable"
   | "disposable"
+  | "other-browser"
   | "failed";
 
-/** Asks Better Auth for the sign-in mail through its handler (its limiter and Turnstile check run). */
+/**
+ * Asks Better Auth for the sign-in mail through its handler (its limiter and Turnstile check run). A sent mail's
+ * `headers` hold the Set-Cookie that ties its code to this browser; the page's answer must send them.
+ */
 export function requestSignInLink(
   auth: AuthLike,
   request: Request,
@@ -59,9 +62,12 @@ export function requestSignInLink(
     newUserCallbackURL?: string;
     errorCallbackURL?: string;
   },
-): Promise<LinkResult>;
+): Promise<{ status: "sent"; headers: Headers } | { status: LinkRefusal }>;
 
-/** Signs this browser in with the six-digit code; on success, only the session's Set-Cookie headers. */
+/**
+ * Signs this browser in with the six-digit code, passing on only the cookie that says this browser asked for it; on
+ * success, only the session's Set-Cookie headers.
+ */
 export function signInWithCode(
   auth: AuthLike,
   request: Request,
@@ -78,7 +84,7 @@ export type SignInFormState = {
   codeError: string | null;
 };
 
-/** The sign-in page's whole action: a typed code (`intent=code`) or a link request. */
+/** The sign-in page's whole action: a typed code (`intent=code`) or a link request; send `headers` when present. */
 export function signInFormAction(
   auth: AuthLike,
   request: Request,
@@ -89,7 +95,10 @@ export function signInFormAction(
     errorLanding?: string;
     next?: { fallback?: string; within?: readonly string[] };
   },
-): Promise<{ location: string; headers: Headers } | { state: SignInFormState; status: number }>;
+): Promise<
+  | { location: string; headers: Headers }
+  | { state: SignInFormState; status: number; headers?: Headers }
+>;
 
 /** Starts a Google or Apple sign-in from the page's form POST; null when the provider is not set up. */
 export function startSocialSignIn(

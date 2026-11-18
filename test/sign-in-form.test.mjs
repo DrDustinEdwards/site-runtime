@@ -37,6 +37,24 @@ const page = (fields) => {
   return form;
 };
 
+/** A rate limiter that never refuses and lists every key it counted. */
+function countingLimiter() {
+  const counted = [];
+  const answer = { ok: true, used: 0, limit: 10, retryAfterSeconds: 0, window: 3600 };
+  const emailLimiter = {
+    idFromName: (name) => name,
+    get: (key) => ({ hit: async () => (counted.push(key), answer), peek: async () => answer }),
+  };
+  return { counted, emailLimiter };
+}
+
+/** The Cookie header a browser sends back after this answer's Set-Cookie. @param {Response} res */
+const cookieHeader = (res) =>
+  res.headers
+    .getSetCookie()
+    .map((c) => c.split(";")[0])
+    .join("; ");
+
 const request = () =>
   new Request("https://example.com/login", {
     method: "POST",
@@ -91,17 +109,21 @@ test("a disposable domain is caught at any depth, and a real one is not", () => 
 });
 
 test("the link request goes through the handler with only the origin, client address and agent, and the token", async () => {
-  const auth = fakeAuth(() => json(200, { status: true }));
+  const bind = "__Secure-better-auth.code_browser=b; HttpOnly; Secure; SameSite=Lax";
+  const auth = fakeAuth(() => json(200, { status: true }, { "Set-Cookie": bind }));
   const result = await signInFormAction(
     auth,
     request(),
     page({ email: " reader@example.com ", next: "//evil.example", "cf-turnstile-response": "tok" }),
     site,
   );
-  assert.deepEqual(result, {
-    state: { sent: "reader@example.com", error: null, codeError: null },
-    status: 200,
-  });
+  assert.deepEqual(result.state, { sent: "reader@example.com", error: null, codeError: null });
+  assert.equal(result.status, 200);
+  assert.deepEqual(
+    result.headers.getSetCookie(),
+    [bind],
+    "the page sends the code's browser cookie",
+  );
   const [{ path, headers, body }] = auth.seen;
   assert.equal(path, "/api/auth/sign-in/magic-link");
   assert.equal(headers.get("cf-connecting-ip"), "203.0.113.9");
@@ -147,12 +169,28 @@ test("a right code redirects with only the session cookies; a wrong one stays on
   assert.equal(ok.location, "/passkey?next=%2Fconsole");
   assert.deepEqual(ok.headers.getSetCookie(), ["session=s; HttpOnly; Secure; SameSite=Lax"]);
   assert.deepEqual(signedIn.seen[0].body, { email: "a@example.com", otp: "123456" });
+  // Only the cookie that says this browser asked for the code goes on, never the browser's others.
+  const withBinding = new Request(request(), {
+    headers: {
+      ...Object.fromEntries(request().headers),
+      cookie: "other=1; __Secure-better-auth.code_browser=b",
+    },
+  });
+  const bound = fakeAuth(() => json(400, { code: "INVALID_OTP" }));
+  await signInFormAction(
+    bound,
+    withBinding,
+    page({ intent: "code", email: "a@example.com", code: "000000" }),
+    site,
+  );
+  assert.equal(bound.seen[0].headers.get("cookie"), "__Secure-better-auth.code_browser=b");
 
   for (const [code, kind] of [
     ["INVALID_OTP", "wrong"],
     ["OTP_EXPIRED", "expired"],
     ["TOO_MANY_ATTEMPTS", "spent"],
     ["disposable_email", "disposable"],
+    ["CODE_OTHER_BROWSER", "other-browser"],
   ]) {
     const result = await signInFormAction(
       fakeAuth(() => json(400, { code })),
@@ -385,15 +423,7 @@ test("naming a person spends none of their sign-in budget: a forged ID token, a 
   const { emailKey } = await import("../rate-limit/index.mjs");
   // Google's keys answer empty, so no ID token checks out.
   t.mock.method(globalThis, "fetch", async () => Response.json({ keys: [] }));
-  const counted = [];
-  const answer = { ok: true, used: 0, limit: 10, retryAfterSeconds: 0, window: 3600 };
-  const emailLimiter = {
-    idFromName: (name) => name,
-    get: (key) => ({
-      hit: async () => (counted.push(key), answer),
-      peek: async () => answer,
-    }),
-  };
+  const { counted, emailLimiter } = countingLimiter();
   const options = await signInOptions(
     {
       BETTER_AUTH_URL: "https://example.com",
@@ -429,13 +459,104 @@ test("naming a person spends none of their sign-in budget: a forged ID token, a 
   );
   assert.ok(!counted.includes(await emailKey("sign-in-fail", victim)), "a forged token counted");
 
-  const wrongCode = () => auth.api.signInEmailOTP({ body: { email: victim, otp: "000000" } });
+  const wrongCode = (cookie = "") =>
+    auth.api.signInEmailOTP({
+      body: { email: victim, otp: "000000" },
+      headers: new Headers({ cookie }),
+    });
   await assert.rejects(wrongCode());
   assert.ok(!counted.includes(await emailKey("code-email", victim)), "a code never sent counted");
-  await auth.api.signInMagicLink({ body: { email: victim }, headers: new Headers() });
-  await assert.rejects(wrongCode());
+  const asked = await auth.api.signInMagicLink({
+    body: { email: victim },
+    headers: new Headers(),
+    asResponse: true,
+  });
+  await assert.rejects(wrongCode(cookieHeader(asked)));
   assert.ok(
     counted.includes(await emailKey("code-email", victim)),
     "a wrong live code still counts",
+  );
+});
+
+test("PLANT: the code works only in the browser that asked for it, and another browser spends none of its tries", async () => {
+  const { betterAuth } = await import("better-auth");
+  const { memoryAdapter } = await import("better-auth/adapters/memory");
+  const { signInOptions } = await import("../sign-in.mjs");
+  const mails = [];
+  const options = await signInOptions(
+    { BETTER_AUTH_URL: "https://example.com" },
+    {
+      siteName: "Sample",
+      turnstile: "off-until-keys",
+      appCode: true,
+      emailLimiter: countingLimiter().emailLimiter,
+      sendMagicLink: async (mail) => void mails.push(mail),
+      sendSignInCode: async (mail) => void mails.push(mail),
+    },
+  );
+  const mem = { user: [], session: [], account: [], verification: [], passkey: [] };
+  const auth = betterAuth({
+    ...options,
+    database: memoryAdapter(mem),
+    secret: "sample-secret-sample-secret-sample-secret",
+    baseURL: "https://example.com",
+    rateLimit: { enabled: false },
+  });
+  const email = "reader@example.com";
+  const post = (path, body, cookie = "") =>
+    auth.handler(
+      new Request(`https://example.com/api/auth${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", origin: "https://example.com", cookie },
+        body: JSON.stringify(body),
+      }),
+    );
+  const asked = await post("/sign-in/magic-link", { email, callbackURL: "/" });
+  assert.equal(asked.status, 200);
+  const mine = cookieHeader(asked);
+  assert.match(mine, /code_browser=/);
+  const { code } = mails.at(-1);
+
+  // Another browser, with the right code four times: refused each time, and the code is untouched.
+  for (let i = 0; i < 4; i++) {
+    const other = await post("/sign-in/email-otp", { email, otp: code });
+    assert.equal(other.status, 400);
+    assert.equal((await other.json()).code, "CODE_OTHER_BROWSER");
+  }
+  const forged = await post(
+    "/sign-in/email-otp",
+    { email, otp: code },
+    mine.replace(/=[^;]*/, "=forged"),
+  );
+  assert.equal((await forged.json()).code, "CODE_OTHER_BROWSER");
+
+  const signedIn = await post("/sign-in/email-otp", { email, otp: code }, mine);
+  assert.equal(signedIn.status, 200);
+  assert.ok(
+    signedIn.headers.getSetCookie().some((c) => /code_browser=;/.test(c) && /Max-Age=0/i.test(c)),
+    "the binding is spent with the sign-in",
+  );
+  assert.ok(!mem.verification.some((row) => row.identifier.startsWith("code-browser:")));
+
+  // A newer request in another browser moves the binding there: this browser's cookie no longer works.
+  const first = cookieHeader(await post("/sign-in/magic-link", { email, callbackURL: "/" }));
+  const second = cookieHeader(await post("/sign-in/magic-link", { email, callbackURL: "/" }));
+  const newest = mails.at(-1).code;
+  assert.equal(
+    (await (await post("/sign-in/email-otp", { email, otp: newest }, first)).json()).code,
+    "CODE_OTHER_BROWSER",
+  );
+  assert.equal((await post("/sign-in/email-otp", { email, otp: newest }, second)).status, 200);
+
+  // The phone app's code is bound the same way.
+  const app = await post("/email-otp/send-verification-otp", { email, type: "sign-in" });
+  const appCode = mails.at(-1).code;
+  assert.equal(
+    (await (await post("/sign-in/email-otp", { email, otp: appCode })).json()).code,
+    "CODE_OTHER_BROWSER",
+  );
+  assert.equal(
+    (await post("/sign-in/email-otp", { email, otp: appCode }, cookieHeader(app))).status,
+    200,
   );
 });
