@@ -74,6 +74,18 @@ test("readForm and readJson read to the ceiling and throw the refusal over it", 
   assert.equal((await readForm(form, 100)).get("b"), "two");
   const big = new Request("https://site.example.com/", { method: "POST", body: "x".repeat(50) });
   await assert.rejects(readForm(big, 10), (r) => r instanceof Response && r.status === 413);
+  const odd = new Request("https://site.example.com/", {
+    method: "POST",
+    headers: { "Content-Type": "application/octet-stream" },
+    body: "a=1",
+  });
+  await assert.rejects(readForm(odd, 100), (r) => r instanceof Response && r.status === 415);
+  const broken = new Request("https://site.example.com/", {
+    method: "POST",
+    headers: { "Content-Type": "multipart/form-data; boundary=x" },
+    body: "not multipart",
+  });
+  await assert.rejects(readForm(broken, 100), (r) => r instanceof Response && r.status === 400);
   const json = (/** @type {string} */ type) =>
     new Request("https://site.example.com/", {
       method: "POST",
