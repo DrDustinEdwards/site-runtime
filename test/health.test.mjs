@@ -131,7 +131,11 @@ test("aiOutcomeCheck fails after a failed call and passes again once a call succ
   const failed = await check.run();
   assert.equal(failed.ok, false);
   assert.match(failed.detail, /spend_limit/);
+  await recordAiOutcome(kv, "ask", { ok: false, kind: "aborted" });
+  assert.match((await check.run()).detail, /spend_limit/);
   await recordAiOutcome(kv, "ask", { ok: true });
+  assert.equal(await check.run(), true);
+  await recordAiOutcome(kv, "ask", { ok: false, kind: "aborted" });
   assert.equal(await check.run(), true);
 });
 
