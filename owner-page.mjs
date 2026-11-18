@@ -226,8 +226,7 @@ ${
     : log === "owner"
       ? "<p>The tool-call log holds everyone's calls, so only the server's owner reads it.</p>"
       : rows.length
-        ? `<p>Times in UTC.</p>
-<div class="scroll"><table><thead><tr><th>Time</th><th>Event</th><th>Caller</th><th>Tool</th><th>Result</th></tr></thead><tbody>
+        ? `<div class="scroll"><table><thead><tr><th>Time (UTC)</th><th>Event</th><th>Caller</th><th>Tool</th><th>Result</th></tr></thead><tbody>
 ${logRows}
 </tbody></table></div>
 ${older}`
