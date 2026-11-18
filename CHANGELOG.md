@@ -1,5 +1,12 @@
 # @dustinedwards/site-runtime
 
+## 0.168.0
+
+### Minor Changes
+
+- `./health` gains `recordAiOutcome(kv, feature, result)` and `aiOutcomeCheck(feature, kv)`: the `ai-<feature>` warn check shows an AI feature whose last real call failed (a spend cap, a revoked key, a removed model) until a call succeeds or a day passes, while `aiCheck` still only proves the binding. It runs no model.
+- `SIGN_IN_PATH` ("/login", with `CONFIRM_PATH` in the browser module, exported from `./sign-in` and, for browser code, `./sign-in-client`) is where every site's sign-in page lives. The daily live sign-in check now probes only that path (it tried `/login`, `/signin` and `/sign-in`) and the confirm page beside it or at `CONFIRM_PATH`.
+
 ## 0.167.0
 
 ### Minor Changes
