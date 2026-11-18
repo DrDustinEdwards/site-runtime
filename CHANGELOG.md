@@ -1,5 +1,25 @@
 # @dustinedwards/site-runtime
 
+## 0.165.0
+
+### Minor Changes
+
+- The six-digit sign-in code works only in the browser that asked for it (the security review's finding 2, Dustin's yes 2026-11-18). The request that mails a code sets a signed `code_browser` cookie, and a code typed in any other browser is refused with `CODE_OTHER_BROWSER` before it is read, so it spends none of the code's tries. A guesser must now ask for every code it tries, which needs a Turnstile pass, spends the address's five mails an hour and sends the person a mail. The emailed link still works in any browser.
+  Breaking for a site whose server posts the form:
+  - `signInFormAction` answers a sent mail with `headers`; send them with the page (`data(result.state, { status: result.status, headers: result.headers })`).
+  - `requestSignInLink` answers `{ status: "sent", headers }` or `{ status }`, like `signInWithCode`; `LinkResult` is now `LinkRefusal`.
+  - `CodeRefusal` has `"other-browser"`, with its words in `SIGN_IN_WORDS.code`.
+    A site whose browser calls Better Auth itself (Foxing's web page and app) needs no change.
+- Four small sign-in fixes from the security review.
+  - An `AGENT_KEY_*` secret under 32 characters is no longer a key, as for `MCP_PROBE_KEY` and the operator token.
+  - The owner page asks `admit` and `readsLog` on every request, so an admin taken off ADMIN_EMAIL or CO_OWNER_EMAILS loses it at once instead of after up to 30 minutes.
+  - `remoteKeys` (the MCP sign-in's Access keys) refetches after an hour, like `./access`. `KEYS_MAX_AGE_MS` now lives in `./access-login` (moved from `./access`).
+  - Breaking: `registrationLimited(request, kv, configured, now?)` takes the registration allowlist. Every registration still counts toward five an hour per address, but only an allowed one counts toward the thirty a day, so junk cannot close registration for everyone. Pass the same allowlist the provider's callback checks.
+
+### Patch Changes
+
+- A failed sign-in counts against an address only when the request proved something about it. A Google or Apple ID token that does not check out no longer counts against the address it names, and a wrong six-digit code counts against the address only while a code for it is live. Before this, anyone could lock a known person out of passkey, Google, Apple and code sign-in by naming them. Unproven failures are held by the per-IP limit.
+
 ## 0.164.1
 
 ### Patch Changes
