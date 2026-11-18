@@ -1327,7 +1327,11 @@ const auth = betterAuth({
 - Email link and code: one mail, sent by the site's `sendMagicLink({ email, url, token, code })`, carries Better
   Auth's magic link and a six-digit code (its email OTP). The link signs in the browser that opens it, often the mail
   app's rather than the tab that asked (a private window, a phone); the code, posted as `{ email, otp }` to
-  `SIGN_IN_CODE_PATH` (`/sign-in/email-otp`), signs in the tab that asked. Both work once and last
+  `SIGN_IN_CODE_PATH` (`/sign-in/email-otp`), signs in the tab that asked, and only that browser: the request that
+  mails a code sets a signed `CODE_COOKIE` whose value's SHA-256 is stored beside it, and a code from any other browser
+  is refused (400 `CODE_OTHER_BROWSER`) before it is read, spending no tries (Dustin's yes, 2026-11-18; NIST SP
+  800-63B-4 3.2.5, a typed code is not otherwise bound to its session). The newest request moves the binding, as it
+  replaces the code; the link is not bound. Both work once and last
   `SIGN_IN_EXPIRES_IN_SECONDS` (10 minutes, NIST SP 800-63B-4's limit for an out-of-band sign-in;
   `SIGN_IN_EXPIRES_IN_WORDS` for the mail; Better Auth's default 5 ran out in Foxhound's live test). The link's token and the code are stored hashed (the magic link's `storeToken: "hashed"`,
   SHA-256; the email OTP's `storeOTP: "hashed"`), so a read of the `verification` table signs nobody in. Three wrong
@@ -1650,16 +1654,19 @@ export async function action({ request, context }: Route.ActionArgs) {
     next: { fallback: "/console" },
   });
   if ("location" in result) throw redirect(result.location, { headers: result.headers });
-  return data(result.state, { status: result.status });
+  return data(result.state, { status: result.status, headers: result.headers });
 }
 ```
 
 - `signInFormAction(auth, request, form, site)`: a post with `intent=code` signs in with the typed code
   (`signInWithCode`); any other asks for the mail (`requestSignInLink`). Both go through `auth.handler`, never
   `auth.api`, because only the handler runs Better Auth's limiter and the Turnstile check (Grok audit TX-4). The handler
-  gets the origin, `cf-connecting-ip` and the user agent, nothing else of the browser's; a signed-in code answers only
-  the session's `Set-Cookie`. A link request says "sent" for every address. The answer is `{ state: { sent, error,
-  codeError }, status }` for the page, or `{ location, headers }` for the redirect.
+  gets the origin, `cf-connecting-ip` and the user agent, and with a typed code the one `CODE_COOKIE`, nothing else of
+  the browser's; a signed-in code answers only the session's `Set-Cookie`. A link request says "sent" for every
+  address. The answer is `{ state: { sent, error, codeError }, status, headers? }` for the page, or `{ location,
+  headers }` for the redirect. A sent mail's `headers` carry the cookie that ties the code to this browser: the page
+  must send them, or its code is refused (`other-browser`). `requestSignInLink` answers `{ status: "sent", headers }` or
+  `{ status }` the same way.
 - `SIGN_IN_WORDS` (`./sign-in-words`): one sentence per answer (link, code and passkey refusals), and
   `signInErrorWords(code, { siteName, settings })` for a page's `?error=`, `passkeyErrorWords(error)` for a passkey that did not sign in (null when the person canceled), and
   `emailLinkWords({ siteName, settings })` for the email-change page.

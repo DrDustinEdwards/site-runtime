@@ -19,7 +19,7 @@ import { DISPOSABLE_DOMAINS } from "./disposable-domains.mjs";
 import { isEmail, isRecipientSuppressed } from "./email.mjs";
 import { OWASP_EVENTS, logEvent, requestFields } from "./log.mjs";
 import { SessionNotFresh, requireFreshSession, revokeSessionById } from "./sign-in-account.mjs";
-import { UNDELIVERABLE_EMAIL, emailConfirmURL } from "./sign-in-link.mjs";
+import { CODE_COOKIE, UNDELIVERABLE_EMAIL, emailConfirmURL } from "./sign-in-link.mjs";
 import { isSameOriginPath } from "./url.mjs";
 import {
   ACCOUNT_WORDS,
@@ -133,15 +133,31 @@ function handlerURL(auth, request, path) {
 
 /**
  * The headers Better Auth's handler is handed for a signed-out POST: the origin it checks, the address its limiter
- * counts and the user agent.
+ * counts and the user agent; and, for a typed code, the one cookie that says this browser asked for it (CODE_COOKIE,
+ * under any prefix), never the browser's other cookies.
  * @param {Request} request
+ * @param {{ codeCookie?: boolean }} [options]
  */
-function forwardedHeaders(request) {
+function forwardedHeaders(request, { codeCookie = false } = {}) {
   const headers = new Headers({ "Content-Type": "application/json" });
   for (const name of ["origin", "cf-connecting-ip", "user-agent"]) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
   }
+  if (codeCookie) {
+    const held = (request.headers.get("cookie") ?? "")
+      .split(";")
+      .map((part) => part.trim())
+      .filter((part) => part.split("=")[0].endsWith(`.${CODE_COOKIE}`));
+    if (held.length) headers.set("cookie", held.join("; "));
+  }
+  return headers;
+}
+
+/** A handler answer's Set-Cookie headers, for the page's own answer. @param {Response} res */
+function setCookies(res) {
+  const headers = new Headers();
+  for (const cookie of res.headers.getSetCookie()) headers.append("Set-Cookie", cookie);
   return headers;
 }
 
@@ -158,18 +174,20 @@ async function errorCode(res) {
 
 /**
  * @typedef {{ handler: (request: Request) => Promise<Response>, options?: { baseURL?: unknown, basePath?: string } }} AuthLike
- * @typedef {"sent" | "limited" | "email-limited" | "check-failed" | "unavailable" | "undeliverable" | "failed"} LinkResult
- * @typedef {"wrong" | "expired" | "spent" | "limited" | "email-limited" | "unavailable" | "disposable" | "failed"} CodeRefusal
+ * @typedef {"limited" | "email-limited" | "check-failed" | "unavailable" | "undeliverable" | "failed"} LinkRefusal
+ * @typedef {"wrong" | "expired" | "spent" | "limited" | "email-limited" | "unavailable" | "disposable" | "other-browser" | "failed"} CodeRefusal
  */
 
 /**
  * Asks Better Auth for the sign-in mail (the link and its code). `callbackURL` is where the link lands,
  * `newUserCallbackURL` where it lands for a new account (default the same), `errorCallbackURL` where a spent or
- * expired link goes (the confirm page, which says which). Each is a path or an absolute URL on the site.
+ * expired link goes (the confirm page, which says which). Each is a path or an absolute URL on the site. A sent mail's
+ * answer carries the Set-Cookie that ties its code to this browser (`./sign-in`'s codeBrowser): the page's answer must
+ * send it, or the code typed in this tab is refused.
  * @param {AuthLike} auth
  * @param {Request} request
  * @param {{ email: string, captchaToken?: string, callbackURL: string, newUserCallbackURL?: string, errorCallbackURL?: string }} link
- * @returns {Promise<LinkResult>}
+ * @returns {Promise<{ status: "sent", headers: Headers } | { status: LinkRefusal }>}
  */
 export async function requestSignInLink(auth, request, link) {
   const headers = forwardedHeaders(request);
@@ -187,22 +205,24 @@ export async function requestSignInLink(auth, request, link) {
         }),
       }),
     );
-    if (res.ok) return "sent";
+    if (res.ok) return { status: "sent", headers: setCookies(res) };
     const code = await errorCode(res);
     // Better Auth's per-IP limit, or the address's five mails an hour (EMAIL_RATE_LIMITED), which says "later".
-    if (res.status === 429) return code === "EMAIL_RATE_LIMITED" ? "email-limited" : "limited";
+    if (res.status === 429)
+      return { status: code === "EMAIL_RATE_LIMITED" ? "email-limited" : "limited" };
     // The captcha plugin's refusals: no token, or one Cloudflare would not pass.
-    if (code === "MISSING_RESPONSE" || code === "VERIFICATION_FAILED") return "check-failed";
+    if (code === "MISSING_RESPONSE" || code === "VERIFICATION_FAILED")
+      return { status: "check-failed" };
     // Turnstile's keys are missing (TURNSTILE_NOT_SET, failing closed), or the per-address counter is down.
-    if (res.status === 503) return "unavailable";
+    if (res.status === 503) return { status: "unavailable" };
     // Email Service has the address on its suppression list (./sign-in, UNDELIVERABLE_EMAIL); ./email logged it.
-    if (code === UNDELIVERABLE_EMAIL) return "undeliverable";
+    if (code === UNDELIVERABLE_EMAIL) return { status: "undeliverable" };
     logEvent(
       "sign_in_link_failed",
       { ...requestFields(request), status: res.status, reason: code },
       { level: "error" },
     );
-    return "failed";
+    return { status: "failed" };
   } catch {
     // The site's sendMagicLink throws with its reason, never the link; the address is in the request, so not here.
     logEvent(
@@ -210,7 +230,7 @@ export async function requestSignInLink(auth, request, link) {
       { ...requestFields(request), status: "threw" },
       { level: "error" },
     );
-    return "failed";
+    return { status: "failed" };
   }
 }
 
@@ -229,15 +249,11 @@ export async function signInWithCode(auth, request, { email, code }) {
     const res = await auth.handler(
       new Request(handlerURL(auth, request, CODE_PATH), {
         method: "POST",
-        headers: forwardedHeaders(request),
+        headers: forwardedHeaders(request, { codeCookie: true }),
         body: JSON.stringify({ email, otp: code }),
       }),
     );
-    if (res.ok) {
-      const headers = new Headers();
-      for (const cookie of res.headers.getSetCookie()) headers.append("Set-Cookie", cookie);
-      return { status: "signed-in", headers };
-    }
+    if (res.ok) return { status: "signed-in", headers: setCookies(res) };
     const reason = await errorCode(res);
     // The status and Better Auth's code only: the body can carry the address.
     logEvent(
@@ -251,6 +267,7 @@ export async function signInWithCode(auth, request, { email, code }) {
     if (reason === "OTP_EXPIRED") return { status: "expired" };
     if (reason === "TOO_MANY_ATTEMPTS") return { status: "spent" };
     if (reason === DISPOSABLE_EMAIL) return { status: "disposable" };
+    if (reason === "CODE_OTHER_BROWSER") return { status: "other-browser" };
     // The wrong-code counter could not answer, so every code is refused rather than allow unlimited guesses.
     if (res.status === 503) return { status: "unavailable" };
     return { status: "failed" };
@@ -278,13 +295,14 @@ export const SIGN_IN_INTENT = "intent";
  * link. `landing(next)` is where a sign-in by link or code goes (the passkey offer, or the page itself), from the
  * form's `next` checked by safeNextPath with `next`'s options; `newUserLanding` where a new account's link goes.
  * On a signed-in code the result has `location` and `headers` for the site's redirect; otherwise `state` and the
- * HTTP `status` for the page.
+ * HTTP `status` for the page, and after a sent mail `headers` too, which the page's answer must send (the cookie that
+ * ties the code to this browser).
  * @param {AuthLike} auth
  * @param {Request} request
  * @param {FormData} form
  * @param {{ landing: (next: string) => string, newUserLanding?: (next: string) => string, errorLanding?: string,
  *   next?: { fallback?: string, within?: readonly string[] } }} site
- * @returns {Promise<{ location: string, headers: Headers } | { state: SignInFormState, status: number }>}
+ * @returns {Promise<{ location: string, headers: Headers } | { state: SignInFormState, status: number, headers?: Headers }>}
  */
 export async function signInFormAction(auth, request, form, site) {
   const email = String(form.get("email") ?? "").trim();
@@ -319,17 +337,17 @@ export async function signInFormAction(auth, request, form, site) {
     newUserCallbackURL: (site.newUserLanding ?? site.landing)(next),
     errorCallbackURL: site.errorLanding,
   });
-  if (result === "sent") return answer({ sent: email });
-  const status = result.endsWith("limited")
+  if (result.status === "sent") return { ...answer({ sent: email }), headers: result.headers };
+  const status = result.status.endsWith("limited")
     ? 429
-    : result === "check-failed"
+    : result.status === "check-failed"
       ? 400
-      : result === "unavailable"
+      : result.status === "unavailable"
         ? 503
-        : result === "undeliverable"
+        : result.status === "undeliverable"
           ? 422
           : 500;
-  return answer({ error: SIGN_IN_WORDS.link[result] }, status);
+  return answer({ error: SIGN_IN_WORDS.link[result.status] }, status);
 }
 
 /**

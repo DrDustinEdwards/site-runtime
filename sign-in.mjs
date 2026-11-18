@@ -16,6 +16,15 @@
  *   the link still works, and a wrong code counts against the address too, across links (CODE_EMAIL_RULES). Only the
  *   link request mails: the email OTP plugin's own send endpoints are off (disabledPaths), so the Turnstile check and
  *   the five a minute on the link request cover every sign-in mail.
+ * - THE CODE WORKS ONLY IN THE BROWSER THAT ASKED (`codeBrowser`, Dustin's yes 2026-11-18, the Mythos review's
+ *   finding 2): the request that mails a code sets a signed CODE_COOKIE holding a random value whose SHA-256 is stored
+ *   beside the code, and a code typed with no cookie, or another browser's, is refused (400 CODE_OTHER_BROWSER) before
+ *   the code is read, so it spends none of the code's tries or the address's. NIST SP 800-63B-4 3.2.5: a typed code is
+ *   not bound to the session it signs in; this binds it. A guesser must now ask for each code it guesses, which needs
+ *   a Turnstile pass, spends the address's five mails an hour and puts a mail in the person's inbox. The newest request
+ *   replaces the binding, as it replaces the code. The link is not bound: it is a long random token, and it opens in
+ *   the mail app's browser by design. The phone app's code (`appCode`) is bound the same way; its client keeps the
+ *   cookie (Better Auth's Expo client stores every Set-Cookie).
  * - THE LINK OPENS A PAGE, NOT A SIGN-IN: Better Auth's link is a GET that signs in, so a mail scanner that opens every
  *   link would spend it. The mailed URL is the site's confirm page (`confirmPath`, CONFIRM_PATH by default) with the
  *   token in its query; the page shows one button, and its route action passes the POST to confirmSignInLink
@@ -89,7 +98,8 @@ import { deleteSessionCookie } from "better-auth/cookies";
 import { captcha, emailOTP, magicLink } from "better-auth/plugins";
 
 import { appleClientSecret } from "./apple-secret.mjs";
-import { base64url, fromBase64urlText } from "./encoding.mjs";
+import { safeEqual } from "./compare.mjs";
+import { base64url, fromBase64urlText, sha256Hex } from "./encoding.mjs";
 import { isRecipientSuppressed } from "./email.mjs";
 import { LOGOUT_HEADERS } from "./headers.mjs";
 import { OWASP_EVENTS, logEvent } from "./log.mjs";
@@ -114,6 +124,7 @@ import {
   signedInDevices,
 } from "./sign-in-account.mjs";
 import {
+  CODE_COOKIE,
   CONFIRM_PATH,
   SIGN_IN_EXPIRES_IN_SECONDS,
   UNDELIVERABLE_EMAIL,
@@ -368,7 +379,7 @@ export async function signInOptions(
       }),
     );
   } else plugins.push(noTurnstile(turnstile === TURNSTILE_OFF_UNTIL_KEYS));
-  plugins.push(emailLimit(emailLimiter));
+  plugins.push(codeBrowser(), emailLimit(emailLimiter));
 
   // The provider's answer names the address a failed callback counts against (emailLimit).
   const mapProfileToUser = providerAddress(emailLimiter);
@@ -1077,6 +1088,87 @@ async function hasPendingCode(ctx, email) {
     `sign-in-otp-${email.toLowerCase()}`,
   );
   return Boolean(row) && new Date(row.expiresAt) > new Date();
+}
+
+/**
+ * Where the code's browser binding is stored, in Better Auth's verification table. Not under the email OTP plugin's
+ * `<type>-otp-<address>`, which an address such as `browser-<address>` could reach.
+ */
+const codeBrowserId = (/** @type {string} */ email) => `code-browser:${email.toLowerCase()}`;
+
+/**
+ * The code works only in the browser that asked for it (see the top of this file). After a request that mailed a
+ * sign-in code, the binding is made; before a typed code is read, it is checked; after a sign-in by code, it is spent.
+ */
+function codeBrowser() {
+  /** @param {any} ctx */
+  const cookieOf = (ctx) =>
+    ctx.context.createAuthCookie(CODE_COOKIE, { maxAge: SIGN_IN_EXPIRES_IN_SECONDS });
+  return {
+    id: "sign-in-code-browser",
+    hooks: {
+      before: [
+        {
+          /** @param {{ path?: string }} ctx */
+          matcher: (ctx) => ctx.path === SIGN_IN_CODE_PATH,
+          handler: createAuthMiddleware(async (ctx) => {
+            const email = ctx.body?.email;
+            const held = await Promise.resolve(
+              ctx.getSignedCookie(cookieOf(ctx).name, ctx.context.secret),
+            ).catch(() => null);
+            const row =
+              typeof email === "string" && email
+                ? await ctx.context.internalAdapter.findVerificationValue(codeBrowserId(email))
+                : null;
+            const bound =
+              typeof held === "string" &&
+              held &&
+              row &&
+              new Date(row.expiresAt) > new Date() &&
+              (await safeEqual(await sha256Hex(held), String(row.value)));
+            if (bound) return;
+            await logAuthEvent({
+              event: OWASP_EVENTS.signInFailure,
+              fields: { via: "code", code: "CODE_OTHER_BROWSER" },
+              level: "warn",
+              email,
+            });
+            throw new APIError("BAD_REQUEST", {
+              code: "CODE_OTHER_BROWSER",
+              message:
+                "Type the code in the browser that asked for it, or use the link in the email.",
+            });
+          }),
+        },
+      ],
+      after: [
+        {
+          /** @param {{ path?: string, body?: { type?: unknown } }} ctx */
+          matcher: (ctx) =>
+            ctx.path === "/sign-in/magic-link" ||
+            (ctx.path === APP_CODE_PATH && ctx.body?.type === "sign-in") ||
+            ctx.path === SIGN_IN_CODE_PATH,
+          handler: createAuthMiddleware(async (ctx) => {
+            const email = ctx.body?.email;
+            if (typeof email !== "string" || !email || !outcome(ctx.context.returned).ok) return;
+            const cookie = cookieOf(ctx);
+            await ctx.context.internalAdapter.deleteVerificationByIdentifier(codeBrowserId(email));
+            if (ctx.path === SIGN_IN_CODE_PATH) {
+              ctx.setCookie(cookie.name, "", { ...cookie.attributes, maxAge: 0 });
+              return;
+            }
+            const held = base64url(crypto.getRandomValues(new Uint8Array(32)));
+            await ctx.context.internalAdapter.createVerificationValue({
+              identifier: codeBrowserId(email),
+              value: await sha256Hex(held),
+              expiresAt: new Date(Date.now() + SIGN_IN_EXPIRES_IN_SECONDS * 1000),
+            });
+            await ctx.setSignedCookie(cookie.name, held, ctx.context.secret, cookie.attributes);
+          }),
+        },
+      ],
+    },
+  };
 }
 
 /** The endpoints whose failures count against an address and a passkey. */

@@ -30,6 +30,7 @@ export const SIGN_IN_WORDS: Readonly<{
       | "email-limited"
       | "unavailable"
       | "disposable"
+      | "other-browser"
       | "failed",
       string
     >

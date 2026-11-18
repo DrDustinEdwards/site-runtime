@@ -44,6 +44,8 @@ export const SIGN_IN_WORDS = Object.freeze({
     unavailable:
       "Codes can't be checked right now. Use the link in the email, or try again in a few minutes.",
     disposable: DISPOSABLE_WORDS,
+    "other-browser":
+      "That code works only in the browser that asked for it. Type it there, or use the link in the email.",
     failed: "That sign-in did not complete. Try again, or use the link in the email.",
   }),
   passkey: Object.freeze({
