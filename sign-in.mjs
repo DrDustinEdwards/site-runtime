@@ -22,9 +22,10 @@
  *   (`./sign-in-link.mjs`), which runs the verify. A GET of the page signs nobody in.
  * - PER ADDRESS, AS WELL AS PER IP (`emailLimiter`, the site's RateLimiter Durable Object): five sign-in mails an hour
  *   per address, so someone spread over many addresses cannot bomb one inbox; three wrong codes an hour and ten a day
- *   per address, counted across links, so a new link brings a new code but no fresh tries; ten failed passkey or
- *   social sign-ins an hour per address (a Google or Apple callback counts once the provider has named the address)
- *   and 100 a month per passkey (NIST SP 800-63B-4's cap). Checked in before hooks,
+ *   per address, counted across links while a code for it is live, so a new link brings a new code but no fresh
+ *   tries; ten failed passkey or social sign-ins an hour per address, counted only once the request proved the address
+ *   (a real passkey's owner, or the address Google or Apple answered a callback with), so naming a person spends
+ *   nothing of theirs; and 100 a month per passkey (NIST SP 800-63B-4's cap). Checked in before hooks,
  *   so the form's auth.api call and a POST straight to /api/auth spend the same budget. A failing counter lets a mail
  *   or a passkey through (a Durable Object hiccup must never lock a person out, Foxhound's RULES.md 4.10), but refuses
  *   a typed code, which is the one thing a guesser can try a million of; the link in the mail still works.
@@ -1036,10 +1037,12 @@ function providerAddress(namespace) {
 }
 
 /**
- * The address a failed passkey or social sign-in counts against, and the passkey's own key: the passkey's owner (by
- * the credential id in the body), the address in an ID token (the app's Google or Apple sign-in, read unchecked: it
- * only names a counter), or the address the provider answered a web callback with (`providerAddress`). Before the
- * provider answers, a callback names no address, so only the per-IP limit holds it.
+ * The address a failed passkey or social sign-in counts against, and the passkey's own key. A failure counts against
+ * an address only when the request proved something about it, so nobody can spend a person's budget by naming them
+ * (the Mythos review's finding 1, 2026-11-18): a passkey's owner, by a credential id that is a real passkey, or the
+ * address the provider answered a web callback with (`providerAddress`), after the provider checked the person. The
+ * app's ID token names an address it has not proved (it fails before its signature checks out), and a callback
+ * before the provider answers names none, so Better Auth's per-IP limit is all that holds those.
  * @param {any} ctx
  * @returns {Promise<{ address: string | null, passkey: string | null }>}
  */
@@ -1059,11 +1062,21 @@ async function failureKeys(ctx) {
       passkey: await emailKey("passkey-fail", id),
     };
   }
-  const token = ctx.body?.idToken?.token;
-  return {
-    address: typeof token === "string" ? await emailKey("sign-in-fail", emailInToken(token)) : null,
-    passkey: null,
-  };
+  return { address: null, passkey: null };
+}
+
+/**
+ * Whether the address has a live sign-in code, as the email OTP plugin stores it. A wrong code counts against an
+ * address only then: a code typed when none was sent proves nothing about the address, so it is held per IP alone.
+ * After a wrong guess the plugin puts the code back with one more try spent, so the after hook still finds it.
+ * @param {any} ctx @param {unknown} email
+ */
+async function hasPendingCode(ctx, email) {
+  if (typeof email !== "string" || !email) return false;
+  const row = await ctx.context.internalAdapter.findVerificationValue(
+    `sign-in-otp-${email.toLowerCase()}`,
+  );
+  return Boolean(row) && new Date(row.expiresAt) > new Date();
 }
 
 /** The endpoints whose failures count against an address and a passkey. */
@@ -1165,7 +1178,7 @@ function emailLimit(namespace) {
               if (ctx.context.newSession || outcome(ctx.context.returned).ok) return;
               if (ctx.path === SIGN_IN_CODE_PATH) {
                 const key = await emailKey("code-email", ctx.body?.email);
-                if (key)
+                if (key && (await hasPendingCode(ctx, ctx.body?.email)))
                   await limit(namespace, key, [...CODE_EMAIL_RULES], { onUnavailable: "allow" });
                 return;
               }
