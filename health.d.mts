@@ -52,13 +52,7 @@ export function r2Check(name: string, bucket: { head(key: string): Promise<unkno
 export function kvCheck(name: string, kv: { get(key: string): Promise<unknown> }): HealthCheck;
 /** Keeps whether an AI feature's last real call worked in KV (a failure with its kind and time until a call succeeds; a success clears it). Never throws; runs no model. `result` is an `onResult` record from ./anthropic or `{ ok, kind }`. */
 export function recordAiOutcome(
-  kv:
-    | {
-        get(key: string): Promise<string | null>;
-        put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
-        delete(key: string): Promise<void>;
-      }
-    | undefined,
+  kv: import("./owner-page.d.mts").OwnerKv | undefined,
   feature: string,
   result: { ok: boolean; kind?: string | null },
   log?: (line: string) => void,
