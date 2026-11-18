@@ -82,8 +82,8 @@ export function withinLimit(size, access) {
 
 /**
  * Whether `update` changes only suggestions, and only the suggester's own: with every suggestion
- * rejected the document reads the same before and after, the room's own map is untouched, and nobody
- * else has more suggested. Tried on a copy, so a refused update never reaches the room.
+ * rejected the document reads the same before and after, the room's own map is untouched, and everyone
+ * else's suggestions are as they were. Tried on a copy, so a refused update never reaches the room.
  * @param {import("./core.d.mts").DocModel} model
  * @param {Y.Doc} doc
  * @param {Uint8Array} update
@@ -106,9 +106,15 @@ export function suggestOnly(model, doc, update, by) {
   )
     return false;
   if (JSON.stringify(model.settle(before)) !== JSON.stringify(model.settle(after))) return false;
-  const was = model.suggestionCounts(before);
-  for (const [person, n] of model.suggestionCounts(after))
-    if (person !== String(by) && n > (was.get(person) ?? 0)) return false;
+  // Another's suggestions stay exactly as they were: reworded, they would be accepted as words they never wrote.
+  const was = model.suggestions(before);
+  const now = model.suggestions(after);
+  for (const person of new Set([...was.keys(), ...now.keys()]))
+    if (
+      person !== String(by) &&
+      JSON.stringify(was.get(person)) !== JSON.stringify(now.get(person))
+    )
+      return false;
   return true;
 }
 

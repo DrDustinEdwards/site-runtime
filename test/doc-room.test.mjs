@@ -18,13 +18,13 @@ const model = {
   /** @param {any} json */
   settle: (json) => json.text,
   /** @param {any} json */
-  suggestionCounts: (json) => {
-    const counts = new Map();
-    for (const key of Object.keys(json.suggest)) {
+  suggestions: (json) => {
+    const by = new Map();
+    for (const [key, text] of Object.entries(json.suggest)) {
       const person = key.split(":")[0];
-      counts.set(person, (counts.get(person) ?? 0) + 1);
+      by.set(person, { ...by.get(person), [key]: text });
     }
-    return counts;
+    return by;
   },
 };
 
@@ -84,6 +84,16 @@ test("PLANT: a suggester changes only their own suggestions, never the text, the
       model,
       room,
       updateOf(room, (d) => d.getMap("suggest").set("9:2", "x")),
+      7,
+    ),
+    false,
+  );
+  // Another's suggestion reworded at the same length (they would accept words they never wrote).
+  assert.equal(
+    suggestOnly(
+      model,
+      room,
+      updateOf(room, (d) => d.getMap("suggest").set("9:1", "sunny!")),
       7,
     ),
     false,

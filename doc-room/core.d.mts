@@ -34,8 +34,8 @@ export type DocModel = {
   json(doc: Y.Doc): unknown;
   /** The JSON with every suggestion rejected. */
   settle(json: unknown): unknown;
-  /** How many suggestions each person (by id as a string) has in the JSON. */
-  suggestionCounts(json: unknown): Map<string, number>;
+  /** Each person's suggestions in the JSON (by id as a string): what they suggested, compared as JSON. */
+  suggestions(json: unknown): Map<string, unknown>;
   /** A comment's anchor on the text from `from` to `to` (Capsomer collab-editor's anchorAt), for threads brought in with a document. */
   anchor?(doc: Y.Doc, from: number, to: number): string | null;
 };
