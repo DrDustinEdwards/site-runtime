@@ -16,7 +16,6 @@ import { siteForOrigin } from "./sites-values.mjs";
 const UA = "Mozilla/5.0 (compatible; site-runtime-sign-in)";
 const TIMEOUT_MS = 15_000;
 
-
 /**
  * @typedef {{ url: string, status: number, headers: Headers, cookies: string[], body: string, error?: string }} Got
  * @typedef {{ item: string, severity: "error" | "warning", url: string, detail: string }} Finding
