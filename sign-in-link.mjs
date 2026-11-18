@@ -22,7 +22,6 @@ export const DISPOSABLE_EMAIL = "disposable_email";
 export const UNDELIVERABLE_EMAIL = "undeliverable_email";
 
 export { CONFIRM_PATH, SIGN_IN_PATH } from "./sign-in-path.mjs";
-import { CONFIRM_PATH } from "./sign-in-path.mjs";
 
 /** Where the email-change links open unless the site names another page: "/email/confirm" (Foxhound's). */
 export const EMAIL_CONFIRM_PATH = "/email/confirm";
