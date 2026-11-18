@@ -4,19 +4,17 @@
  * and what was seen. It sends no sign-in mail, makes no account and sends no real token: the only requests that change
  * anything are a passkey challenge (Better Auth stores one for five minutes) and a sign-out with no session.
  *
- * Each part runs only when the site has it, found by probing: a sign-in page (/login, /signin, /sign-in), Better Auth
+ * Each part runs only when the site has it, found by probing: the sign-in page (SIGN_IN_PATH, /login), Better Auth
  * (/api/auth/ok answers ok), admin pages (/admin, plus the registry's `signIn.admin`), an MCP server (/mcp answers 401,
  * plus the registry's `signIn.mcp`). What a site serves beyond its own /admin and /mcp is its entry's `signIn` in the
  * site registry (`./sites.mjs`), found by origin or alias. A site with none of them has no findings.
  */
 
+import { CONFIRM_PATH, SIGN_IN_PATH } from "./sign-in-link.mjs";
 import { siteForOrigin } from "./sites-values.mjs";
 
 const UA = "Mozilla/5.0 (compatible; site-runtime-sign-in)";
 const TIMEOUT_MS = 15_000;
-
-/** Where a site's confirm page may be: next to each sign-in page found (txasm's is /signin/confirm), else /sign-in/confirm. */
-const CONFIRM_PATHS = ["/sign-in/confirm", "/signin/confirm", "/login/confirm"];
 
 /**
  * @typedef {{ url: string, status: number, headers: Headers, cookies: string[], body: string, error?: string }} Got
@@ -148,7 +146,7 @@ export async function signInFindings({ origin, from, probes }) {
 
   // The sign-in page: noindex, no-store (D10) and no-transform (analytics), the email field offers passkeys (A2), Turnstile on the form (B5).
   const pages = new Set();
-  for (const path of ["/login", "/signin", "/sign-in"]) {
+  for (const path of [SIGN_IN_PATH]) {
     const page = await follow(`${base}${path}`);
     if (
       page.status !== 200 ||
@@ -256,7 +254,7 @@ export async function signInFindings({ origin, from, probes }) {
     // site's own path: the first that is not a 404, beside a sign-in page found first.
     const near = [...pages].map((page) => `${new URL(page).pathname.replace(/\/$/, "")}/confirm`);
     let tried = /** @type {Got | undefined} */ (undefined);
-    for (const path of new Set([...near, ...CONFIRM_PATHS])) {
+    for (const path of new Set([...near, CONFIRM_PATH])) {
       tried = await get(`${base}${path}?token=sign-in-check-not-a-token&callbackURL=%2F`);
       if (tried.status !== 404) break;
     }

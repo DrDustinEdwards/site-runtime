@@ -137,6 +137,7 @@ export {
   EMAIL_CONFIRM_PATH,
   SIGN_IN_EXPIRES_IN_SECONDS,
   SIGN_IN_EXPIRES_IN_WORDS,
+  SIGN_IN_PATH,
   SIGN_IN_LINK_WORDS,
   confirmEmailLink,
   confirmSignInLink,

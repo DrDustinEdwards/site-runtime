@@ -3,6 +3,8 @@
  * acts. The sign-in link, and the email change's two links. Re-exported by `./sign-in`.
  */
 
+/** Where every site's sign-in page lives: "/login". */
+export const SIGN_IN_PATH: "/login";
 /** Where the mailed sign-in link opens unless the site names another page: "/sign-in/confirm". */
 export const CONFIRM_PATH: "/sign-in/confirm";
 /** Where the email-change links open unless the site names another page: "/email/confirm". */

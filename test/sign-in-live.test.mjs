@@ -1,5 +1,5 @@
 // The live sign-in check against a fake site: a site that does everything right has no errors, each planted gap fails
-// its own item (the confirm page found at the site's own path, as txasm's /signin/confirm), a site with no sign-in,
+// its own item (the confirm page found at the site's own path, as /login/confirm), a site with no sign-in,
 // admin or MCP has no findings (unless its registry entry declares a page, which must then answer), and a site that does
 // not answer cannot be checked.
 import assert from "node:assert/strict";
@@ -44,7 +44,7 @@ const routes = {
     },
     '{"success":true}',
   ],
-  "GET /signin/confirm": (bad) =>
+  "GET /login/confirm": (bad) =>
     bad
       ? [
           302,
