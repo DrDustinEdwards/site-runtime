@@ -34,7 +34,7 @@ export function maintenanceOn(env) {
 export function maintenanceResponse({
   siteName = "This site",
   retryAfter = MAINTENANCE_RETRY_AFTER,
-  text = "It is down for maintenance and will be back soon. Please try again in a little while.",
+  text = "It will be back soon.",
 } = {}) {
   const name = escapeHtml(siteName);
   const body = `<!doctype html>

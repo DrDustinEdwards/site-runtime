@@ -31,7 +31,7 @@ export type LoginOptions<E extends LoginEnv> = {
     user: { email: string; name?: string },
   ): boolean | Record<string, unknown> | null | Promise<boolean | Record<string, unknown> | null>;
   /** Who is let in, for the consent page's line and the refusal. Default: the single configured administrator. */
-  admits?: { consent: string; refusal: string };
+  admits?: { refusal: string };
   /** Whether the consent page's write box starts ticked for the scopes a client asked for. Default: it asked for write. */
   wantsWrite?(requested: string[]): boolean;
   /** The /health answer. Default: healthResponse({ sha: env.DEPLOY_SHA }) from ./health (application/health+json, no-store, noindex). */

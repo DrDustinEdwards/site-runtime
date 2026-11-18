@@ -135,19 +135,13 @@ export function passkeyErrorWords(error) {
  */
 export function emailLinkWords({ siteName, settings }) {
   return Object.freeze({
-    confirm: Object.freeze({
-      title: "Confirm your email change",
-      text: "Nothing changes until you press the button.",
-    }),
+    confirm: Object.freeze({ title: "Confirm your email change" }),
     approved: Object.freeze({
       title: "Change approved",
       text: `Now open the link ${siteName} sent to your new address to finish the change.`,
     }),
-    changed: Object.freeze({
-      title: "Email changed",
-      text: `Your ${siteName} account email is changed.`,
-    }),
-    verified: Object.freeze({ title: "Email confirmed", text: "Your email address is confirmed." }),
+    changed: Object.freeze({ title: "Email changed" }),
+    verified: Object.freeze({ title: "Email confirmed" }),
     expired: Object.freeze({
       title: "This link has expired",
       text: `Email change links work for ${EMAIL_CHANGE_EXPIRES_IN_WORDS}. Ask for the change again in ${settings}.`,

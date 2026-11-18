@@ -212,7 +212,6 @@ describe("the callback", () => {
       admit: (_env, user) =>
         user.email.toLowerCase() === "admin@example.com" ? { personId: 7 } : null,
       admits: {
-        consent: "Only people Sample knows are let in.",
         refusal: "This person is not in Sample.",
       },
     });

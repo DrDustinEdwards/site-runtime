@@ -49,7 +49,7 @@ export function signInLinkProblem(
 ): SignInLinkProblem | null;
 /** The confirm page's words for each problem. */
 export const SIGN_IN_LINK_WORDS: Readonly<
-  Record<SignInLinkProblem, Readonly<{ title: string; text: string }>>
+  Record<SignInLinkProblem, Readonly<{ title: string; text?: string }>>
 >;
 
 /** The page an email-change link opens: Better Auth's link's origin, `confirmPath` (EMAIL_CONFIRM_PATH) and the token. */
