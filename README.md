@@ -1708,13 +1708,13 @@ and the delete clearing the cookies).
 `sign-in-live.mjs`) is the daily live check for sign-in and access (devkit `live/areas.json`, area 3). It sees what an
 outside request can: it sends no mail, makes no account and holds no token, and each part runs only when the site has it.
 
-- Sign-in page (`/login`, `/signin`, `/sign-in`): `no-store` and `noindex` (D10), an email field whose autocomplete has
+- Sign-in page (`SIGN_IN_PATH`, `/login`, the same on every site): `no-store` and `noindex` (D10), an email field whose autocomplete has
   `webauthn` (A2; a warning when it does not start with `username`), Turnstile on the page and allowed by the CSP (B5).
 - Better Auth (`/api/auth/ok`): the passkey's `rpId` is the site's host, not a workers.dev one (A1); sign-out sends
   `Clear-Site-Data` (D4); a sign-out from another origin with a cookie is 403 (D8); every cookie set is `__Secure-` or
   `__Host-`, HttpOnly, Secure and SameSite (D1); each answer is `no-store` (D10). The confirm page with a made-up token
   must never set a session cookie (B7): the site's own path, the first that answers among `/confirm` beside each sign-in
-  page found and `/sign-in/confirm`, `/signin/confirm` (txasm's), `/login/confirm`. A missing confirm page is a warning
+  page found and `/sign-in/confirm`. A missing confirm page is a warning
   until every site has the route.
 - Admin (`/admin`, and the pages the site's registry entry names in `signIn.admin`, `./sites`: dustinedwards.info's
   `/lab-bench`, txasm's `/admin/access`, all of Desk and the Portal): a request with no sign-in gets a redirect to

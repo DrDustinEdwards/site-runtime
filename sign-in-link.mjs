@@ -21,6 +21,9 @@ export const DISPOSABLE_EMAIL = "disposable_email";
  */
 export const UNDELIVERABLE_EMAIL = "undeliverable_email";
 
+/** Where every site's sign-in page lives: "/login". Foxing, Foxhound and txasm link, redirect and route to it. */
+export const SIGN_IN_PATH = "/login";
+
 /** Where the mailed sign-in link opens unless the site names another page: "/sign-in/confirm". */
 export const CONFIRM_PATH = "/sign-in/confirm";
 
