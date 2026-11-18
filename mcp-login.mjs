@@ -139,7 +139,6 @@ export function loginHandler({
   about,
   admit,
   admits = {
-    consent: "Only the configured administrator is accepted.",
     refusal: `This account is not the administrator of ${name}.`,
   },
   wantsWrite = (requested) => requested.includes(scopes.write),
@@ -196,7 +195,6 @@ export function loginHandler({
 <h1 class="cap-consent-title">Allow ${label} to use ${serverName}?</h1>
 <p class="cap-consent-text">${publisher} Its access will be sent to <strong>${redirectHost}</strong>.</p>
 ${target.local ? `<div class="cap-alert" data-tone="warn" role="alert"><span class="cap-alert-text"><strong>${LOCAL_REDIRECT_WARNING[0]}</strong> ${LOCAL_REDIRECT_WARNING[1]}</span></div>\n` : ""}${about.trim()}
-<p class="cap-consent-text">Next you sign in with Cloudflare Access. ${escape(admits.consent)}</p>
 <form method="post" class="cap-consent-form">
   <input type="hidden" name="handle" value="${escape(handle)}">
   <div class="cap-consent-box"><label class="cap-check"><input type="checkbox" name="allow_write" value="1"${wantsWrite(request.scope) ? " checked" : ""}>

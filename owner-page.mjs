@@ -207,27 +207,26 @@ ${notice ? `<p role="status"><strong>${escape(notice)}</strong></p>` : ""}
 <h2>Your grants</h2>
 ${
   grants.length
-    ? `<p>Each AI client you allowed. Revoke ends its access at once; it has to ask you again.</p>
-<div class="scroll"><table><thead><tr><th>Client</th><th>Scopes</th><th>Granted (UTC)</th><th>Expires</th><th></th></tr></thead><tbody>
+    ? `<div class="scroll"><table><thead><tr><th>Client</th><th>Scopes</th><th>Granted (UTC)</th><th>Expires</th><th></th></tr></thead><tbody>
 ${grantRows}
 </tbody></table></div>`
-    : "<p>No AI client holds a grant from you here.</p>"
+    : "<p>No grants.</p>"
 }
 <h2>Agent keys</h2>
 ${
   keys.length
-    ? `<p>Agents that sign in with a key instead of OAuth. A key is revoked by deleting its Worker secret.</p>\n<ul>\n${keyRows}\n</ul>`
-    : "<p>This server holds no agent keys.</p>"
+    ? `<ul>\n${keyRows}\n</ul>\n<p>Revoke a key by deleting its Worker secret.</p>`
+    : "<p>No agent keys.</p>"
 }
-${probe ? `<p>The list-only test key is set (Worker secret <code>${PROBE_KEY_SECRET}</code>): it can list tools and runs none. Deleting the secret revokes it.</p>` : ""}
+${probe ? `<p>List-only test key set (<code>${PROBE_KEY_SECRET}</code>). Delete the secret to revoke it.</p>` : ""}
 <h2>Tool calls${before ? " (older)" : ""}</h2>
 ${
   log === null
-    ? "<p>This server keeps no tool-call log.</p>"
+    ? "<p>No tool-call log.</p>"
     : log === "owner"
       ? "<p>The tool-call log holds everyone's calls, so only the server's owner reads it.</p>"
       : rows.length
-        ? `<p>Newest first, times in UTC. Older rows are in the daily copy in R2.</p>
+        ? `<p>Times in UTC.</p>
 <div class="scroll"><table><thead><tr><th>Time</th><th>Event</th><th>Caller</th><th>Tool</th><th>Result</th></tr></thead><tbody>
 ${logRows}
 </tbody></table></div>

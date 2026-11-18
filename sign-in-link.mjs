@@ -186,13 +186,10 @@ export function signInLinkProblem(url, { signedIn = false, now = Date.now() } = 
 
 /** What the confirm page says for each problem: a title and a sentence, the action being "send yourself a new link". */
 export const SIGN_IN_LINK_WORDS = Object.freeze({
-  "signed-in": Object.freeze({
-    title: "You are already signed in",
-    text: "This link was used already, and this browser is signed in. There is nothing more to do.",
-  }),
+  "signed-in": Object.freeze({ title: "You are already signed in" }),
   used: Object.freeze({
     title: "This link was already used",
-    text: "A sign-in link works once. If you opened it in another browser or on another device, you are signed in there. To sign in here, send yourself a new link.",
+    text: "A sign-in link works once. Send yourself a new one.",
   }),
   expired: Object.freeze({
     title: "This link has expired",

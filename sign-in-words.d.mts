@@ -72,7 +72,8 @@ export function signInErrorWords(
 /** The words for a passkey sign-in that did not sign in, or null when the person canceled the prompt. */
 export function passkeyErrorWords(error: unknown): string | null;
 
-type Words = Readonly<{ title: string; text: string }>;
+/** `text` is left out where the title says it all. */
+type Words = Readonly<{ title: string; text?: string }>;
 
 /** What the email-change page says for each `done` and `problem` of `emailLinkResult`. */
 export function emailLinkWords(site: {

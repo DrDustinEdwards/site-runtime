@@ -1362,7 +1362,7 @@ const auth = betterAuth({
   The page's loader calls `signInLinkProblem(request.url, { signedIn })`: null (show the button), `"used"` (within
   `SIGN_IN_EXPIRES_IN_SECONDS` of the mail), `"expired"` (after), `"invalid"` (no send time: a link cut or edited, or
   mailed before 0.59.0), `"missing"` (no token: cut short when copied), `"disposable"` (a new account at a disposable address), `"failed"` (any other error), or `"signed-in"`
-  (this browser is signed in, so nothing more to do). `SIGN_IN_LINK_WORDS[problem]` is `{ title, text }` in the
+  (this browser is signed in, so nothing more to do). `SIGN_IN_LINK_WORDS[problem]` is `{ title, text? }` (no text where the title says it) in the
   network's words; a site may use its own.
 - The email change's links open a page too (E1). Better Auth's `/verify-email` link acts on a GET (it approves the
   change from the current address, and makes it from the new one), so both mails carry the site's own page instead:
@@ -3021,8 +3021,8 @@ clientRegistrationCallback: ({ clientMetadata }) => {
   (its metadata URL's host) and that a registered client's name is its own claim.
 - `admit` decides who is let in; `isAdminUser` is `isAdminEmail` (`ADMIN_EMAIL` or a `CO_OWNER_EMAILS` entry, without case), and an unset `ADMIN_EMAIL` admits nobody.
   A server with several people returns an object instead of `true` (Carrel's `{ personId }`): it admits, and its fields
-  join the grant's props for the server to check again on every request. `admits: { consent, refusal }` then says who
-  is let in, on the consent page and in the refusal (default: the configured administrator). `wantsWrite(requested)`
+  join the grant's props for the server to check again on every request. `admits: { refusal }` then says who
+  is refused, in the redirect's error (default: the configured administrator). `wantsWrite(requested)`
   decides whether the write box starts ticked (default: the client asked for the write scope), and `health(env)` answers
   `/health` (default: `healthResponse({ sha: env.DEPLOY_SHA })` from `./health`, so an MCP Worker's /health is
   `application/health+json`, no-store and noindex, with the deployed commit when `DEPLOY_SHA` is set). `revokeExistingGrants: false` keeps the user's earlier grants for the same client (the
