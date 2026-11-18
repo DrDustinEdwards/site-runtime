@@ -253,13 +253,19 @@ export function adminMcpWorker({
   const providers = new Map();
 
   /**
+   * The registration allowlist: the shared callbacks and this server's DCR_REDIRECT_URIS.
+   * @param {E} env
+   */
+  const dcrAllowlist = (env) => [...DCR_CALLBACKS, env.DCR_REDIRECT_URIS ?? ""].join(",");
+
+  /**
    * One provider per origin and registration allowlist: both are fixed at construction, so a changed allowlist gets a
    * new provider, never a stale one.
    * @param {E} env
    */
   function providerFor(env) {
     const origin = adminMcpOrigin(env);
-    const allowed = [...DCR_CALLBACKS, env.DCR_REDIRECT_URIS ?? ""].join(",");
+    const allowed = dcrAllowlist(env);
     const key = `${origin} ${allowed}`;
     let provider = providers.get(key);
     if (!provider) {
@@ -361,7 +367,7 @@ export function adminMcpWorker({
       }
     }
     if (url.pathname === "/register" && request.method === "POST") {
-      const limited = await registrationLimited(request, env.OAUTH_KV);
+      const limited = await registrationLimited(request, env.OAUTH_KV, dcrAllowlist(env));
       if (limited) return limited;
     }
     return providerFor(env).fetch(request, env, ctx);

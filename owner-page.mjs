@@ -13,7 +13,8 @@
  * browser started is refused (login CSRF). The caller's `admit` decides who is let in, as for consent.
  *
  * SESSION. A random id in an HttpOnly, Secure, SameSite=Lax `__Host-` cookie; OAUTH_KV keeps its SHA-256 for 30
- * minutes with the email and a CSRF token. Lax, not Strict, because the session starts on the redirect back from
+ * minutes with the email and a CSRF token, and every request asks `admit` and `readsLog` again, so a removed admin is
+ * out at once (the Mythos review's finding 4, 2026-11-18). Lax, not Strict, because the session starts on the redirect back from
  * Access, a navigation from another site. Every change is a POST that carries the CSRF token and a same-origin Origin.
  *
  * REVOKE. Only a grant of the signed-in user can be revoked (the provider keys grants by user), and each revoke writes
@@ -265,10 +266,16 @@ export function ownerPage({ name, admit, server, readsLog = () => true }) {
   async function session(request, env) {
     const id = readCookie(request, SESSION_COOKIE);
     if (!id || !/^[0-9a-f]{64}$/.test(id)) return null;
-    const stored = await env.OAUTH_KV.get(`owner:session:${await sha256Hex(id)}`);
-    return stored
-      ? /** @type {{ email: string, csrf: string, log: boolean }} */ (JSON.parse(stored))
-      : null;
+    const key = `owner:session:${await sha256Hex(id)}`;
+    const stored = await env.OAUTH_KV.get(key);
+    if (!stored) return null;
+    const { email, csrf } = /** @type {{ email: string, csrf: string }} */ (JSON.parse(stored));
+    // The admin list is read on every request, as the /mcp door does, so an admin taken off it loses the page at once.
+    if (!(await admit(env, { email }))) {
+      await env.OAUTH_KV.delete(key);
+      return null;
+    }
+    return { email, csrf, log: (await readsLog(env, email)) === true };
   }
 
   /** @param {Request} request @param {E} env */
@@ -348,10 +355,9 @@ export function ownerPage({ name, admit, server, readsLog = () => true }) {
       return respond(`This account cannot open the owner page of ${name}.`, 403);
     const id = randomId();
     const email = signedIn.email.toLowerCase();
-    const log = (await readsLog(env, email)) === true;
     await env.OAUTH_KV.put(
       `owner:session:${await sha256Hex(id)}`,
-      JSON.stringify({ email, csrf: randomId(), log }),
+      JSON.stringify({ email, csrf: randomId() }),
       {
         expirationTtl: SESSION_SECONDS,
       },

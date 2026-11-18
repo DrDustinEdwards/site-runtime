@@ -81,12 +81,16 @@ export function registrationRefusal(
   configured: string | undefined,
   clientMetadata: Record<string, unknown>,
 ): string | null;
-/** Counts one POST /register in KV: the 429 to send (five an hour per address, thirty a day in all), or null. */
+/**
+ * Counts one POST /register in KV: the 429 to send, or null. Five an hour per address, every registration; thirty a
+ * day in all, only registrations `configured` allows.
+ */
 export function registrationLimited(
   request: Request,
   kv: {
     get(key: string): Promise<string | null>;
     put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
   },
+  configured: string | undefined,
   now?: number,
 ): Promise<Response | null>;

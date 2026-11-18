@@ -33,6 +33,8 @@ export type Jwk = JsonWebKey & { kid?: string };
 export type KeySource = (kid: string, fresh: boolean) => Promise<Jwk | undefined>;
 /** Drops every cached key set, for a test whose stubs sign with a new key under the same kid. */
 export function forgetKeys(): void;
+/** How long a fetched key set is trusted before the next verify refetches it (an hour), here and in ./access. */
+export const KEYS_MAX_AGE_MS: number;
 /** The keys at a JWKS URL, cached per isolate. */
 export function remoteKeys(jwksUrl: string): KeySource;
 /** Why a JWT was refused. Only a fault in the token is a refusal; a key source that throws is not caught. */

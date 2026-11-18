@@ -10,7 +10,6 @@ import {
   ACCESS_LOGOUT_PATH,
   ADMIN_SEEN_COOKIE,
   BACKGROUND_HEADER,
-  KEYS_MAX_AGE_MS,
   REFETCH_COOLDOWN_MS,
   accessAdmin,
   adminIdle,
@@ -23,6 +22,7 @@ import {
   isMainAdmin,
   verifyAccessRequest,
 } from "../access.mjs";
+import { KEYS_MAX_AGE_MS } from "../access-login.mjs";
 import { base64url } from "../encoding.mjs";
 import { encode, other, pair, publicJwk, keys, sign } from "./jwt.mjs";
 

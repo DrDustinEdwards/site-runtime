@@ -454,20 +454,34 @@ export function registrationRefusal(configured, clientMetadata) {
 }
 
 /**
- * Counts one POST /register and answers the 429 to send, or null: five an hour from one address and thirty a day from
- * everyone, in KV (eventually consistent, so a burst can pass a few over; the ceiling is what matters). Call it before
- * the provider sees the request. A client registers once per connection, so a person connecting several never nears it.
+ * Counts one POST /register and answers the 429 to send, or null: five an hour from one address, counting every
+ * registration, and thirty a day from everyone, counting only one `configured` would allow (registrationRefusal), so
+ * junk from a few addresses cannot close registration for the day (the Mythos review's finding 6, 2026-11-18). A
+ * refused one is still answered 400 by the provider's callback. In KV (eventually consistent, so a burst can pass a few
+ * over; the ceiling is what matters). Call it before the provider sees the request. A client registers once per
+ * connection, so a person connecting several never nears it.
  * @param {Request} request
  * @param {{ get(key: string): Promise<string | null>, put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void> }} kv
+ * @param {string | undefined} configured the allowlist the provider's callback checks
  * @param {number} [now]
  * @returns {Promise<Response | null>}
  */
-export async function registrationLimited(request, kv, now = Date.now()) {
+export async function registrationLimited(request, kv, configured, now = Date.now()) {
   // One address is an IPv4 address or an IPv6 /64 (ipKey), so a host cannot register from each address it holds.
   const address = ipKey("dcr-rate:addr", request).key;
+  const metadata = await request
+    .clone()
+    .json()
+    .catch(() => null);
+  const allowed =
+    metadata !== null &&
+    typeof metadata === "object" &&
+    registrationRefusal(configured, /** @type {Record<string, unknown>} */ (metadata)) === null;
   const keys = [
     { key: `${address}:${Math.floor(now / 3_600_000)}`, limit: 5, ttl: 3_700 },
-    { key: `dcr-rate:all:${Math.floor(now / 86_400_000)}`, limit: 30, ttl: 86_500 },
+    ...(allowed
+      ? [{ key: `dcr-rate:all:${Math.floor(now / 86_400_000)}`, limit: 30, ttl: 86_500 }]
+      : []),
   ];
   const counts = await Promise.all(keys.map(async (k) => Number((await kv.get(k.key)) ?? 0)));
   if (keys.some((k, i) => counts[i] >= k.limit)) {

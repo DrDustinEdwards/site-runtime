@@ -21,7 +21,7 @@
  * the overall limit.
  */
 
-import { verifyJwt } from "./access-login.mjs";
+import { KEYS_MAX_AGE_MS, verifyJwt } from "./access-login.mjs";
 import { safeEqual } from "./compare.mjs";
 import { base64url, fromBase64urlText, hmacSha256 } from "./encoding.mjs";
 import { logEvent } from "./log.mjs";
@@ -34,13 +34,6 @@ const KEYS_TIMEOUT_MS = 5_000;
 
 /** How long an unknown kid waits before it may refetch the keys again, so a forged kid cannot hammer the endpoint. */
 export const REFETCH_COOLDOWN_MS = 30_000;
-
-/**
- * How long a fetched key set is trusted without a refetch: an hour. Access rotates its signing keys and drops the
- * old one after a window; without a limit an isolate that stays warm would keep accepting a key Access has retired
- * (ASVS 9.1.1 and 9.1.3: tokens are checked against the issuer's current keys).
- */
-export const KEYS_MAX_AGE_MS = 60 * 60 * 1000;
 
 /**
  * The issuer Access writes, https://<team domain>, from the team domain as either site keeps it: with or without the
