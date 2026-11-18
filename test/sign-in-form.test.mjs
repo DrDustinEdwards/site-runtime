@@ -377,3 +377,65 @@ test("the account page's posts on the real Better Auth: email change, delete, an
   assert.deepEqual([mem.user.length, mem.session.length], [0, 0]);
   assert.deepEqual(afterDeleted, ["a@example.com"], "the site's afterDelete ran");
 });
+
+test("naming a person spends none of their sign-in budget: a forged ID token, a code never sent", async (t) => {
+  const { betterAuth } = await import("better-auth");
+  const { memoryAdapter } = await import("better-auth/adapters/memory");
+  const { signInOptions } = await import("../sign-in.mjs");
+  const { emailKey } = await import("../rate-limit/index.mjs");
+  // Google's keys answer empty, so no ID token checks out.
+  t.mock.method(globalThis, "fetch", async () => Response.json({ keys: [] }));
+  const counted = [];
+  const answer = { ok: true, used: 0, limit: 10, retryAfterSeconds: 0, window: 3600 };
+  const emailLimiter = {
+    idFromName: (name) => name,
+    get: (key) => ({
+      hit: async () => (counted.push(key), answer),
+      peek: async () => answer,
+    }),
+  };
+  const options = await signInOptions(
+    {
+      BETTER_AUTH_URL: "https://example.com",
+      GOOGLE_CLIENT_ID: "sample-id",
+      GOOGLE_CLIENT_SECRET: "sample-secret",
+    },
+    {
+      siteName: "Sample",
+      social: true,
+      turnstile: "off-until-keys",
+      emailLimiter,
+      sendMagicLink: async () => {},
+    },
+  );
+  const auth = betterAuth({
+    ...options,
+    database: memoryAdapter({
+      user: [],
+      session: [],
+      account: [],
+      verification: [],
+      passkey: [],
+    }),
+    secret: "sample-secret-sample-secret-sample-secret",
+    baseURL: "https://example.com",
+    rateLimit: { enabled: false },
+  });
+  const victim = "victim@example.com";
+  const part = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
+  const forged = `${part({ alg: "RS256", kid: "k" })}.${part({ email: victim, aud: "sample-id" })}.c2ln`;
+  await assert.rejects(
+    auth.api.signInSocial({ body: { provider: "google", idToken: { token: forged } } }),
+  );
+  assert.ok(!counted.includes(await emailKey("sign-in-fail", victim)), "a forged token counted");
+
+  const wrongCode = () => auth.api.signInEmailOTP({ body: { email: victim, otp: "000000" } });
+  await assert.rejects(wrongCode());
+  assert.ok(!counted.includes(await emailKey("code-email", victim)), "a code never sent counted");
+  await auth.api.signInMagicLink({ body: { email: victim }, headers: new Headers() });
+  await assert.rejects(wrongCode());
+  assert.ok(
+    counted.includes(await emailKey("code-email", victim)),
+    "a wrong live code still counts",
+  );
+});
