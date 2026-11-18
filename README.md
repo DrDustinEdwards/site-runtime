@@ -2790,7 +2790,7 @@ import {
   roomMarkdown,
   roomSchema,
   settle,
-  suggestionCounts,
+  suggestions,
 } from "capsomer/collab-editor";
 
 const schema = roomSchema();
@@ -2803,7 +2803,7 @@ const model = {
   markdown: roomMarkdown,
   json: roomJson,
   settle: (json) => settle(schema, json),
-  suggestionCounts: (json) => suggestionCounts(schema, json),
+  suggestions: (json) => suggestions(schema, json),
   anchor: anchorAt,
 };
 
@@ -2827,8 +2827,8 @@ export class DocRoom extends Room<Env> {
   `viewerRequest(request, { id, name, access, deletesAny? })`, which sets `DOC_ROOM_VIEWER_HEADER`. The room trusts only
   that header (`readViewer` refuses anything not shaped like a viewer) and closes any connection without one (4403).
 - `access: "edit"` changes anything. `"suggest"` has each change tried on a copy first (`suggestOnly`): it is taken only
-  when, with every suggestion rejected, the text is the same, the `metaKey` map is untouched and nobody else has more
-  suggestions. Otherwise the editor is sent `refused` and loads the room again.
+  when, with every suggestion rejected, the text is the same, the `metaKey` map is untouched and everyone else's
+  suggestions (`model.suggestions`) are exactly as they were. Otherwise the editor is sent `refused` and loads the room again.
 - While a connection is open, `access(viewer)` is asked again at most every `ROLE_RECHECK_MS` (10 seconds), before the next
   message: null closes it (4403), a throw closes it to reconnect through the door (1011), a lower access applies at once.
   One socket's messages are chained, so a check waiting on D1 cannot reorder them.
