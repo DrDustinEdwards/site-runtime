@@ -244,6 +244,66 @@ export function purgeCheck(kv) {
   };
 }
 
+/** The KV key holding an AI feature's last failed call; a success deletes it. */
+const aiOutcomeKey = (/** @type {string} */ feature) => `ai-outcome:${feature}`;
+
+/** A failure with no success after it stops showing after a day, so a feature nobody uses does not warn for ever. */
+const AI_OUTCOME_TTL_SECONDS = 24 * 60 * 60;
+
+/**
+ * Keeps whether an AI feature's last real call worked, for `aiOutcomeCheck`. A failure is kept (with the reason kind
+ * and the time) until a call succeeds; a success deletes it, after a read, so a healthy feature costs no KV writes. It
+ * runs no model and never throws, so a broken KV can never fail the answer a reader is waiting on. `result` is a
+ * `./anthropic` `onResult` record (`ok`, `kind`), or `{ ok, kind }` from a caller of any other model.
+ * @param {{ get(key: string): Promise<string | null>, put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>, delete(key: string): Promise<void> } | undefined} kv
+ * @param {string} feature "ask", "companion", "alt-text"
+ * @param {{ ok: boolean, kind?: string | null }} result
+ * @param {(line: string) => void} [log]
+ */
+export async function recordAiOutcome(kv, feature, result, log = console.error) {
+  if (!kv) return;
+  try {
+    const key = aiOutcomeKey(feature);
+    if (result.ok) {
+      if (await kv.get(key)) await kv.delete(key);
+      return;
+    }
+    const kind = String(result.kind ?? "unavailable")
+      .replace(/[^a-z_]/g, "")
+      .slice(0, 32);
+    await kv.put(key, JSON.stringify({ kind, at: new Date().toISOString() }), {
+      expirationTtl: AI_OUTCOME_TTL_SECONDS,
+    });
+  } catch (error) {
+    log(JSON.stringify({ alert: "ai-outcome-record-failed", feature, detail: String(error) }));
+  }
+}
+
+/**
+ * A check that an AI feature's last real call worked: `recordAiOutcome` keeps the last failure in KV until a call
+ * succeeds (or a day passes), so a feature that fails every call (a spend cap, a revoked key, a removed model) shows
+ * here while its bindings still look fine. It runs no model: every call is billed. Level warn. The detail names the
+ * kind and time only, never the provider's message.
+ * @param {string} feature the name given to `recordAiOutcome`; the check is named `ai-<feature>`
+ * @param {{ get(key: string): Promise<string | null> }} kv
+ * @returns {HealthCheck}
+ */
+export function aiOutcomeCheck(feature, kv) {
+  return {
+    name: `ai-${feature}`,
+    level: "warn",
+    run: async () => {
+      const raw = await kv.get(aiOutcomeKey(feature));
+      if (!raw) return true;
+      const { kind, at } = JSON.parse(raw);
+      return {
+        ok: false,
+        detail: `${feature} failed (${kind}) at ${at}; no call has worked since`,
+      };
+    },
+  };
+}
+
 /**
  * The spike alert for sign-in (F3): a check that fails when, in the last `windowMinutes`, failed sign-ins or sign-in
  * mails passed their ceiling, read from `./sign-in`'s `auth_events` table (`eventsDb`). Level warn, so the site stays

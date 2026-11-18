@@ -1,6 +1,6 @@
 {
   "baseline": {
-    "measured_at": "310f53a",
+    "measured_at": "c6e2d69",
     "knip": {
       "files": 11
     },
@@ -17,12 +17,12 @@
     "legacy": {},
     "tests": {
       "files": 82,
-      "cases": 457
+      "cases": 459
     },
     "comments": {
-      "lines": 12019,
-      "code": 38796,
-      "percentage": 23.65
+      "lines": 12048,
+      "code": 38869,
+      "percentage": 23.66
     }
   }
 }
