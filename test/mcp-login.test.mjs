@@ -323,23 +323,31 @@ describe("registrationRefusal", () => {
 });
 
 describe("registrationLimited", () => {
-  test("PLANT: the sixth registration from one address in an hour is refused", async () => {
+  test("PLANT: the sixth registration from one address in an hour is refused; junk never closes the day for others", async () => {
     const store = new Map();
     const kv = {
       get: async (/** @type {string} */ k) => store.get(k) ?? null,
       put: async (/** @type {string} */ k, /** @type {string} */ v) => void store.set(k, v),
     };
-    const register = () =>
+    const ALLOWED = "https://client.example.com/cb";
+    const register = (/** @type {string} */ ip, /** @type {string} */ redirect) =>
       registrationLimited(
         new Request(`${ORIGIN}/register`, {
           method: "POST",
-          headers: { "CF-Connecting-IP": "192.0.2.1" },
+          headers: { "CF-Connecting-IP": ip },
+          body: JSON.stringify({ redirect_uris: [redirect] }),
         }),
         kv,
+        ALLOWED,
         0,
       );
-    for (let i = 0; i < 5; i++) assert.equal(await register(), null);
-    assert.equal((await register())?.status, 429);
+    for (let i = 0; i < 5; i++) assert.equal(await register("192.0.2.1", ALLOWED), null);
+    assert.equal((await register("192.0.2.1", ALLOWED))?.status, 429);
+    // 40 junk registrations from eight addresses spend nothing of the daily 30.
+    for (let n = 0; n < 8; n++)
+      for (let i = 0; i < 5; i++)
+        assert.equal(await register(`198.51.100.${n}`, "https://evil.example.com/cb"), null);
+    assert.equal(await register("203.0.113.1", ALLOWED), null);
   });
 });
 

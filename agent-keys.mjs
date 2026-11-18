@@ -6,8 +6,9 @@
  * - ONE SECRET PER AGENT. A Worker secret `AGENT_KEY_<NAME>` is the key of the agent `<name>` (lower-cased), so the name
  *   is never read from the request: it is which configured secret the presented key matched. A caller proves it holds a
  *   key and can never choose what it is called. One secret per agent, not a JSON map, so rotating one touches no other.
- * - FAILS CLOSED. No `AGENT_KEY_*` secret admits nobody; a blank secret, or one whose name is not an agent name
- *   (`[a-z0-9][a-z0-9_-]{0,31}`), is skipped, so an empty secret cannot become a master key; a malformed header is null.
+ * - FAILS CLOSED. No `AGENT_KEY_*` secret admits nobody; a secret under KEY_MIN (32) characters, or one whose name is
+ *   not an agent name (`[a-z0-9][a-z0-9_-]{0,31}`), is skipped, so an empty, short or placeholder secret is never a key,
+ *   as for MCP_PROBE_KEY and the operator token; a malformed header is null.
  *   Null always means "not an agent, go on to OAuth", never a refusal on its own.
  * - CONSTANT TIME. Every candidate is compared through ./compare's `safeEqual`, with no early exit, so the time taken
  *   does not say which key matched or where it sat.
@@ -24,6 +25,23 @@ import { safeEqual } from "./compare.mjs";
 
 export const AGENT_KEY_PREFIX = "AGENT_KEY_";
 const AGENT_NAME = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+/** The shortest key admitted, agent or test key, so a short or placeholder secret is never a key (a 32-byte key is 43 characters). */
+const KEY_MIN = 32;
+
+/**
+ * The agent keys the Worker holds, by agent name: every `AGENT_KEY_*` secret with an agent's name and a value of at
+ * least KEY_MIN characters.
+ * @param {Record<string, unknown>} env
+ * @returns {[name: string, key: string][]}
+ */
+function agentKeys(env) {
+  return Object.entries(env).flatMap(([secret, value]) => {
+    if (!secret.startsWith(AGENT_KEY_PREFIX) || typeof value !== "string") return [];
+    const name = secret.slice(AGENT_KEY_PREFIX.length).toLowerCase();
+    const key = value.trim();
+    return AGENT_NAME.test(name) && key.length >= KEY_MIN ? [[name, key]] : [];
+  });
+}
 
 /**
  * The token of an `Authorization: Bearer <token>` header, or null.
@@ -45,12 +63,7 @@ export async function agentPrincipal(env, authorization) {
   if (!presented) return null;
   /** @type {string | null} */
   let found = null;
-  for (const [secret, value] of Object.entries(env)) {
-    if (!secret.startsWith(AGENT_KEY_PREFIX)) continue;
-    const name = secret.slice(AGENT_KEY_PREFIX.length).toLowerCase();
-    if (!AGENT_NAME.test(name) || typeof value !== "string" || !value.trim()) continue;
-    if (await safeEqual(presented, value.trim())) found = name;
-  }
+  for (const [name, key] of agentKeys(env)) if (await safeEqual(presented, key)) found = name;
   return found;
 }
 
@@ -60,13 +73,8 @@ export async function agentPrincipal(env, authorization) {
  * @returns {string[]}
  */
 export function agentKeyNames(env) {
-  return Object.entries(env)
-    .filter(
-      ([secret, value]) =>
-        secret.startsWith(AGENT_KEY_PREFIX) && typeof value === "string" && value.trim(),
-    )
-    .map(([secret]) => secret.slice(AGENT_KEY_PREFIX.length).toLowerCase())
-    .filter((name) => AGENT_NAME.test(name))
+  return agentKeys(env)
+    .map(([name]) => name)
     .sort();
 }
 
@@ -102,12 +110,10 @@ export async function agentCaller(env, authorization, scopes) {
 export const PROBE_KEY_SECRET = "MCP_PROBE_KEY";
 /** The name the list-only test key is logged under. */
 export const PROBE_PRINCIPAL = "live-check";
-/** The shortest test key admitted, so a short or placeholder secret is never a key (a 32-byte key is 43 characters). */
-const PROBE_KEY_MIN = 32;
 
 /**
  * True when the header carries the server's list-only test key. Fails closed: no `MCP_PROBE_KEY`, a blank one or one
- * under 32 characters admits nothing, and the comparison is constant time.
+ * under KEY_MIN characters admits nothing, and the comparison is constant time.
  * @param {Record<string, unknown>} env
  * @param {string | null | undefined} authorization
  * @returns {Promise<boolean>}
@@ -115,7 +121,7 @@ const PROBE_KEY_MIN = 32;
 export async function isProbeKey(env, authorization) {
   const presented = bearerToken(authorization);
   const key = typeof env[PROBE_KEY_SECRET] === "string" ? String(env[PROBE_KEY_SECRET]).trim() : "";
-  if (!presented || key.length < PROBE_KEY_MIN) return false;
+  if (!presented || key.length < KEY_MIN) return false;
   return safeEqual(presented, key);
 }
 

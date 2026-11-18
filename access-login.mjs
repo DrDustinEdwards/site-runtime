@@ -83,7 +83,14 @@ export async function authorizationUrl(saas, input) {
 /** @typedef {JsonWebKey & { kid?: string }} Jwk */
 /** @typedef {(kid: string, fresh: boolean) => Promise<Jwk | undefined>} KeySource */
 
-/** @type {Map<string, Jwk[]>} */
+/**
+ * How long a fetched key set is trusted without a refetch: an hour, for this module's keys and ./access's. Access
+ * rotates its signing keys and drops the old one after a window; without a limit an isolate that stays warm would keep
+ * accepting a key Access has retired (ASVS 9.1.1 and 9.1.3: tokens are checked against the issuer's current keys).
+ */
+export const KEYS_MAX_AGE_MS = 60 * 60 * 1000;
+
+/** @type {Map<string, { keys: Jwk[], fetchedAt: number }>} */
 const cachedKeys = new Map();
 
 /** Drops every cached key set, for a test whose stubs sign with a new key under the same kid. */
@@ -91,10 +98,15 @@ export function forgetKeys() {
   cachedKeys.clear();
 }
 
-/** The keys at a JWKS URL, cached per isolate; `fresh` refetches. @param {string} jwksUrl @returns {KeySource} */
+/**
+ * The keys at a JWKS URL, cached per isolate for up to KEYS_MAX_AGE_MS; `fresh` refetches.
+ * @param {string} jwksUrl @returns {KeySource}
+ */
 export function remoteKeys(jwksUrl) {
   return async (kid, fresh) => {
-    let keys = fresh ? undefined : cachedKeys.get(jwksUrl);
+    const entry = cachedKeys.get(jwksUrl);
+    let keys =
+      fresh || !entry || Date.now() - entry.fetchedAt >= KEYS_MAX_AGE_MS ? undefined : entry.keys;
     if (!keys) {
       const response = await fetch(jwksUrl, {
         headers: { Accept: "application/json" },
@@ -103,7 +115,7 @@ export function remoteKeys(jwksUrl) {
       if (!response.ok) return undefined;
       const body = /** @type {{ keys?: Jwk[] }} */ (await response.json().catch(() => ({})));
       keys = Array.isArray(body.keys) ? body.keys : [];
-      cachedKeys.set(jwksUrl, keys);
+      cachedKeys.set(jwksUrl, { keys, fetchedAt: Date.now() });
     }
     return keys.find((key) => key.kid === kid);
   };

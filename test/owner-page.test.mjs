@@ -129,7 +129,7 @@ test("PLANT: a callback without the cookie of the browser that started it is ref
   assert.equal(cookieOf(res, "__Host-owner"), "");
 });
 
-test("the owner sees their grants, the agent keys and the log, and revokes only by the page's own form", async () => {
+test("the owner sees their grants, the agent keys and the log, revokes only by the page's own form, and loses the page once removed", async () => {
   const { env, revoked, log } = setup();
   await log.fetch(
     new Request("https://tool-call-log.invalid/append", {
@@ -182,6 +182,15 @@ test("the owner sees their grants, the agent keys and the log, and revokes only 
   assert.equal(rows[0].phase, "revoked");
   assert.equal(rows[0].caller, "access:admin@example.com");
   assert.equal(rows[0].client_id, "https://client.example.com/meta");
+
+  // PLANT: an admin taken off the list loses the page on the next request, session or not.
+  env.ADMIN_EMAIL = "other@example.com";
+  assert.equal((await post({ csrf, grant: "g1" }, ORIGIN)).status, 403);
+  const gone = await handler.fetch(
+    new Request(`${ORIGIN}/owner`, { headers: { cookie: session } }),
+    env,
+  );
+  assert.equal(gone.status, 303, "sent back to sign in");
 });
 
 // 0.143.0 gave every answer a one-directive policy, which replaced the site's default on plain-text errors.

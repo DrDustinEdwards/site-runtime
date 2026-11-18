@@ -4,10 +4,13 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, test } from "node:test";
 
 import {
+  KEYS_MAX_AGE_MS,
   accessSaas,
   authorizationUrl,
   finishSignIn,
+  forgetKeys,
   newSignIn,
+  remoteKeys,
   verifyIdToken,
 } from "../access-login.mjs";
 import { encode, b64url, other, pair, publicJwk, keys, sign } from "./jwt.mjs";
@@ -103,7 +106,7 @@ describe("verifyIdToken", () => {
     }
   });
 
-  test("an unknown kid refetches once, so a rotated key is found", async () => {
+  test("an unknown kid refetches once, so a rotated key is found; fetched keys are trusted an hour at most", async (t) => {
     /** @type {boolean[]} */
     const asked = [];
     /** @type {import("../access-login.d.mts").KeySource} */
@@ -113,6 +116,23 @@ describe("verifyIdToken", () => {
     };
     assert.ok(await verifyIdToken(await sign(claims()), rotating, expect));
     assert.deepEqual(asked, [false, true]);
+
+    // PLANT: a key Access has retired stops working within KEYS_MAX_AGE_MS, even in a warm isolate.
+    forgetKeys();
+    t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+    let served = [publicJwk];
+    let fetches = 0;
+    t.mock.method(globalThis, "fetch", async () => (fetches++, Response.json({ keys: served })));
+    const source = remoteKeys(saas.jwksUrl);
+    assert.equal((await source("k1", false))?.kid, "k1");
+    served = [];
+    t.mock.timers.tick(KEYS_MAX_AGE_MS - 1);
+    assert.equal((await source("k1", false))?.kid, "k1");
+    assert.equal(fetches, 1);
+    t.mock.timers.tick(1);
+    assert.equal(await source("k1", false), undefined);
+    assert.equal(fetches, 2);
+    forgetKeys();
   });
 });
 
