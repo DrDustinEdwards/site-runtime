@@ -16,6 +16,5 @@ export {
   signalPasskeys,
   signalUnknownCredential,
 } from "./sign-in-passkey.mjs";
-export { CONFIRM_PATH, SIGN_IN_PATH } from "./sign-in-link.mjs";
 
 export const signInClientPlugins = () => [magicLinkClient(), emailOTPClient(), passkeyClient()];
