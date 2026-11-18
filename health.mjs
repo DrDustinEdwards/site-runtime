@@ -252,7 +252,7 @@ const AI_OUTCOME_TTL_SECONDS = 24 * 60 * 60;
 
 /**
  * Keeps whether an AI feature's last real call worked, for `aiOutcomeCheck`. A failure is kept (with the reason kind
- * and the time) until a call succeeds; a success deletes it, after a read, so a healthy feature costs no KV writes. It
+ * and the time) until a call succeeds, except `aborted` (a reader leaving a stream), which changes nothing; a success deletes it, after a read, so a healthy feature costs no KV writes. It
  * runs no model and never throws, so a broken KV can never fail the answer a reader is waiting on. `result` is a
  * `./anthropic` `onResult` record (`ok`, `kind`), or `{ ok, kind }` from a caller of any other model.
  * @param {{ get(key: string): Promise<string | null>, put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>, delete(key: string): Promise<void> } | undefined} kv
@@ -263,6 +263,8 @@ const AI_OUTCOME_TTL_SECONDS = 24 * 60 * 60;
 export async function recordAiOutcome(kv, feature, result, log = console.error) {
   if (!kv) return;
   try {
+    // A reader who leaves a stream early is not the feature failing: leave the record as it was.
+    if (result.kind === "aborted") return;
     const key = aiOutcomeKey(feature);
     if (result.ok) {
       if (await kv.get(key)) await kv.delete(key);
