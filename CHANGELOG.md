@@ -1,5 +1,12 @@
 # @dustinedwards/site-runtime
 
+## 0.169.2
+
+### Patch Changes
+
+- `recordAiOutcome` accepts any store with `get`, `put` and `delete` whose writes resolve to anything, so a site without a KV namespace can keep the outcome in D1 through `d1FireStore` (./routine). No token or class changed.
+- `readForm` answers a body whose Content-Type is not a form type with a 415 and a form body that does not parse with a 400, both thrown as Responses like the 413, so a stray POST is a refusal and no longer a reported error.
+
 ## 0.169.1
 
 ### Patch Changes
