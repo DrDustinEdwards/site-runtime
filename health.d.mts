@@ -50,9 +50,15 @@ export function healthResponse(probe?: {
 export function r2Check(name: string, bucket: { head(key: string): Promise<unknown> }): HealthCheck;
 /** A check that a KV namespace answers: a `get` of a fixed key; null passes, a throw fails. */
 export function kvCheck(name: string, kv: { get(key: string): Promise<unknown> }): HealthCheck;
-/** Keeps whether an AI feature's last real call worked in KV (a failure with its kind and time until a call succeeds; a success clears it). Never throws; runs no model. `result` is an `onResult` record from ./anthropic or `{ ok, kind }`. */
+/** Keeps whether an AI feature's last real call worked in KV or a D1 table (`d1FireStore` from ./routine; it ignores the expiry) (a failure with its kind and time until a call succeeds; a success clears it). Never throws; runs no model. `result` is an `onResult` record from ./anthropic or `{ ok, kind }`. */
 export function recordAiOutcome(
-  kv: import("./owner-page.d.mts").OwnerKv | undefined,
+  kv:
+    | {
+        get(key: string): Promise<string | null>;
+        put(key: string, value: string, options?: { expirationTtl?: number }): Promise<unknown>;
+        delete(key: string): Promise<unknown>;
+      }
+    | undefined,
   feature: string,
   result: { ok: boolean; kind?: string | null },
   log?: (line: string) => void,
