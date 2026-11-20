@@ -189,3 +189,23 @@ test("a refused run is not a success", () => {
   assert.equal(runsSucceeded(call("skipped")), true);
   assert.equal(runsSucceeded(call("refused")), false);
 });
+
+test("a job that failed because D1 was down is recorded failed but does not fail the invocation", async () => {
+  const store = d1();
+  const t0 = Date.UTC(2026, 10, 20);
+  const down = new Error(
+    "D1_ERROR: Your account is generating too much load on D1 DBs. Please back off.",
+  );
+  const outcomes = await runJobs(
+    store,
+    [{ name: "sweep", everyMinutes: 1, run: async () => Promise.reject(down) }],
+    { now: () => t0 },
+  );
+  assert.equal(outcomes[0]?.status, "failed");
+  assert.match(
+    String(
+      store.db.prepare("SELECT last_error FROM cron_runs WHERE name = 'sweep'").get()?.last_error,
+    ),
+    /too much load/,
+  );
+});

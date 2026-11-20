@@ -126,10 +126,13 @@ function scrubValue(key, value, options, depth) {
 /**
  * D1's messages for a database that is down or reset for a moment, as Cloudflare's D1 docs list them ("Error list",
  * "Retry a query"), with the Workers runtime's lost connection, and the refusal D1 answers while an import holds the
- * database ("Currently processing a long-running import.": wrangler d1 execute --remote --file and the import API). A wrong query (no such table, a constraint) is not one.
+ * database ("Currently processing a long-running import.": wrangler d1 execute --remote --file and the import API),
+ * and the three messages seen in production on 2026-11-20 that the docs do not list: the account-wide back-off
+ * ("Your account is generating too much load on D1 DBs"), a storage event ("D1_ERROR: internal error; reference = ...",
+ * Cloudflare's 7500) and a Durable Object that restarted under a call. A wrong query (no such table, a constraint) is not one.
  */
 const DATABASE_DOWN =
-  /D1 DB is overloaded|D1 DB's isolate exceeded its memory limit|D1 DB exceeded its CPU time limit|D1 DB storage operation exceeded timeout|Internal error (?:while starting up|in) D1 DB storage|Cannot resolve D1 DB due to transient issue|D1 DB reset because its code was updated|Network connection lost|Currently processing a long-running import|D1_ERROR:.*(?:reset|overloaded|unavailable|timed? ?out)/i;
+  /D1 DB is overloaded|D1 DB's isolate exceeded its memory limit|D1 DB exceeded its CPU time limit|D1 DB storage operation exceeded timeout|Internal error (?:while starting up|in) D1 DB storage|Cannot resolve D1 DB due to transient issue|D1 DB reset because its code was updated|Network connection lost|Currently processing a long-running import|Your account is generating too much load on D1|D1_ERROR: internal error; reference = |Connection closed: this Durable Object instance is no longer active|D1_ERROR:.*(?:reset|overloaded|unavailable|timed? ?out)/i;
 
 /**
  * Whether an error is the database being down or reset for a moment, read from the error and its causes.
