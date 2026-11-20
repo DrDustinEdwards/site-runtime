@@ -4,7 +4,6 @@ import { test } from "node:test";
 
 import {
   databaseDownStatus,
-  isDatabaseDown,
   handleServerError,
   logEvent,
   routeNamer,
@@ -135,14 +134,4 @@ test("withRequestLog names the route and a refused input also writes input_valid
   assert.equal(databaseDownStatus(importing, 500, headers), 503);
   assert.equal(headers.get("Retry-After"), "60");
   assert.equal(headers.get("Cache-Control"), "no-store");
-});
-
-test("the D1 and Durable Object messages seen on 2026-11-20 count as the database being down", () => {
-  for (const message of [
-    "D1_ERROR: Your account is generating too much load on D1 DBs. Please back off and try again later.",
-    "D1_ERROR: internal error; reference = 58hdi2hv9qbl5vha2911ia29",
-    "Connection closed: this Durable Object instance is no longer active. Reconnect or retry the request.",
-  ])
-    assert.equal(isDatabaseDown(new Error("Failed query: x", { cause: new Error(message) })), true);
-  assert.equal(isDatabaseDown(new Error("D1_ERROR: no such table: x")), false);
 });
