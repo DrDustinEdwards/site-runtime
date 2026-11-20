@@ -16,6 +16,7 @@ import {
   notFoundKey,
   notFoundReport,
   pruneNotFound,
+  NOT_FOUND_MAX_PENDING,
   recordNotFound,
   redirectEntry,
   removeRedirect,
@@ -188,4 +189,21 @@ test("the redirect table: one step adds a 301, a chain is one hop, a loop is ref
     await tableRedirect(new Request("https://example.com/old"), d1Redirects(store)),
     null,
   );
+});
+
+test("a burst of 404s queues at most NOT_FOUND_MAX_PENDING writes on the database", async () => {
+  let writes = 0;
+  const db = {
+    prepare: () => ({
+      bind: () => ({
+        run: () => (writes++, new Promise(() => {})),
+        all: async () => ({ results: [] }),
+      }),
+    }),
+  };
+  const ctx = { waitUntil() {} };
+  for (let i = 0; i < 50; i++)
+    countNotFound(db, new Request(`https://example.com/p${i}`), { status: 404 }, ctx);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(writes, NOT_FOUND_MAX_PENDING);
 });

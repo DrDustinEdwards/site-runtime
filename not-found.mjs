@@ -15,18 +15,27 @@
  *   scanner writes a row per made-up path. Past it a new (path, referrer) counts on one "(overflow)" row; keys already
  *   counted that day still add. Concurrent writes may pass the cap by a few rows.
  * - Written in `ctx.waitUntil`, so the count never holds or fails the response. A failed write is logged
- *   (`not_found_count_failed`), since a count that stops in silence leaves the table empty with nobody told.
+ *   (`not_found_count_failed`), since a count that stops in silence leaves the table empty with nobody told; at
+ *   level warn when the database is down for a moment (isDatabaseDown), error otherwise.
+ * - A count is best effort and a scanner can send hundreds of 404s a second, each a write queued on the one database
+ *   that also serves the site (Foxhound, 2026-11-20: 500 "D1 DB is overloaded" in two seconds from one scanner). An
+ *   isolate holds at most NOT_FOUND_MAX_PENDING writes at once; a 404 past it is not counted.
  */
 
 import { redirectResponse } from "./http.mjs";
 import { DAILY_MINUTES } from "./cron.mjs";
-import { logEvent } from "./log.mjs";
+import { isDatabaseDown, logEvent } from "./log.mjs";
 
 /** The longest path stored: a crawler probing for exploits sends very long URLs, each a row of that size. */
 export const NOT_FOUND_PATH_MAX = 512;
 
 /** The table's name. */
 export const NOT_FOUND_TABLE = "page_404_daily";
+
+/** The most 404 writes one isolate has waiting at once; past it a count is dropped, not queued on the database. */
+export const NOT_FOUND_MAX_PENDING = 8;
+
+let pending = 0;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -144,7 +153,9 @@ export async function recordNotFound(db, url, now = new Date(), referer = null) 
  */
 export function countNotFound(db, request, response, ctx) {
   if (response.status !== 404 || request.method !== "GET") return;
+  if (pending >= NOT_FOUND_MAX_PENDING) return;
   const url = new URL(request.url);
+  pending++;
   ctx.waitUntil(
     Promise.resolve()
       .then(() =>
@@ -155,7 +166,16 @@ export function countNotFound(db, request, response, ctx) {
           request.headers.get("referer"),
         ),
       )
-      .catch((error) => logEvent("not_found_count_failed", { error }, { level: "error" })),
+      .catch((error) =>
+        logEvent(
+          "not_found_count_failed",
+          { error },
+          { level: isDatabaseDown(error) ? "warn" : "error" },
+        ),
+      )
+      .finally(() => {
+        pending--;
+      }),
   );
 }
 
