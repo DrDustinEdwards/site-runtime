@@ -53,12 +53,13 @@ export interface PurgeCache {
   purge?: (options: { tags: string[] }) => Promise<{ success: boolean; errors?: unknown[] }>;
 }
 
-/** Purges `tags`, never throwing. Call it in the Renderer (`this.ctx.cache`): a purge reaches only the calling entrypoint's cache. `null` with no purge API (Miniflare), `true` purged, `false` refused or threw (logged). */
+/** Purges `tags`, never throwing, and again after a pause (up to four times) when Cloudflare refuses it for its rate. Call it in the Renderer (`this.ctx.cache`): a purge reaches only the calling entrypoint's cache. `null` with no purge API (Miniflare), `true` purged, `false` refused or threw (logged). */
 export function purgeTags(
   cache: PurgeCache | undefined,
   tags: string[],
   why: string,
   log?: (line: string) => void,
+  pause?: (ms: number) => Promise<unknown>,
 ): Promise<boolean | null>;
 
 /** The KV key holding the last failed purge. */

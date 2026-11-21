@@ -115,6 +115,18 @@ test("withRequestLog names the route and a refused input also writes input_valid
   // A POST to a route with no action is RR's 405: the client's fault, as a scanner's POST /index.php is.
   handleServerError({ status: 405, error: new Error("You made a POST request") }, { request });
   assert.equal(lines.length, 0);
+  // React Router's refusal of a cross-origin action is the check working: one warn line, not a server_error.
+  handleServerError(
+    new Error(
+      "The `request.url` origin does not match `origin` header from a forwarded action request. Aborting the action.",
+    ),
+    { request },
+  );
+  assert.deepEqual(
+    lines.map(({ event, path }) => ({ event, path })),
+    [{ event: "action_refused", path: "/blog/robots.txt" }],
+  );
+  lines.length = 0;
   handleServerError(new Error("boom"), { request });
   assert.deepEqual(
     lines.map(({ event, path, error }) => ({ event, path, error })),
