@@ -7,6 +7,8 @@ export const cloudflareContext: RouterContext<CloudflareContext>;
 export const cspNonceContext: RouterContext<string | null>;
 /** This render's Server-Timing marks; null outside a timed render. Read it with getTimings. */
 export const serverTimingContext: RouterContext<import("./server-timing.mjs").Mark[] | null>;
+/** A Carrel preview's draft, set only on the preview's own render; null on a reader's request. */
+export function previewContext<T>(): RouterContext<T | null>;
 export function getEnv(context: Readonly<RouterContextProvider>): Env;
 export function getExecutionContext(context: Readonly<RouterContextProvider>): ExecutionContext;
 export function getNonce(context: Readonly<RouterContextProvider>): string | undefined;
