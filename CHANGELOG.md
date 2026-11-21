@@ -1,5 +1,11 @@
 # @dustinedwards/site-runtime
 
+## 0.173.5
+
+### Patch Changes
+
+- Match React Router's cross-origin action refusal by its closing sentence alone, which every Worker that bundles `./log` carries about 150 bytes lighter.
+
 ## 0.173.4
 
 ### Patch Changes
