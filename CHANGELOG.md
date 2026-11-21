@@ -1,5 +1,13 @@
 # @dustinedwards/site-runtime
 
+## 0.169.4
+
+### Patch Changes
+
+- The Capsid Portal now sends an enforced Cross-Origin-Embedder-Policy (`credentialless`) instead of the Report-Only form: its coep reports showed no refusal.
+- /health keeps its backup read in the data center cache under a key that includes the deployed commit. Workers on one zone or workers.dev account shared one key, so bsw reported txasm's backup. Without a `sha` the backup is read every time.
+- `/media` returns a cache hit as a new Response, so the headers the Renderer sets on it no longer throw "Can't modify immutable headers" (Sentry DUSTINEDWARDS-C).
+
 ## 0.169.3
 
 ### Patch Changes
