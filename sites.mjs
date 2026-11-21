@@ -147,6 +147,11 @@ const integrityStaged = {
   reason:
     "React Router writes integrity for every chunk into the import map and the modulepreloads (subResourceIntegrity: true, react-router.config.ts), and the edge injects the beacon with its own; Report-Only until the integrity-violation reports show none missing.",
 };
+const integrityEnforced = {
+  value: /** @type {const} */ ("enforce"),
+  reason:
+    "devkit's siteScript writes integrity and crossorigin on /site.js and preloads every island chunk, including those import()ed, with its integrity (devkit 0.55.3), and a Playwright run with the enforced header on the live site loaded every page script with none blocked.",
+};
 const integrityStagedStatic = {
   value: /** @type {const} */ ("report-only"),
   reason:
@@ -243,7 +248,7 @@ export const dustinedwardsInfo = {
     cloudflareWebAnalytics: /* @__PURE__ */ beacon("workers/csp.mjs"),
     embeds: /* @__PURE__ */ embeds("the blog"),
     coep: /* @__PURE__ */ coepEmbeds("the podcast audio and the beacon load without cookies"),
-    integrityPolicy: integrityStaged,
+    integrityPolicy: integrityEnforced,
     trustedTypes: typesEnforced,
     denyUnlisted: unlistedStaged,
   },
@@ -299,7 +304,7 @@ export const foxhound = {
     coep: /* @__PURE__ */ coepEmbeds(
       "the merchant app returns from Stripe and draws its charts and the admin's pages behind a sign-in",
     ),
-    integrityPolicy: integrityStaged,
+    integrityPolicy: integrityEnforced,
     trustedTypes: typesEnforced,
     denyUnlisted: unlistedStaged,
   },
@@ -333,7 +338,7 @@ export const foxing = {
     coep: /* @__PURE__ */ coepStaged(
       "the reader frames each book's pages and loads its covers and fonts, and Turnstile's challenge frame (challenges.cloudflare.com) sends no CORP, which the coep reports showed refused; Cloudflare documents no COEP support for it, and `<iframe credentialless>` is Chrome-only",
     ),
-    integrityPolicy: integrityStaged,
+    integrityPolicy: integrityEnforced,
     trustedTypes: typesEnforced,
     denyUnlisted: unlistedStaged,
   },
@@ -370,7 +375,7 @@ export const germomics = {
     coep: /* @__PURE__ */ coepEmbeds(
       "the data pages load Google Maps' script, tiles and fonts and the games Phaser's assets, none of which this site controls",
     ),
-    integrityPolicy: integrityStaged,
+    integrityPolicy: integrityEnforced,
     trustedTypes: typesEnforced,
     denyUnlisted: unlistedStaged,
   },
@@ -397,7 +402,7 @@ export const julieedwardsInfo = {
         "One page that loads its own files, its photos' two hosts and the beacon; the manifest is named.",
     },
     coep: coepCredentialless,
-    integrityPolicy: integrityStaged,
+    integrityPolicy: integrityEnforced,
     trustedTypes: typesEnforced,
   },
   deviations: { C3: beaconNotStrict },
@@ -458,7 +463,7 @@ export const txasm = {
     coep: /* @__PURE__ */ coepStaged(
       "submission, review, the abstract book's PDF.js viewer and the admin sit behind a sign-in; the coep reports showed the PDF.js worker (/pdfjs/pdf.worker.min.mjs) refused, since a worker script must send the policy itself",
     ),
-    integrityPolicy: integrityStaged,
+    integrityPolicy: integrityEnforced,
     trustedTypes: typesEnforced,
     denyUnlisted: unlistedStaged,
   },
