@@ -4,7 +4,6 @@ import { test } from "node:test";
 import { CRON_SKIPPED } from "../cron.mjs";
 import { decideAcquire, decideRelease, tick, withLease } from "../cron-lock/index.mjs";
 
-// Moved from Foxhound's cron-lock plants (310 item 1, 376 item 14) and its ticker test.
 const MINUTE = 60_000;
 
 /** The Durable Object's read, decide, write, over a plain record. */

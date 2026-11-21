@@ -207,7 +207,7 @@ function withRetryAfter(result, res) {
   return seconds === null ? result : { ...result, retryAfter: seconds };
 }
 
-// ---------- The duplicate guard
+// The duplicate guard
 
 /** The table `d1FireStore` keeps its records in, as a migration creates it. */
 export const ROUTINE_FIRES_SQL =

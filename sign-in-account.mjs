@@ -48,7 +48,7 @@ export const SECURITY_NOTICE_KINDS = /* @__PURE__ */ Object.freeze([
  */
 export const FRESH_SECONDS = 10 * 60;
 
-// ---- devices and places ---------------------------------------------------------------------------
+// devices and places
 
 // First match wins: Edge, Opera and Samsung Internet also say Chrome, Chrome on iOS says Safari, and every browser on an
 // iPhone says "like Mac OS X", so the specific names come first.
@@ -111,7 +111,7 @@ function countryName(code) {
   }
 }
 
-// ---- session details: place, last active, device ---------------------------------------------------
+// session details: place, last active, device
 
 /** How often a session's last activity is written: at most once in five minutes (txasm's touch). */
 export const SESSION_TOUCH_SECONDS = 5 * 60;
@@ -184,7 +184,7 @@ export function isNewSignInDevice(device, seen) {
   return isNewDevice(device.name, seen.names);
 }
 
-// ---- the sessions list ---------------------------------------------------------------------------
+// the sessions list
 
 /**
  * @typedef {{ id: string, token: string, userAgent?: string | null, createdAt: Date | string, updatedAt?: Date | string | null, location?: unknown }} SessionRow
@@ -260,7 +260,7 @@ export async function revokeSessionById(auth, request, id) {
   return true;
 }
 
-// ---- fresh sign-in -----------------------------------------------------------------------------------
+// fresh sign-in
 
 /**
  * Whether a session was made within `freshSeconds`. @param {{ createdAt: Date | string | number }} session
@@ -309,7 +309,7 @@ export async function requireFreshSession(auth, request) {
   throw new SessionNotFresh();
 }
 
-// ---- passkey names ---------------------------------------------------------------------------------
+// passkey names
 
 /**
  * The providers people use, by AAGUID, named as passkeydeveloper/passkey-authenticator-aaguids (aaguid.json, read
@@ -503,7 +503,7 @@ export async function shouldOfferPasskey(db, userId, passkeys, now = Date.now())
   return results.length === 0;
 }
 
-// ---- which event a request was ------------------------------------------------------------------
+// which event a request was
 
 /** The ways in, by Better Auth endpoint. `/callback/:id` and `/sign-in/social` name the provider instead. */
 const SIGN_IN_VIA = {
@@ -659,7 +659,7 @@ export async function logAuthEvent(
     });
 }
 
-// ---- the event table and the security history ----------------------------------------------------------
+// the event table and the security history
 
 /**
  * @typedef {{ prepare(sql: string): { bind(...values: unknown[]): { run(): Promise<unknown>, all(): Promise<{ results: any[] }> } } }} D1Like
@@ -870,7 +870,7 @@ export function pruneAuthEventsJob(db) {
   };
 }
 
-// ---- security notices -------------------------------------------------------------------------------
+// security notices
 
 const PROVIDER_NAMES = /** @type {Record<string, string>} */ ({ google: "Google", apple: "Apple" });
 

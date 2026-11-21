@@ -1,6 +1,6 @@
 /**
  * Secret redaction for text a Worker relays from somewhere it does not control: a CI log handed to an agent, an error
- * body from an outside API. Moved from Capsid (src/redact.ts), which redacts the CI logs capsid_inspect_repo returns.
+ * body from an outside API.
  *
  * A CI log carries whatever the workflow echoed: a token a step printed by accident, an Authorization header from a
  * verbose curl, a key file cat'd while debugging. Each rule replaces the secret, never the line, with

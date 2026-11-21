@@ -1,7 +1,6 @@
 // The room for one file: a Durable Object on Cloudflare's y-partyserver, holding the shared working copy
 // every editor open on the file is connected to, the people in it, and the comment threads on it. It
-// pairs with Capsomer's collab editor (capsomer/collab-editor), whose messages it speaks. Moved from
-// Carrel's workers/doc-room.ts (the 2026-11-11 shared-code audit, item 31).
+// pairs with Capsomer's collab editor (capsomer/collab-editor), whose messages it speaks.
 //
 // Nobody reaches it but the app's door, which has already checked the person's access and says who they
 // are in one header it sets itself (DOC_ROOM_VIEWER_HEADER, `viewerRequest`). So each connection knows
@@ -181,7 +180,7 @@ export class DocRoom extends YServer {
     });
   }
 
-  // ---- the door's calls (RPC), each from a route that has checked the person's access
+  // the door's calls (RPC), each from a route that has checked the person's access
 
   /** Where the room stands. `seeded` false: nobody has opened the file since live editing began. */
   async status() {
@@ -333,7 +332,7 @@ export class DocRoom extends YServer {
     return true;
   }
 
-  // ---- connections
+  // connections
 
   /**
    * @param {Connection} conn
