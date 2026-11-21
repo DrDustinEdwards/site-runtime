@@ -1,5 +1,16 @@
 # @dustinedwards/site-runtime
 
+## 0.172.0
+
+### Minor Changes
+
+- `./sri` also gives each module a page reaches through `import()` a low-priority modulepreload with its integrity, so a build with lazy chunks (Capsomer's site, the Capsid Portal) can enforce Integrity-Policy.
+
+### Patch Changes
+
+- sign-in check: a passkey rpId that follows a stand-in origin (--from) is a warning, not an error, until the real host serves the site.
+- ai-audit treats the resources/read caching-hints check as not applicable when the list-only test key is refused with -32601.
+
 ## 0.171.0
 
 ### Minor Changes
