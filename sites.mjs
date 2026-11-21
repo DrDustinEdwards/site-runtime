@@ -152,6 +152,11 @@ const integrityEnforced = {
   reason:
     "devkit's siteScript writes integrity and crossorigin on /site.js and preloads every island chunk, including those import()ed, with its integrity (devkit 0.55.3), and a Playwright run with the enforced header on the live site loaded every page script with none blocked.",
 };
+const integrityTurnstile = {
+  value: /** @type {const} */ ("report-only"),
+  reason:
+    "Cloudflare's Turnstile script (challenges.cloudflare.com/turnstile/v0/api.js) is loaded from another origin and cannot carry an integrity attribute (Cloudflare ships it unpinned), so an enforced Integrity-Policy blocks it and the sign-in or sign-up form fails closed; the site's own scripts all carry integrity.",
+};
 const integrityStagedStatic = {
   value: /** @type {const} */ ("report-only"),
   reason:
@@ -304,7 +309,7 @@ export const foxhound = {
     coep: /* @__PURE__ */ coepEmbeds(
       "the merchant app returns from Stripe and draws its charts and the admin's pages behind a sign-in",
     ),
-    integrityPolicy: integrityEnforced,
+    integrityPolicy: integrityTurnstile,
     trustedTypes: typesEnforced,
     denyUnlisted: unlistedStaged,
   },
@@ -338,7 +343,7 @@ export const foxing = {
     coep: /* @__PURE__ */ coepStaged(
       "the reader frames each book's pages and loads its covers and fonts, and Turnstile's challenge frame (challenges.cloudflare.com) sends no CORP, which the coep reports showed refused; Cloudflare documents no COEP support for it, and `<iframe credentialless>` is Chrome-only",
     ),
-    integrityPolicy: integrityEnforced,
+    integrityPolicy: integrityTurnstile,
     trustedTypes: typesEnforced,
     denyUnlisted: unlistedStaged,
   },
@@ -463,7 +468,7 @@ export const txasm = {
     coep: /* @__PURE__ */ coepStaged(
       "submission, review, the abstract book's PDF.js viewer and the admin sit behind a sign-in; the coep reports showed the PDF.js worker (/pdfjs/pdf.worker.min.mjs) refused, since a worker script must send the policy itself",
     ),
-    integrityPolicy: integrityEnforced,
+    integrityPolicy: integrityTurnstile,
     trustedTypes: typesEnforced,
     denyUnlisted: unlistedStaged,
   },
