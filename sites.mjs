@@ -512,7 +512,11 @@ export const carrelDesk = {
     coep: /* @__PURE__ */ coepStaged(
       "the editor frames each draft's preview, the site's own markup under a sandbox policy, which COEP would refuse unless it carries it too",
     ),
-    integrityPolicy: integrityStaged,
+    integrityPolicy: {
+      value: /** @type {const} */ ("enforce"),
+      reason:
+        "React Router writes integrity for every chunk into the import map and the modulepreloads (subResourceIntegrity: true, react-router.config.ts), Desk loads no script from another origin, and a Playwright run of the harness with the enforced header loaded every page and editor chunk with none blocked.",
+    },
     trustedTypes: typesEnforced,
     denyUnlisted: unlistedStaged,
   },
@@ -538,9 +542,9 @@ export const capsidPortal = {
         "Enforced 2026-11-21: the Portal embeds no frame or player and loads nothing from another origin, and the coep reports (./csp-report) showed no refusal.",
     },
     integrityPolicy: {
-      value: "report-only",
+      value: "enforce",
       reason:
-        "The build's tags carry integrity (subresourceIntegrity, ./sri, dashboard/vite.config.ts), but each view is a chunk loaded with import(), which only an import map could give integrity; Report-Only while the reports name them.",
+        "React Router writes integrity for every chunk into the import map and the modulepreloads (subResourceIntegrity: true, dashboard/react-router.config.ts), the Portal loads no script from another origin, and a Playwright run of the production build with the enforced header, clicking through every view, loaded every chunk with none blocked.",
     },
     trustedTypes: typesEnforced,
   },
@@ -677,9 +681,9 @@ export const capsomer = {
       "the site frames its own states pages and specimens, each of which must carry it too",
     ),
     integrityPolicy: {
-      value: "report-only",
+      value: "enforce",
       reason:
-        "The build's tags carry integrity (subresourceIntegrity, ./sri, site/vite.config.ts), but the admin and some states pages load chunks with import(), which only an import map could give integrity; Report-Only while the reports name them.",
+        "The build's tags carry integrity (subresourceIntegrity, ./sri, site/vite.config.ts), and ./sri gives every module a page reaches through import() a modulepreload with its integrity; a Playwright run of all 211 built pages with the enforced header, with search, the command menu and the shortcut sheet opened, loaded every chunk with none blocked.",
     },
     trustedTypes: typesEnforcedStatic,
     denyUnlisted: unlistedStaged,
