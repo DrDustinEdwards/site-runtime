@@ -14,11 +14,12 @@ test("writeIntegrity marks the build's own scripts and modulepreloads, under the
   writeFileSync(join(dir, "assets", "a.js"), "export const a = 1;");
   writeFileSync(
     join(dir, "assets", "entry.js"),
-    'import{a}from"./a.js";import "/portal/assets/b.js";import("./lazy.js");',
+    'import{a}from"./a.js";import "/portal/assets/b.js";import("./lazy.js");import(`./lazy2.js`);',
   );
   writeFileSync(join(dir, "assets", "b.js"), 'export * from "../theme.js";');
   writeFileSync(join(dir, "theme.js"), "1;");
   writeFileSync(join(dir, "assets", "lazy.js"), "export const l = 1;");
+  writeFileSync(join(dir, "assets", "lazy2.js"), "export const l = 2;");
   const page = [
     '<script src="/portal/theme.js"></script>',
     '<script type="module" crossorigin src="/portal/assets/a.js"></script>',
@@ -50,11 +51,11 @@ test("writeIntegrity marks the build's own scripts and modulepreloads, under the
     join(dir, "index.html"),
     '<script type="module" src="assets/entry.js"></script>\n<link rel="modulepreload" href="/portal/assets/a.js">',
   );
-  assert.equal(await writeIntegrity(dir, { base: "/portal/" }), 5);
+  assert.equal(await writeIntegrity(dir, { base: "/portal/" }), 6);
   const index = readFileSync(join(dir, "index.html"), "utf8");
   assert.deepEqual(
     [...index.matchAll(/<link rel="modulepreload" href="([^"]+)"/g)].map((m) => m[1]),
-    ["/portal/assets/b.js", "/portal/theme.js", "/portal/assets/lazy.js", "/portal/assets/a.js"],
+    ["/portal/assets/b.js", "/portal/theme.js", "/portal/assets/lazy.js", "/portal/assets/lazy2.js", "/portal/assets/a.js"],
   );
   assert.match(index, /lazy\.js" integrity="[^"]+" crossorigin="anonymous" fetchpriority="low">/);
   assert.match(
