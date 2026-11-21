@@ -55,7 +55,13 @@ test("writeIntegrity marks the build's own scripts and modulepreloads, under the
   const index = readFileSync(join(dir, "index.html"), "utf8");
   assert.deepEqual(
     [...index.matchAll(/<link rel="modulepreload" href="([^"]+)"/g)].map((m) => m[1]),
-    ["/portal/assets/b.js", "/portal/theme.js", "/portal/assets/lazy.js", "/portal/assets/lazy2.js", "/portal/assets/a.js"],
+    [
+      "/portal/assets/b.js",
+      "/portal/theme.js",
+      "/portal/assets/lazy.js",
+      "/portal/assets/lazy2.js",
+      "/portal/assets/a.js",
+    ],
   );
   assert.match(index, /lazy\.js" integrity="[^"]+" crossorigin="anonymous" fetchpriority="low">/);
   assert.match(
