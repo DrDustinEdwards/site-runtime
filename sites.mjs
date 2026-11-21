@@ -417,6 +417,7 @@ export const julieedwardsInfo = {
         ...IMMUTABLE,
         "Cross-Origin-Resource-Policy": /* @__PURE__ */ corpFor("text/css"),
       },
+      .../* @__PURE__ */ hashed("/site-*"),
       "/opengraph-image.png": sharedImage,
     },
   },
