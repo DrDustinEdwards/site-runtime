@@ -293,10 +293,16 @@ export function speedFindings(o) {
       `could not read the HTTP/2 response to look for a 103: ${o.earlyHints?.error ?? "no answer"}`,
     );
   else if (!o.earlyHints.includes(103)) {
-    const why = new URL(o.base).host.endsWith(".workers.dev")
+    const onWorkersDev = new URL(o.base).host.endsWith(".workers.dev");
+    const why = onWorkersDev
       ? ": workers.dev never sends Early Hints; the site needs its own domain"
       : "";
-    add("D1", "error", `${o.base}/`, `no 103 Early Hints before the page${why}`);
+    add(
+      "D1",
+      onWorkersDev ? "warning" : "error",
+      `${o.base}/`,
+      `no 103 Early Hints before the page${why}`,
+    );
   }
 
   if (home && isHtml(home) && !runsApp(home.body)) {

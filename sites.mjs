@@ -220,7 +220,7 @@ const doorOptIns = {
 };
 
 const IMMUTABLE = { "Cache-Control": "public, max-age=31536000, immutable" };
-/** The build's content-hashed output: Vite's /assets/, and devkit siteScript's /islands/ where a site has them. */
+/** The build's content-hashed output: Vite's /assets/, and devkit siteScript's /islands/ and root /site-<hash>.js where a site has them. */
 const hashed = (/** @type {string[]} */ ...patterns) =>
   Object.fromEntries(patterns.map((p) => [p, IMMUTABLE]));
 const sharedImage = { "Cross-Origin-Resource-Policy": /* @__PURE__ */ corpFor("image/png") };
@@ -260,7 +260,7 @@ export const dustinedwardsInfo = {
   deviations: { C3: beaconNotStrict },
   assets: {
     paths: {
-      .../* @__PURE__ */ hashed("/assets/*", "/islands/*"),
+      .../* @__PURE__ */ hashed("/assets/*", "/islands/*", "/site-*"),
       // Pictures at static paths that other origins load: the share card, and those a page or Carrel's preview draws.
       .../* @__PURE__ */ Object.fromEntries(
         [
@@ -319,7 +319,7 @@ export const foxhound = {
       // The favicons and PNGs beside a Foxhound link (the RSS channel image) are images other origins load.
       "/*.ico": { "Cross-Origin-Resource-Policy": /* @__PURE__ */ corpFor("image/x-icon") },
       "/*.png": sharedImage,
-      .../* @__PURE__ */ hashed("/assets/*", "/islands/*"),
+      .../* @__PURE__ */ hashed("/assets/*", "/islands/*", "/site-*"),
     },
   },
   // The merchants' MCP server on the site, and the admin's on its own host.
@@ -348,7 +348,7 @@ export const foxing = {
     denyUnlisted: unlistedStaged,
   },
   deviations: { C3: beaconNotStrict },
-  assets: { paths: /* @__PURE__ */ hashed("/assets/*", "/islands/*") },
+  assets: { paths: /* @__PURE__ */ hashed("/assets/*", "/islands/*", "/site-*") },
   signIn: { mcp: ["https://admin-mcp.foxing.app/mcp"] },
 };
 
@@ -387,7 +387,7 @@ export const germomics = {
   deviations: { C3: beaconNotStrict },
   assets: {
     paths: {
-      .../* @__PURE__ */ hashed("/assets/*", "/islands/*"),
+      .../* @__PURE__ */ hashed("/assets/*", "/islands/*", "/site-*"),
       // The fonts sit at stable names scripts/fetch-fonts.mjs rewrites in place: a day, then the ETag.
       "/fonts/*": { "Cache-Control": "public, max-age=86400" },
     },
@@ -446,7 +446,14 @@ export const bsw = {
   assets: {
     paths: {
       // The site's photographs carry a hash of their bytes in their names (app/lib/media/images.ts).
-      .../* @__PURE__ */ hashed("/assets/*", "/islands/*", "/brand/*", "/team/*", "/services/*"),
+      .../* @__PURE__ */ hashed(
+        "/assets/*",
+        "/islands/*",
+        "/site-*",
+        "/brand/*",
+        "/team/*",
+        "/services/*",
+      ),
       // The site card and each page's own card (drawn at build time) are fetched by other sites' link previews.
       "/og-image.png": sharedImage,
       "/og/*": sharedImage,
@@ -473,7 +480,7 @@ export const txasm = {
     denyUnlisted: unlistedStaged,
   },
   deviations: { C3: beaconNotStrict },
-  assets: { paths: /* @__PURE__ */ hashed("/assets/*", "/islands/*") },
+  assets: { paths: /* @__PURE__ */ hashed("/assets/*", "/islands/*", "/site-*") },
   // Its Access application covers /admin/access only (app/lib/access.server.ts).
   signIn: { admin: ["/admin/access"] },
 };
