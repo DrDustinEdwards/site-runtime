@@ -1,5 +1,15 @@
 # @dustinedwards/site-runtime
 
+## 0.170.0
+
+### Minor Changes
+
+- `./context` exports `previewContext<T>()`, the null-default context a Carrel preview's draft (a post or a page) is set on for the in-process render, which germomics, txasm and dustinedwards.info each declared by hand.
+
+### Patch Changes
+
+- Foxing's and txasm's registry reasons now say what the coep reports showed refused (Turnstile's frame, the PDF.js worker), so Report-Only stays on evidence.
+
 ## 0.169.4
 
 ### Patch Changes
