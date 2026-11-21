@@ -797,6 +797,9 @@ function readChecks(
       /^sep-2549-(prompts-list|resources-list|resources-templates-list)-caching-hints$/.exec(
         String(c.id),
       )?.[1];
+    // The list-only test key may not read a resource (PROBE_METHODS), so its 404 is the door's answer, not a missing hint.
+    if (c.id === "sep-2549-resources-read-caching-hints" && c.details?.error?.code === -32601)
+      return true;
     return Boolean(
       list &&
       c.details?.error?.code === -32601 &&
