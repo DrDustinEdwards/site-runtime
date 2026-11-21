@@ -69,7 +69,7 @@ test("an undeclared deviation fails: an opt-in another site declared, or a gap l
     failures(checkSecurityHeaders(capsomer, { site: "prelum" }))
       .map((r) => r.id)
       .sort(),
-    ["C9", "H3", "H5"],
+    ["C9", "H3", "H5", "S2"],
   );
   const oneYear = page({ ...dustinedwardsInfo, headers: { ...dustinedwardsInfo.headers } });
   oneYear.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");

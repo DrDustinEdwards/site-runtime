@@ -161,7 +161,8 @@ function preloadsOf(html, pagePath, base, root) {
 const STATIC_IMPORT =
   /(?:^|[;\s}])(?:import|export)\s*(?:(?!(?:import|export)\b)[\w$*{},]+(?:\s+(?!(?:import|export)\b)[\w$*{},]+)*\s*\bfrom\s*)?["']((?:\.{1,2}\/|\/)[^"']+)["']/g;
 
-const DYNAMIC_IMPORT = /\bimport\(\s*["']((?:\.{1,2}\/|\/)[^"')]+)["']\s*\)/g;
+// Vite's minifier writes the specifier as a template literal, `import(`./x.js`)`, with no `${}` in it.
+const DYNAMIC_IMPORT = /\bimport\(\s*["'`]((?:\.{1,2}\/|\/)[^"'`$)]+)["'`]\s*\)/g;
 
 /**
  * Every local module `entry` reaches through static imports, and with `dynamic` through `import()` too, transitively,
