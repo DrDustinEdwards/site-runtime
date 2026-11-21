@@ -275,6 +275,29 @@ test("a file replaced under the same key never answers a size cached from the ol
   assert.equal(seen.length, 2);
 });
 
+test("a size answered from the cache has headers a route may set", async () => {
+  const stored = new Map();
+  const cache = /** @type {Cache} */ (
+    /** @type {unknown} */ ({
+      match: async (/** @type {Request} */ k) => {
+        const hit = stored.get(k.url)?.clone();
+        if (!hit) return hit;
+        // As on Workers: a stored response's headers refuse a set.
+        hit.headers.set = () => {
+          throw new TypeError("Can't modify immutable headers.");
+        };
+        return hit;
+      },
+      put: async (/** @type {Request} */ k, /** @type {Response} */ r) => void stored.set(k.url, r),
+    })
+  );
+  const at = () => new Request("https://example.com/media/a.jpg?w=640");
+  await images.respond(at(), { object: object(), images: binding([]), cache });
+  const res = await images.respond(at(), { object: object(), images: binding([]), cache });
+  res.headers.set("x-test", "1");
+  assert.equal(res.headers.get("x-test"), "1");
+});
+
 test("an edit shrinks inside a square, reads a view's own bytes, re-encodes on a format alone, and refuses a bad option unbilled", async () => {
   const seen = [];
   let read = "";
