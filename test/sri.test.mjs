@@ -18,6 +18,7 @@ test("writeIntegrity marks the build's own scripts and modulepreloads, under the
   );
   writeFileSync(join(dir, "assets", "b.js"), 'export * from "../theme.js";');
   writeFileSync(join(dir, "theme.js"), "1;");
+  writeFileSync(join(dir, "assets", "lazy.js"), "export const l = 1;");
   const page = [
     '<script src="/portal/theme.js"></script>',
     '<script type="module" crossorigin src="/portal/assets/a.js"></script>',
@@ -44,17 +45,18 @@ test("writeIntegrity marks the build's own scripts and modulepreloads, under the
     "a tag with integrity is left alone",
   );
 
-  // A module's static imports, transitively, get a modulepreload with integrity; a dynamic import() does not.
+  // A module's static imports, transitively, get a modulepreload with integrity; a dynamic import() gets one too, at low priority.
   writeFileSync(
     join(dir, "index.html"),
     '<script type="module" src="assets/entry.js"></script>\n<link rel="modulepreload" href="/portal/assets/a.js">',
   );
-  assert.equal(await writeIntegrity(dir, { base: "/portal/" }), 4);
+  assert.equal(await writeIntegrity(dir, { base: "/portal/" }), 5);
   const index = readFileSync(join(dir, "index.html"), "utf8");
   assert.deepEqual(
     [...index.matchAll(/<link rel="modulepreload" href="([^"]+)"/g)].map((m) => m[1]),
-    ["/portal/assets/b.js", "/portal/theme.js", "/portal/assets/a.js"],
+    ["/portal/assets/b.js", "/portal/theme.js", "/portal/assets/lazy.js", "/portal/assets/a.js"],
   );
+  assert.match(index, /lazy\.js" integrity="[^"]+" crossorigin="anonymous" fetchpriority="low">/);
   assert.match(
     index,
     new RegExp(`href="/portal/assets/a.js" integrity="${a}"`),
