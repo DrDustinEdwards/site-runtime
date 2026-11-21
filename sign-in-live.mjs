@@ -210,8 +210,7 @@ export async function signInFindings({ origin, from, probes }) {
     else if (/\.(workers|pages)\.dev$/.test(rpId) || (rpId !== host && !host.endsWith(`.${rpId}`)))
       flag(
         "A1",
-        // Probed through a stand-in (`from`) because the real host serves no site yet: the rpId follows the stand-in until cutover.
-        base === origin ? "error" : "warning",
+        "error",
         options.url,
         `the passkey's rpId is ${rpId}, not ${host}: a passkey made here will not work on the site`,
       );
