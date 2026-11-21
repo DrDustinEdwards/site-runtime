@@ -45,21 +45,26 @@ export const CHECK_DETAIL_MAX = 200;
 // The key r2Check and kvCheck read: what comes back does not matter, only that the binding answers.
 const PROBE_KEY = "health-check";
 
-// A cache key must be a URL; nothing is fetched from it.
-const BACKUP_CACHE_KEY = "https://health.site-runtime.invalid/backup";
+// A cache key must be a URL; nothing is fetched from it. The deployed commit is part of it: Workers on one zone or one
+// workers.dev account share a data center's cache, so a bare key made bsw answer with txasm's backup.
+const backupCacheKey = (/** @type {string} */ sha) =>
+  `https://health.site-runtime.invalid/backup/${encodeURIComponent(sha)}`;
 const DEFAULT_BACKUP_TTL_MS = 60 * 60_000;
 
 /**
  * The kept backup status, or the result of `read`, which is then kept for `ttlMs`. A cache that is missing or throws
- * is a miss, never a failure: the status is still read.
+ * is a miss, never a failure: the status is still read. Without a `sha` there is nothing site-specific to key on, so it
+ * is read every time.
  * @param {() => Promise<unknown>} read
  * @param {number} ttlMs
+ * @param {string | undefined} sha
  * @param {{ match(key: string): Promise<Response | undefined>, put(key: string, response: Response): Promise<void> } | undefined} cache
  */
-async function keptBackup(read, ttlMs, cache) {
-  if (!cache || ttlMs < 1000) return read();
+async function keptBackup(read, ttlMs, sha, cache) {
+  if (!cache || ttlMs < 1000 || !sha) return read();
+  const key = backupCacheKey(sha);
   try {
-    const hit = await cache.match(BACKUP_CACHE_KEY);
+    const hit = await cache.match(key);
     if (hit) return await hit.json();
   } catch {
     // An unreadable entry is a miss.
@@ -67,7 +72,7 @@ async function keptBackup(read, ttlMs, cache) {
   const value = await read();
   try {
     await cache.put(
-      BACKUP_CACHE_KEY,
+      key,
       new Response(JSON.stringify(value), {
         headers: {
           "Content-Type": "application/json",
@@ -110,7 +115,7 @@ export async function healthResponse({
       name: "backup",
       level: "warn",
       run: async () => {
-        backupStatus = await keptBackup(backup, backupTtlMs, cache);
+        backupStatus = await keptBackup(backup, backupTtlMs, sha, cache);
         const warning =
           backupStatus &&
           typeof backupStatus === "object" &&
