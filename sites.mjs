@@ -331,7 +331,7 @@ export const foxing = {
     },
     passkey,
     coep: /* @__PURE__ */ coepStaged(
-      "the reader frames each book's pages and loads its covers and fonts",
+      "the reader frames each book's pages and loads its covers and fonts, and Turnstile's challenge frame (challenges.cloudflare.com) sends no CORP, which the coep reports showed refused; Cloudflare documents no COEP support for it, and `<iframe credentialless>` is Chrome-only",
     ),
     integrityPolicy: integrityStaged,
     trustedTypes: typesEnforced,
@@ -456,7 +456,7 @@ export const txasm = {
     cloudflareWebAnalytics: /* @__PURE__ */ beacon("app/lib/security-headers.ts"),
     passkey,
     coep: /* @__PURE__ */ coepStaged(
-      "submission, review, the abstract book's PDF.js viewer and the admin sit behind a sign-in",
+      "submission, review, the abstract book's PDF.js viewer and the admin sit behind a sign-in; the coep reports showed the PDF.js worker (/pdfjs/pdf.worker.min.mjs) refused, since a worker script must send the policy itself",
     ),
     integrityPolicy: integrityStaged,
     trustedTypes: typesEnforced,
