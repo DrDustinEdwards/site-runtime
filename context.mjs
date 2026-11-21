@@ -27,6 +27,16 @@ export const serverTimingContext = createContext(
   /** @type {import("./server-timing.mjs").Mark[] | null} */ (null),
 );
 
+/**
+ * A context for a Carrel preview's draft (a post or a page), set only on the in-process render the preview makes
+ * (`kit.render`, site-api's StepKit) and never on a reader's request, so the route shows the draft in place of the stored
+ * row. The default is null, not undefined, for the reason cspNonceContext's is. A site declares one per kind of draft:
+ * `export const postPreviewContext = previewContext<Post>()`.
+ * @template T
+ * @returns {import("react-router").RouterContext<T | null>}
+ */
+export const previewContext = () => createContext(/** @type {T | null} */ (null));
+
 /** @param {Readonly<import("react-router").RouterContextProvider>} context */
 export const getEnv = (context) => context.get(cloudflareContext).env;
 
