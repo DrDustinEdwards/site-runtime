@@ -294,8 +294,15 @@ export function speedFindings(o) {
     );
   else if (!o.earlyHints.includes(103)) {
     const onWorkersDev = new URL(o.base).host.endsWith(".workers.dev");
-    const why = onWorkersDev ? ": workers.dev never sends Early Hints; the site needs its own domain" : "";
-    add("D1", onWorkersDev ? "warning" : "error", `${o.base}/`, `no 103 Early Hints before the page${why}`);
+    const why = onWorkersDev
+      ? ": workers.dev never sends Early Hints; the site needs its own domain"
+      : "";
+    add(
+      "D1",
+      onWorkersDev ? "warning" : "error",
+      `${o.base}/`,
+      `no 103 Early Hints before the page${why}`,
+    );
   }
 
   if (home && isHtml(home) && !runsApp(home.body)) {
