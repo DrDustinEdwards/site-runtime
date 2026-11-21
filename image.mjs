@@ -547,7 +547,8 @@ export function defineImages({
     keyUrl.searchParams.set("__cc", cacheControl);
     const cacheKey = new Request(keyUrl.toString(), { method: "GET" });
     const hit = cache ? await cache.match(cacheKey) : undefined;
-    if (hit) return hit;
+    // A cached Response has immutable headers, and the Renderer sets security headers on what a route returns.
+    if (hit) return new Response(hit.body, hit);
 
     if (!images) {
       // The binding is in each site's untracked wrangler.jsonc, so a checkout can lack it. Said in a header, or the
