@@ -45,6 +45,7 @@ test("a stale backup warns at 200 with ok true; a database that throws fails at 
       throw new Error("D1");
     },
     backup,
+    sha: "abc123",
     now: at(60_000),
     cache,
   });
@@ -54,9 +55,18 @@ test("a stale backup warns at 200 with ok true; a database that throws fails at 
     ok: false,
   });
   assert.equal(reads, 1);
-  assert.equal(reads, 1);
-  await healthResponse({ ping: async () => 1, backup, now: at(5 * 60_000), backupTtlMs: 0, cache });
+  // Another Worker in the same cache reads its own status, never the first one's.
+  await healthResponse({ ping: async () => 1, backup, sha: "def456", now: at(2 * 60_000), cache });
   assert.equal(reads, 2);
+  await healthResponse({
+    ping: async () => 1,
+    backup,
+    sha: "abc123",
+    now: at(5 * 60_000),
+    backupTtlMs: 0,
+    cache,
+  });
+  assert.equal(reads, 3);
 });
 
 test("a check that hangs fails at the timeout; a warn check never makes it 503, an alert included; error text is scrubbed", async () => {
