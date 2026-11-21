@@ -1,5 +1,15 @@
 # @dustinedwards/site-runtime
 
+## 0.173.0
+
+### Minor Changes
+
+- Integrity-Policy is enforced on the Capsomer site, the Capsid Portal and Desk, whose builds give every script an integrity; only bsw stays Report-Only (its Web Analytics beacon cannot carry one), with Foxhound, Foxing and txasm, whose Turnstile script cannot either.
+
+### Patch Changes
+
+- `./sri` finds an `import()` whose specifier is a template literal, as Vite's minifier writes it, so those chunks get their modulepreload with integrity too. Before, Capsomer's site-header-search chunk had none and Integrity-Policy would have blocked it.
+
 ## 0.172.1
 
 ### Patch Changes
