@@ -1,5 +1,11 @@
 # @dustinedwards/site-runtime
 
+## 0.171.0
+
+### Minor Changes
+
+- Integrity-Policy is enforced on dustinedwards.info, Foxhound, Foxing, Germomics, julieedwards.info and txasm, whose build gives every script an integrity; the other sites stay Report-Only.
+
 ## 0.170.0
 
 ### Minor Changes
