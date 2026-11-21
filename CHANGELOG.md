@@ -1,5 +1,11 @@
 # @dustinedwards/site-runtime
 
+## 0.173.2
+
+### Patch Changes
+
+- The registry marks devkit siteScript's root `/site-<hash>.js` as immutable for a year, as it does `/assets/*` and `/islands/*`, and the speed check's missing 103 Early Hints is a warning on a workers.dev address, which can never send one.
+
 ## 0.173.1
 
 ### Patch Changes
