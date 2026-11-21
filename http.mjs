@@ -1,7 +1,6 @@
 /**
  * The small request and response helpers every site's Worker needs, once: who is asking, whether it writes, the plain
- * answers that are never cached, the outbound fetch that cannot hang, and whether this is a Worker Preview. Each was a
- * copy in two to seven sites (the 2026-11-11 shared-code audit, item 37).
+ * answers that are never cached, the outbound fetch that cannot hang, and whether this is a Worker Preview.
  */
 
 /** How long an outbound call may take before timedFetch aborts it (ms). */

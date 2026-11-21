@@ -27,7 +27,6 @@ import { originRefusal, originVerdict } from "./origin.mjs";
 import { securityTxtResponse } from "./security-txt.mjs";
 import { errorMessage } from "./log.mjs";
 
-// ---------------------------------------------------------------------------------------------------------------------
 // THE ERA ROUTER, and the prior-era shim.
 //
 // MCP 2026-07-28 removed the `initialize` handshake, sessions and the GET stream. The primary handler is built
@@ -41,7 +40,6 @@ import { errorMessage } from "./log.mjs";
 // shows the target clients opening with `server/discover` instead of `initialize`. Last measured: Claude Code 2.1.203
 // (2026-07-29) and claude.ai (2026-07-30), both LEGACY (initialize, 2025-11-25). Delete on a capture, never on a release
 // note. Without `isLegacyRequest` the router is a modern-only server.
-// ---------------------------------------------------------------------------------------------------------------------
 
 /**
  * Answers one MCP request in the era that can. A request `isLegacyRequest` calls legacy goes to a `legacy: "stateless"`
@@ -66,7 +64,6 @@ export async function routeMcpEra(
   return createMcpHandler(factory, { ...options, legacy })(request, env, ctx);
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
 // THE DOOR'S HEADERS. Every response an MCP Worker sends, its 404s and the OAuth library's redirects included, leaves
 // through one wrapper, so none goes out without the family's set: the site's registry entry (CORP, Permissions-Policy,
 // HSTS, X-Frame-Options, X-DNS-Prefetch-Control and the rest), never cached or indexed, and a policy that lets no page
@@ -74,7 +71,6 @@ export async function routeMcpEra(
 // approving posts into a redirect chain that ends at whatever redirect_uri the client named, and a browser checks
 // form-action on every hop (Capsid shipped form-action 'self' once and broke sign-in for 26 days). Everything else may
 // load nothing. The wrapper also answers security.txt and the policy's report sink, so the door needs no route of its own.
-// ---------------------------------------------------------------------------------------------------------------------
 
 const REPORT_GROUP = CSP_REPORT_GROUP;
 /** The consent and owner styles' hashes as a style-src list, once per isolate. @type {Promise<string> | undefined} */
@@ -156,11 +152,9 @@ export function withMcpHeaders(
   };
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
 // THE API LEG: this Worker to its site, over a service binding. Still HTTP, not an in-process call: the request carries
 // the same bearer and crosses the same authentication and rate limit as any other. The bearer identifies WHAT this Worker
 // may do and is never the client's OAuth token. A failure here reads differently from a refusal by the API.
-// ---------------------------------------------------------------------------------------------------------------------
 
 /** Why the API leg could not produce an answer: not configured, not reachable, canceled, or not JSON. Never an API refusal. */
 export class ApiLegError extends Error {
@@ -257,10 +251,8 @@ export async function callApi(env, leg, path, init = {}) {
   }
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
 // THE DOOR'S RATE LIMIT, on the family's one limiter. Verify with a concurrent burst: a sequential loop straddles the
 // window boundary and refuses nothing, which reads exactly like a dead limiter.
-// ---------------------------------------------------------------------------------------------------------------------
 
 /** Requests one identity may make per minute through the MCP door. */
 export const MCP_PER_MINUTE = 30;
@@ -310,13 +302,11 @@ export function refuse(body, status, headers = {}) {
   });
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
 // THE DOOR'S OTHER CHECKS. What the libraries already do is theirs: @cloudflare/workers-oauth-provider (1.1.0 and
 // later) answers a missing or invalid token 401 with `resource_metadata` and `scope` (the PRM's `scopes_supported`),
 // refuses a token bound to another resource, and exports `insufficientScope(ctx.auth, scopes)` for a 403 step-up
 // outside the MCP handler. Inside it, the SDK's per-tool `scopeChallenge` (fed below) sends that 403. `agents`'
 // createMcpHandler checks Origin against its own hostname list. What follows is only what neither covers.
-// ---------------------------------------------------------------------------------------------------------------------
 
 /** @param {string} resource */
 function resourceMetadataUrl(resource) {
@@ -384,12 +374,10 @@ export function mcpOriginRefusal(request, allowed = [], headers) {
   return originRefusal(headers);
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
 // LEAST SCOPE FIRST, AND THE PER-CALL OWNERSHIP CHECK (ruling mcp-2026-10-10, rules 12.1 and 12.3). Read is what every
 // connection gets; write is ticked on the consent page (or, on dustinedwards-info, named for an agent in AGENT_WRITE).
 // Every id a tool takes names a record only the site's administrator owns, so proving the caller owns it is proving the
 // caller IS that administrator, on every call: a grant is long lived.
-// ---------------------------------------------------------------------------------------------------------------------
 
 /**
  * The read and write scopes for a server's scope prefix (`dei` gives `dei.read` and `dei.write`).
@@ -518,12 +506,10 @@ export function toolScopeChallenge(env, server, tool) {
   };
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
 // THE ONE DOOR TO A TOOL HANDLER (rule 12.4). In order: prove the caller owns what the tool names and holds its scope
 // (a refusal is logged and nothing is sent), write the `started` row (and refuse if the log cannot be written, so no
 // call runs unlogged), run the tool, write the `finished` row (also when the tool throws, before the error goes on).
 // Rows name the caller and never carry a credential.
-// ---------------------------------------------------------------------------------------------------------------------
 
 /**
  * One tool call through the scope check and the log. `run` is the server's own handler; `meta` is the request's
@@ -680,7 +666,6 @@ export function registerTools(mcp, tools, { env, server, caller, icons, config, 
   return listed;
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
 // THE LIST-ONLY TEST KEY'S DOOR (./agent-keys `isProbeKey`). The key may open a connection, read the server's lists and
 // send a tools/call that the server refuses; any other method is answered here, before the SDK sees the request, as the
 // method a server does not have (404, -32601), and logged. An allowlist, so a method added to the protocol later is
@@ -692,7 +677,6 @@ export function registerTools(mcp, tools, { env, server, caller, icons, config, 
 // SDK's checks the call reaches a tool the key was listed (only read tools are, `registerTools`), and `invokeTool`
 // refuses the probe caller before `run`, in words, with a `refused` row: the same answer an agent key gets for a tool
 // outside its scope. So the key still runs nothing, and the door no longer stands in for the protocol's own answers.
-// ---------------------------------------------------------------------------------------------------------------------
 
 /**
  * The methods the list-only test key may send on to the server: the handshake, ping, the lists, the list-changed
@@ -817,10 +801,8 @@ export async function probeDoor(request, env, { server, limiter, serve }) {
   return checked.refusal ?? serve(checked.request, probeCaller());
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
 // TEXT FROM OUTSIDE (S2). A tool that returns what someone outside the server wrote (a web page, a mention, a repository
 // file, an email) marks it as data in the result, as `untrusted` marks it in a prompt.
-// ---------------------------------------------------------------------------------------------------------------------
 
 /** The line a result with outside text opens with. */
 export const OUTSIDE_DATA_NOTICE =
@@ -847,10 +829,8 @@ export function outsideResult(label, value) {
     : { content, structuredContent: { notice: OUTSIDE_DATA_NOTICE, ...value } };
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
 // THE TOOL LIST'S RULES (T1-T4, T9) AND ITS PIN (T12), over `tools/list` as a client receives it, so a server's own test
 // and the daily live check (bin/ai-audit.mjs) judge the same thing the same way.
-// ---------------------------------------------------------------------------------------------------------------------
 
 const TOOL_NAME = /^[A-Za-z0-9_.-]{1,128}$/;
 const HINTS = ["readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"];
@@ -955,10 +935,8 @@ export async function toolListHash(tools) {
   return sha256Hex(canonicalJson(plain));
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
 // LIST CACHE HINTS (MCP 2026-07-28). The SDK's `cacheHints` server option stamps `ttlMs` and `cacheScope` on the
 // cacheable results of 2026-era requests; without it they go out as `ttlMs: 0`, private.
-// ---------------------------------------------------------------------------------------------------------------------
 
 const CACHEABLE = /** @type {const} */ ([
   "tools/list",

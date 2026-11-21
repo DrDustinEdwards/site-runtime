@@ -337,7 +337,7 @@ export function adminMcpWorker({
       // A rebound name pointing here is refused too (area 11, P10). On Workers the URL's host is the Host the client sent.
       if (url.hostname !== new URL(origin).hostname)
         return refuse("Forbidden. This is not a host this server answers on.", 403);
-      // THE LIST-ONLY TEST KEY (Dustin 2026-11-01): MCP_PROBE_KEY lets the daily live check connect and list tools, and
+      // THE LIST-ONLY TEST KEY: MCP_PROBE_KEY lets the daily live check connect and list tools, and
       // nothing else. Before the provider, which answers 401 to any token it did not mint. No key, or none set, is null.
       const probed = await probeDoor(request, env, {
         server,

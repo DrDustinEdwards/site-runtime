@@ -1,5 +1,5 @@
 /**
- * Error reports to Sentry, one project per site (Dustin, 2026-11-10). A site turns them on by setting the `SENTRY_DSN`
+ * Error reports to Sentry, one project per site. A site turns them on by setting the `SENTRY_DSN`
  * secret on its Worker; with none, the SDK starts no client and nothing leaves the Worker. siteWorker and siteRenderer
  * (./worker) wrap themselves with `withSiteSentry`; a Worker built without them wraps its default export the same way.
  * Inside a wrapped handler, a throw that leaves it and every `logEvent` line at level "error" (./log) is one report.

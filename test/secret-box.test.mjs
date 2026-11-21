@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import { keyIdOf, keyringFromEnv, open, reseal, seal } from "../secret-box.mjs";
 
-// Moved from Foxhound's key-rotation test (ruling 312): the format carries a key id, so a rotation can tell which key
+// The format carries a key id, so a rotation can tell which key
 // sealed a value; without it every stored token would become unreadable at once.
 const KEY_A = "a".repeat(64);
 const KEY_B = "b".repeat(64);

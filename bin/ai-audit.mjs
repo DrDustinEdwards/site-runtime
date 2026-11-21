@@ -184,9 +184,7 @@ async function jsonOf(/** @type {Response} */ res) {
   }
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
 // Which kind of origin, and whether it answers at all.
-// ---------------------------------------------------------------------------------------------------------------------
 
 const prmProbes = await Promise.all(
   ["/.well-known/oauth-protected-resource/mcp", "/.well-known/oauth-protected-resource"].map(
@@ -275,9 +273,7 @@ function finish() {
   process.exit(errors > 0 ? 1 : unmeasured > 0 ? 3 : 0);
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
 // An MCP server.
-// ---------------------------------------------------------------------------------------------------------------------
 
 async function auditMcp() {
   // A1, on each metadata document served.
@@ -510,9 +506,7 @@ async function auditMcp() {
   await burst(keyed, grant);
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
 // With the test grant.
-// ---------------------------------------------------------------------------------------------------------------------
 
 /** A modern-era request's body: the method, its params, and the per-request envelope. */
 function envelope(
@@ -874,9 +868,7 @@ function judgeConformance(
     );
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
 // Any origin: public AI text, and the models.
-// ---------------------------------------------------------------------------------------------------------------------
 
 /**
  * `html` without its script, style, noscript, template and svg elements, each replaced by a space: an element with no

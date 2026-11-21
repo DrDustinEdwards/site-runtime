@@ -30,7 +30,7 @@
 /** @typedef {"critical" | "high" | "medium" | "low"} Severity */
 /** @typedef {{ check: string, message: string, excerpt: string | null, line: number | null, severity: Severity, sign: string | null }} ProseIssue */
 
-// ---------- the habits
+// the habits
 
 /**
  * The sections of Wikipedia's field guide to AI writing that the checks map to ("Wikipedia:Signs of AI writing",
@@ -355,7 +355,7 @@ export const WRITING_RULES = `Write the way the author's excerpts read, not the 
 - End when the answer is done. No offer of more ("Would you like me to") and no question to the reader at the end.
 - Bold, headings and questions to the reader only where the author's own writing uses them.`;
 
-// ---------- the voice
+// the voice
 
 const FUNCTION_WORDS = [
   "the",
@@ -669,7 +669,7 @@ export function describeFeature(f) {
   return `${round(f.value)} ${f.name} per 1,000 words against ${round(f.mean)}`;
 }
 
-// ---------- the scan
+// the scan
 
 /** The most findings one scan returns: past a dozen, a session rewrites instead of editing. */
 const MAX_FINDINGS = 12;

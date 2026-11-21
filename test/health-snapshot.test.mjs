@@ -1,4 +1,3 @@
-// Moved from dustinedwards.info (test/health-snapshot.test.mjs).
 /* A stored snapshot risks a cached page presenting an old or malformed verdict as current, so
  * every uncertain input must resolve to `missing` rather than a green tile. */
 

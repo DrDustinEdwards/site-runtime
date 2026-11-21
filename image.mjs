@@ -3,7 +3,7 @@
  * sources) and the route that serves each size from the one original in R2 through the Images binding. The two halves
  * come from one `defineImages` call, so the page never asks for a size or a crop the route would refuse.
  *
- * Moved here from dustinedwards.info's /media route (2026-10-29) so every site resizes the same way. What it learned:
+ * What it learned:
  * - The binding, not `/cdn-cgi/image/`: the URL interface needs a customer zone and answers 404 (error 1042) on
  *   workers.dev.
  * - Every set is CLOSED. The binding bills each unique source and parameter set once a month (5,000 free), so an open
