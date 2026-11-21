@@ -8,8 +8,8 @@
  * A module script's static imports need integrity too, and a page can give it only by a modulepreload carrying it (an
  * import map is an inline script): so each local module a `<script type="module">` reaches through `import ... from`
  * or `export ... from`, transitively, gets one after the script tag, unless the page preloads it already (Vite does).
- * A module loaded with `import()` gets none, since only an import map could give it one; those show in the
- * Integrity-Policy reports (./csp-report) before enforcing.
+ * A module loaded with `import()` takes no integrity of its own, so it gets the same modulepreload, at low priority,
+ * which fills the module map before the import runs (the browser then checks it against that hash).
  */
 
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -73,16 +73,23 @@ export async function writeIntegrity(dir, { base = "/" } = {}) {
           const preloaded = preloadsOf(html, pagePath, base, root);
           /** @type {string[]} */
           const links = [];
-          for (const dep of moduleImports(file, base, root)) {
-            if (preloaded.has(dep)) continue;
-            preloaded.add(dep);
-            const depHash = await hashOf(dep);
-            if (!depHash) continue;
-            const href = `${base.replace(/\/?$/, "/")}${relative(root, dep).split(sep).join("/")}`;
-            links.push(
-              `<link rel="modulepreload" href="${href}" integrity="${depHash}" crossorigin="anonymous">`,
-            );
-            count += 1;
+          const eager = moduleImports(file, base, root, false);
+          const lazy = moduleImports(file, base, root, true).filter((dep) => !eager.includes(dep));
+          for (const [deps, priority] of /** @type {const} */ ([
+            [eager, ""],
+            [lazy, ' fetchpriority="low"'],
+          ])) {
+            for (const dep of deps) {
+              if (preloaded.has(dep)) continue;
+              preloaded.add(dep);
+              const depHash = await hashOf(dep);
+              if (!depHash) continue;
+              const href = `${base.replace(/\/?$/, "/")}${relative(root, dep).split(sep).join("/")}`;
+              links.push(
+                `<link rel="modulepreload" href="${href}" integrity="${depHash}" crossorigin="anonymous"${priority}>`,
+              );
+              count += 1;
+            }
           }
           // The preloads go after the script's closing tag.
           parts.push(
@@ -154,11 +161,14 @@ function preloadsOf(html, pagePath, base, root) {
 const STATIC_IMPORT =
   /(?:^|[;\s}])(?:import|export)\s*(?:(?!(?:import|export)\b)[\w$*{},]+(?:\s+(?!(?:import|export)\b)[\w$*{},]+)*\s*\bfrom\s*)?["']((?:\.{1,2}\/|\/)[^"']+)["']/g;
 
+const DYNAMIC_IMPORT = /\bimport\(\s*["']((?:\.{1,2}\/|\/)[^"')]+)["']\s*\)/g;
+
 /**
- * Every local module `entry` reaches through static imports, transitively, in order of discovery, `entry` excluded.
- * @param {string} entry @param {string} base @param {string} root @returns {string[]}
+ * Every local module `entry` reaches through static imports, and with `dynamic` through `import()` too, transitively,
+ * in order of discovery, `entry` excluded.
+ * @param {string} entry @param {string} base @param {string} root @param {boolean} dynamic @returns {string[]}
  */
-function moduleImports(entry, base, root) {
+function moduleImports(entry, base, root, dynamic) {
   /** @type {string[]} */
   const found = [];
   const seen = new Set([entry]);
@@ -171,7 +181,11 @@ function moduleImports(entry, base, root) {
     } catch {
       continue;
     }
-    for (const [, specifier] of code.matchAll(STATIC_IMPORT)) {
+    const specifiers = [
+      ...code.matchAll(STATIC_IMPORT),
+      ...(dynamic ? code.matchAll(DYNAMIC_IMPORT) : []),
+    ];
+    for (const [, specifier] of specifiers) {
       const served = `${base.replace(/\/?$/, "/")}${relative(root, file).split(sep).join("/")}`;
       const target = localFile(specifier ?? "", served, base, root);
       if (!target || seen.has(target)) continue;
