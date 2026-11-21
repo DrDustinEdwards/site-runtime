@@ -200,7 +200,9 @@ async function informational(url) {
     const done = (/** @type {number[] | { error: string }} */ value) => {
       if (settled) return;
       settled = true;
-      session.close();
+      // destroy, not close: a graceful close of a session whose response is still streaming makes Node emit a
+      // "Protocol error" on a stream nobody can listen to, which ends the whole check.
+      session.destroy();
       resolve(value);
     };
     session.on("error", (error) => done({ error: `HTTP/2: ${error.message}` }));
