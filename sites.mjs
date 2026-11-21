@@ -527,7 +527,11 @@ export const capsidPortal = {
       reason:
         "The dashboard loads only its own scripts, styles and data: images (src/dashboard-csp.ts).",
     },
-    coep: /* @__PURE__ */ coepStaged("every Portal page sits behind Access"),
+    coep: {
+      value: /** @type {const} */ ("credentialless"),
+      reason:
+        "Enforced 2026-11-21: the Portal embeds no frame or player and loads nothing from another origin, and the coep reports (./csp-report) showed no refusal.",
+    },
     integrityPolicy: {
       value: "report-only",
       reason:
