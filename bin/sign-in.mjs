@@ -6,7 +6,7 @@
 //
 //   site-runtime-sign-in --origin https://example.com [--from https://example.workers.dev]
 //
-// --from fetches from another host (a site not yet on its domain); the passkey's rpId is still held to --origin. Each
+// --from fetches from another host (a site not yet on its domain); the passkey's rpId is held to --origin, a warning while --from is a stand-in. Each
 // finding is a GitHub annotation, `::error title=<item>::<url> <detail>`; exit 1 on any error, 2 when the site does not
 // answer, so an outage never reads as findings. It prints cookie names, never their values.
 
