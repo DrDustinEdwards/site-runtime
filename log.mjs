@@ -134,6 +134,10 @@ function scrubValue(key, value, options, depth) {
 const DATABASE_DOWN =
   /D1 DB is overloaded|D1 DB's isolate exceeded its memory limit|D1 DB exceeded its CPU time limit|D1 DB storage operation exceeded timeout|Internal error (?:while starting up|in) D1 DB storage|Cannot resolve D1 DB due to transient issue|D1 DB reset because its code was updated|Network connection lost|Currently processing a long-running import|Your account is generating too much load on D1|D1_ERROR: internal error; reference = |Connection closed: this Durable Object instance is no longer active|D1_ERROR:.*(?:reset|overloaded|unavailable|timed? ?out)/i;
 
+/** React Router's refusal of a cross-origin action (a wrong or forged `origin` header): a plain Error, but the sender's fault. */
+const ACTION_REFUSED =
+  /^The `request\.url` origin does not match `origin` header from a forwarded action request\. Aborting the action\.$|^`origin` header is not a valid URL\. Aborting the action\.$/;
+
 /**
  * Whether an error is the database being down or reset for a moment, read from the error and its causes.
  * @param {unknown} error
@@ -222,8 +226,8 @@ export function tokenPattern(routes = []) {
  * React Router's `handleError` export for entry.server: the framework's default prints every route error to the
  * console, including the "No route matches URL" error of each scanner's 404, an error-level stack trace with no
  * request on it. A 404 is not a failure (the 404 counter in `./not-found` keeps count), nor is any route error
- * response under 500 (RR's 405 for a scanner's POST to a route with no action), so neither is logged here; any other
- * error is one scrubbed `server_error` line at error level with the request's fields, a token route's token cut
+ * response under 500 (RR's 405 for a scanner's POST to a route with no action), so neither is logged here; RR's refusal
+ * of a cross-origin action (ACTION_REFUSED) is one warn line, `action_refused`; any other error is one scrubbed `server_error` line at error level with the request's fields, a token route's token cut
  * (`tokenPath`, as tokenPattern builds it; the preview link's by default).
  * @param {ScrubOptions} [options]
  * @returns {(error: unknown, args: { request: Request }) => void}
@@ -236,6 +240,13 @@ export function serverErrorHandler({ tokenPath = PREVIEW_TOKEN } = {}) {
     const status = /** @type {{ status?: unknown } | null} */ (error)?.status;
     if (!(error instanceof Error) && typeof status === "number" && status < 500) return;
     const cause = /** @type {{ error?: unknown } | null} */ (error)?.error;
+    if (error instanceof Error && ACTION_REFUSED.test(error.message)) {
+      logEvent("action_refused", requestFields(request, { tokenPath }), {
+        level: "warn",
+        tokenPath,
+      });
+      return;
+    }
     if (isDatabaseDown(cause ?? error)) DATABASE_DOWN_REQUESTS.add(request);
     logEvent(
       "server_error",

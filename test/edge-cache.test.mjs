@@ -9,6 +9,7 @@ import {
   forRenderer,
   privateRender,
   publicPageHeaders,
+  purgeTags,
   recordPurge,
   settleCacheHeaders,
   withPurgePages,
@@ -251,6 +252,18 @@ test("a failed purge is kept until one succeeds, and /health warns with only its
   };
   assert.equal(await new Renderer().purgePages("write"), true);
   assert.equal((await status()).status, "pass");
+  const limited = { success: false, errors: [{ code: 1134 }] };
+  const answers = [limited, limited, { success: true }];
+  const pauses = [];
+  const pause = async (ms) => void pauses.push(ms);
+  assert.equal(
+    await purgeTags({ purge: async () => answers.shift() }, ["posts"], "w", () => {}, pause),
+    true,
+  );
+  assert.deepEqual(pauses, [1000, 2000]);
+  const refused = { purge: async () => ({ success: false, errors: [{ code: 1000 }] }) };
+  assert.equal(await purgeTags(refused, ["posts"], "w", () => {}, pause), false);
+  assert.equal(pauses.length, 2);
 });
 
 // A private page is kept out of Web Analytics by no-transform, which also stops the edge compressing it: the Worker

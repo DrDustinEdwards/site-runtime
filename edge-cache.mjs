@@ -324,26 +324,46 @@ export function privateRender(response) {
   });
 }
 
+/** Cloudflare's code for a purge refused for its rate; asked again after these pauses (ms), 15 s in all. */
+const PURGE_RATE_LIMITED = 1134;
+const PURGE_RETRY_PAUSES = [1000, 2000, 4000, 8000];
+
 /**
  * Drops every stored response carrying one of `tags`. Never throws: a failed purge is a stale page until it expires
- * and a log line, not a failed save. `null` when this runtime has no purge (Miniflare), else whether it purged.
+ * and a log line, not a failed save. A purge refused for its rate (a burst of publishes) is asked again after a pause.
+ * `null` when this runtime has no purge (Miniflare), else whether it purged.
  * @param {{ purge?: (o: { tags: string[] }) => Promise<{ success: boolean, errors?: unknown[] }> } | undefined} cache
  *   the Renderer's `this.ctx.cache`: a purge reaches only the cache of the entrypoint that calls it, so one made in the
  *   gateway clears nothing
  * @param {string[]} tags
  * @param {string} why one phrase naming the write, for the log line
  * @param {(line: string) => void} [log]
+ * @param {(ms: number) => Promise<unknown>} [pause] the wait between tries
  */
-export async function purgeTags(cache, tags, why, log = console.error) {
+export async function purgeTags(
+  cache,
+  tags,
+  why,
+  log = console.error,
+  pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+) {
   if (typeof cache?.purge !== "function") return null;
-  try {
-    const result = await cache.purge({ tags });
-    if (result?.success) return true;
-    log(JSON.stringify({ alert: "cache-purge-refused", why, tags, errors: result?.errors ?? [] }));
-  } catch (error) {
-    log(JSON.stringify({ alert: "cache-purge-threw", why, tags, detail: String(error) }));
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const result = await cache.purge({ tags });
+      if (result?.success) return true;
+      const errors = result?.errors ?? [];
+      const limited = errors.some((e) => /** @type {any} */ (e)?.code === PURGE_RATE_LIMITED);
+      if (limited && attempt < PURGE_RETRY_PAUSES.length) {
+        await pause(PURGE_RETRY_PAUSES[attempt]);
+        continue;
+      }
+      log(JSON.stringify({ alert: "cache-purge-refused", why, tags, errors }));
+    } catch (error) {
+      log(JSON.stringify({ alert: "cache-purge-threw", why, tags, detail: String(error) }));
+    }
+    return false;
   }
-  return false;
 }
 
 /** The KV key holding the last failed purge. */
