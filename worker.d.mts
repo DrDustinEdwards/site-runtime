@@ -154,6 +154,8 @@ export interface SiteOptions<E> {
 export interface Site<E> {
   options: SiteOptions<E>;
   render(request: Request, env: E, ctx: ExecutionContext, extra?: RenderExtra): Promise<Response>;
+  /** A page's HTML as the Renderer would render it, with no request context (a cron job reading its own pages), or null when it is not an OK HTML page. */
+  renderHtml(request: Request, env: E): Promise<string | null>;
   stylesheets(): Promise<string[]>;
   earlyHints(page: Response): Promise<Response>;
   routesReady(): Promise<void>;
