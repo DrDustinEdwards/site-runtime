@@ -166,6 +166,14 @@ export function defineSite(options) {
         status === page.status ? page : new Response(page.body, { status, headers: page.headers });
       return dev && nonce ? withViteNonce(answer, nonce) : answer;
     },
+    async renderHtml(request, env) {
+      const ctx = /** @type {ExecutionContext} */ (
+        /** @type {unknown} */ ({ waitUntil() {}, passThroughOnException() {}, props: {} })
+      );
+      const response = await site.render(request, env, ctx);
+      const html = (response.headers.get("Content-Type") ?? "").includes("text/html");
+      return response.ok && html ? response.text() : null;
+    },
     async stylesheets() {
       stylesheetHrefs ??= pageStylesheets(await build(), options.stylesheetRoutes).map(
         (sheet) => sheet.href,
