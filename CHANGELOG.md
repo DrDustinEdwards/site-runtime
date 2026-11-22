@@ -1,5 +1,11 @@
 # @dustinedwards/site-runtime
 
+## 0.176.0
+
+### Minor Changes
+
+- `renderHtml(site, request, env)` is its own module, `./render-html`, not a method on the site (0.174.0 added `site.renderHtml`, which every Worker carried whether it called it or not). Nothing used the method yet.
+
 ## 0.175.0
 
 ### Minor Changes
