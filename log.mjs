@@ -143,25 +143,28 @@ const ACTION_REFUSED = /Aborting the action\.$/;
  * @returns {boolean}
  */
 export function isDatabaseDown(error) {
+  return causeMatches(error, DATABASE_DOWN);
+}
+
+/** Whether the error or a cause (five deep) has a message the pattern matches.
+ * @param {unknown} error
+ * @param {RegExp} pattern
+ */
+function causeMatches(error, pattern) {
   for (let e = error, depth = 0; e && depth < 5; e = /** @type {any} */ (e).cause, depth++) {
-    const message = e instanceof Error ? e.message : typeof e === "string" ? e : "";
-    if (DATABASE_DOWN.test(message)) return true;
+    if (pattern.test(e instanceof Error ? e.message : typeof e === "string" ? e : "")) return true;
   }
   return false;
 }
 
 /**
- * R2's documented transient errors, which the Workers API ends with the code in the message ("get: We encountered an
- * internal error. Please try again. (10001)"): 10001 internal error ("Retry the request") and 10043 service unavailable
- * ("Retry with exponential backoff"), per developers.cloudflare.com/r2/api/error-codes. Read from the error and its causes.
+ * R2's transient errors, which the Workers API ends with the code: 10001 internal error and 10043 service unavailable,
+ * both to be retried (developers.cloudflare.com/r2/api/error-codes).
  * @param {unknown} error
  * @returns {boolean}
  */
 export function isR2Unavailable(error) {
-  for (let e = error, depth = 0; e && depth < 5; e = /** @type {any} */ (e).cause, depth++) {
-    if (e instanceof Error && /\((?:10001|10043)\)\s*$/.test(e.message)) return true;
-  }
-  return false;
+  return causeMatches(error, /\((?:10001|10043)\)$/);
 }
 
 /**
@@ -259,25 +262,18 @@ export function serverErrorHandler({ tokenPath = PREVIEW_TOKEN } = {}) {
         tokenPath,
       });
     }
-    // R2 failing for a moment is a warning, not a site error: the request answers 503 with Retry-After, like D1 down.
-    if (isR2Unavailable(cause ?? error)) {
-      UNAVAILABLE_REQUESTS.add(request);
-      return logEvent(
-        "storage_unavailable",
-        { ...requestFields(request, { tokenPath }), error: cause ?? error },
-        { level: "warn", tokenPath },
-      );
-    }
-    if (isDatabaseDown(cause ?? error)) UNAVAILABLE_REQUESTS.add(request);
+    // R2 failing for a moment is a warning, not a site error; like D1 down, the request answers 503.
+    const storage = isR2Unavailable(cause ?? error);
+    if (storage || isDatabaseDown(cause ?? error)) UNAVAILABLE_REQUESTS.add(request);
     logEvent(
-      "server_error",
+      storage ? "storage_unavailable" : "server_error",
       { ...requestFields(request, { tokenPath }), error: cause ?? error },
-      { level: "error", tokenPath },
+      { level: storage ? "warn" : "error", tokenPath },
     );
   };
 }
 
-/** The requests whose route failed because D1 or R2 was down for a moment, as serverErrorHandler saw them. Weak: gone with the request. */
+/** The requests whose route failed on D1 or R2 down for a moment, as serverErrorHandler saw them. Weak. */
 const UNAVAILABLE_REQUESTS = new WeakSet();
 
 /** Seconds a reader or crawler is told to wait while D1 is down (`Retry-After`). */

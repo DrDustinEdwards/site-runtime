@@ -170,6 +170,8 @@ async function runCheck({ name, level = "fail", alert = false, run }, timeoutMs)
   // An alert reports what it measured. One that threw or timed out measured nothing (the database stalling, which the
   // db check reports), so it is a warning that it could not run, never an alert that pages a person.
   let ran = true;
+  // A timeout or D1 down is a stall: /health still reports it, but the log line is a warning.
+  let stalled = false;
   try {
     const value = await withTimeout(Promise.resolve().then(run), timeoutMs);
     if (value === false) failed = true;
@@ -181,6 +183,7 @@ async function runCheck({ name, level = "fail", alert = false, run }, timeoutMs)
     failed = true;
     ran = false;
     detail = errorMessage(error);
+    stalled = isDatabaseDown(error) || detail.startsWith("timed out after");
   }
   if (!failed) return { name, status: "pass" };
   const raised = alert && ran;
@@ -192,11 +195,11 @@ async function runCheck({ name, level = "fail", alert = false, run }, timeoutMs)
     logEvent(
       raised
         ? "health_alert"
-        : level === "fail"
+        : level === "fail" && !stalled
           ? "health_check_failed"
           : "health_check_unavailable",
       { check: name, detail: cut },
-      { level: level === "fail" || raised ? "error" : "warn" },
+      { level: (level === "fail" && !stalled) || raised ? "error" : "warn" },
     );
   return {
     name,
