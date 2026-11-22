@@ -1,5 +1,12 @@
 # @dustinedwards/site-runtime
 
+## 0.173.9
+
+### Patch Changes
+
+- A "fail" health check that timed out or hit D1 being down is logged as the warning `health_check_unavailable`, not the error `health_check_failed` that Sentry reports (Foxing's db check timed out after 3000 ms five times in five days). `/health` still answers 503, and a check that threw any other error is still an error.
+- Trim the R2 retry (one cause walk for D1 and R2 errors, one log call) so a Worker close to its size budget takes it without going over.
+
 ## 0.173.8
 
 ### Patch Changes
