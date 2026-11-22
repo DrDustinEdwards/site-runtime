@@ -90,6 +90,7 @@ async function keptBackup(read, ttlMs, sha, cache) {
 
 /**
  * @typedef {{ name: string, level?: "fail" | "warn", alert?: boolean, run: () => Promise<unknown> }} HealthCheck
+ * @typedef {Array<{ name: string, everyMinutes: number | null }>} CronJobs
  * @typedef {{ name: string, status: "pass" | "warn" | "fail", detail?: string, alert?: true }} CheckResult
  */
 
@@ -155,19 +156,29 @@ export async function healthResponse({
 
 /**
  * The /health every site with a D1 database answers: `healthResponse` with `ping` on `env.DB`, `sha` from DEPLOY_SHA,
- * and the "cron" check over `jobs` since the deploy, after the site's own `checks`.
+ * and the "cron" check over `jobs` since the deploy, after the site's own `checks`. `jobs` may be a function (sync or
+ * async) for a site whose registered jobs depend on its database, such as ones its settings switch off.
  * @param {{ DB: { prepare(sql: string): { first(): Promise<unknown> } } }} env
- * @param {{ backup?: () => Promise<unknown>, checks?: HealthCheck[], jobs: Array<{ name: string, everyMinutes: number | null }> }} site
+ * @param {{ backup?: () => Promise<unknown>, checks?: HealthCheck[], jobs: CronJobs | (() => CronJobs | Promise<CronJobs>) }} site
  * @returns {Promise<Response>}
  */
 export function siteHealthResponse(env, { backup, checks = [], jobs }) {
+  const db = /** @type {any} */ (env.DB);
   return healthResponse({
     ping: () => env.DB.prepare("select 1").first(),
     backup,
     sha: deployedSha(env),
     checks: [
       ...checks,
-      cronCheck(/** @type {any} */ (env.DB), { jobs, deployedAt: deployedAt(env) }),
+      {
+        name: "cron",
+        level: "warn",
+        run: async () =>
+          cronCheck(db, {
+            jobs: typeof jobs === "function" ? await jobs() : jobs,
+            deployedAt: deployedAt(env),
+          }).run(),
+      },
     ],
   });
 }

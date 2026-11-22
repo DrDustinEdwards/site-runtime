@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { aiOutcomeCheck, databaseDown, healthResponse, recordAiOutcome } from "../health.mjs";
+import {
+  aiOutcomeCheck,
+  databaseDown,
+  healthResponse,
+  recordAiOutcome,
+  siteHealthResponse,
+} from "../health.mjs";
 
 test("a stale backup warns at 200 with ok true; a database that throws fails at 503; the backup read is kept in the cache for the TTL", async () => {
   let reads = 0;
@@ -168,4 +174,22 @@ test("a fail check that timed out or threw logs a warning, one that measured a f
   assert.equal(error.mock.callCount(), 0);
   await run("r2", async () => ({ ok: false, detail: "missing" }));
   assert.match(error.mock.calls[0].arguments[0], /health_check_failed/);
+});
+
+test("siteHealthResponse reads the cron jobs from a function, so a job the site switched off is left out", async () => {
+  const db = {
+    prepare: () => ({
+      first: async () => ({}),
+      bind: () => ({ all: async () => ({ results: [] }) }),
+    }),
+  };
+  const body = async (jobs) =>
+    (await siteHealthResponse({ DB: db }, { jobs, checks: [] }).then((r) => r.json())).checks.find(
+      (c) => c.name === "cron",
+    );
+  const job = { name: "backup", everyMinutes: 60 };
+  assert.equal((await body(async () => [])).status, "pass");
+  const missing = await body(() => [job]);
+  assert.equal(missing.status, "warn");
+  assert.equal(missing.detail, "backup never ran");
 });
