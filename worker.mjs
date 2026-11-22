@@ -176,7 +176,6 @@ import {
  * @typedef {object} Site
  * @property {SiteOptions<E>} options
  * @property {(request: Request, env: E, ctx: ExecutionContext, extra?: RenderExtra) => Promise<Response>} render
- * @property {(request: Request, env: E) => Promise<string | null>} renderHtml A page's HTML as the Renderer would render it, with no request context (a cron job reading its own pages), or null when it is not an OK HTML page.
  * @property {() => Promise<string[]>} stylesheets
  * @property {(page: Response) => Promise<Response>} earlyHints
  * @property {() => Promise<void>} routesReady
@@ -191,6 +190,24 @@ const WORKER_PATHS = /^\/(api|health|mcp|media)(\/|$)/;
 
 // Requests a machine file answered, logged under their own path (a splat route would name them "/*").
 const answeredFiles = new WeakMap();
+
+/**
+ * A page's HTML as the site's Renderer would render it, with no request context (a cron job reading its own pages), or
+ * null when it is not an OK HTML page. A standalone function, so a site that does not call it does not carry it.
+ * @template E
+ * @param {Site<E>} site
+ * @param {Request} request
+ * @param {E} env
+ * @returns {Promise<string | null>}
+ */
+export async function renderHtml(site, request, env) {
+  const ctx = /** @type {ExecutionContext} */ (
+    /** @type {unknown} */ ({ waitUntil() {}, passThroughOnException() {}, props: {} })
+  );
+  const response = await site.render(request, env, ctx);
+  const html = (response.headers.get("Content-Type") ?? "").includes("text/html");
+  return response.ok && html ? response.text() : null;
+}
 
 /**
  * @template E
@@ -229,14 +246,6 @@ export function defineSite(options) {
       const answer =
         status === page.status ? page : new Response(page.body, { status, headers: page.headers });
       return dev && nonce ? withViteNonce(answer, nonce) : answer;
-    },
-    async renderHtml(request, env) {
-      const ctx = /** @type {ExecutionContext} */ (
-        /** @type {unknown} */ ({ waitUntil() {}, passThroughOnException() {}, props: {} })
-      );
-      const response = await site.render(request, env, ctx);
-      const html = (response.headers.get("Content-Type") ?? "").includes("text/html");
-      return response.ok && html ? response.text() : null;
     },
     async stylesheets() {
       stylesheetHrefs ??= pageStylesheets(await build(), options.stylesheetRoutes).map(
