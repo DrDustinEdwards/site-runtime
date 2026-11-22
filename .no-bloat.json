@@ -1,6 +1,6 @@
 {
   "baseline": {
-    "measured_at": "e3b50b5",
+    "measured_at": "cdcb428",
     "knip": {},
     "jscpd": {
       "clones": 9,
@@ -22,7 +22,7 @@
       "check.mjs": 863,
       "cron.mjs": 610,
       "csp.mjs": 575,
-      "doc-room/index.mjs": 532,
+      "doc-room/index.mjs": 531,
       "edge-cache.mjs": 530,
       "image.mjs": 917,
       "mcp-login.mjs": 506,
@@ -39,7 +39,7 @@
       "cases": 464
     },
     "comments": {
-      "lines": 10918,
+      "lines": 10917,
       "code": 34748,
       "percentage": 23.91
     }
