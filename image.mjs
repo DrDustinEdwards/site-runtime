@@ -628,7 +628,7 @@ export function defineImages({
   async function serve(
     request,
     {
-      read: readOnce,
+      read,
       images,
       cache,
       prefix = "/media/",
@@ -653,8 +653,7 @@ export function defineImages({
       }
     }
     if (!key) return guarded(textResponse("Not found", 404));
-    const read = (/** @type {string} */ k) => retryR2Read(() => readOnce(k));
-    const object = await read(key);
+    const object = await retryR2Read(() => read(key));
     const policy =
       object && typeof cacheControl === "function"
         ? await cacheControl({ request, url, key, object })

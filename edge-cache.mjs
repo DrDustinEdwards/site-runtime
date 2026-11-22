@@ -371,7 +371,7 @@ export async function purgeTags(
   tags,
   why,
   log = console.error,
-  pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  pause = (ms) => scheduler.wait(ms),
 ) {
   if (typeof cache?.purge !== "function") return null;
   for (let attempt = 0; ; attempt++) {

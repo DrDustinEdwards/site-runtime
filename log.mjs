@@ -132,39 +132,23 @@ function scrubValue(key, value, options, depth) {
  * Cloudflare's 7500) and a Durable Object that restarted under a call. A wrong query (no such table, a constraint) is not one.
  */
 const DATABASE_DOWN =
-  /D1 DB is overloaded|D1 DB's isolate exceeded its memory limit|D1 DB exceeded its CPU time limit|D1 DB storage operation exceeded timeout|Internal error (?:while starting up|in) D1 DB storage|Cannot resolve D1 DB due to transient issue|D1 DB reset because its code was updated|Network connection lost|Currently processing a long-running import|Your account is generating too much load on D1|D1_ERROR: internal error; reference = |Connection closed: this Durable Object instance is no longer active|D1_ERROR:.*(?:reset|overloaded|unavailable|timed? ?out)/i;
+  /D1 DB (?:is overloaded|'s isolate exceeded its memory limit|exceeded its CPU time limit|storage operation exceeded timeout|reset because its code was updated)|Internal error (?:while starting up|in) D1 DB storage|Cannot resolve D1 DB due to transient issue|Network connection lost|Currently processing a long-running import|Your account is generating too much load on D1|D1_ERROR: internal error; reference = |Connection closed: this Durable Object instance is no longer active|D1_ERROR:.*(?:reset|overloaded|unavailable|timed? ?out)|\(1(?:0001|0043)\)$/i;
 
 /** React Router's refusal of a cross-origin action (a wrong or forged `origin` header): a plain Error, but the sender's fault. */
 const ACTION_REFUSED = /Aborting the action\.$/;
 
 /**
- * Whether an error is the database being down or reset for a moment, read from the error and its causes.
+ * Whether an error is the database (or R2, whose transient errors 10001 and 10043 its docs say to retry) being down or
+ * reset for a moment, read from the error and its causes.
  * @param {unknown} error
  * @returns {boolean}
  */
 export function isDatabaseDown(error) {
-  return causeMatches(error, DATABASE_DOWN);
-}
-
-/** Whether the error or a cause (five deep) has a message the pattern matches.
- * @param {unknown} error
- * @param {RegExp} pattern
- */
-function causeMatches(error, pattern) {
   for (let e = error, depth = 0; e && depth < 5; e = /** @type {any} */ (e).cause, depth++) {
-    if (pattern.test(e instanceof Error ? e.message : typeof e === "string" ? e : "")) return true;
+    const message = e instanceof Error ? e.message : typeof e === "string" ? e : "";
+    if (DATABASE_DOWN.test(message)) return true;
   }
   return false;
-}
-
-/**
- * R2's transient errors, which the Workers API ends with the code: 10001 internal error and 10043 service unavailable,
- * both to be retried (developers.cloudflare.com/r2/api/error-codes).
- * @param {unknown} error
- * @returns {boolean}
- */
-export function isR2Unavailable(error) {
-  return causeMatches(error, /\((?:10001|10043)\)$/);
 }
 
 /**
@@ -262,13 +246,13 @@ export function serverErrorHandler({ tokenPath = PREVIEW_TOKEN } = {}) {
         tokenPath,
       });
     }
-    // R2 failing for a moment is a warning, not a site error; like D1 down, the request answers 503.
-    const storage = isR2Unavailable(cause ?? error);
-    if (storage || isDatabaseDown(cause ?? error)) UNAVAILABLE_REQUESTS.add(request);
+    // D1 or R2 down for a moment is a warning, not a site error; the request answers 503 (databaseDownStatus).
+    const down = isDatabaseDown(cause ?? error);
+    if (down) UNAVAILABLE_REQUESTS.add(request);
     logEvent(
-      storage ? "storage_unavailable" : "server_error",
+      "server_error",
       { ...requestFields(request, { tokenPath }), error: cause ?? error },
-      { level: storage ? "warn" : "error", tokenPath },
+      { level: down ? "warn" : "error", tokenPath },
     );
   };
 }
@@ -281,7 +265,7 @@ export const DATABASE_DOWN_RETRY_AFTER = 60;
 
 /**
  * The status a React Router answer leaves with: 503, with `Retry-After` and `no-store` set on `headers`, when
- * serverErrorHandler saw this request's route fail because D1 (isDatabaseDown) or R2 (isR2Unavailable) was down, else `status` unchanged.
+ * serverErrorHandler saw this request's route fail because D1 or R2 (isDatabaseDown) was down, else `status` unchanged.
  * ./worker's render applies it to every answer of the request handler, a page, a `.data` request and a resource route
  * alike, so a site on siteWorker writes nothing; a site with its own Worker applies it where it calls the handler.
  * Read there because React Router replaces a production route error with a bare "Unexpected Server Error" (a resource

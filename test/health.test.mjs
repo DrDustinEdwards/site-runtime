@@ -158,7 +158,7 @@ test("recordAiOutcome never throws when the KV does", async () => {
   await recordAiOutcome(broken, "ask", { ok: true }, () => {});
 });
 
-test("a fail check that timed out logs a warning, one that threw an error", async (t) => {
+test("a fail check that timed out or threw logs a warning, one that measured a failure an error", async (t) => {
   const warn = t.mock.method(console, "warn", () => {});
   const error = t.mock.method(console, "error", () => {});
   const run = (name, check) =>
@@ -166,8 +166,6 @@ test("a fail check that timed out logs a warning, one that threw an error", asyn
   assert.equal((await run("db", () => new Promise(() => {}))).status, 503);
   assert.match(warn.mock.calls[0].arguments[0], /health_check_unavailable/);
   assert.equal(error.mock.callCount(), 0);
-  await run("r2", async () => {
-    throw new Error("no access");
-  });
+  await run("r2", async () => ({ ok: false, detail: "missing" }));
   assert.match(error.mock.calls[0].arguments[0], /health_check_failed/);
 });
