@@ -7,5 +7,7 @@
     "update-disposable.mjs",
     // Maintenance script the README tells the owner to run by hand with node, so nothing imports it.
     "update-owasp.mjs"
-  ]
+  ],
+  // The declarations the release builds from the JSDoc (prepare); the modules they come from are what is counted.
+  "ignore": ["dist/**"]
 }
