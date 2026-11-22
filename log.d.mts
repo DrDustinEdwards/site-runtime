@@ -103,3 +103,5 @@ export function reportErrorLines(
 ): void;
 /** Whether an error, or one of its causes, is D1 down or reset for a moment (overloaded, reset, an import holding it), not a wrong query. */
 export function isDatabaseDown(error: unknown): boolean;
+/** Whether an error is R2's documented transient failure, 10001 or 10043 (read from the error and its causes). */
+export function isR2Unavailable(error: unknown): boolean;

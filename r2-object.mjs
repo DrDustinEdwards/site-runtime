@@ -11,9 +11,33 @@
  */
 
 import { textResponse } from "./http.mjs";
+import { isR2Unavailable } from "./log.mjs";
 
 /** @typedef {import("./r2-object.mjs").R2BucketLike} R2BucketLike */
 /** @typedef {import("./r2-object.mjs").R2FileOptions} R2FileOptions */
+
+/** Pauses (ms) before each new try of an R2 read that failed for a moment: short, because a reader is waiting. */
+const R2_RETRY_PAUSES = [200, 600];
+
+/**
+ * Runs an R2 read (`bucket.get` or `head`) and, when R2 answers with its transient error (10001 or 10043, which its
+ * docs say to retry with backoff), asks again after a short pause, twice. Any other error, and the third failure, is
+ * thrown as it was; a route that lets it reach ./log's serverErrorHandler answers 503 with a warning, not a site error.
+ * @template T
+ * @param {() => Promise<T>} read
+ * @param {(ms: number) => Promise<unknown>} [pause]
+ * @returns {Promise<T>}
+ */
+export async function retryR2Read(read, pause = (ms) => new Promise((r) => setTimeout(r, ms))) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await read();
+    } catch (error) {
+      if (attempt >= R2_RETRY_PAUSES.length || !isR2Unavailable(error)) throw error;
+      await pause(R2_RETRY_PAUSES[attempt]);
+    }
+  }
+}
 
 /**
  * The Content-Disposition value for `disposition` ("inline" or "attachment") and a file name. Quotes, backslashes and
@@ -100,7 +124,7 @@ export async function r2ObjectResponse(request, bucket, key, options = {}) {
     return textResponse("Method not allowed", 405, { allow: "GET, HEAD" });
 
   if (request.method === "HEAD") {
-    const head = await bucket.head(key);
+    const head = await retryR2Read(() => bucket.head(key));
     if (!head) return notFound();
     const headers = fileHeaders(head, options);
     headers.set("content-length", String(head.size));
@@ -110,10 +134,12 @@ export async function r2ObjectResponse(request, bucket, key, options = {}) {
   const ranged = request.headers.has("range");
   let object;
   try {
-    object = await bucket.get(key, ranged ? { range: request.headers } : undefined);
+    object = await retryR2Read(() =>
+      bucket.get(key, ranged ? { range: request.headers } : undefined),
+    );
   } catch (error) {
     // R2 refuses a range it cannot satisfy; the answer says how long the object is.
-    if (!ranged) throw error;
+    if (!ranged || isR2Unavailable(error)) throw error;
     const head = await bucket.head(key);
     if (!head) return notFound();
     return new Response(null, {

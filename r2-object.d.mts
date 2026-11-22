@@ -29,6 +29,11 @@ export interface R2FileOptions {
   notFound?: string;
 }
 
+/** An R2 read tried again, after 200 ms and 600 ms, when R2 answers 10001 or 10043; any other error is thrown at once. */
+export function retryR2Read<T>(
+  read: () => Promise<T>,
+  pause?: (ms: number) => Promise<unknown>,
+): Promise<T>;
 /** The Content-Disposition value: an ASCII `filename`, and `filename*` in UTF-8 when the name needs it. */
 export function contentDisposition(disposition: "inline" | "attachment", filename?: string): string;
 /** A body the Worker made, as a download: type, Content-Disposition (attachment), nosniff, no-store. */

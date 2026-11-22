@@ -151,6 +151,20 @@ export function isDatabaseDown(error) {
 }
 
 /**
+ * R2's documented transient errors, which the Workers API ends with the code in the message ("get: We encountered an
+ * internal error. Please try again. (10001)"): 10001 internal error ("Retry the request") and 10043 service unavailable
+ * ("Retry with exponential backoff"), per developers.cloudflare.com/r2/api/error-codes. Read from the error and its causes.
+ * @param {unknown} error
+ * @returns {boolean}
+ */
+export function isR2Unavailable(error) {
+  for (let e = error, depth = 0; e && depth < 5; e = /** @type {any} */ (e).cause, depth++) {
+    if (e instanceof Error && /\((?:10001|10043)\)\s*$/.test(e.message)) return true;
+  }
+  return false;
+}
+
+/**
  * The message of a thrown value: an Error's own message, anything else as a string.
  * @param {unknown} error
  * @returns {string}
@@ -245,7 +259,16 @@ export function serverErrorHandler({ tokenPath = PREVIEW_TOKEN } = {}) {
         tokenPath,
       });
     }
-    if (isDatabaseDown(cause ?? error)) DATABASE_DOWN_REQUESTS.add(request);
+    // R2 failing for a moment is a warning, not a site error: the request answers 503 with Retry-After, like D1 down.
+    if (isR2Unavailable(cause ?? error)) {
+      UNAVAILABLE_REQUESTS.add(request);
+      return logEvent(
+        "storage_unavailable",
+        { ...requestFields(request, { tokenPath }), error: cause ?? error },
+        { level: "warn", tokenPath },
+      );
+    }
+    if (isDatabaseDown(cause ?? error)) UNAVAILABLE_REQUESTS.add(request);
     logEvent(
       "server_error",
       { ...requestFields(request, { tokenPath }), error: cause ?? error },
@@ -254,15 +277,15 @@ export function serverErrorHandler({ tokenPath = PREVIEW_TOKEN } = {}) {
   };
 }
 
-/** The requests whose route failed because D1 was down, as serverErrorHandler saw them. Weak: gone with the request. */
-const DATABASE_DOWN_REQUESTS = new WeakSet();
+/** The requests whose route failed because D1 or R2 was down for a moment, as serverErrorHandler saw them. Weak: gone with the request. */
+const UNAVAILABLE_REQUESTS = new WeakSet();
 
 /** Seconds a reader or crawler is told to wait while D1 is down (`Retry-After`). */
 export const DATABASE_DOWN_RETRY_AFTER = 60;
 
 /**
  * The status a React Router answer leaves with: 503, with `Retry-After` and `no-store` set on `headers`, when
- * serverErrorHandler saw this request's route fail because D1 was down (isDatabaseDown), else `status` unchanged.
+ * serverErrorHandler saw this request's route fail because D1 (isDatabaseDown) or R2 (isR2Unavailable) was down, else `status` unchanged.
  * ./worker's render applies it to every answer of the request handler, a page, a `.data` request and a resource route
  * alike, so a site on siteWorker writes nothing; a site with its own Worker applies it where it calls the handler.
  * Read there because React Router replaces a production route error with a bare "Unexpected Server Error" (a resource
@@ -276,7 +299,7 @@ export const DATABASE_DOWN_RETRY_AFTER = 60;
  * @returns {number}
  */
 export function databaseDownStatus(request, status, headers) {
-  if (status < 500 || !DATABASE_DOWN_REQUESTS.has(request)) return status;
+  if (status < 500 || !UNAVAILABLE_REQUESTS.has(request)) return status;
   headers.set("Retry-After", String(DATABASE_DOWN_RETRY_AFTER));
   headers.set("Cache-Control", "no-store");
   return 503;
