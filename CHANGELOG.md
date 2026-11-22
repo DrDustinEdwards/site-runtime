@@ -1,5 +1,11 @@
 # @dustinedwards/site-runtime
 
+## 0.173.12
+
+### Patch Changes
+
+- `purgePages` merges purges asked within 250 ms into one request with every tag, so a write that purges several times, or several writes close together, no longer empty the account's purge bucket (Free: 5 requests a minute, the limit Workers Caching always uses). Exports `purgeCoalesced`.
+
 ## 0.173.11
 
 ### Patch Changes
