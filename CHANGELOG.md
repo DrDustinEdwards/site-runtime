@@ -1,5 +1,11 @@
 # @dustinedwards/site-runtime
 
+## 0.173.7
+
+### Patch Changes
+
+- Trim `stampValidator` (the body ETag of a shared page) so a Worker close to its size budget takes 0.173.6 without going over.
+
 ## 0.173.6
 
 ### Patch Changes
