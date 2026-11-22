@@ -277,6 +277,14 @@
       "types": "./dist/sign-in.d.mts",
       "default": "./sign-in.mjs"
     },
+    "./sign-in-link": {
+      "types": "./dist/sign-in-link.d.mts",
+      "default": "./sign-in-link.mjs"
+    },
+    "./sign-in-account": {
+      "types": "./dist/sign-in-account.d.mts",
+      "default": "./sign-in-account.mjs"
+    },
     "./sign-in-client": {
       "types": "./dist/sign-in-client.d.mts",
       "default": "./sign-in-client.mjs"

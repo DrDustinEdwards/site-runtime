@@ -58,8 +58,7 @@ const SYNC_STEP2 = 1;
 const SYNC_UPDATE = 2;
 const COMMENT_TYPES = new Set(["comment", "comment-edit", "comment-resolve", "comment-delete"]);
 
-/** @typedef {import("./core.mjs").RoomViewer} RoomViewer */
-/** @typedef {import("./core.mjs").ServerMessage} ServerMessage */
+/** @import { RoomViewer, ServerMessage } from "./core.mjs" */
 /** @typedef {import("partyserver").Connection} Connection */
 /** @typedef {{ viewer?: RoomViewer; checkedAt?: number }} ConnState */
 
