@@ -46,6 +46,19 @@ export function healthResponse(probe?: {
   now?: Date;
 }): Promise<Response>;
 
+/**
+ * The /health a site with a D1 database answers: `healthResponse` with `ping` on `env.DB`, `sha` from DEPLOY_SHA, and
+ * the "cron" check over `jobs` (since the deploy) after the site's own `checks`.
+ */
+export function siteHealthResponse(
+  env: { DB: { prepare(sql: string): { first(): Promise<unknown> } } },
+  site: {
+    backup?: () => Promise<unknown>;
+    checks?: HealthCheck[];
+    jobs: Array<{ name: string; everyMinutes: number | null }>;
+  },
+): Promise<Response>;
+
 /** A check that an R2 bucket answers: a `head` of a fixed key; null passes, a throw fails. */
 export function r2Check(name: string, bucket: { head(key: string): Promise<unknown> }): HealthCheck;
 /** A check that a KV namespace answers: a `get` of a fixed key; null passes, a throw fails. */

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { aiOutcomeCheck, databaseDown, healthResponse, recordAiOutcome } from "../health.mjs";
+import { aiOutcomeCheck, databaseDown, healthResponse, recordAiOutcome, siteHealthResponse } from "../health.mjs";
 
 test("a stale backup warns at 200 with ok true; a database that throws fails at 503; the backup read is kept in the cache for the TTL", async () => {
   let reads = 0;
@@ -168,4 +168,25 @@ test("a fail check that timed out or threw logs a warning, one that measured a f
   assert.equal(error.mock.callCount(), 0);
   await run("r2", async () => ({ ok: false, detail: "missing" }));
   assert.match(error.mock.calls[0].arguments[0], /health_check_failed/);
+});
+
+test("siteHealthResponse pings env.DB, reports the deploy sha and adds the cron check", async () => {
+  const db = {
+    prepare: (sql) => ({
+      first: async () => 1,
+      all: async () => ({ results: [] }),
+      sql,
+    }),
+  };
+  const res = await siteHealthResponse(
+    { DB: db, DEPLOY_SHA: "abc1234" },
+    { jobs: [], checks: [{ name: "x", level: "warn", run: async () => true }] },
+  );
+  const body = await res.json();
+  assert.equal(res.status, 200);
+  assert.equal(body.sha, "abc1234");
+  assert.deepEqual(
+    body.checks.map((c) => c.name),
+    ["db", "x", "cron"],
+  );
 });
