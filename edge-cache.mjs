@@ -239,29 +239,27 @@ export function settleCacheHeaders(response, request, { publicCookies = [] } = {
 /**
  * A shared page's ETag, from its body, so every stored copy of the same page carries the same validator. A
  * render-time `Last-Modified` differs between the copies the edge's servers each store, so a reader holding one copy
- * got 200 for a conditional request answered by another, and again after every purge. Run before
- * `settleCacheHeaders`, which then leaves the validator alone. A page that is not shared, has a cookie to set, or
- * names its own validator comes back as it was. Weak, since the edge compresses the body it sends.
+ * got 200 for a conditional request answered by another, and again after every purge. Run in the Renderer, which
+ * only ever sees a GET (`forRenderer`), before `settleCacheHeaders`, which then leaves the validator alone. A page
+ * that is not shared, has a cookie to set, or names its own ETag comes back as it was. Weak, since the edge
+ * compresses the body it sends. Kept small: every Worker that bundles it counts these bytes against its size budget.
  * @param {Response} response
- * @param {Request} [request]
  * @returns {Promise<Response>}
  */
-export async function stampValidator(response, request) {
+export async function stampValidator(response) {
+  const h = response.headers;
   if (
     response.status !== 200 ||
-    !response.body ||
-    request?.method === "HEAD" ||
-    response.headers.get("Cache-Control") !== SHARED_CACHE_CONTROL ||
-    response.headers.has("Set-Cookie") ||
-    response.headers.has("ETag") ||
-    response.headers.has("Last-Modified")
+    h.get("Cache-Control") !== SHARED_CACHE_CONTROL ||
+    h.has("Set-Cookie") ||
+    h.has("ETag")
   )
     return response;
   const body = await response.arrayBuffer();
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", body)).subarray(0, 16);
-  const headers = new Headers(response.headers);
-  headers.set("ETag", `W/"${btoa(String.fromCharCode(...digest)).replace(/=+$/, "")}"`);
-  return new Response(body, { status: response.status, statusText: response.statusText, headers });
+  const sum = new Uint8Array(await crypto.subtle.digest("SHA-256", body), 0, 16);
+  const headers = new Headers(h);
+  headers.set("ETag", `W/"${btoa(String.fromCharCode(...sum))}"`);
+  return new Response(body, { headers });
 }
 
 /**
