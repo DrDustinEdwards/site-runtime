@@ -128,11 +128,11 @@ function scrubValue(key, value, options, depth) {
  * "Retry a query"), with the Workers runtime's lost connection, and the refusal D1 answers while an import holds the
  * database ("Currently processing a long-running import.": wrangler d1 execute --remote --file and the import API),
  * and the three messages seen in production on 2026-11-20 that the docs do not list: the account-wide back-off
- * ("Your account is generating too much load on D1 DBs"), a storage event ("D1_ERROR: internal error; reference = ...",
+ * ("too much load on D1 DBs"), a storage event ("D1_ERROR: internal error...",
  * Cloudflare's 7500) and a Durable Object that restarted under a call. A wrong query (no such table, a constraint) is not one.
  */
 const DATABASE_DOWN =
-  /D1 DB (?:is overloaded|'s isolate exceeded its memory limit|exceeded its CPU time limit|storage operation exceeded timeout|reset because its code was updated)|Internal error (?:while starting up|in) D1 DB storage|Cannot resolve D1 DB due to transient issue|Network connection lost|Currently processing a long-running import|Your account is generating too much load on D1|D1_ERROR: internal error; reference = |Connection closed: this Durable Object instance is no longer active|D1_ERROR:.*(?:reset|overloaded|unavailable|timed? ?out)|\(1(?:0001|0043)\)$/i;
+  /D1 DB (?:is overloaded|'s isolate exceeded its memory limit|exceeded its CPU time limit|storage operation exceeded timeout|reset because its code was updated)|Internal error (?:while starting up|in) D1 DB storage|Cannot resolve D1 DB due to transient issue|Network connection lost|Currently processing a long-running import|too much load on D1|D1_ERROR: internal error|Durable Object instance is no longer active|D1_ERROR:.*(?:reset|overloaded|unavailable|timed? ?out)|\(100(?:01|43)\)$/i;
 
 /** React Router's refusal of a cross-origin action (a wrong or forged `origin` header): a plain Error, but the sender's fault. */
 const ACTION_REFUSED = /Aborting the action\.$/;
