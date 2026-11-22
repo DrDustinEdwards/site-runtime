@@ -2,4 +2,4 @@
 "@dustinedwards/site-runtime": patch
 ---
 
-Declarations for `./doc-room` name `RoomViewer` and `ServerMessage` through the entry, so a consumer's inferred types compile.
+A consumer's inferred types compile again: `doc-room` names `RoomViewer` and `ServerMessage` through its entry, and `./sign-in-link` and `./sign-in-account` are entries so their types can be named.
