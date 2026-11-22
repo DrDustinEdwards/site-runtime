@@ -350,9 +350,12 @@ export function privateRender(response) {
   });
 }
 
-/** Cloudflare's code for a purge refused for its rate; asked again after these pauses (ms), 15 s in all. */
+/** The wait between purge tries and before a batch goes out; a test passes its own. */
+const wait = (/** @type {number} */ ms) => scheduler.wait(ms);
+
+/** Cloudflare's code for a purge refused for its rate; asked again up to this many times, after 1, 2, 4 and 8 s. */
 const PURGE_RATE_LIMITED = 1134;
-const PURGE_RETRY_PAUSES = [1000, 2000, 4000, 8000];
+const PURGE_RETRIES = 4;
 
 /**
  * Drops every stored response carrying one of `tags`. Never throws: a failed purge is a stale page until it expires
@@ -366,22 +369,18 @@ const PURGE_RETRY_PAUSES = [1000, 2000, 4000, 8000];
  * @param {(line: string) => void} [log]
  * @param {(ms: number) => Promise<unknown>} [pause] the wait between tries
  */
-export async function purgeTags(
-  cache,
-  tags,
-  why,
-  log = console.error,
-  pause = (ms) => scheduler.wait(ms),
-) {
+export async function purgeTags(cache, tags, why, log = console.error, pause = wait) {
   if (typeof cache?.purge !== "function") return null;
   for (let attempt = 0; ; attempt++) {
     try {
       const result = await cache.purge({ tags });
       if (result?.success) return true;
       const errors = result?.errors ?? [];
-      const limited = errors.some((e) => /** @type {any} */ (e)?.code === PURGE_RATE_LIMITED);
-      if (limited && attempt < PURGE_RETRY_PAUSES.length) {
-        await pause(PURGE_RETRY_PAUSES[attempt]);
+      if (
+        attempt < PURGE_RETRIES &&
+        errors.some((e) => /** @type {any} */ (e)?.code === PURGE_RATE_LIMITED)
+      ) {
+        await pause(1000 << attempt);
         continue;
       }
       log(JSON.stringify({ alert: "cache-purge-refused", why, tags, errors }));
@@ -426,7 +425,7 @@ const PURGE_MAX_TAGS = 100;
  * a write that asks several times, or several writes close together, would empty the bucket. Tags asked for within
  * `PURGE_WINDOW_MS` are merged into one `purgeTags` request; each caller gets that request's outcome. One batch is open
  * at a time per isolate, and a full one (100 tags) closes at once.
- * @type {{ tags: Set<string>, whys: Set<string>, done: Promise<boolean | null> } | null}
+ * @type {{ tags: Set<string>, whys: Set<string>, done?: Promise<boolean | null> } | null}
  */
 let openBatch = null;
 
@@ -436,15 +435,14 @@ let openBatch = null;
  * @param {string} why
  * @param {(purged: boolean | null, why: string) => Promise<unknown>} record
  * @param {(ms: number) => Promise<unknown>} [pause]
+ * @returns {Promise<boolean | null>}
  */
-export function purgeCoalesced(cache, tags, why, record, pause = (ms) => scheduler.wait(ms)) {
+export function purgeCoalesced(cache, tags, why, record, pause = wait) {
   if (!openBatch || openBatch.tags.size + tags.length > PURGE_MAX_TAGS) {
-    const batch = {
+    const batch = (openBatch = /** @type {NonNullable<typeof openBatch>} */ ({
       tags: new Set(),
       whys: new Set(),
-      done: /** @type {Promise<boolean | null>} */ (Promise.resolve(null)),
-    };
-    openBatch = batch;
+    }));
     batch.done = (async () => {
       await pause(PURGE_WINDOW_MS);
       if (openBatch === batch) openBatch = null;
@@ -456,7 +454,7 @@ export function purgeCoalesced(cache, tags, why, record, pause = (ms) => schedul
   }
   for (const tag of tags) openBatch.tags.add(tag);
   openBatch.whys.add(why);
-  return openBatch.done;
+  return /** @type {Promise<boolean | null>} */ (openBatch.done);
 }
 
 /**
@@ -473,9 +471,8 @@ export function withPurgePages(Base, { kv } = {}) {
   return class extends Base {
     /** @param {string} why @param {string[]} [tags] */
     purgePages(why, tags = [PAGES_CACHE_TAG]) {
-      const store = kv ? kv(this.env) : undefined;
       return purgeCoalesced(this.ctx.cache, tags, why, (purged, reason) =>
-        recordPurge(store, reason, purged),
+        recordPurge(kv?.(this.env), reason, purged),
       );
     }
   };
