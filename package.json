@@ -497,6 +497,10 @@
       "types": "./dist/worker.d.mts",
       "default": "./worker.mjs"
     },
+    "./render-html": {
+      "types": "./dist/render-html.d.mts",
+      "default": "./render-html.mjs"
+    },
     "./inbox-report": {
       "types": "./dist/inbox-report.d.mts",
       "default": "./inbox-report.mjs"

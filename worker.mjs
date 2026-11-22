@@ -192,24 +192,6 @@ const WORKER_PATHS = /^\/(api|health|mcp|media)(\/|$)/;
 const answeredFiles = new WeakMap();
 
 /**
- * A page's HTML as the site's Renderer would render it, with no request context (a cron job reading its own pages), or
- * null when it is not an OK HTML page. A standalone function, so a site that does not call it does not carry it.
- * @template E
- * @param {Site<E>} site
- * @param {Request} request
- * @param {E} env
- * @returns {Promise<string | null>}
- */
-export async function renderHtml(site, request, env) {
-  const ctx = /** @type {ExecutionContext} */ (
-    /** @type {unknown} */ ({ waitUntil() {}, passThroughOnException() {}, props: {} })
-  );
-  const response = await site.render(request, env, ctx);
-  const html = (response.headers.get("Content-Type") ?? "").includes("text/html");
-  return response.ok && html ? response.text() : null;
-}
-
-/**
  * @template E
  * @param {SiteOptions<E>} options
  * @returns {Site<E>}

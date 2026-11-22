@@ -1,6 +1,6 @@
 {
   "baseline": {
-    "measured_at": "04ef710",
+    "measured_at": "e21ef72",
     "knip": {},
     "jscpd": {
       "clones": 9,
@@ -32,7 +32,7 @@
       "sign-in-form.mjs": 599,
       "sign-in.mjs": 1307,
       "sites.mjs": 813,
-      "worker.mjs": 558
+      "worker.mjs": 549
     },
     "tests": {
       "files": 82,
