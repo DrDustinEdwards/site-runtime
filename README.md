@@ -1155,6 +1155,8 @@ older `ok` + `backup.warning` bodies and Capsid's own; a 200 that admits a probl
 `failingCheckNames(checks)` names the warn and fail checks. `healthChecks(body)` gives the rows fail closed (no status
 the format names is a fail), with a drift check's "present of expected" counts.
 
+`./render-html`: `renderHtml(site, request, env)` is a page's HTML as the site's Renderer would render it with no request context (a cron job reading its own pages), or null when it is not an OK HTML page.
+
 `./inbox-report`: `reportInbox({ namespace, items, key, origin?, fetcher? })` sends an app's present state to Capsid's
 inbox (POST /ops/inbox/report, the app's own agent key as the bearer). A report replaces the last one whole and expires
 after 6 hours, so a cron sends it every run, with no items when nothing waits. Items are cut to the receiver's limits
