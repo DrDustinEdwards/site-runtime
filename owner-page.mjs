@@ -33,9 +33,7 @@ import { escapeHtml as escape } from "./html.mjs";
 import { redirectResponse } from "./http.mjs";
 
 /** @import { OAuthHelpers } from "@cloudflare/workers-oauth-provider" */
-
 /** @import { AccessEnv } from "./access-login.mjs" */
-
 /** @import { AuditEnv } from "./audit-log.mjs" */
 
 /**

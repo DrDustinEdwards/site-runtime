@@ -47,7 +47,6 @@ import { serverTiming } from "./server-timing.mjs";
 import { canonicalRedirect } from "./url.mjs";
 
 /** @import { speculationRules } from "./prefetch.mjs" */
-
 /** @import { ServedSiteEntry } from "./sites.mjs" */
 
 /**

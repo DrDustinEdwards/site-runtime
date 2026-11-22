@@ -33,7 +33,6 @@ import { originOf, ownerPage, respond } from "./owner-page.mjs";
 import { ipKey } from "./rate-limit/limit.mjs";
 
 /** @import { OAuthHelpers } from "@cloudflare/workers-oauth-provider" */
-
 /** @import { AccessEnv } from "./access-login.mjs" */
 
 /**
