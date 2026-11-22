@@ -3,31 +3,24 @@
  * sources) and the route that serves each size from the one original in R2 through the Images binding. The two halves
  * come from one `defineImages` call, so the page never asks for a size or a crop the route would refuse.
  *
- * What it learned:
+ * Rules that guard decisions:
  * - The binding, not `/cdn-cgi/image/`: the URL interface needs a customer zone and answers 404 (error 1042) on
  *   workers.dev.
  * - Every set is CLOSED. The binding bills each unique source and parameter set once a month (5,000 free), so an open
- *   width, crop or focal point lets any caller mint billed transforms. Format and quality are not counted, so AVIF and
- *   WebP of one size bill once.
- * - The format is in the URL, never negotiated from `Accept`: the edge cache is keyed by URL alone, and a negotiated
- *   body stored under `immutable` would reach every browser. The page offers both through `<picture>`.
- * - With no `quality` the binding writes lossless WebP, larger than a lossy original, so 85 (Cloudflare's default) is
- *   always passed.
- * - A stored SVG is script running as the site, so it is only ever served as an attachment, and every file it serves
- *   carries UPLOAD_HEADERS (./headers: nosniff and a sandboxed policy), so no file runs script (ASVS 5.4.1).
- * - A GIF's sizes stay animated: the binding keeps every frame unless told `anim: false`, and writes them as animated
- *   WebP. Cloudflare documents animation for WebP and GIF output, not AVIF, so a GIF is offered no AVIF. Its first frame,
- *   `still=1`, is offered under prefers-reduced-motion (WCAG 2.2.2), from the same closed widths.
- * - A size URL is `immutable` for a year, so the edge cache key carrying the original's etag is not enough: a browser
- *   holding the old size keeps it. The page's URL carries the file's version (`v=`, from its stored hash or updated
- *   time), so a replaced picture is a new URL. `v` is never in the edge cache key, so it mints no transform, and an old
- *   version's URL still answers, with the current picture.
- * - A size URL ends in its own format's extension (`photo.jpg.webp?w=640`), so a saved or indexed size is never a WebP
- *   named .jpg. `originalKey` gives the route the stored key back; a URL from before, with no such suffix, still answers.
- * - Cloudflare encodes AVIF only up to 1,200 px on a side and answers WebP above it ("Image dimension, AVIF: 1,200
- *   pixels", developers.cloudflare.com/images/get-started/limits/; "too large to be quickly encoded to AVIF ... fall back
- *   to WebP or JPEG", /images/optimization/features/#format). So the AVIF source names the WebP for a larger size, and an
- *   AVIF request the binding answered in another format is sent to that format's URL: no URL named .avif holds a WebP.
+ *   width, crop or focal point lets any caller mint billed transforms. Format and quality are not counted.
+ * - The format is in the URL, never negotiated from `Accept`: the edge cache is keyed by URL alone. The page offers
+ *   both through `<picture>`. A size URL ends in its own format's extension (`photo.jpg.webp?w=640`); `originalKey`
+ *   gives the route the stored key back, and a URL with no such suffix still answers.
+ * - Always pass quality 85 (Cloudflare's default): with none the binding writes lossless WebP.
+ * - A stored SVG is script running as the site, so it is only served as an attachment, and every file carries
+ *   UPLOAD_HEADERS (./headers: nosniff and a sandboxed policy; ASVS 5.4.1).
+ * - A GIF's sizes stay animated (WebP, no AVIF: Cloudflare documents animation for WebP and GIF output only). Its first
+ *   frame, `still=1`, is offered under prefers-reduced-motion (WCAG 2.2.2) from the same closed widths.
+ * - A size URL is `immutable` for a year, so the page's URL carries the file's version (`v=`, from its stored hash or
+ *   updated time). `v` is never in the edge cache key, so it mints no transform.
+ * - Cloudflare encodes AVIF only up to 1,200 px on a side (developers.cloudflare.com/images/get-started/limits/), so
+ *   the AVIF source names the WebP for a larger size, and an AVIF request answered in another format is sent to that
+ *   format's URL: no URL named .avif holds a WebP.
  *
  * The widths, the sizes rule and the three layouts are Astro's (packages/astro/src/assets/layout.ts, Astro 7.4), under
  * its MIT license:
@@ -54,10 +47,46 @@ import { mediaType, textResponse } from "./http.mjs";
 import { errorMessage } from "./log.mjs";
 import { retryR2Read } from "./r2-object.mjs";
 
+/** @typedef {"constrained" | "fixed" | "full-width"} ImageLayout */
+/** @typedef {"avif" | "webp"} ImageFormat */
+
 /**
- * Astro's "limited" screen widths, the set it uses for images it generates ahead of time. A site's closed set starts
- * here; the layouts below add the requested width and twice it.
+ * Where a site's addresses for stored files live: its own origins, the route's prefix, keyPrefix and within.
+ * @typedef {object} AddressOptions
+ * @property {string[]} [origins] The site's own origins ("https://example.com"); an absolute address on any other host names no file.
+ * @property {string} [prefix] The route's path prefix. Default "/media/".
+ * @property {string} [keyPrefix] Put in front of the path to make the stored key, as the route's `keyPrefix`.
+ * @property {string} [within] The prefix every stored key has, as the route's `within`.
  */
+
+/**
+ * An image for a share tag or structured data: its URL, size and served type.
+ * @typedef {object} SizedImageUrl
+ * @property {string} url
+ * @property {number} width
+ * @property {number} height
+ * @property {string} type
+ */
+
+/**
+ * @typedef {object} ImageAttributes
+ * @property {string} src
+ * @property {string | undefined} srcset
+ * @property {string | undefined} sizes
+ * @property {Array<{ type: string; srcset: string; media?: string }>} sources AVIF then WebP, for a `<picture>`; empty when the image gets no srcset. A GIF's are its still first frame (AVIF then WebP, each with `media` "(prefers-reduced-motion: reduce)"), then the animated WebP.
+ * @property {number | undefined} width
+ * @property {number | undefined} height
+ * @property {string | undefined} background The CSS background shown while it loads (placeholder over color, at the focal point); JPEG, WebP and AVIF only.
+ */
+
+/**
+ * @typedef {object} PictureProps
+ * @property {Array<{ type: string; srcSet: string; sizes: string | undefined; media: string | undefined; }>} sources One `<source>` each; empty when the page writes the `<img>` alone.
+ * @property {{ src: string; srcSet: string | undefined; sizes: string | undefined; width: number | undefined; height: number | undefined; alt: string; className: string | undefined; loading: "eager" | "lazy"; fetchPriority: "high" | undefined; decoding: "async"; style: { background?: string; objectPosition?: string } | undefined; }} img
+ */
+
+/** @typedef {"image/jpeg" | "image/png" | "image/webp" | "image/avif"} EditFormat */
+/** Astro's "limited" screen widths; a site's closed set starts here. */
 export const SCREEN_WIDTHS = [640, 750, 828, 1080, 1280, 1668, 2048, 2560];
 
 /** The longest side Cloudflare Images encodes as AVIF (its documented limit); a larger size is offered as WebP. */
@@ -69,11 +98,7 @@ export const IMAGE_FORMATS = /** @type {const} */ ({ avif: "image/avif", webp: "
 /** The extension a size URL ends in, for each format the route writes; `jpg` is the share crop's (`shareImages`). */
 const FORMAT_EXTENSIONS = /** @type {const} */ ({ avif: "avif", webp: "webp", jpeg: "jpg" });
 
-/**
- * The share crop (1200 by 630, 1.91:1, the Open Graph size) and the Article image set Google asks for (16:9, 4:3 and 1:1,
- * each at least 50,000 pixels), all at 1200 wide, which `shareImages: true` adds to a site's closed sets. The share crop
- * is a JPEG, the one format every link preview reads.
- */
+/** The share crop (1200 by 630, a JPEG) and the Article image ratios, which `shareImages: true` adds to the closed sets. */
 export const SHARE_IMAGE = /** @type {const} */ ({ width: 1200, ratio: "40x21", format: "jpeg" });
 export const ARTICLE_IMAGE_RATIOS = /** @type {const} */ (["16x9", "4x3", "1x1"]);
 
@@ -149,9 +174,8 @@ export function focusOf(value) {
 }
 
 /**
- * A focal point as CSS `object-position` ("37.5% 60%"), for a picture its box crops (object-fit: cover), so the crop
- * keeps the subject in view. Each axis is rounded to a tenth of a percent. Undefined when `value` is not a focal point,
- * which leaves the browser's default, the middle.
+ * A focal point as CSS `object-position` ("37.5% 60%"), each axis rounded to a tenth of a percent; undefined when
+ * `value` is not a focal point.
  * @param {unknown} value
  * @returns {string | undefined}
  */
@@ -178,9 +202,8 @@ export function versionedCache({ plain = "public, max-age=86400" } = {}) {
 }
 
 /**
- * A file the Worker's static assets hold (public/), in the shape `respond` and `serve` read from R2, or null when there
- * is none: for a site's brand photos, served at /media/ beside its library. The ASSETS binding matches the pathname
- * alone, so the host is a placeholder.
+ * A file the Worker's static assets hold (public/), in the shape `respond` and `serve` read from R2, or null. The ASSETS
+ * binding matches the pathname alone, so the host is a placeholder.
  * @param {{ fetch(request: Request): Promise<Response> }} assets the ASSETS binding
  * @param {string} key the file's path under public/
  * @returns {Promise<R2ObjectLike | null>}
@@ -201,8 +224,7 @@ const KEY_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._ ()+,=@~-]*$/;
 
 /**
  * A stored key from a /media path, or null: every segment non-empty, never "." or "..", starting with a letter or digit
- * and holding nothing a key never does (no backslash, percent sign or control character), and the whole key under
- * `within` when given.
+ * with no backslash, percent sign or control character, and the key under `within` when given.
  * @param {string} path the path after the route's prefix
  * @param {string} [within] the prefix every served key has ("uploads/"), "" for any
  * @returns {string | null}
@@ -216,10 +238,9 @@ export function mediaKey(path, within = "") {
 }
 
 /**
- * The stored key an image address names, or null for any other address: `<prefix><path>` (default "/media/") or one of
- * the site's own `origins` before it ("https://example.com"), query and fragment cut, each segment percent-decoded,
- * a size's format suffix cut as the route cuts it, `keyPrefix` put back in front (the route's `keyPrefix`), and the key checked as `mediaKey` checks a served one. Another
- * site's /media/ address is not this site's file. The inverse of the address a page writes for a stored key.
+ * The stored key an image address names, or null: `<prefix><path>` (default "/media/"), optionally after one of the
+ * site's own `origins`, query and fragment cut, segments percent-decoded, a size's format suffix cut as the route cuts
+ * it, `keyPrefix` put back, and the key checked by `mediaKey`. The inverse of the address a page writes.
  * @param {string} address
  * @param {{ origins?: string[], prefix?: string, keyPrefix?: string, within?: string }} [options]
  * @returns {string | null}
@@ -243,9 +264,9 @@ export function keyOfAddress(
 }
 
 /**
- * Every stored key a text names by address (markdown, HTML, srcset or JSON): each `keyOfAddress` match that starts the
- * text or follows a space, quote, bracket, `=`, `,` or `>`, trailing sentence punctuation cut. In the order first named.
- * Over-detection only keeps a file from being deleted; a key with a space or `)` is found only when the address is encoded.
+ * Every stored key a text names by address (markdown, HTML, srcset or JSON), trailing sentence punctuation cut, in the
+ * order first named. Over-detection only keeps a file from being deleted; a key with a space or `)` is found only when
+ * the address is encoded.
  * @param {string | null | undefined} text
  * @param {{ origins?: string[], prefix?: string, keyPrefix?: string, within?: string }} [options]
  * @returns {Set<string>}
@@ -267,8 +288,8 @@ export function keysAtAddresses(text, options = {}) {
 }
 
 /**
- * The widths an image is offered at, by Astro's rules: full-width takes every screen width up to the original;
- * fixed takes 1x and 2x; constrained takes 1x, 2x and every screen width up to 2x. Never wider than the original.
+ * The widths an image is offered at, by Astro's rules (full-width: every screen width; fixed: 1x and 2x; constrained:
+ * 1x, 2x and every screen width up to 2x), never wider than the original.
  * @param {{ layout: "constrained" | "fixed" | "full-width", width?: number, originalWidth?: number, breakpoints?: number[] }} options
  * @returns {number[]}
  */
@@ -287,8 +308,7 @@ export function imageWidths({ layout, width, originalWidth, breakpoints = SCREEN
     .sort((a, b) => a - b);
 }
 
-/**
- * The `sizes` attribute for a layout, in CSS pixels (the browser applies the device pixel ratio itself).
+/** The `sizes` attribute for a layout, in CSS pixels.
  * @param {{ layout: "constrained" | "fixed" | "full-width", width?: number }} options
  * @returns {string | undefined}
  */
@@ -307,15 +327,26 @@ export function imageSizes({ layout, width }) {
  */
 
 /**
+ * What `defineImages` returns: the page half and the route half over one closed set.
+ * - `widths`: The closed width set, ascending.
+ * - `url`: One size's URL; with no width, the original, versioned.
+ * - `shareImage`: og:image: 1200 x 630 around the focal point, image/jpeg; null with no size or not a raster. Needs `shareImages`.
+ * - `articleImages`: Article `image`: 16:9, 4:3 and 1:1 at 1200 wide, image/webp; [] with no size or not a raster. Needs `shareImages`.
+ * - `respond`: The original for a bare request, one transformed size for `?w=` (a GIF's first frame for `still=1`); 400 for anything outside the closed sets, and for a still of anything but a GIF.
+ * - `serve`: The /media route around `respond`: GET and HEAD only (405), the key from the path after `prefix` ("/media/"), `keyPrefix` put before it, refused (404) unless every segment is safe and it starts with `within`; `read(key)` reads (and rereads) it; `cacheControl` (default versionedCache()) is a string or a function of the file. Every answer, refusals too, carries UPLOAD_HEADERS.
+ * @template {string} U
+ * @typedef {{ widths: number[]; ratios: string[]; url( src: string, options: { width?: number; format?: ImageFormat | "jpeg"; ratio?: string; focus?: string | null; still?: boolean; version?: string | number | Date | null; }, ): string; attributes(image: StoredImage, use: U): ImageAttributes; shareImage(image: StoredImage): SizedImageUrl | null; articleImages(image: StoredImage): SizedImageUrl[]; respond( request: Request, options: { object: R2ObjectLike | null; images?: ImagesLike; cache?: Cache; cacheControl?: string; reread?: () => Promise<R2ObjectLike | null>; }, ): Promise<Response>; serve( request: Request, options: { read: (key: string) => Promise<R2ObjectLike | null>; images?: ImagesLike; cache?: Cache; prefix?: string; keyPrefix?: string; within?: string; cacheControl?: | string | ((file: { request: Request; url: URL; key: string; object: R2ObjectLike; }) => string | undefined | Promise<string | undefined>); }, ): Promise<Response>; }} Images
+ */
+
+/**
  * The image half and the route half of a site's responsive images, sharing one closed set of widths and crops.
- *
  * `uses` names each way the site shows images (`{ content: { layout: "constrained", width: 704 } }`); the closed width
- * set is every width any use can ask for. `ratios` are the crops a use may ask for ("16x9"), cut around the file's
- * focal point, or the binding's own guess where it has none. `shareImages: true` adds the share crop and the Article set
- * (SHARE_IMAGE, ARTICLE_IMAGE_RATIOS) for `shareImage` and `articleImages`.
- *
+ * set is every width any use can ask for. A use's `ratio` is a crop around the file's focal point. `shareImages: true`
+ * adds the share crop and the Article set.
+
  * @template {string} U
  * @param {{ uses: Record<U, ImageUse & { ratio?: string }>, breakpoints?: number[], quality?: number, shareImages?: boolean }} config
+ * @returns {Images<U>}
  */
 export function defineImages({
   uses,
@@ -353,9 +384,8 @@ export function defineImages({
   }
 
   /**
-   * The URL of one size: the path ends in the format's extension, `?w=` is the width, `r=` a crop and `fp=` the focal
-   * point that crop is cut around (so a new focal point is a new URL, never a stale cached crop), `still=1` an
-   * animation's first frame, and `v=` the file's version, so a replaced file is a new URL. With no width it is the
+   * The URL of one size: the path ends in the format's extension, `?w=` is the width, `r=` a crop, `fp=` the focal
+   * point it is cut around, `still=1` an animation's first frame, `v=` the file's version. With no width it is the
    * original, versioned.
    * @param {string} src
    * @param {{ width?: number, format?: keyof typeof FORMAT_EXTENSIONS, ratio?: string, focus?: string | null, still?: boolean, version?: unknown }} options
@@ -378,11 +408,9 @@ export function defineImages({
   }
 
   /**
-   * What a page writes for one image used one way: `src` (the WebP at the use's width, or the original), `srcset` and
-   * `sizes` for the `<img>`, `sources` for a `<picture>` (AVIF then WebP), and `width` and `height` so nothing shifts
-   * as it loads (the crop's when the use has a ratio). An image the site has no size for, or one that is not a raster,
-   * gets no srcset: the original, unsized, is better than a guess. A GIF's sources are its first frame under
-   * prefers-reduced-motion (AVIF then WebP), then the animated WebP.
+   * What a page writes for one image used one way: `src`, `srcset` and `sizes` for the `<img>`, `sources` for a
+   * `<picture>`, and `width` and `height` (the crop's when the use has a ratio). An image with no known size, or not a
+   * raster, gets no srcset: the original, unsized, is better than a guess.
    * @param {StoredImage} image
    * @param {U} useName
    */
@@ -412,8 +440,7 @@ export function defineImages({
       use.layout === "full-width"
         ? image.width
         : Math.min(/** @type {number} */ (use.width), image.width);
-    // An AVIF larger than Cloudflare encodes would come back WebP, so the AVIF source names that size's WebP: still
-    // every width for a sharp picture on a dense screen, and each URL holds the format it names.
+    // Over AVIF_MAX_EDGE the AVIF source names that size's WebP, so each URL holds the format it names.
     const formatAt = (/** @type {keyof typeof IMAGE_FORMATS} */ format, /** @type {number} */ w) =>
       format === "avif" && Math.max(w, Math.round(w * aspect)) > AVIF_MAX_EDGE ? "webp" : format;
     const srcsetOf = (/** @type {keyof typeof IMAGE_FORMATS} */ format, still = false) =>
@@ -450,8 +477,7 @@ export function defineImages({
   }
 
   /**
-   * The share crop for og:image and twitter:image: 1200 by 630 around the focal point, as a JPEG, with the tags' width,
-   * height and type. Null for an image with no known size or that is not a raster (the page then uses a ./share-card).
+   * The share crop for og:image and twitter:image; null with no known size or no raster (the page uses a ./share-card).
    * @param {StoredImage} image
    */
   function shareImage(image) {
@@ -467,8 +493,7 @@ export function defineImages({
   }
 
   /**
-   * The Article or BlogPosting `image` set: 16:9, 4:3 and 1:1 at 1200 wide around the focal point (a GIF's first frame),
-   * as WebP, each with its size and type. Empty for an image with no known size or that is not a raster.
+   * The Article or BlogPosting `image` set (a GIF's first frame); empty with no known size or no raster.
    * @param {StoredImage} image
    */
   function articleImages(image) {
@@ -485,8 +510,7 @@ export function defineImages({
   }
 
   /**
-   * The route: the original for a bare request, or one transformed size for `?w=`. `object` is the R2 object the site
-   * read for the key (null when it has none); the route never writes back to the bucket.
+   * The route: the original for a bare request, or one transformed size for `?w=`. It never writes to the bucket.
    * @param {Request} request
    * @param {{ object: R2ObjectLike | null, images?: ImagesLike, cache?: Cache, cacheControl?: string, reread?: () => Promise<R2ObjectLike | null> }} options
    * @returns {Promise<Response>}
@@ -509,7 +533,6 @@ export function defineImages({
     const ratio = query.get("r");
     const fp = query.get("fp");
     const still = query.get("still");
-    // Closed sets: anything outside them is a 400, never a billed transform.
     if (!widths.has(width)) return new Response("Unsupported width", { status: 400 });
     if (!formats.has(format)) return new Response("Unsupported format", { status: 400 });
     if (version !== null && !VERSION.test(version))
@@ -523,17 +546,16 @@ export function defineImages({
     // The focal point in the URL must be the file's own, or any caller could mint crops.
     const stored = focusOf(object.customMetadata?.[FOCUS_METADATA]);
     if (fp !== null && fp !== stored) return new Response("Stale focal point", { status: 400 });
-    // A still is a second billed transform of each size, so only a GIF has one.
+    // A still is a second billed transform, so only a GIF has one.
     if (still !== null && mediaType(object.httpMetadata?.contentType) !== "image/gif")
       return new Response("Unsupported still", { status: 400 });
     if (!isRasterType(object.httpMetadata?.contentType))
       return original(request, object, cacheControl);
 
-    // TRAP: the edge cache is keyed by URL alone and has no purge, so every input to the body goes into the key, as
-    // parameters never served or linked: the encoder's quality, and the original's etag, so a file replaced under the
-    // same key (site-api's PUT /media/:id/file) is a new key for every size, never a stale one. The page's `v` is left
-    // out: the etag already names the bytes, and a `v` in the key would let any caller mint a transform per value. The
-    // format goes in as `f`, so a URL from before suffixes and its suffixed twin are one entry.
+    // TRAP: the edge cache is keyed by URL alone and has no purge, so every input to the body goes into the key: the
+    // encoder's quality and the original's etag (a file replaced under the same key is a new key for every size). The
+    // page's `v` is left out, or any caller could mint a transform per value. The format goes in as `f`, so a URL from
+    // before suffixes and its suffixed twin are one entry.
     const keyUrl = new URL(request.url);
     keyUrl.searchParams.delete("v");
     if (suffix) {
@@ -542,18 +564,15 @@ export function defineImages({
     }
     keyUrl.searchParams.set("__q", String(quality));
     keyUrl.searchParams.set("__v", object.httpEtag);
-    // The Cache-Control the site chose goes in too: a site may pick it per request (dustinedwards.info caches a static
-    // photo for good only under its current `v`), and a size stored under one policy must not answer under another.
-    // A site passes a fixed few values, so this mints no transforms.
+    // The Cache-Control goes in too: a size stored under one policy must not answer under another.
     keyUrl.searchParams.set("__cc", cacheControl);
     const cacheKey = new Request(keyUrl.toString(), { method: "GET" });
     const hit = cache ? await cache.match(cacheKey) : undefined;
-    // A cached Response has immutable headers, and the Renderer sets security headers on what a route returns.
+    // A cached Response has immutable headers.
     if (hit) return new Response(hit.body, hit);
 
     if (!images) {
-      // The binding is in each site's untracked wrangler.jsonc, so a checkout can lack it. Said in a header, or the
-      // failure looks like a slow page.
+      // The binding is in an untracked wrangler.jsonc, so a checkout can lack it; a header says so.
       const headers = objectHeaders(object, cacheControl);
       headers.set("x-image", "unavailable-no-images-binding");
       return new Response(object.body, { headers });
@@ -564,7 +583,6 @@ export function defineImages({
       : { width, fit: "scale-down" };
     let response;
     try {
-      // `anim` is left to the binding's default (every frame kept) unless the URL asks for the still.
       const output = { format: `image/${format}`, quality, ...(still ? { anim: false } : {}) };
       const result = await images.input(object.body).transform(transform).output(output);
       response = result.response();
@@ -576,8 +594,7 @@ export function defineImages({
           detail: errorMessage(error),
         }),
       );
-      // The body above is spent, so the original is read again. Short-lived: this URL should hold the size once the
-      // transform recovers.
+      // The body is spent, so the original is read again, short-lived.
       const again = reread ? await reread() : null;
       if (!again)
         return new Response("Image unavailable", { status: 503, headers: { "retry-after": "60" } });
@@ -588,8 +605,7 @@ export function defineImages({
     const headers = new Headers(response.headers);
     for (const [name, value] of Object.entries(UPLOAD_HEADERS)) headers.set(name, value);
     headers.set("cross-origin-resource-policy", "cross-origin");
-    // Over Cloudflare's AVIF limit the binding writes WebP. A page from before AVIF_MAX_EDGE may still ask, so the
-    // answer is the WebP's own URL, never a WebP named .avif. Permanent and cached like the size: the limit is fixed.
+    // Over the AVIF limit the binding writes WebP: answer with the WebP's own URL, permanent and cached.
     if (format === "avif" && mediaType(headers.get("content-type")) === IMAGE_FORMATS.webp) {
       await response.body?.cancel();
       const twin = new URL(request.url);
@@ -618,9 +634,8 @@ export function defineImages({
   }
 
   /**
-   * The site's /media route around `respond`: the method gate, the key from the path (a size URL's suffix cut), the
-   * key refused unless every segment is safe and it starts with `within`, the stored file read (and reread for a
-   * transform), its cache policy, and every answer, refusals too, under UPLOAD_HEADERS so no file runs script.
+   * The site's /media route around `respond`: the method gate, the key from the path, the file read, its cache policy,
+   * and every answer, refusals too, under UPLOAD_HEADERS so no file runs script.
    * @param {Request} request
    * @param {{ read: (key: string) => Promise<R2ObjectLike | null>, images?: ImagesLike, cache?: Cache, prefix?: string, keyPrefix?: string, within?: string, cacheControl?: string | ((file: { request: Request, url: URL, key: string, object: R2ObjectLike }) => string | undefined | Promise<string | undefined>) }} options
    * @returns {Promise<Response>}
@@ -642,8 +657,7 @@ export function defineImages({
       return guarded(textResponse("Method not allowed", 405, { allow: "GET, HEAD" }));
     const url = new URL(request.url);
     let key = null;
-    // The path is still percent-encoded; each segment is decoded as keyOfAddress decodes it, so a key with a space or
-    // another escaped character serves. A malformed escape is a 404.
+    // Each segment is decoded as keyOfAddress decodes it; a malformed escape is a 404.
     if (url.pathname.startsWith(prefix)) {
       try {
         const path = url.pathname.slice(prefix.length).split("/").map(decodeURIComponent).join("/");
@@ -684,12 +698,10 @@ export function defineImages({
 }
 
 /**
- * What a `<picture>` for `attributes()` holds, as plain objects with JSX's prop names, for a page that renders JSX:
- * `sources` for the `<source>` elements and `img` for the `<img>`. `alt` is required: an image with nothing to say
- * passes "". Lazy by default; the page's first large image passes `priority`. An unset prop is undefined, which JSX
- * leaves out. With no `sources` the page writes the `<img>` alone. `focus` (the file's focal point) sets the `<img>`'s
- * `objectPosition`, for a box that crops it with object-fit: cover.
- * @param {import("./image.mjs").ImageAttributes} attrs
+ * What a `<picture>` for `attributes()` holds, as plain objects with JSX's prop names: `sources` for the `<source>`
+ * elements and `img` for the `<img>` (alone when there are no sources). `alt` is required ("" for none). Lazy by
+ * default; the page's first large image passes `priority`. `focus` sets the `<img>`'s `objectPosition`.
+ * @param {ImageAttributes} attrs
  * @param {{ alt: string, priority?: boolean, className?: string, focus?: unknown }} options
  */
 export function pictureProps(attrs, { alt, priority = false, className, focus }) {
@@ -725,9 +737,8 @@ export function pictureProps(attrs, { alt, priority = false, className, focus })
 }
 
 /**
- * The preload for a page's LCP image (`./preload`): the first `<source>` any browser may take (AVIF, typed so a
- * browser without it skips the preload), its srcset and sizes, and fetchpriority=high. With no sources, the `<img>`'s.
- * @param {import("./image.mjs").ImageAttributes} attrs
+ * The preload for a page's LCP image (`./preload`): the first unconditional `<source>` (typed), else the `<img>`'s.
+ * @param {ImageAttributes} attrs
  */
 export function imagePreload(attrs) {
   const source = attrs.sources.find((s) => !s.media);
@@ -749,9 +760,8 @@ const HTML_NAMES = /** @type {Record<string, string>} */ ({
 });
 
 /**
- * `<picture>` markup for `attributes()`, for a page that writes HTML as a string: `pictureProps` written out, so the
- * two never differ.
- * @param {import("./image.mjs").ImageAttributes} attrs
+ * `<picture>` markup for `attributes()`: `pictureProps` written out as a string.
+ * @param {ImageAttributes} attrs
  * @param {{ alt: string, priority?: boolean, className?: string }} options
  * @param {(value: string) => string} escape the site's HTML attribute escape (`escapeHtml` from ./html)
  */
@@ -780,16 +790,10 @@ function styleText({ background, objectPosition }) {
 const EDIT_FORMATS = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
 
 /**
- * One picture edited through the Images binding: turned, mirrored or shrunk, and encoded as `format`. For the writes a
- * site makes (a turn or mirror its editor asks for, an upload shrunk to a longest edge or turned from HEIC into JPEG,
- * a small copy to show a model),
- * not for serving sizes: `respond` does that, from a closed set. Each call is a billed transform, so a caller edits only
- * what a person asked for.
- *
+ * One picture edited through the Images binding: turned, mirrored or shrunk, and encoded as `format`. For a site's own
+ * writes, not for serving sizes (`respond` does that, from a closed set). Each call is a billed transform.
  * Cloudflare applies `flip` before `rotate`, and turns clockwise. `maxEdge` fits the picture inside a square of that
- * side and never enlarges it. A format alone re-encodes the picture as it is (HEIC to JPEG on upload). Quality 85 unless
- * said: with none the binding writes lossless WebP. Options outside these throw before the binding is called, so a bad
- * request is never billed.
+ * side and never enlarges it. A format alone re-encodes. Options outside these throw before the binding is called.
  * @param {ImagesLike} images the Images binding
  * @param {ReadableStream | ArrayBuffer | ArrayBufferView} input the picture's bytes
  * @param {{ rotate?: 90 | 180 | 270, flip?: "h" | "v" | "hv", maxEdge?: number, format: "image/jpeg" | "image/png" | "image/webp" | "image/avif", quality?: number }} options
@@ -815,12 +819,11 @@ export async function editImage(
   if (flip) transform.flip = flip;
   if (rotate) transform.rotate = rotate;
   if (maxEdge) Object.assign(transform, { width: maxEdge, height: maxEdge, fit: "scale-down" });
-  // A Response reads any buffer or view as exactly its own bytes, never the larger allocation a view may sit in.
+  // A Response reads a view as exactly its own bytes, not the larger allocation it sits in.
   const stream =
     input instanceof ReadableStream
       ? input
       : /** @type {ReadableStream} */ (new Response(/** @type {BodyInit} */ (input)).body);
-  // A re-encode alone goes straight to output: the binding takes `.output()` on its input, with no transform.
   const source = images.input(stream);
   const result = await (
     Object.keys(transform).length ? source.transform(transform) : source
@@ -853,9 +856,8 @@ function cropHeight(width, ratio) {
 }
 
 /**
- * The CSS background an image shows while it loads: its stored placeholder over its main color, placed at its focal
- * point and covering the box, so the loaded picture paints over it with no shift and no script. Only for a JPEG, WebP
- * or AVIF: a PNG or GIF is often clear in places, where the placeholder would stay visible behind it. Values outside
+ * The CSS background an image shows while it loads: its stored placeholder over its main color, at its focal point.
+ * Only for a JPEG, WebP or AVIF (a PNG or GIF is often clear, so the placeholder would show through). Values outside
  * site-api's contract (MediaPlaceholder, MediaColor) are dropped, so nothing else reaches the style.
  * @param {StoredImage} image
  * @returns {string | undefined}
@@ -895,10 +897,8 @@ function objectHeaders(object, cacheControl) {
   headers.set("etag", object.httpEtag);
   headers.set("cache-control", cacheControl);
   for (const [name, value] of Object.entries(UPLOAD_HEADERS)) headers.set(name, value);
-  // A picture is shown by other origins (a link preview, a feed reader); anything else stays same-origin.
   headers.set("cross-origin-resource-policy", corpFor(headers.get("content-type")));
-  // An SVG served inline from the site's own origin is script running as the site. Keyed on the stored type, so a file
-  // renamed to .png is caught.
+  // An inline SVG is script running as the site; keyed on the stored type, so a file renamed to .png is caught.
   if ((headers.get("content-type") ?? "").toLowerCase().startsWith("image/svg+xml"))
     headers.set("content-disposition", "attachment");
   return headers;

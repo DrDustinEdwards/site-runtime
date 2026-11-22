@@ -1,74 +1,50 @@
 /**
  * The one Worker every React Router site runs: the gateway, the Renderer the Workers cache stores pages from, the
- * request log around them and the cron handler. Nine sites each wrote their own (gateway map, 2026-11-11), with seven
- * rules for what may be stored, four keys for the CSP report limit and three answers to an unknown cron. A site now
- * names what is its own (its steps, its header set, its extra preloads) and gets the same behavior as every other.
+ * request log around them and the cron handler. A site names what is its own (its steps, header set, preloads).
  *
- * One behavior for each step the sites did differently, in the order the gateway runs them:
- *
- * 1. Canonical address (./url canonicalRedirect): first, before anything reads the request, so an http request never
- *    gets a policy whose report endpoint is http. The move carries the security set built for where it points.
- *    `canonical.before` is a site's own earlier move (dei's WordPress addresses), answered the same way, and
- *    `canonical.keep(url)` keeps an address's trailing slash (dei's removed WordPress addresses answer 410 as they were).
+ * The gateway's steps, in order:
+ * 1. Canonical address (./url canonicalRedirect), first, so an http request never gets a policy whose report endpoint is
+ *    http. `canonical.before` is a site's own earlier move; `canonical.keep(url)` keeps an address's trailing slash.
  * 2. Maintenance (./maintenance): every path but /health answers 503 while MAINTENANCE is on.
- * 3. /.well-known/security.txt (./security-txt, RFC 9116) on every site, with the network's contact.
- * 4. The standard files (Prelum's standardFiles: robots.txt, ai.txt, site.webmanifest, the IndexNow key, ownership
- *    files), when the site passes `files`.
+ * 3. /.well-known/security.txt (./security-txt, RFC 9116).
+ * 4. The standard files (Prelum's standardFiles), when the site passes `files`.
  * 5. The speculation rules file (./prefetch), with the site's exclude list.
- * 6. CSP reports (./csp-report): limited per caller address (./http clientIp) through the CSP_REPORT_RATE_LIMIT binding;
- *    with no binding, or over the limit, a report is dropped (still 204).
+ * 6. CSP reports (./csp-report), limited per caller address through CSP_REPORT_RATE_LIMIT; with no binding, or over the
+ *    limit, a report is dropped (still 204).
  * 7. The operator API (./operator) at /api/operator, when the site passes `operator`.
- * 8. A cross-site write is refused (./origin refuseCrossSite) on every path but `crossSiteExempt` (default /api/auth/,
- *    where Better Auth checks its own origins and Apple's form_post arrives cross-site), before the steps, so an
- *    app's own cookie-authenticated API gets the check too. A bearer or server-to-server caller sends no Origin and
- *    no Sec-Fetch-Site, so it passes.
- * 9. The site's own steps (`steps`: its media files, Carrel's site API, an app's API), in order; the first answer wins.
- *    A step's answer gets the security set (a policy the answer carries itself is kept). A write a step accepts purges
- *    the stored pages when the step says so (`kit.purgeAfterWrite`).
- * 10. The page. A read (GET or HEAD) with no cookie but `publicCookies`, not refused by the site's `cacheable`, goes
- *     to the Renderer through the Workers cache (a file path too: a shared feed or sitemap is stored and purged like a
- *     page, and anything not shared leaves with an edge no-store, so the cache keeps nothing else), keyed on the path, the
- *     query without tracking parameters, the host and each public cookie's value. Everything else (a write, a signed-in
- *     reader, a private path) is rendered live for this reader with its own nonce, and leaves private, no-store unless
- *     the route said otherwise for a page that is not shared. A live write on a `purgeAfter` path (default /admin)
- *     purges the stored pages.
+ * 8. A cross-site write is refused (./origin refuseCrossSite) on every path but `crossSiteExempt` (default
+ *    /api/auth/), before the steps, so an app's own cookie-authenticated API gets the check too.
+ * 9. The site's own `steps`, in order; the first answer wins and gets the security set (a policy it carries is kept).
+ *    A write a step accepts purges the stored pages when the step says so (`kit.purgeAfterWrite`).
+ * 10. The page. A read with no cookie but `publicCookies`, not refused by `cacheable`, goes to the Renderer through the
+ *     Workers cache, keyed on the path, the query without tracking parameters, the host and each public cookie's value
+ *     (a file path too: anything not shared leaves with an edge no-store). Everything else is rendered live with its
+ *     own nonce and leaves private, no-store unless the route said otherwise. A live write on a `purgeAfter` path
+ *     (default /admin) purges the stored pages.
  *
- * Every render gets a nonce, which ./react-entry puts on React's scripts; a site whose policy names it (rather than
- * hashing its inline scripts) has it renewed per reader by the gateway (./csp renewNonce), so two readers of a stored
- * page never share one. A 304 from the cache leaves out the policy: RFC 9111 4.3.4 has the
- * browser update its stored headers from a 304, and a new nonce there would not match the scripts in its copy.
+ * Every render gets a nonce (./react-entry), renewed per reader (./csp renewNonce). A 304 from the cache leaves out the
+ * policy: RFC 9111 4.3.4 has the browser update its stored headers from a 304, and a new nonce would not match.
  *
- * On the way out, every HTML answer carries the Speculation-Rules header, a private page (./edge-cache
- * PRIVATE_PAGE_HEADERS, no-transform, so Cloudflare injects no beacon and compresses nothing) is compressed by the
- * Worker, a 404 is counted (./not-found) unless it is
- * under /api/ or /preview/, and a 404 goes through the site's `onNotFound` (site-api's tombstones, a 410). A gateway
- * that throws answers a plain 500 with the security set and logs `gateway_error`, never the runtime's 1101 page.
+ * On the way out every HTML answer carries the Speculation-Rules header, a private page is compressed by the Worker
+ * (./edge-cache PRIVATE_PAGE_HEADERS), a 404 is counted (./not-found) unless under /api/ or /preview/ and goes through
+ * `onNotFound`. A gateway that throws answers a plain 500 and logs `gateway_error`. A render whose route failed because
+ * D1 was down answers 503 with Retry-After and no-store (./log databaseDownStatus).
  *
- * A render whose route failed because D1 was down (a page, a .data request or a resource route) answers 503 with
- * Retry-After and no-store instead of React Router's 500 (./log databaseDownStatus).
+ * Around the gateway, outermost first: the request log (./log; the route named from the React Router build, loaded and
+ * awaited inside the request, since a promise left from a finished request can stay unsettled in workerd), the site's
+ * `wrap`, then the admin idle sign-out (./access) for each of `adminIdle`. Under `vite dev` a page also carries
+ * `<meta property="csp-nonce">` for Vite's styles. A page a route marks shared (`public, max-age=0`) with no edge
+ * lifetime is stored for publicPageHeaders' day, so a purge has something to reach; no site hook rewrites an answer's
+ * Cache-Control.
  *
- * Around the gateway, outermost first: the request log (./log; the deployed commit from DEPLOY_SHA, a preview token cut
- * from the path, the route named from the React Router build, loaded and awaited inside the request, since a promise
- * left from a finished request can stay unsettled in workerd), the site's `wrap` (Prelum's markdownCopies), then the
- * admin idle sign-out (./access) for each of `adminIdle`.
- *
- * Under `vite dev` (mode "development") a page also carries `<meta property="csp-nonce">` for the styles Vite injects.
- *
- * Every render sets ./context serverTimingContext, so a loader's own marks join `render` in the Server-Timing header.
- * A page a route marks shared (`public, max-age=0`) with no edge lifetime of its own is stored for publicPageHeaders'
- * day, so the purge it answers to has something to reach. The cache rule is the routes' own `headers` and these steps,
- * the same on every site: no site hook rewrites an answer's Cache-Control.
- *
- * Cron: `cron(env, date, ctx)[controller.cron]` (the lists may come from a promise, so a site can import its jobs when
- * the cron fires) runs through ./cron runJobs, awaited; a trigger with no list warns
- * `cron_unknown` and runs nothing.
+ * Cron: `cron(env, date, ctx)[controller.cron]` runs through ./cron runJobs; a trigger with no list warns `cron_unknown`.
  *
  * In workers/app.ts:
  *   const site = defineSite({ ... });
  *   export class Renderer extends siteRenderer(WorkerEntrypoint, site) {}
  *   export default siteWorker(site);
  *
- * Needs `react-router` (a React site has it; not declared, as for ./context).
+ * Needs `react-router` (not declared, as for ./context).
  */
 import { createRequestHandler, RouterContextProvider } from "react-router";
 import { withAdminIdle } from "./access.mjs";
@@ -83,14 +59,12 @@ import {
   compressUntransformed,
   forReader,
   forRenderer,
-  privateRender,
   publicPageHeaders,
   purgeAfterWrite,
   settleCacheHeaders,
   stampValidator,
   withPurgePages,
 } from "./edge-cache.mjs";
-import { cookiePairs } from "./headers.mjs";
 import { clientIp, isWrite, textResponse } from "./http.mjs";
 import {
   databaseDownStatus,
@@ -106,31 +80,122 @@ import { maintenanceOn, maintenanceResponse } from "./maintenance.mjs";
 import { countNotFound } from "./not-found.mjs";
 import { operatorResponse } from "./operator.mjs";
 import { refuseCrossSite } from "./origin.mjs";
-import {
-  SPECULATION_RULES_HEADER,
-  SPECULATION_RULES_PATH,
-  speculationRulesResponse,
-} from "./prefetch.mjs";
+import { SPECULATION_RULES_PATH, speculationRulesResponse } from "./prefetch.mjs";
 import { pageStylesheets, preloads, withPreloadHeader } from "./preload.mjs";
 import { securityTxtResponse } from "./security-txt.mjs";
 import { timedRender } from "./server-timing.mjs";
 import { canonicalRedirect } from "./url.mjs";
 import { deployedSha } from "./deploy.mjs";
 import { withSentryRequest, withSiteSentry } from "./sentry.mjs";
+import {
+  forOneReader,
+  pageNonce,
+  publicCookieValues,
+  withSpeculationRules,
+  withViteNonce,
+} from "./worker-response.mjs";
 
-/** The security.txt path (RFC 9116 section 3). */
+/** @import { ServerBuild } from "react-router" */
+/** @import { CronJob } from "./cron.mjs" */
+/** @import { OperatorTool } from "./operator.mjs" */
+/** @import { Preconnect, Preload } from "./preload.mjs" */
+/** @import { AccessSecrets, AdminSettings } from "./access.mjs" */
+
+/**
+ * The secrets and dashboard vars every site's Worker reads through site-runtime, which `wrangler types` cannot see. A
+ * site's env.d.ts extends it (`interface Env extends SiteSecrets {}`). Each is optional where the code that reads it
+ * fails closed when unset.
+ *
+ * - `MAINTENANCE`: "1" or "true" puts the site in maintenance (./maintenance).
+ * - `ADMIN_IDLE_SECRET`: Keys the admin idle cookie (withAdminIdle `secret`), minted by the deploy.
+ * - `OPERATOR_TOKEN`: The bearer for /api/operator (./operator), 32 characters or more; unset or short: 503.
+ * - `CARREL_SITE_KEY`: Carrel's key for site-api's /api/carrel/v1, 32 characters or more; unset or short: refused.
+ * - `ANTHROPIC_API_KEY`: The Anthropic key for the site's AI features.
+ * - `TURNSTILE_SITE_KEY`: Turnstile on the sign-in email link (./sign-in); on only when both keys are set.
+ * @typedef {AdminSettings & Partial<AccessSecrets> & { MAINTENANCE?: string; ADMIN_IDLE_SECRET: string; OPERATOR_TOKEN?: string; CARREL_SITE_KEY?: string; ANTHROPIC_API_KEY?: string; TURNSTILE_SITE_KEY?: string; TURNSTILE_SECRET_KEY?: string; }} SiteSecrets
+ */
+
+/**
+ * What a site step gets beside the request.
+ *
+ * - `render`: The page's route rendered in-process (a Carrel preview), with `nonce` and any extra context `set`.
+ * - `stylesheets`: The page stylesheet hrefs (the root's and `stylesheetRoutes`'), for a preview drawn outside React Router.
+ * - `purgeAfterWrite`: Purges the stored pages once a write it accepted has answered 2xx.
+ * - `secure`: The site's security set on `response`.
+ * @typedef {{ url: URL; render(request: Request, extra?: RenderExtra): Promise<Response>; stylesheets(): Promise<string[]>; purgeAfterWrite(request: Request, response: Response, why: string): void; secure(response: Response, request?: Request, nonce?: string): Response; }} GatewayKit
+ */
+
+/** @typedef {{ nonce?: string; set?: (context: RouterContextProvider) => void }} RenderExtra `set` sets the site's own context keys for one render (a preview's page). */
+
+/**
+ * A site step: answers the request, or undefined to pass it on.
+ * @template E
+ * @typedef {(
+ * request: Request,
+ * env: E,
+ * ctx: ExecutionContext,
+ * kit: GatewayKit,
+ * ) => Response | undefined | null | Promise<Response | undefined | null>} GatewayStep
+ */
+
+/** @template E @typedef {(request: Request, env: E, ctx: ExecutionContext) => Promise<Response>} FetchHandler */
+
+/**
+ * @template E
+ * @typedef {object} SiteOptions
+ * @property {string} name The site's name on the maintenance page.
+ * @property {() => Promise<ServerBuild>} serverBuild `() => import("virtual:react-router/server-build")`.
+ * @property {string} [mode] `import.meta.env.MODE`.
+ * @property {(response: Response, request: Request, nonce?: string, env?: E) => Response} withSecurityHeaders The site's security set: pageSecurity's withSecurityHeaders.
+ * @property {| false | { host?: string; except?: string[]; before?: ( request: Request, env: E, ) => Response | null | undefined | Promise<Response | null | undefined>; keep?: (url: URL) => boolean; }} [canonical] canonicalRedirect's options (`host`, `except`), plus `before`, a site's own earlier move, and `keep`, a test for an address whose slash stays; false for none.
+ * @property {(request: Request, env: E) => Promise<Response | null> | Response | null} [files] Prelum's standardFiles handler (robots.txt, ai.txt, site.webmanifest, IndexNow key, ownership files).
+ * @property {string[]} [speculationExclude] Paths the hover prefetch never fetches, beyond NEVER_PREFETCH.
+ * @property {(env: E, ctx: ExecutionContext) => Record<string, OperatorTool>} [operator] The operator API's tools, served at /api/operator behind OPERATOR_TOKEN and RATE_LIMITER.
+ * @property {GatewayStep<E>[]} [steps] The site's own steps, in order, after the cross-site check and before the page.
+ * @property {string[]} [crossSiteExempt] Path prefixes a cross-site write may reach (default ["/api/auth/"]).
+ * @property {string[]} [purgeAfter] Path prefixes whose accepted live writes purge the stored pages (default ["/admin"]).
+ * @property {string[]} [publicCookies] Cookies that change nothing private; their values join the cache key (a theme).
+ * @property {(request: Request, url: URL, env: E) => boolean} [cacheable] False keeps a read from the Renderer (a private path, a signed-in-only area); the standard rule applies first.
+ * @property {( url: URL, env: E, ) => Promise<Parameters<typeof import("./edge-cache.mjs").publicPageHeaders>[0]>} [publicPages] For a site whose routes name no Cache-Control: a 200 the Renderer draws without one is stored, under these tags (publicPageHeaders' options: `tags`, `until`). A route's own Cache-Control is left alone.
+ * @property {(Preload | Preconnect)[]} [preloads] Preloads beyond the page stylesheets, for the Early Hints header (fonts).
+ * @property {readonly string[]} [stylesheetRoutes] Route ids beyond the root whose stylesheets every page loads, such as a layout's ("routes/_site"): they join the root's in the Early Hints header and in `stylesheets()`, which a preview drawn outside React Router reads.
+ * @property {(context: RouterContextProvider, env: E, ctx: ExecutionContext) => void} [context] Sets the site's own context keys on every render. cloudflareContext and cspNonceContext are set already.
+ * @property {(env: E) => Parameters<typeof import("./edge-cache.mjs").recordPurge>[0]} [purgeKv] The KV that keeps the last failed purge, for purgeCheck.
+ * @property {(response: Response, request: Request, env: E) => Response | Promise<Response>} [onNotFound] A 404's last word: site-api's tombstoned, a 410 for a path Carrel removed.
+ * @property {( env: E, ) => Parameters<typeof import("./not-found.mjs").countNotFound>[0] | undefined} [notFoundDb] Where 404s are counted; default env.DB.
+ * @property {(handler: FetchHandler<E>) => FetchHandler<E>} [wrap] Wraps the gateway inside the request log: Prelum's markdownCopies.
+ * @property {{ prefixes?: string[]; cookieName?: string; secret: (env: E) => string }[]} [adminIdle] Admin idle sign-outs (./access withAdminIdle), outermost first.
+ * @property {( env: E, scheduledTime: Date, ctx: ExecutionContext, ) => Record<string, CronJob[] | undefined> | Promise<Record<string, CronJob[] | undefined>>} [cron] The job lists by cron expression, for the firing at `scheduledTime`.
+ * @property {(env: E) => string | undefined} [sha] The deployed commit; default env.DEPLOY_SHA.
+ * @property {readonly string[]} [tokenRoutes] The site's token routes beside /preview/, as path prefixes without slashes ("u", "e/c"): the token after one is cut from the request log and from CSP reports (a report names the page it came from).
+ * @property {(path: string) => string | undefined} [routeName] Log route names for paths a site step answers.
+ */
+
+/**
+ * @template E
+ * @typedef {object} Site
+ * @property {SiteOptions<E>} options
+ * @property {(request: Request, env: E, ctx: ExecutionContext, extra?: RenderExtra) => Promise<Response>} render
+ * @property {(request: Request, env: E) => Promise<string | null>} renderHtml A page's HTML as the Renderer would render it, with no request context (a cron job reading its own pages), or null when it is not an OK HTML page.
+ * @property {() => Promise<string[]>} stylesheets
+ * @property {(page: Response) => Promise<Response>} earlyHints
+ * @property {() => Promise<void>} routesReady
+ * @property {(request: Request) => string | undefined} routeName
+ */
+
+/** @template E @typedef {Pick<ExportedHandler<E, any>, "queue" | "scheduled" | "email">} SiteHandlers A queue consumer, or a scheduled of its own in place of `cron`. */
+
 export const SECURITY_TXT_PATH = "/.well-known/security.txt";
 
-/** Paths the gateway answers itself, which carry no React Router route in the log. */
 const WORKER_PATHS = /^\/(api|health|mcp|media)(\/|$)/;
 
-// The requests a machine file answered, logged under their own path (a site's splat route would name them "/*").
+// Requests a machine file answered, logged under their own path (a splat route would name them "/*").
 const answeredFiles = new WeakMap();
 
 /**
  * @template E
- * @param {import("./worker.d.mts").SiteOptions<E>} options
- * @returns {import("./worker.d.mts").Site<E>}
+ * @param {SiteOptions<E>} options
+ * @returns {Site<E>}
  */
 export function defineSite(options) {
   const requestHandler = createRequestHandler(options.serverBuild, options.mode);
@@ -145,12 +210,12 @@ export function defineSite(options) {
   const build = async () => options.serverBuild();
   const dev = options.mode === "development";
 
-  /** @type {import("./worker.d.mts").Site<E>} */
+  /** @type {Site<E>} */
   const site = {
     options,
     async render(request, env, ctx, { nonce, set } = {}) {
       const context = new RouterContextProvider();
-      context.set(cloudflareContext, { env, ctx });
+      context.set(cloudflareContext, { env: /** @type {Env} */ (env), ctx });
       context.set(cspNonceContext, nonce ?? null);
       options.context?.(context, env, ctx);
       set?.(context);
@@ -158,9 +223,8 @@ export function defineSite(options) {
         context.set(serverTimingContext, marks);
         return requestHandler(request, context);
       });
-      // A route that failed on D1 down (./log databaseDownStatus) answers 503 with Retry-After: a page, a .data
-      // request and a resource route alike, since React Router gives a resource route's error no hook after it.
-      // timedRender leaves the headers writable.
+      // A route that failed on D1 down answers 503 with Retry-After, a resource route's too (React Router gives its
+      // error no hook after it).
       const status = databaseDownStatus(request, page.status, page.headers);
       const answer =
         status === page.status ? page : new Response(page.body, { status, headers: page.headers });
@@ -192,7 +256,6 @@ export function defineSite(options) {
       try {
         nameRoute = routeNamer((await build()).routes);
       } catch (error) {
-        // This request's line goes unnamed; the next request tries again.
         if (!namerFailureLogged) {
           namerFailureLogged = true;
           logEvent("route_namer_failed", { error: errorMessage(error) }, { level: "warn" });
@@ -209,10 +272,7 @@ export function defineSite(options) {
   return site;
 }
 
-/**
- * @param {string} path
- * @param {((path: string) => string | undefined) | undefined} extra
- */
+/** @param {string} path @param {((path: string) => string | undefined) | undefined} extra */
 function gatewayRoute(path, extra) {
   if (path === CSP_REPORT_PATH || path === SPECULATION_RULES_PATH || path === SECURITY_TXT_PATH)
     return path;
@@ -223,27 +283,29 @@ function gatewayRoute(path, extra) {
 
 /**
  * The cacheable entrypoint: `export class Renderer extends siteRenderer(WorkerEntrypoint, site) {}`.
- * @param {abstract new (...args: any[]) => { env: any, ctx: any }} Base
- * @param {import("./worker.d.mts").Site<any>} site
+ * @template {abstract new (...args: any[]) => object} T
+ * @param {T} Base WorkerEntrypoint
+ * @param {Site<any>} site
+ * @returns {T & (abstract new (...args: any[]) => { fetch(request: Request): Promise<Response>, purgePages(why: string, tags?: string[]): Promise<boolean | null> })}
  */
 export function siteRenderer(Base, site) {
   const { options } = site;
-  const Purging = withPurgePages(Base, options.purgeKv ? { kv: options.purgeKv } : {});
+  const Purging =
+    /** @type {new (...args: any[]) => { env: any, ctx: any, purgePages(why: string, tags?: string[]): Promise<boolean | null> }} */ (
+      /** @type {unknown} */ (withPurgePages(Base, options.purgeKv ? { kv: options.purgeKv } : {}))
+    );
   const tokenPath = tokenPattern(options.tokenRoutes);
-  return class Renderer extends Purging {
+  class Renderer extends Purging {
     /** @param {Request} request */
     fetch(request) {
-      // Its own invocation, so its own Sentry client: a cached page's render error is reported from here.
       return withSentryRequest(request, this.env, this.ctx, { tokenPath }, async () => {
         const nonce = generateNonce();
         const shared = options.publicPages?.(new URL(request.url), this.env);
         const rendered = await site.render(request, this.env, this.ctx, { nonce });
-        // A site whose routes name no Cache-Control of their own stores each 200 under the tags it names.
         if (shared && rendered.status === 200 && !rendered.headers.has("Cache-Control"))
           for (const [name, value] of Object.entries(publicPageHeaders(await shared)))
             rendered.headers.set(name, value);
-        // A route that marks its answer shared but names no edge lifetime gets publicPageHeaders' day: with none, the
-        // Workers cache reads `max-age=0` and keeps nothing a purge would ever need to reach.
+        // With no edge lifetime the Workers cache reads `max-age=0` and keeps nothing a purge could reach.
         if (
           rendered.headers.get("Cache-Control") === SHARED_CACHE_CONTROL &&
           !rendered.headers.has(EDGE_CACHE_HEADER)
@@ -257,82 +319,22 @@ export function siteRenderer(Base, site) {
         });
       });
     }
-  };
-}
-
-/** publicPageHeaders' edge lifetime: a day fresh, a week stale. */
-const DEFAULT_EDGE_LIFETIME = publicPageHeaders()[EDGE_CACHE_HEADER];
-
-/**
- * @param {Request} request
- * @param {readonly string[]} publicCookies
- * @returns {Record<string, string> | null} the public cookies' values, or null when any other cookie is present
- */
-function publicCookieValues(request, publicCookies) {
-  /** @type {Record<string, string>} */
-  const values = {};
-  for (const [name, value] of cookiePairs(request)) {
-    if (!publicCookies.includes(name)) return null;
-    values[name] = value;
   }
-  return values;
+  return /** @type {any} */ (Renderer);
 }
 
-/**
- * Under `vite dev` only: Vite's client injects each stylesheet as a <style> and takes its nonce from
- * `<meta property="csp-nonce">` (vite.dev/guide/features#content-security-policy-csp), so the page's policy lets it in.
- * @param {Response} page
- * @param {string} nonce
- */
-function withViteNonce(page, nonce) {
-  if (!page.headers.get("Content-Type")?.startsWith("text/html")) return page;
-  return new HTMLRewriter()
-    .on("head", {
-      element: (head) =>
-        void head.prepend(`<meta property="csp-nonce" nonce="${nonce}">`, { html: true }),
-    })
-    .transform(page);
-}
-
-/**
- * The nonce goes in the policy of a page only: a feed or a sitemap runs no script, and a stored one would hand every
- * reader the same value, which renewNonce leaves alone on anything but HTML.
- * @param {Response} response
- * @param {string} nonce
- */
-function pageNonce(response, nonce) {
-  return response.headers.get("Content-Type")?.startsWith("text/html") ? nonce : undefined;
-}
-
-/** @param {Response} page */
-function withSpeculationRules(page) {
-  if (!page.headers.get("Content-Type")?.startsWith("text/html")) return page;
-  if (page.headers.get(SPECULATION_RULES_HEADER.name) === SPECULATION_RULES_HEADER.value)
-    return page;
-  // A stored or fetched response's headers can be immutable, so the header goes on a copy.
-  const headers = new Headers(page.headers);
-  headers.set(SPECULATION_RULES_HEADER.name, SPECULATION_RULES_HEADER.value);
-  return new Response(page.body, { status: page.status, statusText: page.statusText, headers });
-}
-
-/**
- * A page or step answer drawn for one reader, never stored: a route's shared headers mean nothing here, and an answer
- * with no Cache-Control is said to be private rather than left to a heuristic (RFC 9111 4.2.2).
- * @param {Response} answer
- */
-function forOneReader(answer) {
-  const cacheControl = answer.headers.get("Cache-Control");
-  return !cacheControl || cacheControl === SHARED_CACHE_CONTROL ? privateRender(answer) : answer;
-}
+const DEFAULT_EDGE_LIFETIME = publicPageHeaders()[EDGE_CACHE_HEADER];
 
 /**
  * The Worker's default export: `{ fetch, scheduled }` and the site's own `handlers` (a `queue`, or a `scheduled` of its
  * own), all under Sentry (./sentry).
  * @template E
- * @param {import("./worker.d.mts").Site<E>} site
- * @param {import("./worker.d.mts").SiteHandlers<E>} [handlers]
+ * @template {SiteHandlers<E>} [H={}]
+ * @param {Site<E>} site
+ * @param {H} [handlers]
+ * @returns {{ fetch: FetchHandler<E>, scheduled(controller: ScheduledController, env: E, ctx: ExecutionContext): Promise<void> } & H}
  */
-export function siteWorker(site, handlers = {}) {
+export function siteWorker(site, handlers = /** @type {H} */ ({})) {
   const { options } = site;
   const secure = options.withSecurityHeaders;
   const exempt = options.crossSiteExempt ?? ["/api/auth/"];
@@ -340,7 +342,6 @@ export function siteWorker(site, handlers = {}) {
   const publicCookies = options.publicCookies ?? [];
   const siteName = options.name;
   const tokenPath = tokenPattern(options.tokenRoutes);
-  // A report's page and blocked addresses are cut to origin and path; a token route's token goes too.
   const logReport = (/** @type {Record<string, unknown>} */ line) =>
     console.log(JSON.stringify(scrubFields(line, { tokenPath })));
 
@@ -351,7 +352,6 @@ export function siteWorker(site, handlers = {}) {
    */
   async function gateway(request, env, ctx) {
     const url = new URL(request.url);
-
     const canonical = options.canonical === false ? null : (options.canonical ?? {});
     const moved =
       canonical &&
@@ -372,7 +372,6 @@ export function siteWorker(site, handlers = {}) {
 
     if (maintenanceOn(/** @type {any} */ (env)) && url.pathname !== "/health")
       return secure(maintenanceResponse({ siteName }), request, undefined, env);
-
     if (url.pathname === SECURITY_TXT_PATH)
       return secure(securityTxtResponse({ origin: url.origin }), request, undefined, env);
 
@@ -421,7 +420,7 @@ export function siteWorker(site, handlers = {}) {
       if (refused) return secure(refused, request, undefined, env);
     }
 
-    /** @type {import("./worker.d.mts").GatewayKit} */
+    /** @type {GatewayKit} */
     const kit = {
       url,
       render: (r, extra) => site.render(r, env, ctx, extra),
@@ -501,7 +500,7 @@ export function siteWorker(site, handlers = {}) {
   const idled = (request, env, ctx) => {
     /** @type {() => Promise<Response>} */
     let handle = () => guarded(request, env, ctx);
-    // Innermost first, so the list's first entry wraps the rest, as SiteOptions.adminIdle says.
+    // Innermost first, so the list's first entry wraps the rest.
     for (const idle of [...(options.adminIdle ?? [])].reverse()) {
       const inner = handle;
       handle = () =>
@@ -522,8 +521,8 @@ export function siteWorker(site, handlers = {}) {
       /** @type {E} */ env,
       /** @type {ExecutionContext} */ ctx,
     ) => {
-      // After the answer, which a render has already loaded the build for: two imports of it at once on an isolate's
-      // first request is what vitest's module mocker answers with the unmocked module, so a site's tests drew the stub.
+      // After the answer: two imports of the build at once on an isolate's first request make vitest's mocker answer
+      // with the unmocked module.
       const response = await wrapped(request, env, ctx);
       await site.routesReady();
       return response;

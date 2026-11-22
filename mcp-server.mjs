@@ -1,10 +1,6 @@
-// The admin MCP servers' shared scaffold (shared-code sweep round 2, item 4): the era router with its prior-era shim, the
-// API leg's transport, the door's headers, the door's checks (rate limit, Origin, token audience), the per-tool scope with
-// its step-up challenge, the one wrapper every tool call runs through, and the list cache hints. Each admin MCP (dustinedwards-info,
-// foxing) is a wrapper over its site's own API, which owns every rule; nothing here interprets one.
-//
-// No dependency, like the rest of the package: the MCP SDK and `agents` are the caller's, and the era router is handed
-// their two functions.
+// The admin MCP servers' shared scaffold: the era router, the API leg's transport, the door's headers and checks, the
+// per-tool scope with its step-up challenge, the one wrapper every tool call runs through, and the list cache hints.
+// Each admin MCP is a wrapper over its site's own API, which owns every rule. The MCP SDK and `agents` are the caller's.
 
 import { untrusted } from "./anthropic.mjs";
 import { appendAudit, correlationId, loggedArgs, loggedResult, recordAudit } from "./audit-log.mjs";
@@ -27,30 +23,58 @@ import { originRefusal, originVerdict } from "./origin.mjs";
 import { securityTxtResponse } from "./security-txt.mjs";
 import { errorMessage } from "./log.mjs";
 
-// THE ERA ROUTER, and the prior-era shim.
-//
-// MCP 2026-07-28 removed the `initialize` handshake, sessions and the GET stream. The primary handler is built
-// `legacy: "reject"`: stateless and modern-only, with no compatibility thinking in it. A legacy client against a
-// modern-only server fails with no fall-forward, and the clients these servers serve still open legacy, so prior-era
-// traffic is diverted here, in front of it, as the library documents on `isLegacyRequest`. `createMcpHandler` could
-// serve both eras from one handler with `legacy: "stateless"`, but then the compatibility path would live inside the
-// library behind a flag; routing in front makes the seam real.
+/**
+ * @typedef {object} ApiLeg
+ * @property {string} binding The env name of the service binding to the site's Worker.
+ * @property {string} token The env name of the bearer this Worker presents.
+ * @property {string} api The API's name as an error message opens with it ("The operator API").
+ * @property {string} userAgent
+ * @property {string[]} [require] Further env names that must be set.
+ */
+
+/**
+ * @typedef {| { kind: "admin"; props: { email: string } & Record<string, unknown>; scopes: readonly string[] }
+ * | { kind: "agent"; principal: string; scopes: readonly string[] }
+ * | { kind: "person"; email: string; clientId?: string; clientName?: string; scopes: readonly string[] }
+ * | { kind: "probe"; principal: string; scopes: readonly string[] }} McpCaller
+ */
+
+/** @typedef {{ site: string; scopes: { read: string; write: string }; name: string; version: string }} McpServerInfo */
+
+/**
+ * @template {string} [S=string]
+ * @typedef {"read" | "write" | S | ((args: Record<string, unknown>) => "read" | "write" | S)} ToolScopeDeclaration
+ */
+
+/** @typedef {{ isError?: boolean, content: Array<{ type: "text"; text: string }> }} ToolText */
+
+/** @typedef {{ src: string; mimeType?: string; sizes?: string[]; theme?: "light" | "dark" }} McpIcon An https URL or a `data:image/` URI. */
+
+/** @typedef {{ item: "T1" | "T2" | "T3" | "T4" | "T9"; tool: string; severity: "error" | "warning"; detail: string }} ToolListProblem */
+
+/** @typedef {"tools/list" | "prompts/list" | "resources/list" | "resources/templates/list" | "resources/read" | "server/discover"} CacheableMethod */
+
+// THE ERA ROUTER, and the prior-era shim. MCP 2026-07-28 removed the `initialize` handshake, sessions and the GET
+// stream. The primary handler is `legacy: "reject"` (modern-only); the clients these servers serve still open legacy, so
+// prior-era traffic is diverted in front of it, as the library documents on `isLegacyRequest`.
 //
 // REMOVAL CONDITION. Stop passing `isLegacyRequest` when dustinedwards-info's probe (`mcp/scripts/probe-report.mjs`)
-// shows the target clients opening with `server/discover` instead of `initialize`. Last measured: Claude Code 2.1.203
-// (2026-07-29) and claude.ai (2026-07-30), both LEGACY (initialize, 2025-11-25). Delete on a capture, never on a release
-// note. Without `isLegacyRequest` the router is a modern-only server.
+// shows the target clients opening with `server/discover` instead of `initialize` (last measured: Claude Code 2.1.203 and
+// claude.ai, both LEGACY). Delete on a capture, never on a release note.
 
 /**
  * Answers one MCP request in the era that can. A request `isLegacyRequest` calls legacy goes to a `legacy: "stateless"`
- * handler (a fresh server per request; GET and DELETE answered 405, as the modern handler does); everything else,
- * malformed envelopes included, to the `legacy: "reject"` handler, which owns those error answers. The predicate reads
- * the body, so it is given a clone. Both handlers are built per call over the same factory.
+ * handler; everything else, malformed envelopes included, to the `legacy: "reject"` handler, which owns those error
+ * answers. The predicate reads the body, so it is given a clone.
  *
+ * @template F
+ * @template {object} O
+ * @template E
+ * @template C
  * @param {Request} request
- * @param {unknown} env
- * @param {unknown} ctx
- * @param {{ factory: unknown, options: Record<string, unknown>, createMcpHandler: Function, isLegacyRequest?: (request: Request) => Promise<boolean> | boolean }} sdk
+ * @param {E} env
+ * @param {C} ctx
+ * @param {{ factory: F, options: O, createMcpHandler: (factory: F, options: O & { legacy: "stateless" | "reject" }) => (request: Request, env: E, ctx: C) => Promise<Response>, isLegacyRequest?: (request: Request) => Promise<boolean> | boolean }} sdk
  * @returns {Promise<Response>}
  */
 export async function routeMcpEra(
@@ -65,23 +89,21 @@ export async function routeMcpEra(
 }
 
 // THE DOOR'S HEADERS. Every response an MCP Worker sends, its 404s and the OAuth library's redirects included, leaves
-// through one wrapper, so none goes out without the family's set: the site's registry entry (CORP, Permissions-Policy,
-// HSTS, X-Frame-Options, X-DNS-Prefetch-Control and the rest), never cached or indexed, and a policy that lets no page
-// frame the door. The consent page is its only page: one inline <style>, trusted by hash, and no form-action, because
-// approving posts into a redirect chain that ends at whatever redirect_uri the client named, and a browser checks
-// form-action on every hop (Capsid shipped form-action 'self' once and broke sign-in for 26 days). Everything else may
-// load nothing. The wrapper also answers security.txt and the policy's report sink, so the door needs no route of its own.
+// through one wrapper: the site's registry entry, never cached or indexed, and a policy that lets no page frame the
+// door. The consent page is its only page: one inline <style>, trusted by hash, and no form-action, because approving
+// posts into a redirect chain that ends at whatever redirect_uri the client named, and a browser checks form-action on
+// every hop (Capsid shipped form-action 'self' once and broke sign-in for 26 days). The wrapper also answers
+// security.txt and the policy's report sink.
 
 const REPORT_GROUP = CSP_REPORT_GROUP;
-/** The consent and owner styles' hashes as a style-src list, once per isolate. @type {Promise<string> | undefined} */
+/** The consent and owner styles' hashes as a style-src list. @type {Promise<string> | undefined} */
 let consentHash;
 
 /**
  * The door's fetch handler: `handler` with every response wearing the set. GET /.well-known/security.txt is answered
- * from `securityTxt` (RFC 9116, ./security-txt) and `reportPath` (default /csp-report) by the CSP receiver
- * (./csp-report), with `allowReport` as its rate limiter. A WebSocket upgrade (101) cannot be rebuilt and carries no
- * document, so it passes as it is; every other response is rebuilt, since a library's headers may be immutable, and
- * its body streams through untouched.
+ * from `securityTxt` (RFC 9116) and `reportPath` (default /csp-report) by the CSP receiver, with `allowReport` as its
+ * rate limiter. A WebSocket upgrade (101) passes as it is; every other response is rebuilt, since a library's headers
+ * may be immutable.
  *
  * @template Env
  * @param {(request: Request, env: Env, ctx: unknown) => Response | Promise<Response>} handler
@@ -99,7 +121,6 @@ export function withMcpHeaders(
 ) {
   const set = { ...buildSecurityHeaders({ site }), "X-Robots-Tag": "noindex, nofollow" };
   const sinks = [`report-uri ${reportPath}`, `report-to ${REPORT_GROUP}`];
-  // No page here runs a script, so Trusted Types costs nothing and shuts every sink.
   const types = "require-trusted-types-for 'script'";
   const nonHtml = buildPolicy([
     "default-src 'none'",
@@ -152,11 +173,10 @@ export function withMcpHeaders(
   };
 }
 
-// THE API LEG: this Worker to its site, over a service binding. Still HTTP, not an in-process call: the request carries
-// the same bearer and crosses the same authentication and rate limit as any other. The bearer identifies WHAT this Worker
-// may do and is never the client's OAuth token. A failure here reads differently from a refusal by the API.
+// THE API LEG: this Worker to its site, over a service binding. Still HTTP: the request carries the same bearer and
+// crosses the same authentication and rate limit as any other. The bearer is never the client's OAuth token.
 
-/** Why the API leg could not produce an answer: not configured, not reachable, canceled, or not JSON. Never an API refusal. */
+/** Why the API leg gave no answer: unconfigured, unreachable, canceled, or not JSON. Never an API refusal. */
 export class ApiLegError extends Error {
   /**
    * @param {string} message
@@ -175,37 +195,37 @@ export class ApiLegError extends Error {
 
 /**
  * One request over the API leg, to `SITE_ORIGIN + path` through the `binding` named in `leg`, with the bearer from the
- * `token` var (refused under 32 characters, which the sites' APIs refuse anyway) unless `anonymous`. Returns the status,
- * whether it was 2xx, and the JSON body (null when empty). Throws ApiLegError when unconfigured, unreachable or not JSON,
- * and (`canceled`) when `signal`, the tool call's (P11), aborted before or while the request was out: a client that closed
- * the stream gets no further request sent for it.
+ * `token` var (refused under 32 characters) unless `anonymous`. Returns the status, whether it was 2xx, and the JSON body
+ * (null when empty). Throws ApiLegError when unconfigured, unreachable or not JSON, and (`canceled`) when `signal`, the
+ * tool call's (P11), aborted: a client that closed the stream gets no further request sent for it.
  *
- * @param {Record<string, unknown>} env
+ * @param {object} env
  * @param {{ binding: string, token: string, api: string, userAgent: string, require?: string[] }} leg
  * @param {string} path
  * @param {{ method?: string, headers?: Record<string, string>, json?: unknown, anonymous?: boolean, signal?: AbortSignal }} [init]
  * @returns {Promise<{ status: number, ok: boolean, body: unknown }>}
  */
 export async function callApi(env, leg, path, init = {}) {
+  const vars = /** @type {Record<string, unknown>} */ (env);
   const unconfigured = (/** @type {string} */ what) =>
     new ApiLegError(
       `The MCP server is not configured: ${what}. Not configured means not open.`,
       "unconfigured",
     );
-  const fetcher = /** @type {{ fetch?: unknown } | undefined} */ (env[leg.binding]);
+  const fetcher = /** @type {{ fetch?: unknown } | undefined} */ (vars[leg.binding]);
   if (!fetcher || typeof fetcher.fetch !== "function")
     throw unconfigured(`the ${leg.binding} service binding is missing`);
-  if (!env.SITE_ORIGIN) throw unconfigured("SITE_ORIGIN is unset");
-  const token = env[leg.token];
+  if (!vars.SITE_ORIGIN) throw unconfigured("SITE_ORIGIN is unset");
+  const token = vars[leg.token];
   if (!init.anonymous && (typeof token !== "string" || token.length < 32))
     throw unconfigured(`${leg.token} is unset or shorter than 32 characters`);
   for (const name of leg.require ?? [])
-    if (typeof env[name] !== "string" || !String(env[name]).trim())
+    if (typeof vars[name] !== "string" || !String(vars[name]).trim())
       throw unconfigured(`${name} is unset`);
 
-  // A path is the site's own: one that names another origin ("//host", "https://host") would carry the bearer there.
-  const target = new URL(path, String(env.SITE_ORIGIN));
-  if (target.origin !== new URL(String(env.SITE_ORIGIN)).origin)
+  // A path naming another origin ("//host", "https://host") would carry the bearer there.
+  const target = new URL(path, String(vars.SITE_ORIGIN));
+  if (target.origin !== new URL(String(vars.SITE_ORIGIN)).origin)
     throw new ApiLegError(
       `The path ${path} leaves ${leg.api}'s origin, so nothing was sent.`,
       "unconfigured",
@@ -252,15 +272,14 @@ export async function callApi(env, leg, path, init = {}) {
 }
 
 // THE DOOR'S RATE LIMIT, on the family's one limiter. Verify with a concurrent burst: a sequential loop straddles the
-// window boundary and refuses nothing, which reads exactly like a dead limiter.
+// window boundary and refuses nothing.
 
 /** Requests one identity may make per minute through the MCP door. */
 export const MCP_PER_MINUTE = 30;
 
 /**
- * One request by `identity` (`admin:<email>`, `agent:<name>`, `register:<ip>`). A caller may ask for a lower ceiling
- * (registration does), never a higher one. Fails CLOSED when the binding is missing or failing, and then asks the
- * client to wait the whole window.
+ * One request by `identity` (`admin:<email>`, `agent:<name>`, `register:<ip>`). A caller may ask for a lower ceiling,
+ * never a higher one. Fails CLOSED when the binding is missing or failing.
  *
  * @param {Parameters<typeof limit>[0]} namespace
  * @param {string} identity
@@ -285,7 +304,6 @@ export async function checkRateLimit(namespace, identity, perMinute) {
 }
 
 /**
- * A plain-text refusal that is never cached or indexed.
  * @param {string} body
  * @param {number} status
  * @param {Record<string, string>} [headers]
@@ -302,11 +320,9 @@ export function refuse(body, status, headers = {}) {
   });
 }
 
-// THE DOOR'S OTHER CHECKS. What the libraries already do is theirs: @cloudflare/workers-oauth-provider (1.1.0 and
-// later) answers a missing or invalid token 401 with `resource_metadata` and `scope` (the PRM's `scopes_supported`),
-// refuses a token bound to another resource, and exports `insufficientScope(ctx.auth, scopes)` for a 403 step-up
-// outside the MCP handler. Inside it, the SDK's per-tool `scopeChallenge` (fed below) sends that 403. `agents`'
-// createMcpHandler checks Origin against its own hostname list. What follows is only what neither covers.
+// THE DOOR'S OTHER CHECKS. What the libraries already do is theirs (@cloudflare/workers-oauth-provider answers a bad
+// token 401, refuses another resource's token and exports `insufficientScope`; the SDK's per-tool `scopeChallenge` sends
+// the 403 step-up; `agents` checks Origin against its hostname list). What follows is only what neither covers.
 
 /** @param {string} resource */
 function resourceMetadataUrl(resource) {
@@ -315,8 +331,8 @@ function resourceMetadataUrl(resource) {
 }
 
 /**
- * The 401 Bearer challenge for a door the provider does not guard (an agent-key door, a check after the provider's):
- * `resource_metadata` so the client can find the authorization server, and `scope`, the least a client should ask for.
+ * The 401 Bearer challenge for a door the provider does not guard: `resource_metadata` so the client can find the
+ * authorization server, and `scope`, the least a client should ask for.
  * @param {{ resource: string, scope: readonly string[], error?: string, description?: string }} challenge
  */
 export function unauthorized({ resource, scope, error, description }) {
@@ -334,10 +350,9 @@ export function unauthorized({ resource, scope, error, description }) {
 }
 
 /**
- * The token must have been issued for this server (RFC 8707, rule 12.2). The provider already refuses another
- * resource's token; this re-check, against the resource the server expects rather than the one the provider was
- * configured with, means a provider set up for a second resource can never hand this one its token. Null when the
- * audience is `resource`, else the 401.
+ * The token must have been issued for this server (RFC 8707, rule 12.2). Re-checks the provider against the resource the
+ * server expects, so a provider set up for a second resource can never hand this one its token. Null when the audience
+ * is `resource`, else the 401.
  * @param {{ audience?: unknown } | undefined} auth the provider's `ctx.auth`
  * @param {string} resource this server's canonical resource, such as `https://mcp.example.com/mcp`
  * @param {readonly string[]} scope the challenge's scope: the read scope
@@ -360,9 +375,8 @@ export function audienceRefusal(auth, resource, scope) {
 }
 
 /**
- * The Origin check on every request to the MCP endpoint (DNS rebinding): a missing Origin passes (MCP clients are not
- * browsers), the endpoint's own origin and each of `allowed` (exact origins, such as `https://claude.ai`) pass, and
- * anything else, the string "null" included, is a 403. Null when the request may go on.
+ * The Origin check on every request to the MCP endpoint (DNS rebinding): a missing Origin passes, the endpoint's own
+ * origin and each of `allowed` (exact origins) pass, anything else, "null" included, is a 403. Null when it may go on.
  * @param {Request} request
  * @param {readonly string[]} [allowed]
  * @param {Record<string, string>} [headers] added to the refusal
@@ -375,23 +389,24 @@ export function mcpOriginRefusal(request, allowed = [], headers) {
 }
 
 // LEAST SCOPE FIRST, AND THE PER-CALL OWNERSHIP CHECK (ruling mcp-2026-10-10, rules 12.1 and 12.3). Read is what every
-// connection gets; write is ticked on the consent page (or, on dustinedwards-info, named for an agent in AGENT_WRITE).
-// Every id a tool takes names a record only the site's administrator owns, so proving the caller owns it is proving the
-// caller IS that administrator, on every call: a grant is long lived.
+// connection gets; write is ticked on the consent page (or named for an agent in AGENT_WRITE). Every id a tool takes
+// names a record only the site's administrator owns, so the caller must be that administrator on every call.
 
 /**
- * The read and write scopes for a server's scope prefix (`dei` gives `dei.read` and `dei.write`).
- * @param {string} prefix
+ * The read and write scopes for a scope prefix (`dei` gives `dei.read` and `dei.write`).
+ * @template {string} P
+ * @param {P} prefix
+ * @returns {{ read: `${P}.read`, write: `${P}.write`, all: [`${P}.read`, `${P}.write`] }}
  */
 export function mcpScopes(prefix) {
-  const read = `${prefix}.read`;
-  const write = `${prefix}.write`;
+  const read = /** @type {`${P}.read`} */ (`${prefix}.read`);
+  const write = /** @type {`${P}.write`} */ (`${prefix}.write`);
   return { read, write, all: [read, write] };
 }
 
 /**
- * The audit name of a caller: the signed-in email or the agent principal, never a credential.
- * @param {import("./mcp-server.d.mts").McpCaller} caller
+ * The audit name of a caller, never a credential.
+ * @param {McpCaller} caller
  */
 export function callerName(caller) {
   if (caller.kind === "person") return `access:${caller.email}`;
@@ -400,10 +415,9 @@ export function callerName(caller) {
 }
 
 /**
- * The scope a call to `tool` needs, from the scope the server declares on it: `"read"`, `"write"`, the server's own
- * scope string, or a function of the arguments where the action decides. Null when it declares none. Never read from
- * `readOnlyHint`: annotations describe a tool to the client and are not an authorization, so a wrong one cannot open
- * a write.
+ * The scope a call to `tool` needs, from the scope the server declares on it (`"read"`, `"write"`, the server's own scope
+ * string, or a function of the arguments). Null when it declares none. Never read from `readOnlyHint`: annotations are
+ * not an authorization.
  * @param {{ scope?: unknown }} tool
  * @param {Record<string, unknown>} args
  * @param {{ read: string, write: string }} scopes
@@ -417,9 +431,9 @@ export function toolScope(tool, args, scopes) {
 }
 
 /**
- * The tools a grant holding `held` can call, for a server that lists only those (a read-only grant sees no write
- * tool). A tool whose action decides its scope stays for a read grant; one with no scope is dropped. Such a list
- * differs by grant, so its `tools/list` cache hint must be private (`mcpCacheHints`).
+ * The tools a grant holding `held` can call (a read-only grant sees no write tool). A tool whose action decides its
+ * scope stays for a read grant; one with no scope is dropped. The list differs by grant, so its cache hint must be
+ * private (`mcpCacheHints`).
  * @template {{ scope?: unknown }} T
  * @param {readonly T[]} tools
  * @param {readonly string[]} held
@@ -435,9 +449,9 @@ export function toolsForGrant(tools, held, scopes) {
 
 /**
  * Null when the call may proceed, or the refusal to show the caller. A tool with no declared scope never runs. A
- * `person` is one the server's door already verified (a server with several people), so only the grant's scopes decide.
+ * `person` is one the server's door already verified, so only the grant's scopes decide.
  * @param {{ ADMIN_EMAIL?: string, CO_OWNER_EMAILS?: string }} env
- * @param {import("./mcp-server.d.mts").McpCaller | undefined} caller
+ * @param {McpCaller | undefined} caller
  * @param {string | null | undefined} scope
  * @param {{ site: string, scopes: { read: string, write: string } }} server
  * @returns {string | null}
@@ -463,14 +477,13 @@ export function authorizeCall(env, caller, scope, { site, scopes }) {
 }
 
 /**
- * The SDK's per-tool `scopeChallenge` (`registerTool(name, { ..., scopeChallenge: toolScopeChallenge(env, server,
- * tool) }, ...)`): when an OAuth token lacks the scope the call needs, the transport answers 403 `insufficient_scope`
- * naming every scope the call needs (a write needs both) with `resource_metadata`, before the tool runs, and the client
- * can step up instead of reconnecting by hand. The challenge is logged. An agent key carries no OAuth token, so it gets
- * no challenge and `authorizeCall` refuses it in words.
- * @param {Partial<import("./audit-log.d.mts").AuditEnv>} env
- * @param {import("./mcp-server.d.mts").McpServerInfo} server
+ * The SDK's per-tool `scopeChallenge`: when an OAuth token lacks the scope the call needs, the transport answers 403
+ * `insufficient_scope` naming every scope the call needs (a write needs both), before the tool runs, and the client can
+ * step up. The challenge is logged. An agent key gets no challenge; `authorizeCall` refuses it in words.
+ * @param {Partial<import("./audit-log.mjs").AuditEnv>} env
+ * @param {McpServerInfo} server
  * @param {{ name: string, scope?: unknown }} tool
+ * @returns {(context: { request: { params?: Record<string, unknown> }; authInfo?: { scopes: string[]; clientId?: string; extra?: Record<string, unknown> } }) => Promise<{ scopes: [string, ...string[]]; errorDescription: string } | undefined>}
  */
 export function toolScopeChallenge(env, server, tool) {
   /** @param {{ request: { params?: Record<string, unknown> }, authInfo?: { scopes: string[], clientId?: string, extra?: Record<string, unknown> } }} context */
@@ -478,6 +491,7 @@ export function toolScopeChallenge(env, server, tool) {
     const args = /** @type {Record<string, unknown>} */ (request.params?.arguments ?? {});
     const scope = toolScope(tool, args, server.scopes);
     if (!authInfo || scope === null || authInfo.scopes.includes(scope)) return undefined;
+    /** @type {[string, ...string[]]} */
     const needed =
       scope === server.scopes.write
         ? [server.scopes.read, server.scopes.write]
@@ -507,20 +521,18 @@ export function toolScopeChallenge(env, server, tool) {
 }
 
 // THE ONE DOOR TO A TOOL HANDLER (rule 12.4). In order: prove the caller owns what the tool names and holds its scope
-// (a refusal is logged and nothing is sent), write the `started` row (and refuse if the log cannot be written, so no
-// call runs unlogged), run the tool, write the `finished` row (also when the tool throws, before the error goes on).
-// Rows name the caller and never carry a credential.
+// (a refusal is logged), write the `started` row (refusing if the log cannot be written, so no call runs unlogged), run
+// the tool, write the `finished` row (also when the tool throws). Rows never carry a credential.
 
 /**
- * One tool call through the scope check and the log. `run` is the server's own handler; `meta` is the request's
- * `_meta` (`ctx.mcpReq._meta`), whose traceparent becomes the rows' correlation id. `signal` is the request's abort
- * signal (`ctx.mcpReq.signal`, P11): a call whose client is gone before it starts does not run, `run` is handed the
- * signal to pass on (`callApi`'s `signal`, or a check between two writes), and a call that ran on after the client left
- * is logged `canceled`.
+ * One tool call through the scope check and the log. `run` is the server's own handler; `meta` is the request's `_meta`,
+ * whose traceparent becomes the rows' correlation id. `signal` is the request's abort signal (P11): a call whose client
+ * is gone before it starts does not run, `run` is handed the signal, and a call that ran on after the client left is
+ * logged `canceled`.
  * @template {{ isError?: boolean, content: Array<{ type: "text", text: string }> }} O
- * @param {{ ADMIN_EMAIL?: string, CO_OWNER_EMAILS?: string } & Partial<import("./audit-log.d.mts").AuditEnv>} env
- * @param {import("./mcp-server.d.mts").McpServerInfo} server
- * @param {{ caller: import("./mcp-server.d.mts").McpCaller | undefined, tool: { name: string, scope?: unknown }, args: Record<string, unknown>, meta?: Record<string, unknown>, signal?: AbortSignal, run: (signal?: AbortSignal) => Promise<O> }} call
+ * @param {{ ADMIN_EMAIL?: string, CO_OWNER_EMAILS?: string } & Partial<import("./audit-log.mjs").AuditEnv>} env
+ * @param {McpServerInfo} server
+ * @param {{ caller: McpCaller | undefined, tool: { name: string, scope?: unknown }, args: Record<string, unknown>, meta?: Record<string, unknown>, signal?: AbortSignal, run: (signal?: AbortSignal) => Promise<O> }} call
  * @returns {Promise<O | { isError: true, content: Array<{ type: "text", text: string }> }>}
  */
 export async function invokeTool(env, server, { caller, tool, args, meta, signal, run }) {
@@ -535,14 +547,13 @@ export async function invokeTool(env, server, { caller, tool, args, meta, signal
       : caller?.kind === "person"
         ? caller.clientId
         : undefined;
-  // The name the client was shown by at consent (props.client, set by ./mcp-login), so a row says "Grok Bot".
   const clientName =
     caller?.kind === "admin"
       ? caller.props.client
       : caller?.kind === "person"
         ? caller.clientName
         : undefined;
-  /** @type {Omit<import("./audit-log.d.mts").AuditRow, "phase">} */
+  /** @type {Omit<import("./audit-log.mjs").AuditRow, "phase">} */
   const row = {
     callId: crypto.randomUUID(),
     caller: caller ? callerName(caller) : "unknown",
@@ -583,7 +594,6 @@ export async function invokeTool(env, server, { caller, tool, args, meta, signal
   try {
     output = await run(signal);
   } catch (error) {
-    // A handler that throws still ends its call in the log; the error goes on to the SDK, which answers it.
     const text = `threw: ${errorMessage(error)}`.slice(0, 1000);
     await recordAudit(env, {
       ...row,
@@ -601,22 +611,20 @@ export async function invokeTool(env, server, { caller, tool, args, meta, signal
 }
 
 /**
- * Registers a server's tools on the SDK's McpServer the one way (T7, T9, P11), in place of each server's own loop: only
- * the tools the caller's grant can call (`toolsForGrant`, so a read grant lists no write tool and the list is in the
- * array's order, the same on every call), each with `icons` unless it has its own, the step-up challenge, and
- * `invokeTool` with the request's `_meta` and abort signal. `config(tool)` is what `registerTool` gets (default
- * `tool.config`); `run(tool, args, signal)` runs it (default `tool.handler(env, args, signal)`). Returns the tools listed.
+ * Registers a server's tools on the SDK's McpServer the one way (T7, T9, P11): only the tools the caller's grant can
+ * call (`toolsForGrant`), each with `icons` unless it has its own, the step-up challenge, and `invokeTool` with the
+ * request's `_meta` and abort signal. `config(tool)` is what `registerTool` gets (default `tool.config`); `run(tool,
+ * args, signal)` runs it (default `tool.handler(env, args, signal)`). Returns the tools listed.
  *
- * A read grant that calls a write tool by name gets "unknown tool", not the 403 step-up, since the tool is not listed
- * for it; a tool whose action decides its scope stays listed and still steps up. Pair it with `mcpCacheHints()`, whose
- * hints are private, since the list now differs by grant.
+ * A read grant that calls a write tool by name gets "unknown tool", not the 403 step-up; a tool whose action decides
+ * its scope stays listed and still steps up. Pair it with `mcpCacheHints()`, whose hints are private.
  * @template {{ name: string, scope?: unknown }} T
- * @param {{ registerTool: (name: string, config: any, callback: (args: any, ctx: any) => unknown) => unknown }} mcp
+ * @param {{ registerTool(name: string, config: never, callback: never): unknown }} mcp any server whose registerTool takes a name, a config and a callback (the SDK's is generic and overloaded)
  * @param {readonly T[]} tools
  * @param {{
- *   env: { ADMIN_EMAIL?: string, CO_OWNER_EMAILS?: string } & Partial<import("./audit-log.d.mts").AuditEnv>,
- *   server: import("./mcp-server.d.mts").McpServerInfo,
- *   caller: import("./mcp-server.d.mts").McpCaller | undefined,
+ *   env: { ADMIN_EMAIL?: string, CO_OWNER_EMAILS?: string } & Partial<import("./audit-log.mjs").AuditEnv>,
+ *   server: McpServerInfo,
+ *   caller: McpCaller | undefined,
  *   icons?: ReadonlyArray<{ src: string, mimeType?: string, sizes?: string[] }>,
  *   config?: (tool: T) => Record<string, unknown>,
  *   run?: (tool: T, args: Record<string, unknown>, signal?: AbortSignal) => Promise<any>,
@@ -624,9 +632,7 @@ export async function invokeTool(env, server, { caller, tool, args, meta, signal
  * @returns {T[]}
  */
 export function registerTools(mcp, tools, { env, server, caller, icons, config, run }) {
-  // The list-only test key holds no scope, so it is listed the tools a read grant can always call: those whose declared
-  // scope is read, not one whose action decides (the live check's T7 reads that list and wants every tool read-only).
-  // authorizeCall refuses it whatever it calls.
+  // The list-only test key is listed only read-declared tools (the live check's T7); authorizeCall refuses its calls.
   const listed =
     caller?.kind === "probe"
       ? tools.filter(
@@ -643,9 +649,13 @@ export function registerTools(mcp, tools, { env, server, caller, icons, config, 
       /** @type {Record<string, unknown>} */ args,
       /** @type {AbortSignal | undefined} */ signal,
     ) => tool.handler(env, args, signal));
+  const registrar =
+    /** @type {{ registerTool(name: string, config: object, callback: (args: any, ctx: any) => unknown): unknown }} */ (
+      mcp
+    );
   for (const tool of listed) {
     const own = configOf(tool);
-    mcp.registerTool(
+    registrar.registerTool(
       tool.name,
       {
         ...own,
@@ -668,20 +678,14 @@ export function registerTools(mcp, tools, { env, server, caller, icons, config, 
 
 // THE LIST-ONLY TEST KEY'S DOOR (./agent-keys `isProbeKey`). The key may open a connection, read the server's lists and
 // send a tools/call that the server refuses; any other method is answered here, before the SDK sees the request, as the
-// method a server does not have (404, -32601), and logged. An allowlist, so a method added to the protocol later is
-// refused until it is named here.
+// method a server does not have (404, -32601), and logged. An allowlist, so a new protocol method is refused until named.
 //
-// WHY tools/call PASSES. The protocol layer validates a request before it dispatches it: a Mcp-Method or Mcp-Name header
-// that does not match the body is a 400 (-32020, SEP-2243), a method the server lacks a 404 (-32601, SEP-2575). A door
-// that refused tools/call first answered those 403 and broke both MUSTs (conformance P3/P4 on 2026-11-01). Past the
-// SDK's checks the call reaches a tool the key was listed (only read tools are, `registerTools`), and `invokeTool`
-// refuses the probe caller before `run`, in words, with a `refused` row: the same answer an agent key gets for a tool
-// outside its scope. So the key still runs nothing, and the door no longer stands in for the protocol's own answers.
+// WHY tools/call PASSES. The protocol layer validates a request first: a Mcp-Method or Mcp-Name header that does not
+// match the body is a 400 (-32020, SEP-2243), a method the server lacks a 404 (-32601, SEP-2575). A door that refused
+// tools/call first answered those 403 and broke both MUSTs (conformance P3/P4 on 2026-11-01). Past the SDK's checks
+// `invokeTool` refuses the probe caller before `run`, with a `refused` row, so the key still runs nothing.
 
-/**
- * The methods the list-only test key may send on to the server: the handshake, ping, the lists, the list-changed
- * stream, tools/call (refused by `invokeTool`, see above) and notifications.
- */
+/** The methods the list-only test key may send on to the server (tools/call is refused by `invokeTool`, see above). */
 export const PROBE_METHODS = new Set([
   "initialize",
   "ping",
@@ -696,18 +700,16 @@ export const PROBE_METHODS = new Set([
   "notifications/cancelled", // codespell:ignore (the protocol's method name)
 ]);
 
-/** The largest body the test key's door reads; nothing it may send comes near it. */
+/** The largest body the test key's door reads. */
 const PROBE_BODY_MAX = 64 * 1024;
 
 /**
- * The list-only test key's request, checked: `{ request }` to serve (the same request, its body already read), or
- * `{ refusal }`: a 403 JSON-RPC error for a body over 64 KiB, and for a message naming a method `PROBE_METHODS` does not
- * list a 404 with -32601 (Method not found), what the protocol answers for a method the server does not have, since for
- * this key it has none. A refused notification is a 403, as it has no id to answer. Each refused message is a `refused`
- * row in the tool-call log, under `probe:live-check`, naming the method. A body that is not JSON goes on, for the SDK's
- * parse error, since it runs nothing.
- * @param {Partial<import("./audit-log.d.mts").AuditEnv>} env
- * @param {import("./mcp-server.d.mts").McpServerInfo} server
+ * The list-only test key's request, checked: `{ request }` to serve (its body already read), or `{ refusal }`: a 403
+ * JSON-RPC error for a body over 64 KiB, and for a method `PROBE_METHODS` does not list a 404 with -32601. A refused
+ * notification is a 403, as it has no id to answer. Each refused message is a `refused` row in the log, under
+ * `probe:live-check`. A body that is not JSON goes on, for the SDK's parse error.
+ * @param {Partial<import("./audit-log.mjs").AuditEnv>} env
+ * @param {McpServerInfo} server
  * @param {Request} request
  * @returns {Promise<{ request: Request, refusal?: undefined } | { refusal: Response, request?: undefined }>}
  */
@@ -759,7 +761,6 @@ export async function probeRefusal(env, server, request) {
     });
   }
   const first = /** @type {{ id?: unknown }} */ (refused[0]);
-  // A request is answered as the method a server does not have (SEP-2575: 404 and -32601); a notification has no id.
   return first.id === undefined
     ? refusal(null, 403, -32600, words)
     : refusal(first.id, 404, -32601, `Method not found. ${words}`);
@@ -767,12 +768,12 @@ export async function probeRefusal(env, server, request) {
 
 /**
  * The list-only test key's whole door, for a server's `/mcp` before its OAuth provider: null when the request does not
- * carry the key (go on to OAuth). Otherwise the limiter, keyed on the key (fails closed; a limited request is a
- * `rate-limited` row), then `probeRefusal`, then `serve(request, probeCaller())` with the checked request.
- * @template {Partial<import("./audit-log.d.mts").AuditEnv>} E
+ * carry the key. Otherwise the limiter (fails closed; a limited request is a `rate-limited` row), then `probeRefusal`,
+ * then `serve(request, probeCaller())`.
+ * @template {Partial<import("./audit-log.mjs").AuditEnv>} E
  * @param {Request} request
  * @param {E} env
- * @param {{ server: import("./mcp-server.d.mts").McpServerInfo, limiter: Parameters<typeof checkRateLimit>[0], serve: (request: Request, caller: { kind: "probe", principal: string, scopes: string[] }) => Promise<Response> }} options
+ * @param {{ server: McpServerInfo, limiter: Parameters<typeof checkRateLimit>[0], serve: (request: Request, caller: { kind: "probe", principal: string, scopes: string[] }) => Promise<Response> }} options
  * @returns {Promise<Response | null>}
  */
 export async function probeDoor(request, env, { server, limiter, serve }) {
@@ -801,8 +802,7 @@ export async function probeDoor(request, env, { server, limiter, serve }) {
   return checked.refusal ?? serve(checked.request, probeCaller());
 }
 
-// TEXT FROM OUTSIDE (S2). A tool that returns what someone outside the server wrote (a web page, a mention, a repository
-// file, an email) marks it as data in the result, as `untrusted` marks it in a prompt.
+// TEXT FROM OUTSIDE (S2). A tool that returns what someone outside the server wrote marks it as data in the result.
 
 /** The line a result with outside text opens with. */
 export const OUTSIDE_DATA_NOTICE =
@@ -810,8 +810,8 @@ export const OUTSIDE_DATA_NOTICE =
 
 /**
  * A tool result whose text came from outside: the notice, then the value (a string, or an object as JSON) inside
- * `untrusted`'s `<data label="...">` delimiters, its `<`, `>` and `&` escaped so it cannot close them. An object is also
- * the `structuredContent`, with the notice as its `notice` field, so the tool's outputSchema allows a `notice` string.
+ * `untrusted`'s `<data label="...">` delimiters. An object is also the `structuredContent`, with the notice as its
+ * `notice` field, so the tool's outputSchema allows a `notice` string.
  * @param {string} label what the text is ("mention", "repo-file")
  * @param {string | Record<string, unknown>} value
  * @returns {{ content: Array<{ type: "text", text: string }>, structuredContent?: Record<string, unknown> }}
@@ -829,30 +829,30 @@ export function outsideResult(label, value) {
     : { content, structuredContent: { notice: OUTSIDE_DATA_NOTICE, ...value } };
 }
 
-// THE TOOL LIST'S RULES (T1-T4, T9) AND ITS PIN (T12), over `tools/list` as a client receives it, so a server's own test
-// and the daily live check (bin/ai-audit.mjs) judge the same thing the same way.
+// THE TOOL LIST'S RULES (T1-T4, T9) AND ITS PIN (T12), over `tools/list` as a client receives it, shared by a server's
+// own test and the daily live check (bin/ai-audit.mjs).
 
 const TOOL_NAME = /^[A-Za-z0-9_.-]{1,128}$/;
 const HINTS = ["readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"];
 const DIALECT = "https://json-schema.org/draft/2020-12/schema";
 
 /**
- * What is wrong with a `tools/list` result's tools, each `{ item, tool, severity, detail }`: T1 a name outside
- * `[A-Za-z0-9_.-]{1,128}`, a repeated name, no title or description; T2 any of the four annotation hints not set as a
- * boolean; T3 no `outputSchema` of type object; T4 an `inputSchema` that is not an object, a `$schema` other than 2020-12,
- * an object (at any depth) without `additionalProperties: false`, a `$ref` that is not local, and (a warning) a string
- * with no `pattern`, `enum`, `const` or `format`; T9 no icon, or one whose `src` is neither https nor a `data:image/`.
- * @param {ReadonlyArray<Record<string, any>>} tools
- * @returns {Array<{ item: string, tool: string, severity: "error" | "warning", detail: string }>}
+ * What is wrong with a `tools/list` result's tools: T1 a bad or repeated name, no title or description; T2 an annotation
+ * hint not set as a boolean; T3 no `outputSchema` of type object; T4 an `inputSchema` that is not an object, a `$schema`
+ * other than 2020-12, an object without `additionalProperties: false`, a non-local `$ref`, and (a warning) a string with
+ * no `pattern`, `enum`, `const` or `format`; T9 no icon, or one whose `src` is neither https nor a `data:image/`.
+ * @param {ReadonlyArray<object>} tools
+ * @returns {ToolListProblem[]}
  */
 export function toolListProblems(tools) {
-  /** @type {Array<{ item: string, tool: string, severity: "error" | "warning", detail: string }>} */
+  /** @type {ToolListProblem[]} */
   const out = [];
   const seen = new Set();
-  for (const tool of tools) {
+  for (const listed of tools) {
+    const tool = /** @type {Record<string, any>} */ (listed);
     const name = String(tool?.name ?? "");
     const add = (
-      /** @type {string} */ item,
+      /** @type {ToolListProblem["item"]} */ item,
       /** @type {string} */ detail,
       severity = /** @type {"error" | "warning"} */ ("error"),
     ) => out.push({ item, tool: name, severity, detail });
@@ -888,7 +888,7 @@ export function toolListProblems(tools) {
  * T4 at every depth of a schema.
  * @param {any} schema
  * @param {string} at
- * @param {(item: string, detail: string, severity?: "error" | "warning") => void} add
+ * @param {(item: ToolListProblem["item"], detail: string, severity?: "error" | "warning") => void} add
  */
 function schemaProblems(schema, at, add) {
   if (!schema || typeof schema !== "object") return;
@@ -920,9 +920,8 @@ function schemaProblems(schema, at, add) {
 
 /**
  * The SHA-256 of a tool list (T12, the tool-poisoning guard): every tool as `tools/list` sends it, `_meta` left out,
- * sorted by name, as canonical JSON. Pin it in the server's tests (`assert.equal(await toolListHash(listed), PINNED)`),
- * so any change to a name, a description, a schema or an annotation fails CI until someone reviews it and updates the
- * pin; give the daily check the same pin for the list its test grant sees (`--tools-hash`).
+ * sorted by name, as canonical JSON. Pin it in the server's tests so any change to a name, description, schema or
+ * annotation fails CI until reviewed; give the daily check the same pin (`--tools-hash`).
  * @param {ReadonlyArray<Record<string, unknown>>} tools
  * @returns {Promise<string>}
  */
@@ -935,8 +934,7 @@ export async function toolListHash(tools) {
   return sha256Hex(canonicalJson(plain));
 }
 
-// LIST CACHE HINTS (MCP 2026-07-28). The SDK's `cacheHints` server option stamps `ttlMs` and `cacheScope` on the
-// cacheable results of 2026-era requests; without it they go out as `ttlMs: 0`, private.
+// LIST CACHE HINTS (MCP 2026-07-28): the SDK's `cacheHints` option; without it results go out as `ttlMs: 0`, private.
 
 const CACHEABLE = /** @type {const} */ ([
   "tools/list",
@@ -948,17 +946,19 @@ const CACHEABLE = /** @type {const} */ ([
 ]);
 
 /**
- * The `cacheHints` option: every cacheable result lives `ttlMs`, private to the requesting client unless named in
- * `shared` (the same for every caller, so a shared cache may keep it). Private is the default because a list filtered
- * by the grant (`toolsForGrant`, a caller's namespaces) served from a shared cache is one person's list shown to
- * another.
+ * The `cacheHints` option: every cacheable result lives `ttlMs`, private unless named in `shared` (the same for every
+ * caller). Private is the default because a list filtered by the grant served from a shared cache is one person's list
+ * shown to another.
  * @param {{ ttlMs?: number, shared?: ReadonlyArray<typeof CACHEABLE[number]> }} [options]
+ * @returns {Record<CacheableMethod, { ttlMs: number; cacheScope: "public" | "private" }>}
  */
 export function mcpCacheHints({ ttlMs = 60_000, shared = [] } = {}) {
-  return Object.fromEntries(
-    CACHEABLE.map((method) => [
-      method,
-      { ttlMs, cacheScope: shared.includes(method) ? "public" : "private" },
-    ]),
+  return /** @type {Record<CacheableMethod, { ttlMs: number; cacheScope: "public" | "private" }>} */ (
+    Object.fromEntries(
+      CACHEABLE.map((method) => [
+        method,
+        { ttlMs, cacheScope: shared.includes(method) ? "public" : "private" },
+      ]),
+    )
   );
 }

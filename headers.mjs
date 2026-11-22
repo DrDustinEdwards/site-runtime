@@ -101,7 +101,7 @@ export function corpFor(contentType) {
 /**
  * The header overrides a registry entry declares: PASSKEY_OVERRIDES when it opts into passkey, then its own. A
  * Permissions-Policy of its own must still allow the passkey, or the opt-in would be a word with no effect.
- * @param {import("./sites.mjs").SiteEntry} entry
+ * @param {import("./sites.mjs").ServedSiteEntry} entry
  * @returns {Record<string, HeaderOverride>}
  */
 export function entryOverrides({ id, headers = {}, optIns = {} }) {
@@ -135,7 +135,7 @@ export function entryOverrides({ id, headers = {}, optIns = {} }) {
  * enforced coep beside it. An entry's `integrityPolicy` opt-in adds Integrity-Policy, or its Report-Only form (integrityPolicy,
  * ./csp), reporting to the same group.
  *
- * @param {{ site?: import("./sites.mjs").SiteEntry, overrides?: Readonly<Record<string, HeaderOverride>>, coep?: Coep }} [options]
+ * @param {{ site?: import("./sites.mjs").ServedSiteEntry, overrides?: Readonly<Record<string, HeaderOverride>>, coep?: Coep }} [options]
  * @returns {Record<string, string>}
  */
 export function buildSecurityHeaders({ site, overrides, coep } = {}) {

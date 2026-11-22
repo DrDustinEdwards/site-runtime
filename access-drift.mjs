@@ -214,7 +214,7 @@ export async function adminHash(salt, email) {
  * (`adminEmails(env)` from `./access` for most). No-store.
  * @param {Request} request
  * @param {{ ACCESS_TEAM_DOMAIN?: string, ACCESS_AUD?: string }} env
- * @param {{ admins: readonly string[], clientId?: string, keys?: import("./access-login.d.mts").KeySource, now?: number }} options
+ * @param {{ admins: readonly string[], clientId?: string, keys?: import("./access-login.mjs").KeySource, now?: number }} options
  * @returns {Promise<Response>}
  */
 export async function adminListResponse(request, env, { admins, clientId, keys, now }) {

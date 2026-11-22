@@ -1,8 +1,7 @@
 /**
  * The sign-in page's server side, the same on every site: what its route action does with the form, where a sign-in
  * may land, the Google and Apple start, the email change and account deletion options, and the words for each answer.
- * Capsomer's sign-in screen (`capsomer/react/sign-in`) is the page these answer; together they replaced Foxhound's,
- * Foxing's and txasm's own copies (network shared-code audit, 2026-11-11, items 19-21 and 36).
+ * Capsomer's sign-in screen (`capsomer/react/sign-in`) is the page these answer.
  *
  * - THROUGH THE HANDLER, NEVER auth.api: only Better Auth's HTTP handler runs its rate limiter and the captcha plugin's
  *   Turnstile check, so a form that called auth.api skipped both (Grok audit 2026-10-21, TX-4). Each request is a POST
@@ -41,7 +40,6 @@ export {
   signInErrorWords,
 } from "./sign-in-words.mjs";
 
-/** Better Auth's email OTP sign-in path (also SIGN_IN_CODE_PATH in `./sign-in`). */
 const CODE_PATH = "/sign-in/email-otp";
 
 /**
@@ -456,7 +454,9 @@ export function accountOptions({ confirmPath, sendEmailChange, beforeDelete, aft
 }
 
 /** The account page's posts `accountFormAction` answers, by their `intent` field. */
-export const ACCOUNT_INTENTS = Object.freeze(["change-email", "sign-out-device", "delete-account"]);
+export const ACCOUNT_INTENTS = Object.freeze(
+  /** @type {const} */ (["change-email", "sign-out-device", "delete-account"]),
+);
 
 /**
  * What the account page shows after one of its posts: which post (`intent`), whether it worked, the error words, and
@@ -504,7 +504,7 @@ const isNotFresh = (error) =>
  */
 export async function accountFormAction(auth, request, form, site) {
   const intent = String(form.get(SIGN_IN_INTENT) ?? "");
-  if (!ACCOUNT_INTENTS.includes(intent)) return null;
+  if (!(/** @type {readonly string[]} */ (ACCOUNT_INTENTS).includes(intent))) return null;
   /** @type {(state: Partial<AccountFormState>, status?: number) => { state: AccountFormState, status: number }} */
   const answer = (state, status = 200) => ({
     state: { intent, ok: status < 400, error: null, stale: false, sentTo: null, ...state },

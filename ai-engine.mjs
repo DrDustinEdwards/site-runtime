@@ -17,25 +17,82 @@
  * cannot see remaining quota.
  */
 
+/** @import { FireOnceResult, FireResult } from "./routine.mjs" */
+
+/**
+ * Which engine does a piece of AI work: the subscription (a routine) or the API (ai-engine.mjs).
+ * @typedef {"subscription" | "api" | "auto"} Engine
+ */
+
+/**
+ * @typedef {object} EngineSettings
+ * @property {Engine} master The engine for every feature that has no setting of its own. Default "auto".
+ * @property {Record<string, Engine>} features A feature's own engine; a feature missing here follows the master.
+ * @property {{ engine: Engine; until: string } | null} override Beats every other setting until `until` (an ISO time): "the subscription is low, use the API until Sunday".
+ * @property {number} apiCapMicros The month's API spend, in millionths of a dollar, at which the API closes. 0: no cap.
+ */
+
+/**
+ * A model's price; `long` is what a request pays once its whole prompt passes `long.above` tokens.
+ * @typedef {Readonly<Rates & { long?: Readonly<Rates & { above: number }> }>} Price
+ */
+
+/**
+ * @typedef {object} CostCounts
+ * @property {number} input
+ * @property {number} output
+ * @property {number} cacheRead
+ * @property {number} cacheWrite
+ * @property {number} [cacheWrite1h]
+ */
+
+/**
+ * @template {{ ok: boolean; error?: string }} [A={ ok: boolean; error?: string }]
+ * @typedef {object} AiJob
+ * @property {EngineSettings} settings
+ * @property {string} feature
+ * @property {number} [now] The time to judge an override against, in ms. Default now.
+ * @property {number} [spentMicros] The API spend so far this month, in millionths of a dollar.
+ * @property {() => Promise<FireResult | FireOnceResult>} [routine] Fires the site's routine (fireOnce); leave out when the job has no subscription route.
+ * @property {() => Promise<A>} [api] Calls the API (messages or structured); leave out when the job has no API route.
+ */
+
+/**
+ * @template {{ ok: boolean; error?: string }} [A={ ok: boolean; error?: string }]
+ * @typedef {| { ok: true; engine: "subscription"; fire: FireResult | FireOnceResult; fellBack: null }
+ * | { ok: true; engine: "api"; result: A; fellBack: string | null }
+ * | {
+ *     ok: false;
+ *     engine: "subscription" | "api" | null;
+ *     error: string;
+ *     fire?: FireResult | FireOnceResult;
+ *     result?: A;
+ *     fellBack: string | null;
+ *   }} AiRun
+ */
+
+/** @type {readonly Engine[]} */
 export const ENGINES = /* @__PURE__ */ Object.freeze(["subscription", "api", "auto"]);
 
-/** @param {unknown} value */
-const isEngine = (value) => typeof value === "string" && ENGINES.includes(value);
+/** @param {unknown} value @returns {value is Engine} */
+const isEngine = (value) =>
+  typeof value === "string" && /** @type {readonly string[]} */ (ENGINES).includes(value);
 
 /**
  * Settings from whatever a site stored, with anything unreadable dropped.
  * @param {unknown} raw
+ * @returns {EngineSettings}
  */
 export function normalizeSettings(raw) {
   const r =
     raw !== null && typeof raw === "object" ? /** @type {Record<string, unknown>} */ (raw) : {};
-  const features = /** @type {Record<string, string>} */ ({});
+  const features = /** @type {Record<string, Engine>} */ ({});
   const given =
     r.features !== null && typeof r.features === "object"
       ? /** @type {Record<string, unknown>} */ (r.features)
       : {};
   for (const [feature, engine] of Object.entries(given)) {
-    if (isEngine(engine)) features[feature] = /** @type {string} */ (engine);
+    if (isEngine(engine)) features[feature] = engine;
   }
   const cap = Number(r.apiCapMicros);
   const o =
@@ -45,11 +102,11 @@ export function normalizeSettings(raw) {
   const until = typeof o.until === "string" ? Date.parse(o.until) : NaN;
   const override =
     isEngine(o.engine) && Number.isFinite(until)
-      ? { engine: /** @type {string} */ (o.engine), until: new Date(until).toISOString() }
+      ? { engine: o.engine, until: new Date(until).toISOString() }
       : null;
   return {
     override,
-    master: isEngine(r.master) ? /** @type {string} */ (r.master) : "auto",
+    master: isEngine(r.master) ? r.master : "auto",
     features,
     apiCapMicros: Number.isFinite(cap) && cap > 0 ? Math.floor(cap) : 0,
   };
@@ -57,9 +114,10 @@ export function normalizeSettings(raw) {
 
 /**
  * The engine setting that applies to a feature: a standing override first, then its own setting, else the master.
- * @param {{ master: string, features: Record<string, string>, override?: { engine: string, until: string } | null }} settings
+ * @param {Pick<EngineSettings, "master" | "features"> & { override?: EngineSettings["override"] }} settings
  * @param {string} feature
  * @param {number} [now]
+ * @returns {Engine}
  */
 export function engineFor(settings, feature, now = Date.now()) {
   if (settings.override && Date.parse(settings.override.until) > now)
@@ -201,7 +259,7 @@ const NOT_STARTED = new Set(["rate_limited", "unavailable", "unreachable", "refu
  * when the site has no such path for this job.
  *
  * @param {{
- *   settings: { master: string, features: Record<string, string>, apiCapMicros: number, override?: { engine: string, until: string } | null },
+ *   settings: EngineSettings,
  *   feature: string,
  *   now?: number,
  *   spentMicros?: number,

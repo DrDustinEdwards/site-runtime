@@ -2,39 +2,49 @@
  * A site's scheduled jobs, run so that one failure never stops the next, with each job's last start, success and
  * failure in the site's D1 (`cron_runs`), so /health can say when a cron failed or stopped.
  *
- * - Each job runs in turn, isolated: a throw is caught, logged (`cron_job_failed`, with its name and ms) and stored in
- *   `last_error`, scrubbed and cut to CRON_ERROR_MAX characters, and the next job still runs. A success logs `cron_job_ok`.
+ * - Each job runs in turn, isolated: a throw is caught, logged (`cron_job_failed`) and stored in `last_error`,
+ *   scrubbed and cut to CRON_ERROR_MAX characters. A success logs `cron_job_ok`.
  * - Each job is raced against its timeout (`timeoutMs` on the job, else runJobs' `timeoutMs`, CRON_TIMEOUT_MS by
- *   default). A job that runs past it is recorded as failed ("timed out after N ms") and the next job starts, so one hung
- *   job never holds up the rest of its trigger. Its signal is aborted then, so a job that takes it can stop its work.
- *   A job with `holdOnTimeout` (one holding a lock, or moving money) is recorded failed at its timeout the same way,
- *   but the runner waits for it to end before the next job starts, and its late end records no success: letting the
- *   next job start beside it, or the invocation end under it, would cut a money write in half.
- * - A job whose run resolves to CRON_SKIPPED (a gate of its own said not now: switched off, not due, locked) is logged
- *   `cron_job_skipped` and records no success it never had.
- * - A failed write to `cron_runs` is logged (`cron_run_write_failed`) and the job still runs: the record serves the job,
- *   not the other way round.
+ *   default): past it the job is recorded failed ("timed out after N ms"), its signal aborted, and the next job
+ *   starts. A job with `holdOnTimeout` (holding a lock, or moving money) is recorded failed the same way, but the
+ *   runner waits for it to end before the next job, and its late end records no success: a money write is never cut
+ *   in half.
+ * - A job resolving to CRON_SKIPPED (its own gate said not now) is logged `cron_job_skipped`, with no success.
+ * - A failed write to `cron_runs` is logged (`cron_run_write_failed`) and the job still runs.
  * - After the last job, if any failed, `runJobs` throws one Error naming them, so Cloudflare marks the invocation failed.
  * - RUN NOW: runJobNow runs one job by name through the same path, and runJobTool serves it as the operator tool
- *   `run_job`, so a job is never run by hand through a second copy of its work (Dustin 2026-11-07, "can you just run
- *   them now"). A job marked `backup` is one Capsid Admin's back up now runs.
- * - HISTORY (opt in, `runJobs(db, jobs, { history })`): beside the one `cron_runs` row per job, each run that came to
- *   something is appended to `cron_run_log` (CRON_LOG_SQL) with its outcome and a one-line reason, the newest few
- *   kept per job and nothing older than the retention. A job may then resolve `{ outcome: "ok" | "refused" |
- *   "skipped", reason }`: `ok` records the reason ("swept 3, found 0": what a sweep that found nothing says apart from
- *   one that never looked), `refused` records the run failed without throwing, `skipped` records nothing, as
- *   CRON_SKIPPED does. readCronRuns reads the newest runs back and cronStates decides each job's flag (failing, quiet,
- *   never), from Capsid's task ledger (src/task-runs.ts) and Foxhound's `cron_run_history`. Without `history` nothing
- *   here changes.
- * - EVENT JOBS: `everyMinutes: null` is a job whose runs come and go with the work (a watcher, a sweep that acts only
- *   when something changed). It has no stale window, so it is flagged only by a failure inside the last day.
- * - `cronCheck` is the /health check (level warn) that fails when a job's last run failed, its last success is older than
- *   its own interval plus a grace (the larger of 10 minutes and a tenth of the interval), or, given the site's jobs, a job
- *   has never run at all (a trigger that never fires it), so an outside probe of /health notices a cron that stopped.
+ *   `run_job`, so a job is never run by hand through a second copy of its work (Dustin 2026-11-07). A job marked
+ *   `backup` is one Capsid Admin's back up now runs.
+ * - HISTORY (opt in, `runJobs(db, jobs, { history })`): each run that came to something is also appended to
+ *   `cron_run_log` (CRON_LOG_SQL), the newest few kept per job. A job may resolve `{ outcome: "ok" | "refused" |
+ *   "skipped", reason }`: `ok` records the reason, `refused` records a failure without throwing, `skipped` records
+ *   nothing. readCronRuns reads the runs back and cronStates decides each job's flag (failing, quiet, never).
+ * - EVENT JOBS: `everyMinutes: null` is a job whose runs come and go with the work. It has no stale window, so it
+ *   is flagged only by a failure inside the last day.
+ * - `cronCheck` is the /health check (level warn) that fails when a job's last run failed, its last success is older
+ *   than its interval plus a grace (the larger of 10 minutes and a tenth of the interval), or, given the site's
+ *   jobs, a job has never run.
  */
 
 import { isDatabaseDown, logEvent, scrubText } from "./log.mjs";
 import { withTimeout } from "./time.mjs";
+
+/**
+ * Why a job in `cron_runs` is not well, with its last success (epoch ms) or null.
+ * @typedef {object} CronFinding
+ * @property {string} name
+ * @property {"failed" | "stale" | "never succeeded" | "never ran"} reason
+ * @property {number | null} lastOkAt
+ */
+
+/**
+ * What cronFindings and cronCheck read: the grace, the site's own list of jobs, when it was deployed, the clock.
+ * @typedef {object} CronFindingsOptions
+ * @property {number | ((everyMinutes: number) => number)} [graceMinutes] Minutes past a job's interval, or a function of the interval in minutes.
+ * @property {Array<{ name: string; everyMinutes: number | null }>} [jobs]
+ * @property {Date} [deployedAt]
+ * @property {Date} [now]
+ */
 
 /** The longest error stored. */
 export const CRON_ERROR_MAX = 500;
@@ -126,7 +136,7 @@ function historyOf(history) {
 
 /**
  * The writer runJob records through: `db` resolved once, on the first write, so a missing binding is logged and the
- * job still runs. Null records nothing (a Worker with no D1, such as an admin MCP server): the log lines still go out.
+ * job still runs. Null records nothing (a Worker with no D1): the log lines still go out.
  * @param {D1Like | (() => D1Like) | null} db
  * @returns {(sql: string, ...values: unknown[]) => Promise<void>}
  */
@@ -142,8 +152,7 @@ function recorder(db) {
         .bind(...values)
         .run();
     } catch (error) {
-      // D1 down for a moment (overloaded, reset, an import holding it) is a warning: the record is missed this once,
-      // and a database that stays down still fails the cron check (cronFindings) and the database health check.
+      // D1 down for a moment is a warning; a database that stays down still fails the cron and database checks.
       logEvent(
         "cron_run_write_failed",
         { name: values[0], error },
@@ -171,8 +180,7 @@ function resultOf(value) {
 }
 
 /**
- * One job, run the way runJobs runs each: recorded in `cron_runs`, raced against its timeout, its signal aborted then,
- * held to its end when it holds on timeout. Never throws: it answers what the run came to, with the job's own result
+ * One job, run the way runJobs runs each. Never throws: it answers what the run came to, with the job's own result
  * (cut to CRON_RESULT_MAX as JSON) on a success and the stored error on a failure.
  * @param {(sql: string, ...values: unknown[]) => Promise<void>} write
  * @param {CronJob} job
@@ -279,9 +287,8 @@ export async function runJobs(
   const outcomes = [];
   for (const job of jobs)
     outcomes.push(await runOne(write, job, { now, timeoutMs, history: keeping }));
-  // A job that failed because the database was down for a moment is recorded failed (so /health says so) and logged
-  // as a warning, as above; it does not also fail the invocation, which Cloudflare's alerts and Sentry would report
-  // as the site's error. The next firing runs it again.
+  // A job that failed because the database was down is recorded and logged as a warning, but does not also fail
+  // the invocation (Cloudflare's alerts and Sentry would report it as the site's error).
   const failed = outcomes
     .filter((o) => o.status === "failed" && !isDatabaseDown(o.error))
     .map((o) => o.job);
@@ -290,9 +297,8 @@ export async function runJobs(
 }
 
 /**
- * RUN NOW: one of the site's jobs, by name, through the code its trigger runs (runJobs: the same `cron_runs` record
- * /health reads, the same timeout), at once instead of at its hour. Never throws for a failed run: it answers the
- * outcome, so the caller sees the job's error. An unknown name throws, naming the jobs there are.
+ * RUN NOW: one of the site's jobs, by name, through runJobs (same record, same timeout), at once. A failed run is
+ * answered as the outcome, not thrown. An unknown name throws, naming the jobs there are.
  * @param {D1Like | (() => D1Like) | null} db
  * @param {CronJob[]} jobs every job the site's triggers run
  * @param {string} name
@@ -315,14 +321,13 @@ export async function runJobNow(
 }
 
 /**
- * The operator tool `run_job` (./operator), the one way any site's job is run by hand: `{ job: "<name>" }` runs that
- * job, `{ backup: true }` runs every job marked `backup` in turn (Capsid Admin's back up now). Each through runJobNow,
- * so what /health reads is what the cron would have written. Answers `{ runs: [outcome] }`; a failed run is an outcome,
- * not a thrown error, so its message reaches the caller whole.
+ * The operator tool `run_job` (./operator): `{ job: "<name>" }` runs that job, `{ backup: true }` runs every job
+ * marked `backup` in turn. Each through runJobNow. Answers `{ runs: [outcome] }`; a failed run is an outcome, not a
+ * thrown error.
  * @param {D1Like | (() => D1Like) | null} db
  * @param {CronJob[] | (() => CronJob[])} jobs every job the site's triggers run, or a function giving them (called per call)
  * @param {CronOptions} [options]
- * @returns {import("./operator.d.mts").OperatorTool}
+ * @returns {import("./operator.mjs").OperatorTool}
  */
 export function runJobTool(db, jobs, options = {}) {
   const list = () => (typeof jobs === "function" ? jobs() : jobs);
@@ -352,12 +357,11 @@ export function runJobTool(db, jobs, options = {}) {
 }
 
 /**
- * The operator tool `backup_status` (./operator): the backup state read now, uncached, the same read /health's backup
- * field keeps for an hour. `files` names the site's file passes beside the D1 dump (media, audio, evidence), so the
- * description says what the answer covers. Every site's Capsid Admin reads it the same way.
+ * The operator tool `backup_status` (./operator): the backup state read now, uncached. `files` names the site's
+ * file passes beside the D1 dump, so the description says what the answer covers.
  * @param {() => unknown} status the site's backup read (d1-dump's backupHealth over its bucket, as /health's `backup`)
  * @param {{ files?: string[] }} [options]
- * @returns {import("./operator.d.mts").OperatorTool}
+ * @returns {import("./operator.mjs").OperatorTool}
  */
 export function backupStatusTool(status, { files = [] } = {}) {
   const covers =
@@ -376,7 +380,7 @@ export function backupStatusTool(status, { files = [] } = {}) {
  * (runJobTool), for a site's operatorResponse `tools`. `history` is the site's runJobs history, so a job run now is kept
  * in `cron_run_log` as its trigger keeps it.
  * @param {{ db: D1Like | (() => D1Like) | null, jobs: CronJob[] | (() => CronJob[]), backupStatus: () => unknown, files?: string[], history?: boolean | CronHistory }} options
- * @returns {{ backup_status: import("./operator.d.mts").OperatorTool, run_job: import("./operator.d.mts").OperatorTool }}
+ * @returns {{ backup_status: import("./operator.mjs").OperatorTool, run_job: import("./operator.mjs").OperatorTool }}
  */
 export function operatorJobTools({ db, jobs, backupStatus, files, history }) {
   return {
@@ -386,8 +390,7 @@ export function operatorJobTools({ db, jobs, backupStatus, files, history }) {
 }
 
 /**
- * One line for what a `run_job` call came to, from the caller's side (./operator callOperator): each run's job, status,
- * time and error, or why nothing was proven. `what` names the call ("run_job { backup: true }").
+ * One line for what a `run_job` call came to (./operator callOperator). `what` names the call ("run_job { backup: true }").
  * @param {string} what
  * @param {{ ok: boolean, status: number, data: unknown, error: string | null }} call
  * @returns {string}
@@ -448,9 +451,8 @@ export function backupJob(run, { name = "backup", timeoutMs = 5 * 60_000 } = {})
  * Each job in `cron_runs` that is not well, as data: the reason is "failed" (its last run failed), "stale" (its last
  * success is older than its interval plus the grace), "never succeeded" (first started longer ago than that, no
  * success) or "never ran" (given `jobs`, no row once its window has passed since `deployedAt`, at once without it).
- * `lastOkAt` is the last success in epoch ms, or null. The grace is `graceMinutes` when given (minutes, or a function of
- * the job's interval in minutes: `(every) => every` allows a whole missed period), else the larger of 10 minutes and a
- * tenth of the interval. cronCheck is built on it; a site that mails its own alert reads it.
+ * `lastOkAt` is the last success in epoch ms, or null. The grace is `graceMinutes` when given (minutes, or a function
+ * of the interval: `(every) => every` allows a whole missed period), else the larger of 10 minutes and a tenth of it.
  * @param {D1Like | (() => D1Like)} db
  * @param {{ graceMinutes?: number | ((everyMinutes: number) => number), jobs?: Array<{ name: string, everyMinutes: number | null }>, deployedAt?: Date, now?: Date }} [options]
  * @returns {Promise<Array<{ name: string, reason: "failed" | "stale" | "never succeeded" | "never ran", lastOkAt: number | null }>>}
@@ -520,11 +522,8 @@ export async function cronFindings(db, { graceMinutes, jobs, deployedAt, now } =
 }
 
 /**
- * The /health check for the jobs in `cron_runs` (name "cron", level warn): cronFindings, named in its detail. It
- * fails when a job's last run failed, its last success is older than its interval plus the grace, or it has never
- * succeeded and was first started longer ago than that. Given `jobs` (the list the site passes runJobs), it reads only
- * those, with their own intervals, so a removed job's old row is ignored, and a job with no row at all fails as
- * "never ran" once its window has passed since `deployedAt` (at once when that is not given).
+ * The /health check for the jobs in `cron_runs` (name "cron", level warn): cronFindings, named in its detail.
+ * Given `jobs` (the list the site passes runJobs), it reads only those, so a removed job's old row is ignored.
  * @param {D1Like | (() => D1Like)} db
  * @param {{ graceMinutes?: number | ((everyMinutes: number) => number), jobs?: Array<{ name: string, everyMinutes: number | null }>, deployedAt?: Date, now?: Date }} [options]
  * @returns {{ name: "cron", level: "warn", run: () => Promise<true | { ok: false, detail: string }> }}
@@ -547,9 +546,8 @@ export function cronCheck(db, options = {}) {
  */
 
 /**
- * The newest runs of each job from `cron_run_log` (runJobs' `history`), newest first, in one read: epoch ms and the
- * outcome ("ok", "refused" or "failed") with its one-line reason. Every name asked for is in the map, empty when it
- * has no run. Without `names`, every job with a run.
+ * The newest runs of each job from `cron_run_log` (runJobs' `history`), newest first, in one read. Every name asked
+ * for is in the map, empty when it has no run. Without `names`, every job with a run.
  * @param {D1Like | (() => D1Like)} db
  * @param {string[]} [names]
  * @param {number} [per] runs per job (default 5)
@@ -583,11 +581,8 @@ export async function readCronRuns(db, names, per = 5) {
 
 /**
  * Each job with its newest runs and its flag at `now`, for a page that lists them (Capsid's Portal):
- * - `failing`: the newest run failed or was refused. For an event job (`everyMinutes: null`) only inside
- *   CRON_EVENT_WINDOW_MS, since no later run may ever come to clear it; a periodic job's next run is its retry, so its
- *   failure stands until then.
- * - `quiet`: a periodic job whose newest run finished more than `quietPeriods` (default 2) of its periods ago: one
- *   missed run is normal, and a flag on it teaches the reader to ignore the flag.
+ * - `failing`: the newest run failed or was refused; for an event job only inside CRON_EVENT_WINDOW_MS.
+ * - `quiet`: a periodic job whose newest run finished more than `quietPeriods` (default 2) of its periods ago.
  * - `never`: no run on record, a notice and not a fault.
  * @param {Array<{ name: string, everyMinutes: number | null }>} jobs
  * @param {Map<string, CronRun[]>} runs readCronRuns' answer

@@ -11,6 +11,11 @@
 import { dayKey, monthKey } from "../time.mjs";
 
 /**
+ * The part of a Durable Object's `ctx.storage.sql` the budget uses.
+ * @typedef {{ exec(query: string, ...bindings: unknown[]): { toArray(): Array<Record<string, unknown>> }; }} SqlLike
+ */
+
+/**
  * The window a use is counted in, as the key it is stored under: the UTC date, or the UTC month.
  * @param {"day" | "month"} window
  * @param {Date} now
@@ -21,7 +26,7 @@ export function windowKey(window, now) {
 
 /**
  * Make the table. The name and columns are dustinedwards.info's, so its stored counts carry over.
- * @param {import("./core.d.mts").SqlLike} sql
+ * @param {SqlLike} sql
  */
 export function ensureBudgetTable(sql) {
   sql.exec(`CREATE TABLE IF NOT EXISTS budget (day TEXT PRIMARY KEY, count INTEGER NOT NULL)`);
@@ -29,7 +34,7 @@ export function ensureBudgetTable(sql) {
 
 /**
  * Count one use in the window `key` unless `limit` is already reached, and forget every other window.
- * @param {import("./core.d.mts").SqlLike} sql
+ * @param {SqlLike} sql
  * @param {string} key
  * @param {number} limit
  * @returns {{ ok: boolean, spent: number }}
@@ -49,7 +54,7 @@ export function consume(sql, key, limit) {
 
 /**
  * What the window `key` has spent, counting nothing.
- * @param {import("./core.d.mts").SqlLike} sql
+ * @param {SqlLike} sql
  * @param {string} key
  * @returns {number}
  */
@@ -58,7 +63,7 @@ export function spent(sql, key) {
   return Number(rows[0]?.count ?? 0);
 }
 
-/** @param {import("./core.d.mts").SqlLike} sql */
+/** @param {SqlLike} sql */
 export function resetBudget(sql) {
   sql.exec(`DELETE FROM budget`);
 }

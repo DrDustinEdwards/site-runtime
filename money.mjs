@@ -16,6 +16,18 @@
  */
 
 /**
+ * The stored unit: the power of ten between the stored integer and the whole unit (3 for mills, 6 for micros, 0 for whole units). Default: the currency's minor unit.
+ * @typedef {object} MoneyScale
+ * @property {number} [scale]
+ */
+
+/**
+ * The decimal places shown. Default: the currency's own (2 for USD, 0 for JPY, ISK and UGX, 3 for KWD).
+ * @typedef {object} MoneyDigits
+ * @property {number} [digits]
+ */
+
+/**
  * Stripe's zero-decimal currencies: the amount is the whole unit (docs.stripe.com/currencies, "Zero-decimal
  * currencies"). UGX is left out on purpose: Stripe's "Special cases" say UGX "transitioned to a zero-decimal currency,
  * but backwards compatibility requires you to represent it as a two-decimal value", so 500 is 5 UGX.

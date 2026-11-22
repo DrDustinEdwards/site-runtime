@@ -21,6 +21,26 @@
  * @typedef {{ ok: true } | { ok: false, reason: string }} Verdict
  */
 
+/**
+ * @typedef {| { kind: "add"; email: string; title: string; end_date: string | null }
+ * | { kind: "change_title"; target: MemberRow; title: string; reason: string }
+ * | { kind: "renew"; target: MemberRow }
+ * | { kind: "remove"; target: MemberRow }} Change
+ */
+
+/**
+ * @typedef {object} AuditRow
+ * @property {string} at
+ * @property {string} actor
+ * @property {string} actor_title
+ * @property {"add" | "change_title" | "renew" | "remove" | "expire"} action
+ * @property {string} member_email
+ * @property {string | null} before
+ * @property {string | null} after
+ * @property {string | null} reason
+ * @property {"pending"} cloudflare
+ */
+
 export const PRIMARY_OWNER = "primary_owner";
 export const OWNER = "owner";
 export const MANAGE_MEMBERS = "manage_members";
@@ -241,6 +261,7 @@ function refuse(reason) {
  * The `member_audit` row for a change, written in the same batch as the member row. `cloudflare` starts
  * "pending" and the sync's answer updates it, so a failed sync shows and is retried, never ignored.
  * @param {{ actor: Actor, action: "add" | "change_title" | "renew" | "remove" | "expire", email: string, before: MemberRow | null, after: MemberRow | null, reason?: string, nowMs: number }} entry
+ * @returns {AuditRow}
  */
 export function auditRow({ actor, action, email, before, after, reason, nowMs }) {
   return {

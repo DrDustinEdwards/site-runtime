@@ -15,7 +15,7 @@ One dependency, Google's `web-vitals` (pinned, no dependencies of its own), whic
 because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
 tag (merging a version bump to `main` is the release, made on its own with `npx changeset version` (`.changeset/README.md`): `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.92.0"`. `npm test` runs every test in `test/`. `npm run typecheck` checks the modules and bins (strict, `checkJs`, Workers and Node
 types; `tsconfig.json`) and the browser modules, `./turnstile`, `./sign-in-client`, `./vitals-client`, `./trusted-types`, `./page-client`, `./hydrate-on-intent` and `./deferred-scripts` (DOM types; `tsconfig.browser.json`), against
-the hand-written `.d.mts` beside each; `better-auth`, `@better-auth/passkey` and `@cloudflare/workers-oauth-provider` are dev
+their JSDoc, the one type source: the release builds `dist/*.d.mts` from it (`npm run prepare`, `tsconfig.build.json`) and tags a commit that holds them; `better-auth`, `@better-auth/passkey` and `@cloudflare/workers-oauth-provider` are dev
 dependencies only so it can read their types. `test/` is not checked yet. `npm run lint` is Oxlint with the network's shared
 config (devkit's `./oxlint`, in `oxlint.config.ts`), type-aware through the same tsconfigs (`test/` through TypeScript's defaults).
 

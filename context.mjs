@@ -9,7 +9,17 @@
  */
 import { createContext } from "react-router";
 
-/** The bindings and execution context of this request. */
+/**
+ * The bindings and execution context of one request; `Env` is the site's own (wrangler types).
+ * @typedef {object} CloudflareContext
+ * @property {Env} env
+ * @property {ExecutionContext} ctx
+ */
+
+/**
+ * The bindings and execution context of this request.
+ * @type {import("react-router").RouterContext<CloudflareContext>}
+ */
 export const cloudflareContext = createContext();
 
 /**

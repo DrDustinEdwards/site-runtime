@@ -14,6 +14,24 @@
  * `imagePreload` in ./image builds them) let the browser fetch the size it will show, in the tag and in the 103 alike.
  */
 
+/**
+ * Preloads declared once (preload.mjs): the React Router `links` entries and the `Link` header Cloudflare Early Hints
+ * reads, from the same list. A font gets crossorigin=anonymous unless it names use-credentials; an image may name its srcset.
+ * @typedef {"anonymous" | "use-credentials"} CrossOrigin
+ */
+
+/**
+ * @typedef {object} PreloadLink
+ * @property {"preload" | "preconnect"} rel
+ * @property {string} href
+ * @property {Preload["as"]} [as]
+ * @property {string} [type]
+ * @property {CrossOrigin} [crossOrigin]
+ * @property {string} [imageSrcSet]
+ * @property {string} [imageSizes]
+ * @property {"high" | "low" | "auto"} [fetchPriority]
+ */
+
 const AS = new Set(["font", "image", "style", "script", "fetch"]);
 const CROSS_ORIGIN = new Set(["anonymous", "use-credentials"]);
 
@@ -107,7 +125,7 @@ export function rootStylesheets(build) {
  * order and each href once, as `{ href, as: "style" }` preloads.
  * @param {{ assets: { routes: Record<string, { css?: string[] } | undefined> } }} build
  * @param {readonly string[]} [routes] route ids beyond the root, such as "routes/_site"
- * @returns {import("./preload.d.mts").Preload[]}
+ * @returns {Preload[]}
  */
 export function pageStylesheets(build, routes = []) {
   const hrefs = ["root", ...routes].flatMap((id) => build.assets.routes[id]?.css ?? []);

@@ -32,10 +32,41 @@ import { hostCookie, readCookie } from "./headers.mjs";
 import { escapeHtml as escape } from "./html.mjs";
 import { redirectResponse } from "./http.mjs";
 
+/** @import { OAuthHelpers } from "@cloudflare/workers-oauth-provider" */
+/** @import { AccessEnv } from "./access-login.mjs" */
+/** @import { AuditEnv } from "./audit-log.mjs" */
+
+/**
+ * What the owner page needs of a KV namespace.
+ * @typedef {{ get(key: string): Promise<string | null>; put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>; delete(key: string): Promise<void>; }} OwnerKv
+ */
+
+/**
+ *
+ * - `PUBLIC_ORIGIN`: The server's public origin, for the /callback address; the request's origin when unset.
+ * - `MCP_PROBE_KEY`: The list-only test key (./agent-keys `isProbeKey`); the page says whether it is set, never its value.
+ * @typedef {AccessEnv & Partial<AuditEnv> & { PUBLIC_ORIGIN?: string; OAUTH_PROVIDER: OAuthHelpers; OAUTH_KV: OwnerKv; MCP_PROBE_KEY?: string; }} OwnerEnv
+ */
+
+/**
+ * A tool-call log row as `readAuditLog` returns it (the table's columns, without the hash).
+ * @typedef {object} AuditLogRow
+ * @property {number} seq
+ * @property {string} at
+ * @property {string} call_id
+ * @property {string} phase
+ * @property {string} caller
+ * @property {string} tool
+ * @property {string} args JSON.
+ * @property {string | null} result JSON, or null.
+ * @property {string | null} server
+ * @property {string | null} version
+ * @property {string | null} client_id
+ * @property {string | null} correlation_id
+ */
+
 /** @typedef {import("@cloudflare/workers-oauth-provider").OAuthHelpers} OAuthHelpers */
 /** @typedef {import("@cloudflare/workers-oauth-provider").GrantSummary} GrantSummary */
-/** @typedef {import("./owner-page.d.mts").OwnerEnv} OwnerEnv */
-/** @typedef {import("./owner-page.d.mts").AuditLogRow} AuditLogRow */
 
 export const OWNER_PATH = "/owner";
 const STATE_PREFIX = "owner.";
@@ -104,7 +135,7 @@ export async function listOwnerGrants(oauth, userId) {
 /**
  * Revokes one of the user's grants and logs it: the provider refuses a grant id another user holds by finding nothing
  * under this user. Answers false when the user holds no such grant.
- * @param {Partial<import("./audit-log.d.mts").AuditEnv>} env
+ * @param {Partial<import("./audit-log.mjs").AuditEnv>} env
  * @param {OAuthHelpers} oauth
  * @param {{ userId: string, grantId: string, caller: string, server?: { name: string, version: string } }} input
  */
@@ -128,7 +159,7 @@ export async function revokeOwnerGrant(env, oauth, { userId, grantId, caller, se
 
 /**
  * One page of the tool-call log, newest first: `limit` rows (at most 100) before the row `before`, or the newest.
- * @param {Partial<import("./audit-log.d.mts").AuditEnv>} env
+ * @param {Partial<import("./audit-log.mjs").AuditEnv>} env
  * @param {{ before?: number, limit?: number }} [options]
  * @returns {Promise<AuditLogRow[]>}
  */

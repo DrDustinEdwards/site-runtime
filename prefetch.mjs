@@ -14,6 +14,14 @@
 
 import { acceptedEncoding } from "./http.mjs";
 
+/**
+ * @typedef {object} SpeculationOptions
+ * @property {string[]} [exclude] More path prefixes to skip, such as "/drafts".
+ * @property {boolean} [excludeQueries] Skip links with a query string (searches, filters, sized images). On by default; false prefetches them.
+ * @property {"conservative" | "moderate" | "eager"} [eagerness] When to prefetch: moderate (pointer rests on the link, the default), conservative (on press) or eager.
+ * @property {boolean} [prerender] Also prerender on press. Off by default: a prerendered page runs its scripts and analytics early.
+ */
+
 /** The path every site serves its rules at. */
 export const SPECULATION_RULES_PATH = "/speculation-rules.json";
 

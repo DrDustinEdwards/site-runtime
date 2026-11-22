@@ -97,7 +97,7 @@ function deduped(roots) {
     if ((counts.get(k) ?? 0) > 1 && k.length >= 20) {
       const id = `s${ids.size}`;
       ids.set(k, id);
-      consts.push(`const ${id} = ${text};`);
+      consts.push(`const ${id} = /** @type {const} */ (${text});`);
       return id;
     }
     return text;
@@ -127,7 +127,9 @@ const entries = Object.entries(registry).filter(
 function valuesBody() {
   const roots = entries.map(([n, entry]) => /** @type {[string, unknown]} */ ([n, values(entry)]));
   const { consts, js } = deduped(roots);
-  const exported = roots.map(([n, v]) => `export const ${n} = ${js(v)};`);
+  const exported = roots.map(
+    ([n, v]) => `/** @type {ServedSiteEntry} */\nexport const ${n} = ${js(v)};`,
+  );
   return [...consts, "", ...exported];
 }
 
@@ -139,9 +141,13 @@ export function sitesValuesSource() {
     "",
     'import { entryOverrides, permissionsAllowingSelf } from "./headers.mjs";',
     'export { PASSKEY_OVERRIDES, permissionsAllowingSelf } from "./headers.mjs";',
+    ...["ServedSiteEntry", "SignInProbes", "SiteAssets", "SiteOptIns"].map(
+      (t) => `/** @typedef {import("./sites.mjs").${t}} ${t} */`,
+    ),
     "",
     ...valuesBody(),
     "",
+    "/** @type {readonly ServedSiteEntry[]} */",
     `export const SITES = /* @__PURE__ */ Object.freeze([${registry.SITES.map((s) => entries.find(([, entry]) => entry === s)?.[0]).join(", ")}]);`,
     "",
     "/** The entry for an id; unknown ids throw. @param {string} id */",

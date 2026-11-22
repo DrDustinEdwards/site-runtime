@@ -15,6 +15,12 @@
  */
 
 /**
+ * @typedef {object} Redacted
+ * @property {string} text
+ * @property {Partial<Record<RedactionKind, number>>} redactions How many values of each kind were replaced; empty when none were.
+ */
+
+/**
  * The secret shapes log.mjs's scrubText cuts too, defined once here and shared: a PEM or PGP private key block (to the
  * end of the text when it is cut off; its \1 and \2 are its own groups), an Anthropic key, Stripe secret, restricted
  * and webhook-signing keys, a Slack token or webhook URL and an AWS access key id.
@@ -121,7 +127,7 @@ function looksRandom(run) {
 /**
  * Replaces every secret-shaped value in `text` with [REDACTED:<kind>].
  * @param {string} text
- * @returns {import("./redact.mjs").Redacted}
+ * @returns {Redacted}
  */
 export function redact(text) {
   /** @type {Partial<Record<RedactionKind, number>>} */

@@ -23,8 +23,12 @@ export async function draftGate(row, canSeeDrafts, options = {}) {
   return { row, draft };
 }
 
-/** The robots meta a draft page carries, for a route's `meta`: `[{ name: "robots", content: "noindex" }]`, else `[]`. */
-export function draftRobots(/** @type {boolean} */ draft) {
+/**
+ * The robots meta a draft page carries, for a route's `meta`: `[{ name: "robots", content: "noindex" }]`, else `[]`.
+ * @param {boolean} draft
+ * @returns {{ name: "robots", content: "noindex" }[]}
+ */
+export function draftRobots(draft) {
   return draft ? [{ name: "robots", content: "noindex" }] : [];
 }
 

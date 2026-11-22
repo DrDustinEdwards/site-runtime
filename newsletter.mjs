@@ -15,6 +15,15 @@
 
 import { readSignedToken, signToken } from "./signed-token.mjs";
 
+/**
+ * The four functions a site writes over its table.
+ *
+ * - `upsertPending`: Insert a pending row (a fresh unsubscribe token) or, for an existing one, change only `confirm_sent_at`.
+ * - `confirm`: Confirm and consent at `at`, lift the unsubscribe, clear `confirm_sent_at`, only where it still equals the link's. True when a row changed.
+ * - `unsubscribe`: Set `unsubscribed_at` on the row with this token. True when a row changed.
+ * @typedef {{ find(email: string): Promise<SubscriberRow | null>; upsertPending(email: string, confirmSentAt: string | null): Promise<void>; confirm(email: string, confirmSentAt: string, at: string): Promise<boolean>; unsubscribe(token: string, at: string): Promise<boolean>; }} SubscriberStore
+ */
+
 /** The migration: a D1 site adds it as its next file. Times are ISO strings. A row with no `confirmed_at` is pending. */
 export const SUBSCRIBERS_SQL = `CREATE TABLE IF NOT EXISTS subscribers (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

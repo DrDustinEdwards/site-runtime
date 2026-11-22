@@ -109,7 +109,7 @@ describe("verifyIdToken", () => {
   test("an unknown kid refetches once, so a rotated key is found; fetched keys are trusted an hour at most", async (t) => {
     /** @type {boolean[]} */
     const asked = [];
-    /** @type {import("../access-login.d.mts").KeySource} */
+    /** @type {import("../access-login.mjs").KeySource} */
     const rotating = async (_kid, fresh) => {
       asked.push(fresh);
       return fresh ? publicJwk : undefined;

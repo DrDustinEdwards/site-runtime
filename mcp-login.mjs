@@ -2,22 +2,14 @@
  * The consent page and the upstream sign-in of a single-administrator MCP server, behind
  * @cloudflare/workers-oauth-provider, and the tightened check on a dynamic client registration.
  *
- * The provider makes the Worker an OAuth 2.1 authorization server for MCP clients. It does not know who the human is,
- * so after consent this handler sends them to Cloudflare Access for SaaS (`./access-login`) and lets in only the email
- * the caller's `admit` accepts.
+ * After consent the handler sends the person to Cloudflare Access for SaaS (`./access-login`) and lets in only
+ * the email the caller's `admit` accepts. The consent handle and upstream state are the provider's own helpers,
+ * each bound to the browser by a cookie and single-use; the PKCE verifier and nonce stay server-side.
  *
- * The consent handle and the upstream state are the provider's own helpers (beginConsent, approveConsent,
- * beginUpstream, finishUpstream): each is bound to the browser by a cookie the library sets and works once, so another
- * site cannot submit consent or replay a callback. The PKCE verifier and nonce travel in the upstream state,
- * server-side.
- *
- * Least scope first: the write box starts ticked only when the client asked for the write scope, the grant is what the
- * administrator ticked, never what the client asked, and every grant holds the read scope.
- *
- * A server that keeps the tool-call log (`./audit-log`) and passes `audit` gets a `sign-in` row for every callback,
- * admitted or refused.
- *
- * The provider is matched by its errors' names, not imported, so this package keeps no dependencies.
+ * Least scope first: the write box starts ticked only when the client asked for write, the grant is what the
+ * administrator ticked, and every grant holds the read scope. A server passing `audit` gets a `sign-in` row
+ * for every callback. The provider is matched by its errors' names, not imported, so this package keeps no
+ * dependencies.
  */
 
 import { isAdminEmail } from "./access.mjs";
@@ -32,7 +24,33 @@ import { escapeHtml as escape } from "./html.mjs";
 import { originOf, ownerPage, respond } from "./owner-page.mjs";
 import { ipKey } from "./rate-limit/limit.mjs";
 
-/** @typedef {import("./mcp-login.d.mts").LoginEnv} LoginEnv */
+/** @import { OAuthHelpers } from "@cloudflare/workers-oauth-provider" */
+/** @import { AccessEnv } from "./access-login.mjs" */
+
+/**
+ *
+ * - `PUBLIC_ORIGIN`: The server's public origin, for the /callback address; the request's origin when unset.
+ * - `DEPLOY_SHA`: The deployed commit, for the default /health's `sha`.
+ * - `OAUTH_KV`: The provider's KV namespace; the owner page keeps its sign-ins and sessions there.
+ * @typedef {AccessEnv & { PUBLIC_ORIGIN?: string; DEPLOY_SHA?: string; OAUTH_PROVIDER: OAuthHelpers; OAUTH_KV: import("./owner-page.mjs").OwnerKv; }} LoginEnv
+ */
+
+/**
+ * @template {LoginEnv} E
+ *
+ * - `name`: The server's name, as the consent page and a refusal show it.
+ * - `scopes`: The read scope every grant holds, and the write scope the consent box adds.
+ * - `about`: The server's own paragraphs on the consent page (trusted HTML).
+ * - `admit`: Whether the email Access verified is let in. An object admits and is added to the grant's props (Carrel's personId); false or null refuses.
+ * - `admits`: Who is let in, for the consent page's line and the refusal. Default: the single configured administrator.
+ * - `wantsWrite`: Whether the consent page's write box starts ticked for the scopes a client asked for. Default: it asked for write.
+ * - `health`: The /health answer. Default: healthResponse({ sha: env.DEPLOY_SHA }).
+ * - `audit`: The server's serverInfo name and version: when set, every callback writes a `sign-in` row to TOOL_CALL_LOG.
+ * - `revokeExistingGrants`: Passed to completeAuthorization. Default true: a new grant revokes the user's earlier ones for the same client. False keeps earlier grants, for two connectors sharing one client id.
+ * - `owner`: Default true: /owner serves the owner page (./owner-page; needs OAUTH_KV). A server with several people passes `{ readsLog(env, email) }`, so only its owner reads everyone's calls; false turns the page off.
+ * @typedef {{ name: string; scopes: { read: string; write: string }; about: string; admit( env: E, user: { email: string; name?: string }, ): boolean | Record<string, unknown> | null | Promise<boolean | Record<string, unknown> | null>; admits?: { refusal: string }; wantsWrite?(requested: string[]): boolean; health?(env: E): Response | Promise<Response>; audit?: { name: string; version: string }; revokeExistingGrants?: boolean; owner?: boolean | { readsLog(env: E, email: string): boolean | Promise<boolean> }; }} LoginOptions
+ */
+
 /** @typedef {import("@cloudflare/workers-oauth-provider").AuthRequest} AuthRequest */
 /** @typedef {import("@cloudflare/workers-oauth-provider").ClientInfo} ClientInfo */
 
@@ -42,10 +60,9 @@ const LOCAL_REDIRECT_WARNING = [
 ];
 
 /**
- * What a consent page says about where a client's redirect URI sends the access: its host (for a private-use scheme
- * such as `cursor://`, which has none, the scheme), and whether it goes to an app on this computer, a loopback host or
- * a private-use scheme (RFC 8252 7.1 and 7.3), with the warning to show then. Never throws: an unparsable URI comes
- * back as itself, not local.
+ * Where a client's redirect URI sends the access: its host (the scheme for a private-use one such as `cursor://`),
+ * and whether that is an app on this computer (RFC 8252 7.1, 7.3), with the warning to show. Never throws: an
+ * unparsable URI comes back as itself, not local.
  * @param {string} uri
  * @returns {{ host: string, local: boolean, warning: string | null }}
  */
@@ -63,7 +80,7 @@ export function describeRedirect(uri) {
 }
 
 /**
- * The OAuth error answer to the client, once its redirect URI is known good.
+ * The OAuth error answer, once the redirect URI is known good.
  * @param {AuthRequest} request @param {string} description @param {Headers} [headers]
  */
 function redirectError(request, description, headers) {
@@ -75,10 +92,7 @@ function redirectError(request, description, headers) {
   return redirectResponse(url.href, 302, headers);
 }
 
-/**
- * The name a client is shown by: its own client_name, or the host that publishes its metadata.
- * @param {ClientInfo | null} client @param {string} clientId
- */
+/** @param {ClientInfo | null} client @param {string} clientId */
 function clientLabel(client, clientId) {
   const name = client?.clientName?.trim();
   if (name) return name.slice(0, 100);
@@ -90,11 +104,8 @@ function clientLabel(client, clientId) {
 }
 
 /**
- * The consent page's one inline <style>. The page renders this exact string between the tags, so a server's
- * Content-Security-Policy trusts it by hash (`scriptHash(CONSENT_STYLE)` from `./csp`) and the two cannot drift.
- * The page is Capsomer's consent screen (components/consent, 0.100.0) as HTML, with its classes; site-runtime cannot
- * depend on Capsomer (Capsomer depends on it), so this is a minimal copy of that look, as OWNER_STYLE is for the owner
- * page: the 460px card, the muted text, the write grant's box and Allow and Deny side by side.
+ * The consent page's one inline <style>, trusted by hash (`scriptHash(CONSENT_STYLE)` from `./csp`). A minimal
+ * copy of Capsomer's consent screen, which site-runtime cannot depend on, as OWNER_STYLE is for the owner page.
  */
 export const CONSENT_STYLE = `
   :root { color-scheme: light dark; --consent-muted: color-mix(in srgb, CanvasText 62%, Canvas); --consent-line: color-mix(in srgb, CanvasText 16%, Canvas); }
@@ -127,11 +138,10 @@ const NOT_CONFIGURED =
   "ACCESS_SAAS_CLIENT_SECRET is unset. Not configured means not open.";
 
 /**
- * The provider's defaultHandler: /health, the consent page and its form on /authorize, the Access /callback, and the
- * owner page on /owner (./owner-page) unless `owner` is false. A missing Access setting answers 503 on every sign-in
- * route.
+ * The provider's defaultHandler: /health, the consent page and form on /authorize, the Access /callback, and /owner
+ * unless `owner` is false. A missing Access setting answers 503 on every sign-in route.
  * @template {LoginEnv} E
- * @param {import("./mcp-login.d.mts").LoginOptions<E>} options
+ * @param {LoginOptions<E>} options
  */
 export function loginHandler({
   name,
@@ -148,18 +158,18 @@ export function loginHandler({
   owner = true,
 }) {
   const serverName = escape(name);
-  // The owner page (A15, L9) shares the sign-in and the admission check, and its sign-in comes back to /callback.
+  // The owner page (A15, L9) shares the sign-in and admission check.
   const ownerRoutes = owner
     ? ownerPage({ name, admit, server: audit, ...(typeof owner === "object" ? owner : {}) })
     : null;
 
   /**
-   * One sign-in row, when the server keeps the log. A sign-in changes nothing, so a failed write is only reported.
+   * One sign-in row, when the server keeps the log; a failed write is only reported.
    * @param {E} env @param {AuthRequest} request @param {string} caller @param {string} outcome @param {boolean} admitted
    */
   async function signInRow(env, request, caller, outcome, admitted) {
     if (!audit) return;
-    await recordAudit(/** @type {Partial<import("./audit-log.d.mts").AuditEnv>} */ (env), {
+    await recordAudit(/** @type {Partial<import("./audit-log.mjs").AuditEnv>} */ (env), {
       callId: crypto.randomUUID(),
       phase: "sign-in",
       caller,
@@ -171,15 +181,15 @@ export function loginHandler({
   }
 
   /**
-   * Consent has to be an act, so it is a real form. Everything from the client is escaped: a CIMD document's name is
-   * chosen by whoever serves it, a registered client's by its registrant. `about` is the server's own HTML.
+   * Consent is a real form. Everything from the client is escaped (a CIMD name is chosen by whoever serves it);
+   * `about` is the server's own HTML.
    * @param {ClientInfo | null} client @param {AuthRequest} request @param {string} handle
    */
   function consentPage(client, request, handle) {
     const label = escape(clientLabel(client, request.clientId));
     const target = describeRedirect(request.redirectUri);
     const redirectHost = escape(target.host);
-    // A CIMD client's id is the URL its metadata is published at, so its host is checked; a registered client named itself.
+    // A CIMD client's id is the URL its metadata is published at.
     const publisher = request.clientId.startsWith("https://")
       ? `Published by <strong>${escape(new URL(request.clientId).hostname)}</strong>.`
       : "This client registered itself, so its name is its own claim, not checked.";
@@ -214,9 +224,6 @@ ${target.local ? `<div class="cap-alert" data-tone="warn" role="alert"><span cla
     if (!accessSaas(env)) return respond(NOT_CONFIGURED, 503);
     const oauth = env.OAUTH_PROVIDER;
     const authRequest = await oauth.parseAuthRequest(request);
-    // PKCE with S256 for every client (OAuth 2.1 section 7.5.2, MCP authorization "Authorization Code Protection"). The
-    // provider already requires it of a public client; a client that registers as confidential could otherwise leave it
-    // out, and a code sent to a loopback or app callback is then usable by whatever program caught it.
     if (!authRequest.codeChallenge) {
       return respond("PKCE is required: send code_challenge with code_challenge_method=S256.", 400);
     }
@@ -224,7 +231,6 @@ ${target.local ? `<div class="cap-alert" data-tone="warn" role="alert"><span cla
     if (!client) return respond("Unknown OAuth client.", 400);
     const consent = await oauth.beginConsent(authRequest);
     consent.headers.set("content-type", "text/html; charset=utf-8");
-    // A private page: Cloudflare injects nothing into it, and the Worker compresses it.
     consent.headers.set("cache-control", PRIVATE_PAGE_HEADERS["Cache-Control"]);
     // A consent page another site can frame can be clickjacked into an approval.
     consent.headers.set("content-security-policy", "frame-ancestors 'none'");
@@ -302,7 +308,7 @@ ${target.local ? `<div class="cap-alert" data-tone="warn" role="alert"><span cla
       await signInRow(env, original, `access:${signedIn.email}`, "not-admitted", false);
       return redirectError(original, admits.refusal, headers);
     }
-    // An object admits and travels with the grant: a server's own id for the person, read again on every request.
+    // An object admits and travels with the grant, read again on every request.
     const extra = typeof admitted === "object" ? admitted : {};
 
     const granted = original.scope.includes(scopes.write)
@@ -355,7 +361,6 @@ ${target.local ? `<div class="cap-alert" data-tone="warn" role="alert"><span cla
         if (owned) return owned;
         return respond("Not found.", 404);
       } catch (error) {
-        // Redirect only to a validated client; render the rest.
         if (error instanceof Error && error.name === "AuthorizationError") {
           const failure =
             /** @type {Error & { code: string, description: string, redirectUri?: string, state?: string, issuer?: string }} */ (
@@ -397,10 +402,8 @@ export function isAdminUser(env, user) {
 }
 
 /**
- * The registration callbacks that are the same for every user, for a server to allow beside its own DCR_REDIRECT_URIS:
- * Grok's two custom-connector callbacks, Grok Bot's (Cursor-hosted) agent callback, ChatGPT's fixed (legacy) connector
- * callback and Gemini Enterprise's redirect.
- * A callback that carries a per-connector or per-user id is listed exactly in DCR_REDIRECT_URIS.
+ * The registration callbacks the same for every user (Grok, Grok Bot, ChatGPT legacy, Gemini Enterprise), for a
+ * server to allow beside its own DCR_REDIRECT_URIS, where a per-connector or per-user callback is listed.
  */
 export const DCR_CALLBACKS = /* @__PURE__ */ Object.freeze([
   "https://grok.com/connectors/oauth/callback",
@@ -422,9 +425,8 @@ export function allowedRedirects(configured) {
 /**
  * The tightened Dynamic Client Registration check, for the provider's clientRegistrationCallback. DCR is kept only
  * for the clients that still need it (Grok, Gemini), so a registration is allowed only when every redirect URI it
- * names is listed, character for character, in `configured`: a redirect URI is where an authorization code is
- * delivered, and close to an allowed one is how codes are stolen. An empty or unset list refuses every registration.
- * Registration grants nothing; the consent page, Access and the administrator check still decide.
+ * names is listed, character for character, in `configured` (close to an allowed one is how codes are stolen).
+ * An empty or unset list refuses every registration.
  * @param {string | undefined} configured
  * @param {Record<string, unknown>} clientMetadata
  * @returns {string | null} null when the registration may proceed, else why it is refused, naming the URI
@@ -439,8 +441,7 @@ export function registrationRefusal(configured, clientMetadata) {
   if (asked.length > 5) return "A registration may name at most five redirect URIs.";
   for (const uri of asked) {
     if (typeof uri !== "string" || !allowed.includes(uri)) {
-      // Name everything the client sent, so a refusal in the log says whether one unlisted callback sank a request that
-      // also named a listed one. Only what the client chose to send, each value cut short; never a secret.
+      // Name everything sent, so the log shows whether one unlisted callback sank a request that named a listed one.
       const sent = JSON.stringify(asked.map((one) => String(one).slice(0, 200)));
       const method = JSON.stringify(
         String(clientMetadata.token_endpoint_auth_method ?? "none given").slice(0, 40),
@@ -455,9 +456,8 @@ export function registrationRefusal(configured, clientMetadata) {
  * Counts one POST /register and answers the 429 to send, or null: five an hour from one address, counting every
  * registration, and thirty a day from everyone, counting only one `configured` would allow (registrationRefusal), so
  * junk from a few addresses cannot close registration for the day (the Mythos review's finding 6, 2026-11-18). A
- * refused one is still answered 400 by the provider's callback. In KV (eventually consistent, so a burst can pass a few
- * over; the ceiling is what matters). Call it before the provider sees the request. A client registers once per
- * connection, so a person connecting several never nears it.
+ * refused one is still answered 400 by the provider's callback. In KV, so a burst can pass a few over. Call it
+ * before the provider sees the request.
  * @param {Request} request
  * @param {{ get(key: string): Promise<string | null>, put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void> }} kv
  * @param {string | undefined} configured the allowlist the provider's callback checks

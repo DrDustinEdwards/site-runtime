@@ -1,8 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "entry": [
-    // Each .d.mts is the hand-written type file of the .mjs module beside it; consumers read it through the package's exports, and nothing in this repo imports it.
-    "**/*.d.mts",
     // Maintenance script the README tells the owner to run by hand with node, so nothing imports it.
     "update-disposable.mjs",
     // Maintenance script the README tells the owner to run by hand with node, so nothing imports it.

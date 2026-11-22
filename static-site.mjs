@@ -46,6 +46,22 @@ import { withPreloadHeader } from "./preload.mjs";
 import { serverTiming } from "./server-timing.mjs";
 import { canonicalRedirect } from "./url.mjs";
 
+/** @import { speculationRules } from "./prefetch.mjs" */
+/** @import { ServedSiteEntry } from "./sites.mjs" */
+
+/**
+ * @typedef {object} StaticSiteOptions
+ * @property {ServedSiteEntry} [site] The site's registry entry, whose set (staticHeaders) its `_headers` file was written from.
+ * @property {Readonly<Record<string, string>>} [headers] With `site`, what the site adds to that set; without it, the whole set.
+ * @property {string} [preload] The `Link` header value, `preloads(...).header`, sent on a 200 page.
+ * @property {string | null} [reportPath] Where Content-Security-Policy reports are received; null for none. Default /csp-report.
+ * @property {Parameters<typeof speculationRules>[0] | false} [prefetch] The prefetch rules' options, or false to serve none and send no Speculation-Rules header.
+ * @property {Parameters<typeof canonicalRedirect>[1] | false} [canonical] canonicalRedirect's options, or false to redirect nothing (a site whose files end in a slash).
+ * @property {string} [notFound] The 404 page's path. Default /404.
+ * @property {string} [siteName] The site's name on the maintenance page.
+ * @property {string | false} [health] Where the /health response (./health, with `sha` from DEPLOY_SHA) is served, or false for none. Default /health.
+ */
+
 /**
  * @typedef {{
  *   ASSETS: { fetch(request: Request): Promise<Response> },

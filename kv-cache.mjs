@@ -18,14 +18,28 @@
 
 import { logEvent } from "./log.mjs";
 
+/**
+ * The part of a KV namespace kvCached uses.
+ * @typedef {{ get(key: string, type: "json"): Promise<unknown>; put(key: string, value: string, options: { expirationTtl: number }): Promise<void>; }} KvLike
+ */
+
+/**
+ * @template T
+ * @typedef {object} KvCacheOptions
+ * @property {number} ttl Seconds an entry is kept; under KV's 60 is raised to 60.
+ * @property {(value: unknown) => boolean} [valid] True for a kept value that may be served (a shape check); default anything but null.
+ * @property {(value: T) => boolean} [keep] False keeps a fresh value out of KV (a failed or empty answer); default keeps everything.
+ * @property {boolean} [refresh] True skips the lookup and always reads, then keeps the new value (a "fresh" request); default false.
+ */
+
 /** KV's shortest expirationTtl, in seconds. */
 export const KV_MIN_TTL = 60;
 
 /**
  * @template T
- * @param {import("./kv-cache.d.mts").KvLike | null | undefined} kv the namespace; none reads straight through
+ * @param {KvLike | null | undefined} kv the namespace; none reads straight through
  * @param {string} key
- * @param {import("./kv-cache.d.mts").KvCacheOptions<T>} options
+ * @param {KvCacheOptions<T>} options
  * @param {() => Promise<T>} read
  * @returns {Promise<T>}
  */

@@ -26,6 +26,34 @@ import { redirectResponse } from "./http.mjs";
 import { DAILY_MINUTES } from "./cron.mjs";
 import { isDatabaseDown, logEvent } from "./log.mjs";
 
+/**
+ * One missing path in the report: "" as a referrer host is no referrer.
+ * @typedef {object} NotFoundReportRow
+ * @property {string} path
+ * @property {"page" | "probe"} kind
+ * @property {number} hits
+ * @property {Array<{ host: string; hits: number }>} referrers
+ */
+
+/**
+ * One redirect: `from` a path, `to` a path or an https URL, `status` 301 (default), 302, 307 or 308.
+ * @typedef {object} RedirectEntry
+ * @property {string} from
+ * @property {string} to
+ * @property {number} [status]
+ */
+
+/**
+ * The lookup from a path to its entry that tableRedirect takes.
+ * @typedef {(
+ * path: string,
+ * ) =>
+ * | { to: string; status?: number }
+ * | null
+ * | undefined
+ * | Promise<{ to: string; status?: number } | null | undefined>} RedirectLookup
+ */
+
 /** The longest path stored: a crawler probing for exploits sends very long URLs, each a row of that size. */
 export const NOT_FOUND_PATH_MAX = 512;
 
@@ -196,7 +224,7 @@ export async function pruneNotFound(db, { days = 90, now = new Date() } = {}) {
  * The nightly job that runs pruneNotFound, named "prune-404" on every site (one minute).
  * @param {D1Like} db
  * @param {{ days?: number }} [options]
- * @returns {import("./cron.d.mts").CronJob}
+ * @returns {import("./cron.mjs").CronJob}
  */
 export function pruneNotFoundJob(db, { days = 90 } = {}) {
   return {

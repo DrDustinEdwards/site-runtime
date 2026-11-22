@@ -1,5 +1,9 @@
 {
   "spelling": {
     "skip": ["test/fixtures/voice.mjs"]
+  },
+  "copies": {
+    "d1.mjs": "likeContains here takes a Drizzle column and returns SQL; Prelum's takes text and returns a pattern string: a name in common, not a copy.",
+    "time.mjs": "toDate here turns epoch milliseconds into a Date or null; Prelum's reads a feed value with a fallback: a name in common, not a copy."
   }
 }

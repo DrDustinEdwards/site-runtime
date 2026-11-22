@@ -5,33 +5,32 @@
  * stored. wrangler config: `"cache": { "enabled": true }` and
  * `"exports": { "default": { "type": "worker", "cache": { "enabled": false } }, "Renderer": { "type": "worker", "cache": { "enabled": true } } }`.
  *
- * A stored page is handed to every reader, so it must be the same for all of them: no per-request CSP nonce (trust its
- * inline scripts by hash), no cookie, nothing signed in. Signed-in pages keep the default, `private, no-store`.
+ * A stored page is the same for every reader: no per-request CSP nonce (trust inline scripts by hash), no cookie,
+ * nothing signed in. Signed-in pages keep `private, no-store`.
  */
 
 import { acceptedEncoding, isWrite, mediaType } from "./http.mjs";
+
+/**
+ * @typedef {object} PurgeCache
+ * @property {(options: { tags: string[] }) => Promise<{ success: boolean; errors?: unknown[] }>} [purge]
+ */
 
 /** Stored at the edge, never in a browser: a purge cannot reach a browser, so max-age stays 0. */
 export const SHARED_CACHE_CONTROL = "public, max-age=0";
 
 /**
- * The default for anything a route does not mark shared. Omitting Cache-Control is not opting out: the platform caches
- * heuristically. A signed-in page keeps it on purpose, though `no-store` costs the back/forward cache in Firefox and
- * Safari ("DON'T use Cache-Control: no-store for non-sensitive resources", Chrome's Modern Web Guidance, performance):
- * such a page is private data, and OWASP ASVS 5.0 (14.3.2) asks that sensitive data not be stored in a browser cache.
- * Chrome stores no-store pages in its back/forward cache since its 2025 rollout, for 3 minutes, evicting one when a
- * cookie changes, so signing out still drops it (developer.chrome.com/docs/web-platform/bfcache-ccns). Public pages
- * are never no-store: publicPageHeaders sends `public, max-age=0`, which every browser's back/forward cache keeps.
+ * The default for anything a route does not mark shared (omitting Cache-Control is not opting out: the platform
+ * caches heuristically). A signed-in page keeps it on purpose despite the back/forward cache cost in Firefox and
+ * Safari: it is private data (OWASP ASVS 5.0, 14.3.2). Public pages are never no-store: publicPageHeaders sends
+ * `public, max-age=0`.
  */
 export const UNCACHED = "private, no-store";
 
 /**
- * The `headers` of every private page, the network's one definition of one: admin pages, every signed-in page, the
- * sign-in, sign-up and mailed-link confirm pages, account pages, and any page drawn for one reader. UNCACHED
- * plus `no-transform`, so the Web Analytics beacon Cloudflare injects into HTML never reaches it
- * (developers.cloudflare.com/web-analytics/faq/) and only public pages are counted. Cloudflare then compresses nothing
- * (developers.cloudflare.com/cache/concepts/cache-control/), so the Worker does (`compressUntransformed`, which the
- * gateway runs on every answer). It goes on pages, never on assets, which keep the edge's compression and cache.
+ * The `headers` of every private page (admin, signed-in, sign-in, account, any page drawn for one reader): UNCACHED
+ * plus `no-transform`, so the Web Analytics beacon never reaches it and only public pages are counted. Cloudflare
+ * then compresses nothing, so the Worker does (`compressUntransformed`). Pages only, never assets.
  */
 export const PRIVATE_PAGE_HEADERS = /* @__PURE__ */ Object.freeze({
   "Cache-Control": `${UNCACHED}, no-transform`,
@@ -44,11 +43,9 @@ const COMPRESSIBLE =
   /^(?:text\/|application\/(?:json|javascript|xml|[\w.-]+\+(?:json|xml))$|image\/svg\+xml$)/;
 
 /**
- * A `no-transform` answer, compressed by the Worker, since the edge leaves it as the Worker sent it: Content-Encoding
- * names the coding the reader takes (./http acceptedEncoding) and the runtime encodes the body as it sends it
- * (ResponseInit `encodeBody: "automatic"`, the default), as the speculation rules file is sent. Vary names
- * Accept-Encoding. Anything else, an answer already encoded, one with no body and a type not worth compressing
- * comes back as it was.
+ * A `no-transform` answer, compressed by the Worker: Content-Encoding names the coding the reader takes (./http
+ * acceptedEncoding) and the runtime encodes the body (`encodeBody: "automatic"`). Vary names Accept-Encoding.
+ * An answer already encoded, with no body, or of a type not worth compressing comes back as it was.
  * @param {Response} response
  * @param {Request} [request]
  */
@@ -88,9 +85,8 @@ const UNTIL_FLOOR_SECONDS = 60;
  * The headers a route returns to have its page stored. A day fresh, a week served stale while it re-renders: safe
  * because every write purges and every deploy starts cold (the Worker version is in the key unless
  * `cross_version_cache` is on). Sent as `Cloudflare-CDN-Cache-Control`, never `s-maxage`, which implies
- * proxy-revalidate, so Cloudflare would refuse to serve stale. The Workers cache serves the stored page when a
- * re-render fails, with no `stale-if-error` needed. `until` is when the page changes with no write to purge on (the
- * next scheduled post on a page that lists posts): it stays fresh no later than that, and no less than a minute.
+ * proxy-revalidate and refuses stale. `until` is when the page changes with no write to purge on (the next
+ * scheduled post): it stays fresh no later than that, and no less than a minute.
  * @param {{ tags?: string[], freshSeconds?: number, staleSeconds?: number, until?: Date | null, now?: Date }} [options]
  */
 export function publicPageHeaders({
@@ -131,8 +127,8 @@ export function publicPageHeaders({
 
 /**
  * Query parameters that only say where a reader came from: ad and newsletter click ids and campaign tags. The page is
- * the same with or without them, so they are left out of the key, as WP Rocket and Cloudflare's cache rules do; the
- * Renderer still gets the full URL. `utm_` is a prefix.
+ * the same with or without them, so they are left out of the key; the Renderer still gets the full URL. `utm_` is
+ * a prefix.
  */
 export const TRACKING_PARAMS = [
   "utm_",
@@ -188,13 +184,12 @@ const cookieNames = (/** @type {Request} */ request) =>
     .filter(Boolean);
 
 /**
- * Run in the Renderer on every response, last. Anything not marked shared, anything but a 200 (an error page rendered
- * under a shared route's headers) and anything setting a cookie is sent `private, no-store` (keeping `no-transform`); anything not shared gets
- * an edge `no-store` and no tag, so the edge stores only what a purge reaches. Pass the request: a page rendered for a cookie (other than `publicCookies`, which the key
- * already holds) is never stored, and neither is the answer to a HEAD, whose empty body would be served to every
- * reader of the page. A stored page with no validator gets `Last-Modified`, the time it was rendered: it stays the
- * same until a purge or a deploy renders it again, so `forReader` can answer a returning reader 304. Returns the
- * response, rebuilt when its headers are immutable.
+ * Run in the Renderer on every response, last. Anything not marked shared, anything but a 200 and anything setting
+ * a cookie is sent `private, no-store` (keeping `no-transform`) with an edge `no-store` and no tag, so the edge
+ * stores only what a purge reaches. Pass the request: a page rendered for a cookie (other than `publicCookies`,
+ * which the key already holds) is never stored, nor is the answer to a HEAD. A stored page with no validator gets
+ * `Last-Modified`, so `forReader` can answer a returning reader 304. Returns the response, rebuilt when its
+ * headers are immutable.
  * @param {Response} response
  * @param {Request} [request]
  * @param {{ publicCookies?: readonly string[] }} [options]
@@ -205,7 +200,6 @@ export function settleCacheHeaders(response, request, { publicCookies = [] } = {
     request?.method === "HEAD" ||
     Boolean(request && !cookieNames(request).every((name) => publicCookies.includes(name)));
   const apply = (/** @type {Headers} */ headers) => {
-    // A private page keeps no-transform whatever else changes, so its error page or a cookie never lets the beacon in.
     if (!headers.has("Cache-Control") || response.status !== 200 || personal)
       headers.set(
         "Cache-Control",
@@ -237,12 +231,10 @@ export function settleCacheHeaders(response, request, { publicCookies = [] } = {
 }
 
 /**
- * A shared page's ETag, from its body, so every stored copy of the same page carries the same validator. A
- * render-time `Last-Modified` differs between the copies the edge's servers each store, so a reader holding one copy
- * got 200 for a conditional request answered by another, and again after every purge. Run in the Renderer, which
- * only ever sees a GET (`forRenderer`), before `settleCacheHeaders`, which then leaves the validator alone. A page
- * that is not shared, has a cookie to set, or names its own ETag comes back as it was. Weak, since the edge
- * compresses the body it sends. Kept small: every Worker that bundles it counts these bytes against its size budget.
+ * A shared page's ETag, from its body, so every stored copy carries the same validator (a render-time
+ * `Last-Modified` differs between copies, so a conditional request got 200 from another copy). Run in the Renderer
+ * (`forRenderer`, only GETs) before `settleCacheHeaders`. A page that is not shared, has a cookie to set, or names
+ * its own ETag comes back as it was. Weak, since the edge compresses the body. Kept small: bundled bytes count.
  * @param {Response} response
  * @returns {Promise<Response>}
  */
@@ -463,12 +455,18 @@ export function purgeCoalesced(cache, tags, why, record, pause = wait) {
  * close together share one purge request (`purgeCoalesced`). Awaiting it takes the window plus any rate-limit retries,
  * so a write starts it in `waitUntil` and does not wait.
  * With `kv`, the outcome is recorded (`recordPurge`) for /health's `purgeCheck`, whichever way the purge was asked for.
- * @template {new (...args: any[]) => { ctx: { cache?: any }, env?: any }} T
- * @param {T} Base
+ * @template {abstract new (...args: any[]) => object} T
+ * @param {T} Base WorkerEntrypoint, or a class built on it
  * @param {{ kv?: (env: any) => Parameters<typeof recordPurge>[0] }} [options] the KV namespace to record in, from the Renderer's env
+ * @returns {T & (abstract new (...args: any[]) => { purgePages(why: string, tags?: string[]): Promise<boolean | null> })}
  */
 export function withPurgePages(Base, { kv } = {}) {
-  return class extends Base {
+  // JavaScript cannot declare the abstract class TypeScript asks of a mixin over an abstract base, so the body sees the
+  // base as the concrete entrypoint it is at run time.
+  const Entrypoint = /** @type {new (...args: any[]) => { ctx: { cache?: any }, env?: any }} */ (
+    /** @type {unknown} */ (Base)
+  );
+  const Mixed = class extends Entrypoint {
     /** @param {string} why @param {string[]} [tags] */
     purgePages(why, tags = [PAGES_CACHE_TAG]) {
       return purgeCoalesced(this.ctx.cache, tags, why, (purged, reason) =>
@@ -476,6 +474,7 @@ export function withPurgePages(Base, { kv } = {}) {
       );
     }
   };
+  return /** @type {any} */ (Mixed);
 }
 
 /**
@@ -516,6 +515,7 @@ export async function purgeViaRenderer(why, log = console.error) {
  * A site-api publish hook (its `PublishHook` shape) that purges the stored pages when a schedule changes one: a
  * schedule has no request, so no gateway purges after it. A Carrel request's write is purged by `purgeAfterWrite`.
  * @param {{ purge?: (why: string) => Promise<boolean | null> }} [options] `purgeViaRenderer` unless given
+ * @returns {{ name: "edge-page-purge"; run(event: { trigger: string; action: string; path: string | null }): Promise<boolean> }}
  */
 export function schedulePurgeHook({ purge = purgeViaRenderer } = {}) {
   return {

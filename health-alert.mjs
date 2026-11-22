@@ -22,7 +22,7 @@ ON CONFLICT (check_name) DO UPDATE SET ok = excluded.ok, detail = excluded.detai
 /**
  * Mail when any check changed state, then record the states that changed or are new.
  * @param {{
- *   db: import("./cron.d.mts").D1Like,
+ *   db: import("./cron.mjs").D1Like,
  *   results: { name: string, ok: boolean, detail: string }[],
  *   send: (mail: { subject: string, text: string }) => Promise<boolean>,
  *   site: string,

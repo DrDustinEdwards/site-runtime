@@ -26,6 +26,38 @@ import { safeEqual } from "./compare.mjs";
 import { base64url, fromBase64urlText, hmacSha256 } from "./encoding.mjs";
 import { logEvent } from "./log.mjs";
 
+/** @import { JwtRefusal } from "./access-login.mjs" */
+
+/**
+ * @typedef {"not-configured" | "no-token" | JwtRefusal} AccessRefusal
+ */
+
+/**
+ * @typedef {| { ok: true; claims: Record<string, unknown> }
+ * | { ok: false; reason: AccessRefusal }} AccessVerdict
+ */
+
+/**
+ * The Access settings a site's Env declares for `accessAdmin`.
+ * @typedef {object} AccessSecrets
+ * @property {string} ACCESS_TEAM_DOMAIN https://<team>.cloudflareaccess.com
+ * @property {string} ACCESS_AUD The Access application's Audience (AUD) tag.
+ * @property {string} [ACCESS_DEV_BYPASS] "1" lets a localhost URL in with no token, as the first admin. Development only.
+ */
+
+/**
+ * @typedef {object} AdminSettings
+ * @property {string} [ADMIN_EMAIL]
+ * @property {string} [CO_OWNER_EMAILS]
+ */
+
+/**
+ * A signed-in session that is not an Access token on the request: an opaque id only the server can make, and the sign-in time.
+ * @typedef {object} IdleSession
+ * @property {string} id
+ * @property {number} signedInAt
+ */
+
 export const ACCESS_JWT_HEADER = "cf-access-jwt-assertion";
 export const ACCESS_COOKIE = "CF_Authorization";
 
@@ -51,8 +83,8 @@ export function accessIssuer(teamDomain) {
   return `https://${host.toLowerCase()}`;
 }
 
-/** @typedef {import("./access-login.d.mts").Jwk} Jwk */
-/** @typedef {import("./access-login.d.mts").KeySource} KeySource */
+/** @typedef {import("./access-login.mjs").Jwk} Jwk */
+/** @typedef {import("./access-login.mjs").KeySource} KeySource */
 
 /** @type {Map<string, { keys: Jwk[], fetchedAt: number }>} */
 const cachedKeys = new Map();
@@ -121,7 +153,7 @@ export function accessToken(request, { cookie = false } = {}) {
  * @param {string} token
  * @param {KeySource} keys
  * @param {{ issuer: string, audience: string, now?: number }} expect `now` in epoch milliseconds
- * @returns {Promise<import("./access-login.d.mts").JwtVerdict>}
+ * @returns {Promise<import("./access-login.mjs").JwtVerdict>}
  */
 export function verifyAccessToken(token, keys, expect) {
   return verifyJwt(token, keys, expect);
@@ -133,7 +165,7 @@ export function verifyAccessToken(token, keys, expect) {
  * caller reads for `email` (a person) or `common_name` (a service token). Throws when the keys cannot be fetched.
  * @param {Request} request
  * @param {{ teamDomain: string | undefined, audience: string | undefined, cookie?: boolean, keys?: KeySource, now?: number }} options
- * @returns {Promise<import("./access.d.mts").AccessVerdict>}
+ * @returns {Promise<AccessVerdict>}
  */
 export async function verifyAccessRequest(
   request,
@@ -203,8 +235,8 @@ function emailList(value) {
  * `adminEmails(env)`) is who may pass; a site that checks the token against its own signed-in user passes that one
  * email. With ACCESS_DEV_BYPASS="1" on a localhost URL the first admin passes with no token.
  * @param {Request} request
- * @param {Partial<import("./access.d.mts").AccessSecrets> & { ADMIN_EMAIL?: string, CO_OWNER_EMAILS?: string }} env
- * @param {{ admins?: string | readonly string[], keys?: import("./access-login.d.mts").KeySource, now?: number }} [options]
+ * @param {Partial<AccessSecrets> & { ADMIN_EMAIL?: string, CO_OWNER_EMAILS?: string }} env
+ * @param {{ admins?: string | readonly string[], keys?: import("./access-login.mjs").KeySource, now?: number }} [options]
  * @returns {Promise<{ email: string } | null>}
  */
 export async function accessAdmin(request, env, { admins, keys, now } = {}) {

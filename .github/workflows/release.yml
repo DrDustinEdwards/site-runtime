@@ -30,6 +30,10 @@ jobs:
       id-token: write
       attestations: write
     uses: DrDustinEdwards/devkit/.github/workflows/release.yml@56ee28ee00f613b77643071d4187d998bad5e55e # v0.58.0
+    # The declarations are built from the modules' JSDoc (prepare), so the tagged commit carries dist/.
+    with:
+      build: true
+      node-version-file: .nvmrc
 
   bump:
     needs: release

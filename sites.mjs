@@ -3,13 +3,13 @@
  * (`buildSecurityHeaders({ site })`), the check (`checkSecurityHeaders(headers, { site })`) and the live check
  * (bin/site-runtime-security.mjs) all read it, so a site cannot build one set and be graded against another.
  *
- * Change this file, then run `node update-sites-values.mjs`: the package serves it as sites-values.mjs (the values, what
- * a Worker bundles) and sites-deviations.mjs (the reasons and deviations, which only the check reads).
+ * Change this file, then run `node update-sites-values.mjs` (writes sites-values.mjs, which a Worker bundles, and
+ * sites-deviations.mjs, which only the check reads).
  *
  * An entry is filled from the site's own code (the file is named beside it), with the reason that code gives. A
  * deviation an audit marked as a gap is left out on purpose, so the check keeps failing it until the site is fixed:
- * dustinedwards.info's nine-feature Permissions-Policy and one-year HSTS, germomics' wildcard script hosts, and `Cross-Origin-Resource-Policy: cross-origin` on every response (a site marks shared
- * media with corpFor, ./headers, instead).
+ * dustinedwards.info's nine-feature Permissions-Policy and one-year HSTS, germomics' wildcard script hosts, and
+ * `Cross-Origin-Resource-Policy: cross-origin` on every response (corpFor, ./headers, marks shared media instead).
  *
  * - `headers`: overrides in buildSecurityHeaders' shape, `{ value, reason }`, `value: null` to send none.
  * - `optIns`: the builder options a check must accept, each `{ value, reason }`: cloudflareWebAnalytics (the edge
@@ -19,21 +19,19 @@
  *   trustedTypes (C7, `true` enforced or "report-only"), denyUnlisted (C9, `true` or "report-only"), integrityPolicy
  *   (S2, "enforce" or "report-only", which buildSecurityHeaders writes), coep (I3, which buildSecurityHeaders writes)
  *   uploads (A3, the path prefix its uploaded files are served under, which the live check samples) and embeds (the
- *   post players of ./embeds: their features in the Permissions-Policy, their origins in frame-src, which the check
- *   holds the site's policy to, and coep kept Report-Only). A
- *   "report-only" one is met by the site's Report-Only policy (buildStagedPolicy, ./csp) or header, whose reports reach
- *   the sink (./csp-report), the step before enforcing.
+ *   post players of ./embeds: their features in the Permissions-Policy, their origins in frame-src, and coep kept
+ *   Report-Only). A "report-only" one is met by the site's Report-Only policy (buildStagedPolicy, ./csp) or header,
+ *   whose reports reach the sink (./csp-report).
  * - `deviations`: a checklist item the site does not meet, by item id, with the reason the site's code gives; the
- *   check then reports it as a warning, not an error. S2, C3, C7, C9 and I3 are graded on every site, so what a site
- *   neither meets nor declines is an error, and the deviations are the whole list of what each site skips. K1's cookie
- *   prefix takes one too, its `value` naming the cookies it covers. FAMILY_DEVIATIONS holds the items no site can meet.
+ *   check then reports a warning, not an error. S2, C3, C7, C9 and I3 are graded on every site, so what a site
+ *   neither meets nor declines is an error. K1's cookie prefix takes one too, its `value` naming the cookies it
+ *   covers. FAMILY_DEVIATIONS holds the items no site can meet.
  * - `aliases`: other origins the same Worker answers for, such as the domain it will move to.
  * - `signIn`: what the live sign-in check (`./sign-in-live.mjs`, area 3) probes beyond the site's own /admin and /mcp:
  *   `admin`, more pages that must be gated (a path on the site or a URL on another host), and `mcp`, MCP servers that
  *   must answer 401 with their sign-in metadata. A declared page or server that does not answer is an error.
- * - `oldSite`: the site's real domain while it still serves the live old site the Worker replaces. A site served from
- *   workers.dev is noindexed there while, and only while, it has one (A6, the live check): a workers.dev host with no
- *   old site behind its domain is the site, and noindex would take it out of search.
+ * - `oldSite`: the site's real domain while it still serves the live old site the Worker replaces. A workers.dev
+ *   host is noindexed only while it has one (A6, the live check).
  * - `assets`: how the static files reach a reader without the Worker, and the `_headers` site-runtime-headers writes
  *   for them (staticHeaders, ./static-site): `skipWorker`, the patterns `run_worker_first` leaves to the asset server;
  *   `policy`, a static site's one page policy (buildContentSecurityPolicy's options beside the policy opt-ins), with
@@ -42,6 +40,22 @@
 
 import { CSP_REPORT_GROUP, CSP_REPORT_PATH, buildPolicy } from "./csp.mjs";
 import { PASSKEY_OVERRIDES, corpFor, entryOverrides, permissionsAllowingSelf } from "./headers.mjs";
+
+/**
+ * `T` with every `reason` key removed, at any depth.
+ * @template T
+ * @typedef {T extends readonly (infer U)[]
+ * ? readonly WithoutReasons<U>[]
+ * : T extends object
+ *   ? { [K in keyof T as K extends "reason" ? never : K]: WithoutReasons<T[K]> }
+ *   : T} WithoutReasons
+ */
+
+/**
+ * An entry as `./sites` serves it (sites-values.mjs): SiteEntry without its reasons and deviations (only the check
+ * reads those, sites-deviations.mjs).
+ * @typedef {WithoutReasons<Omit<SiteEntry, "deviations">>} ServedSiteEntry
+ */
 
 export { PASSKEY_OVERRIDES, permissionsAllowingSelf };
 
@@ -56,8 +70,8 @@ const beaconManual = (/** @type {string} */ where) => ({
 const passkey = { value: true, reason: "The family sign-in offers a passkey (./sign-in)." };
 const STRICT_ORIGIN = "strict-origin-when-cross-origin";
 
-// A page that posts a form without JavaScript (the sign-in link's confirm page) sends `Origin: null` under no-referrer,
-// and React Router and Better Auth refuse it with a 400, so the emailed link never signs anyone in.
+// A no-JS form post (the sign-in link's confirm page) sends `Origin: null` under no-referrer, which React Router and
+// Better Auth refuse with a 400.
 const signInReferrer = {
   value: STRICT_ORIGIN,
   reason:
@@ -105,8 +119,7 @@ const popupSignIn = {
  */
 
 /**
- * The checklist items no site in the family can meet, each with why. The live check reports each as a notice, never
- * an error or a warning, so the reason stays in sight without failing anyone.
+ * The checklist items no site in the family can meet, each with why, reported by the live check as a notice.
  * @type {Readonly<Record<string, string>>}
  */
 export const FAMILY_DEVIATIONS = /* @__PURE__ */ Object.freeze({
@@ -115,8 +128,7 @@ export const FAMILY_DEVIATIONS = /* @__PURE__ */ Object.freeze({
   R4: "JSON routes refusing text/plain and form bodies (requireJson, ./body): the live check has no session, and every JSON route a stranger can reach answers 401 before it reads a body, so only the site's own code can show it.",
 });
 
-// Area 2 (2026-10-31): what every site is graded on (S2, C3, C7, C9, I3), staged or declined with the reason its code gives.
-
+// Area 2 (2026-10-31): S2, C3, C7, C9, I3, staged or declined with the reason the site's code gives.
 const coepCredentialless = {
   value: /** @type {const} */ ("credentialless"),
   reason:
@@ -197,17 +209,14 @@ const beaconNotStrict = {
     "buildContentSecurityPolicy refuses strictDynamic beside cloudflareWebAnalytics: 'strict-dynamic' makes a browser ignore host sources, and the edge injects the Web Analytics beacon with no nonce, and with an integrity that changes at each Cloudflare release, so neither a nonce nor a hash can let it run.",
 };
 
-// bsw's beacon is the manual one (Cloudflare does not proxy workers.dev), which the page controls, so the automatic beacon's
-// reason does not apply. 'strict-dynamic' still needs a nonce or hashes on every script, and neither fits: its pages are
-// stored at the edge and shared (a per-request nonce would be shared too), and a hash admits an external script only
-// with an `integrity` attribute, which Cloudflare says the manual beacon cannot carry (it ships unpinned, so a pinned
-// hash would block it at the next release). The policy names the two files exactly instead: 'self' and beacon.min.js.
+// bsw's beacon is the manual one (Cloudflare does not proxy workers.dev), so the automatic beacon's reason does not
+// apply; 'strict-dynamic' still fits neither a shared edge-cached page (no nonce) nor an unpinned beacon (no hash).
 const bswNotStrict = {
   reason:
     "Pages are edge-cached and shared, so a per-request nonce cannot cover them, and a hash admits an external script only with an integrity attribute, which Cloudflare's manual Web Analytics beacon cannot carry (unpinned by design). The policy names /site.js ('self') and the one beacon file exactly, with no wildcard host.",
 };
 
-/** The doors' set: no script, nothing loaded, so each promise is met by the policy withMcpHeaders (./mcp-server) writes. */
+/** The doors' set: no script, nothing loaded, met by the policy withMcpHeaders (./mcp-server) writes. */
 const doorOptIns = {
   coep: doorCoep,
   integrityPolicy: integrityNoScript,
@@ -220,7 +229,7 @@ const doorOptIns = {
 };
 
 const IMMUTABLE = { "Cache-Control": "public, max-age=31536000, immutable" };
-/** The build's content-hashed output: Vite's /assets/, and devkit siteScript's /islands/ and root /site-<hash>.js where a site has them. */
+/** The build's content-hashed output: /assets/, /islands/ and root /site-<hash>.js where a site has them. */
 const hashed = (/** @type {string[]} */ ...patterns) =>
   Object.fromEntries(patterns.map((p) => [p, IMMUTABLE]));
 const sharedImage = { "Cross-Origin-Resource-Policy": /* @__PURE__ */ corpFor("image/png") };
@@ -232,8 +241,7 @@ const staticPages = (/** @type {string[]} */ patterns, /** @type {string} */ whe
 /* Each entry is its own export, so a Worker that imports one (`import { germomics } from "./sites"`) bundles that
  * entry alone; the calls are marked pure so a bundler can drop the rest. */
 
-// workers/security-headers.mjs, workers/csp.mjs. COOP is the standard's same-origin: the app opens no popup (no
-// window.open in app/ or workers/) and the admin sign-in is a full-page Access redirect.
+// workers/security-headers.mjs, workers/csp.mjs. COOP is the standard's same-origin: no popup, a full-page Access redirect.
 /** @type {SiteEntry} */
 export const dustinedwardsInfo = {
   id: "dustinedwards-info",
@@ -261,7 +269,6 @@ export const dustinedwardsInfo = {
   assets: {
     paths: {
       .../* @__PURE__ */ hashed("/assets/*", "/islands/*", "/site-*"),
-      // Pictures at static paths that other origins load: the share card, and those a page or Carrel's preview draws.
       .../* @__PURE__ */ Object.fromEntries(
         [
           "/diagrams/*",
@@ -273,8 +280,7 @@ export const dustinedwardsInfo = {
       ),
     },
   },
-  // The lab bench is admin-only, behind its own Access application (dustinedwards-lab-login). /lab itself is gone: the
-  // public lab registry is /research/lab, and the bench moved to /lab-bench (the site's app/lab/path.mjs).
+  // The lab bench is admin-only, behind its own Access application (dustinedwards-lab-login), at /lab-bench (app/lab/path.mjs).
   signIn: { admin: ["/lab-bench"], mcp: ["https://admin-mcp.dustinedwards.info/mcp"] },
 };
 
@@ -316,13 +322,11 @@ export const foxhound = {
   deviations: { C3: beaconNotStrict },
   assets: {
     paths: {
-      // The favicons and PNGs beside a Foxhound link (the RSS channel image) are images other origins load.
       "/*.ico": { "Cross-Origin-Resource-Policy": /* @__PURE__ */ corpFor("image/x-icon") },
       "/*.png": sharedImage,
       .../* @__PURE__ */ hashed("/assets/*", "/islands/*", "/site-*"),
     },
   },
-  // The merchants' MCP server on the site, and the admin's on its own host.
   signIn: { mcp: ["https://admin-mcp.foxhoundapp.com/mcp", "https://foxhoundapp.com/mcp"] },
 };
 
@@ -455,15 +459,14 @@ export const bsw = {
         "/team/*",
         "/services/*",
       ),
-      // The site card and each page's own card (drawn at build time) are fetched by other sites' link previews.
       "/og-image.png": sharedImage,
       "/og/*": sharedImage,
     },
   },
 };
 
-// app/lib/security-headers.ts; SITE_ORIGIN is txasm.org (app/lib/site-meta.ts), served from workers.dev until cutover.
-// txasm.org itself serves no live site (a suspended host), so the workers.dev host stays indexed (no oldSite).
+// app/lib/security-headers.ts; SITE_ORIGIN is txasm.org (app/lib/site-meta.ts), served from workers.dev until cutover
+// (txasm.org serves no live site, so the workers.dev host stays indexed: no oldSite).
 /** @type {SiteEntry} */
 export const txasm = {
   id: "txasm",
@@ -534,7 +537,6 @@ export const carrelDesk = {
     denyUnlisted: unlistedStaged,
   },
   assets: { paths: /* @__PURE__ */ hashed("/assets/*") },
-  // All of Desk is behind Access.
   signIn: { admin: ["/"] },
 };
 
@@ -567,12 +569,10 @@ export const capsidPortal = {
         "The dashboard is a Vite build served as files under script-src 'self' (src/dashboard-csp.ts): no nonce or hash for 'strict-dynamic' to start from.",
     },
   },
-  // All of the Portal is behind Access for SaaS.
   signIn: { admin: ["/"] },
 };
 
-// src/security-headers.ts: its only page is the /authorize consent dialog MCP clients open. Its policy (DEFAULT_CSP and
-// the dialog's) is the door's: default-src 'none' and require-trusted-types-for 'script'.
+// src/security-headers.ts: its only page is the /authorize consent dialog; its policy is the door's.
 /** @type {SiteEntry} */
 export const capsidMcp = {
   id: "capsid-mcp",

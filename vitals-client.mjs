@@ -21,6 +21,7 @@ import { CSP_REPORT_PATH } from "./csp.mjs";
  * The beacon body for one INP report, in the Reporting API's array shape the receiver reads.
  * @param {import("web-vitals/attribution").INPMetricWithAttribution} metric
  * @param {string} page
+ * @returns {Array<{ type: "web-vital"; body: Record<string, unknown> }>}
  */
 export function inpEntry(metric, page) {
   const { attribution: a } = metric;

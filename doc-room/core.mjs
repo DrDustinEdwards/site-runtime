@@ -4,6 +4,102 @@
 import * as Y from "yjs";
 
 /**
+ * Who a connection is: set by the app's door when it lets the connection in, never by the browser. Capsomer collab-editor's RoomViewer.
+ * @typedef {object} RoomViewer
+ * @property {number} id
+ * @property {string} name
+ * @property {"edit" | "suggest"} access Changes the text, or only suggests.
+ * @property {boolean} [deletesAny] Deletes anyone's comment, not only their own (an app's owner).
+ */
+
+/**
+ * What the room tracks about the shared copy besides its text.
+ * @typedef {object} RoomMeta
+ * @property {string | null} version
+ * @property {string} saved
+ */
+
+/**
+ * The shared copy's operations, from the editor that defines it (Capsomer collab-editor): the room is
+ * the same for any document model that gives these.
+ *
+ * - `metaKey`: The Y.Map holding the room's own state (version, saved text), which a suggester never changes.
+ * - `load`: Loads `markdown` as the whole text (and the version and saved text). `input` carries the model's own options too.
+ * - `json`: The document as JSON, for comparing.
+ * - `settle`: The JSON with every suggestion rejected.
+ * - `suggestions`: Each person's suggestions in the JSON (by id as a string): what they suggested, compared as JSON.
+ * - `anchor`: A comment's anchor on the text from `from` to `to` (Capsomer collab-editor's anchorAt), for threads brought in with a document.
+ * @typedef {{ metaKey: string; isSeeded(doc: Y.Doc): boolean; readMeta(doc: Y.Doc): RoomMeta; markdown(doc: Y.Doc): string; load( doc: Y.Doc, input: { markdown: string; version: string | null; saved?: string } & Record<string, unknown>, ): void; markSaved(doc: Y.Doc, version: string | null, markdown: string): void; json(doc: Y.Doc): unknown; settle(json: unknown): unknown; suggestions(json: unknown): Map<string, unknown>; anchor?(doc: Y.Doc, from: number, to: number): string | null; }} DocModel
+ */
+
+/**
+ * One stored comment, as the store keeps it.
+ * @typedef {object} StoredComment
+ * @property {string} id
+ * @property {string | null} parentId
+ * @property {number} personId
+ * @property {string} body
+ * @property {string | null} anchor
+ * @property {string} quote
+ * @property {string} createdAt
+ */
+
+/**
+ * One comment as everyone in the room sees it. Capsomer collab-editor's RoomComment.
+ * @typedef {object} RoomComment
+ * @property {string} id
+ * @property {string | null} parentId
+ * @property {number} personId
+ * @property {string} name
+ * @property {string} body
+ * @property {string | null} anchor
+ * @property {string} quote
+ * @property {string} createdAt
+ * @property {string | null} editedAt
+ * @property {string | null} resolvedAt
+ */
+
+/**
+ * Where a room's comment threads are kept: the app's own storage, scoped to the room's file.
+ *
+ * - `list`: Every comment not deleted, oldest first.
+ * - `find`: A comment not deleted, or null.
+ * - `resolve`: `by` null reopens the thread.
+ * - `remove`: Marks it deleted, with its replies when `withReplies`.
+ * @typedef {{ list(): Promise<RoomComment[]>; find(id: string): Promise<{ personId: number; parentId: string | null } | null>; add(comment: StoredComment): Promise<void>; edit(id: string, body: string, at: string): Promise<void>; resolve(id: string, by: number | null, at: string): Promise<void>; remove(id: string, withReplies: boolean, at: string): Promise<void>; }} CommentStore
+ */
+
+/**
+ * @typedef {| { t: "comment"; body: string; anchor: string | null; quote: string; parentId?: string | null }
+ * | { t: "comment-edit"; id: string; body: string }
+ * | { t: "comment-resolve"; id: string; resolved: boolean }
+ * | { t: "comment-delete"; id: string }} CommentMessage
+ */
+
+/**
+ * @typedef {{ t: "flush"; n: number } | CommentMessage} ClientMessage
+ */
+
+/**
+ * @typedef {object} RoomPerson
+ * @property {string} conn
+ * @property {number} id
+ * @property {string} name
+ * @property {RoomViewer["access"]} access
+ * @property {number[]} clients
+ */
+
+/**
+ * Capsomer collab-editor's ServerMessage.
+ * @typedef {| { t: "people"; people: RoomPerson[] }
+ * | { t: "comments"; comments: RoomComment[] }
+ * | { t: "flushed"; n: number }
+ * | { t: "refused"; reason: string }
+ * | { t: "replaced"; by: string }
+ * | { t: "error"; message: string }} ServerMessage
+ */
+
+/**
  * The header the app's own door sets on the WebSocket it forwards to the room, saying who the person is
  * (JSON of a RoomViewer). The browser never reaches the room directly, so nothing else sets it.
  */
@@ -33,7 +129,7 @@ export const MAX_ANCHOR = 2_000;
 /**
  * The forwarded request with the person on it: what the app's door hands the room's stub.
  * @param {Request} request
- * @param {import("./core.d.mts").RoomViewer} viewer
+ * @param {RoomViewer} viewer
  */
 export function viewerRequest(request, viewer) {
   const headers = new Headers(request.headers);
@@ -44,7 +140,7 @@ export function viewerRequest(request, viewer) {
 /**
  * The person the door put on this request, or null when there is none or it is not one.
  * @param {Request} request
- * @returns {import("./core.d.mts").RoomViewer | null}
+ * @returns {RoomViewer | null}
  */
 export function readViewer(request) {
   const raw = request.headers.get(DOC_ROOM_VIEWER_HEADER);
@@ -84,7 +180,7 @@ export function withinLimit(size, access) {
  * Whether `update` changes only suggestions, and only the suggester's own: with every suggestion
  * rejected the document reads the same before and after, the room's own map is untouched, and everyone
  * else's suggestions are as they were. Tried on a copy, so a refused update never reaches the room.
- * @param {import("./core.d.mts").DocModel} model
+ * @param {DocModel} model
  * @param {Y.Doc} doc
  * @param {Uint8Array} update
  * @param {number} by
@@ -123,9 +219,9 @@ export function suggestOnly(model, doc, update, by) {
  * null when it was done. Everyone in the room comments; a comment is changed only by its writer; a
  * thread is resolved by its starter or by someone who edits; a comment is deleted by its writer or by
  * someone who `deletesAny`, and a thread's first comment takes its replies with it.
- * @param {import("./core.d.mts").CommentStore} store
- * @param {import("./core.d.mts").RoomViewer} viewer
- * @param {import("./core.d.mts").CommentMessage} message
+ * @param {CommentStore} store
+ * @param {RoomViewer} viewer
+ * @param {CommentMessage} message
  * @param {string} [now]
  * @returns {Promise<string | null>}
  */

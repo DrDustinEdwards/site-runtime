@@ -5,6 +5,24 @@
  * so every site is read the same way. No imports: a page's script can read a body too.
  */
 
+/**
+ * Reading a /health answer (health-read.mjs): the family format, the older `ok` bodies and Capsid's own.
+ * @typedef {object} ParsedHealth
+ * @property {"ok" | "degraded" | "down" | null} status Null when the body says nothing about health: no status the format names and no `ok` boolean.
+ * @property {string | null} sha The deployed commit, or null when the body reports none.
+ * @property {string | null} problem Why the status is not ok: the failing checks' names and the backup warning; null when there is nothing to say.
+ */
+
+/**
+ * @typedef {object} HealthRow
+ * @property {string} name
+ * @property {"pass" | "warn" | "fail"} status
+ * @property {boolean} ok
+ * @property {string} [detail]
+ * @property {number} [present] A failing drift check's "present of expected" counts.
+ * @property {number} [expected]
+ */
+
 /** @type {Record<string, "ok" | "degraded" | "down">} */
 const STATUS_OF = {
   ok: "ok",
@@ -24,7 +42,7 @@ const COUNTS = /^(\d+) of (\d+)$/;
  * whoever wants one, never a crash in the reader. A backup warning or `ok: false` under an ok status reads as degraded,
  * so a 200 that admits a problem is not counted as healthy. Extra fields are ignored.
  * @param {unknown} value the parsed body
- * @returns {import("./health-read.mjs").ParsedHealth}
+ * @returns {ParsedHealth}
  */
 export function healthOf(value) {
   if (value === null || typeof value !== "object" || Array.isArray(value))
@@ -88,7 +106,7 @@ export function failingCheckNames(checks) {
  * row with no status the format names is a fail. A failing check whose detail is "present of expected" (a drift check)
  * carries the two counts.
  * @param {unknown} body the parsed body
- * @returns {import("./health-read.mjs").HealthRow[]}
+ * @returns {HealthRow[]}
  */
 export function healthChecks(body) {
   const checks = /** @type {{ checks?: unknown } | null | undefined} */ (body)?.checks;

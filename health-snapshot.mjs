@@ -10,6 +10,28 @@
 import { healthChecks } from "./health-read.mjs";
 import { errorMessage, logEvent } from "./log.mjs";
 
+/**
+ * /health's verdict in KV for a page's tile (health-snapshot.mjs): one writer, the site's scheduled job.
+ * @typedef {object} SnapshotCheck
+ * @property {string} name
+ * @property {"pass" | "warn" | "fail"} status
+ */
+
+/**
+ * @typedef {object} HealthSnapshot
+ * @property {boolean} ok
+ * @property {number} total
+ * @property {number} failed
+ * @property {string} readAt
+ * @property {SnapshotCheck[]} checks
+ */
+
+/**
+ * @typedef {| ({ state: "fresh" | "stale"; ageSeconds: number } & HealthSnapshot)
+ * | { state: "missing" }
+ * | { state: "unreadable" }} HealthTile
+ */
+
 /** One key, not a prefix: a prefix would invite a second writer. */
 export const HEALTH_SNAPSHOT_KEY = "health:snapshot";
 
@@ -22,7 +44,7 @@ export const HEALTH_SNAPSHOT_EVERY_MINUTES = 15;
  * @param {unknown} snapshot the parsed KV value, or null
  * @param {number} nowMs
  * @param {{ everyMinutes?: number }} [options]
- * @returns {import("./health-snapshot.d.mts").HealthTile}
+ * @returns {HealthTile}
  */
 export function healthTile(snapshot, nowMs, { everyMinutes = HEALTH_SNAPSHOT_EVERY_MINUTES } = {}) {
   if (!snapshot || typeof snapshot !== "object") return { state: "missing" };
@@ -57,7 +79,7 @@ export function healthTile(snapshot, nowMs, { everyMinutes = HEALTH_SNAPSHOT_EVE
  * answer, so a refusal or an error page is never stored as a verdict.
  * @param {unknown} body the parsed /health body
  * @param {string} readAt an ISO time
- * @returns {import("./health-snapshot.d.mts").HealthSnapshot | null}
+ * @returns {HealthSnapshot | null}
  */
 export function snapshotFromBody(body, readAt) {
   const checks = healthChecks(body);
@@ -96,7 +118,7 @@ export async function storeHealthSnapshot({
  * The tile for a page. A failed KV read is `unreadable` (and logged), not `missing`: the page renders whatever KV is
  * doing, but a failed read is not the same fact as no snapshot.
  * @param {{ kv: KVNamespace, now?: number, everyMinutes?: number, key?: string }} options
- * @returns {Promise<import("./health-snapshot.d.mts").HealthTile>}
+ * @returns {Promise<HealthTile>}
  */
 export async function readHealthTile({
   kv,

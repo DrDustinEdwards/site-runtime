@@ -1,11 +1,11 @@
 {
   "baseline": {
-    "measured_at": "813eb40",
+    "measured_at": "04ef710",
     "knip": {},
     "jscpd": {
-      "clones": 10,
-      "lines": 84,
-      "percentage": 0.16,
+      "clones": 9,
+      "lines": 71,
+      "percentage": 0.15,
       "unread": 0
     },
     "shared copies": {
@@ -14,13 +14,13 @@
     },
     "legacy": {},
     "size": {
-      "anthropic.mjs": 930,
+      "anthropic.mjs": 926,
       "audit-log.mjs": 790,
       "bin/ai-audit.mjs": 975,
       "bin/images.mjs": 1562,
       "bin/site-runtime-security.mjs": 514,
-      "check.mjs": 864,
-      "cron.mjs": 615,
+      "check.mjs": 863,
+      "cron.mjs": 610,
       "csp.mjs": 575,
       "doc-room/index.mjs": 532,
       "edge-cache.mjs": 530,
@@ -28,20 +28,20 @@
       "mcp-login.mjs": 506,
       "mcp-server.mjs": 964,
       "prose.mjs": 1234,
-      "sign-in-account.mjs": 987,
+      "sign-in-account.mjs": 978,
       "sign-in-form.mjs": 599,
-      "sign-in.mjs": 1309,
+      "sign-in.mjs": 1307,
       "sites.mjs": 813,
-      "worker.mjs": 559
+      "worker.mjs": 558
     },
     "tests": {
       "files": 82,
       "cases": 464
     },
     "comments": {
-      "lines": 12117,
-      "code": 39244,
-      "percentage": 23.59
+      "lines": 10917,
+      "code": 34752,
+      "percentage": 23.9
     }
   }
 }

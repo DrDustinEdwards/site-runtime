@@ -1,24 +1,16 @@
-// The room for one file: a Durable Object on Cloudflare's y-partyserver, holding the shared working copy
-// every editor open on the file is connected to, the people in it, and the comment threads on it. It
-// pairs with Capsomer's collab editor (capsomer/collab-editor), whose messages it speaks.
+// The room for one file: a Durable Object on y-partyserver holding the shared working copy, the people in
+// it and its comment threads. It speaks the messages of Capsomer's collab editor.
 //
-// Nobody reaches it but the app's door, which has already checked the person's access and says who they
-// are in one header it sets itself (DOC_ROOM_VIEWER_HEADER, `viewerRequest`). So each connection knows
-// its person and what they may do:
-// - "edit": any change.
-// - "suggest": a change is taken only when it changes nothing but suggestions, and touches nobody
-//   else's (`suggestOnly`). Anything else is refused and their editor is told to load the room again.
-// - Everyone in the room may comment; resolving takes edit, or being the thread's starter.
-// What a connection may do is asked of the app again while it is open (`access`), so a person removed,
-// disabled or demoted loses it on an editor already open, not only on the next load.
+// Only the app's door reaches it, having checked access and set DOC_ROOM_VIEWER_HEADER (`viewerRequest`).
+// "edit" may change anything; "suggest" only changes that touch nothing but one's own suggestions
+// (`suggestOnly`), anything else refused and the editor told to reload; everyone may comment, resolving
+// takes edit or being the thread's starter. Access is asked of the app again while a connection is open
+// (`access`), so a removed or demoted person loses it at once.
 //
-// The working copy is kept in the object's own SQLite storage after every change (debounced), so it
-// outlives the people in it, hibernation and deploys, and handed to the app's `mirror` (a copy its
-// backup carries). Nothing here is a save: a save is the app's, which reads `snapshot`, writes the text
-// through its own version check, and tells the room what it wrote (`saved`).
+// The working copy is stored after every change (debounced) and handed to the app's `mirror`. A save is
+// the app's: it reads `snapshot`, writes through its own version check, then tells the room (`saved`).
 //
-// An app extends DocRoom and gives `model` (the document's operations, from Capsomer), `access` (a
-// person's access now) and, for comments and the backup copy, `comments` and `mirror`.
+// An app extends DocRoom and gives `model`, `access` and, optionally, `comments` and `mirror`.
 
 import * as decoding from "lib0/decoding";
 import { YServer } from "y-partyserver";
@@ -36,6 +28,29 @@ import {
   withinLimit,
 } from "./core.mjs";
 
+/**
+ * A comment thread brought in with a document: the words it is on (`from` to `to`, the document's
+ * positions), then its comments in order, the first the thread and the rest its replies.
+ * @typedef {object} BroughtThread
+ * @property {number} from
+ * @property {number} to
+ * @property {string} quote
+ * @property {{ personId: number; body: string; createdAt?: string }[]} comments
+ */
+
+/**
+ * @typedef {object} ReplaceInput
+ * @property {string} markdown
+ * @property {string | null} version
+ * @property {string} by
+ * @property {string | null} [expectedVersion]
+ * @property {boolean} [unsaved]
+ * @property {string} [expectedMarkdown]
+ * @property {string} [saved]
+ * @property {unknown} [doc] The editor's JSON, loaded instead of `markdown` read: a document brought in with its suggestions.
+ * @property {BroughtThread[]} [threads] Its comment threads, anchored by the model's `anchor` once the document is in.
+ */
+
 export * from "./core.mjs";
 
 const SYNC = 0;
@@ -43,8 +58,8 @@ const SYNC_STEP2 = 1;
 const SYNC_UPDATE = 2;
 const COMMENT_TYPES = new Set(["comment", "comment-edit", "comment-resolve", "comment-delete"]);
 
-/** @typedef {import("./core.d.mts").RoomViewer} RoomViewer */
-/** @typedef {import("./core.d.mts").ServerMessage} ServerMessage */
+/** @typedef {import("./core.mjs").RoomViewer} RoomViewer */
+/** @typedef {import("./core.mjs").ServerMessage} ServerMessage */
 /** @typedef {import("partyserver").Connection} Connection */
 /** @typedef {{ viewer?: RoomViewer; checkedAt?: number }} ConnState */
 
@@ -61,24 +76,27 @@ function bytesOf(message) {
     : new Uint8Array(message.buffer, message.byteOffset, message.byteLength);
 }
 
+/**
+ * The co-editing room: a site's Durable Object extends it and fills in `access`, `comments` and `mirror`.
+ * @template {Cloudflare.Env} [E=Cloudflare.Env]
+ * @extends {YServer<E>}
+ */
 export class DocRoom extends YServer {
   static options = { hibernate: true };
-  // A second after typing stops, and at least every five while it goes on.
   static callbackOptions = { debounceWait: 1000, debounceMaxWait: 5000, timeout: 5000 };
-  /** Each connection's messages, handled one after another while an access check waits. */
+  /** Each connection's pending messages, in order. */
   #inbox = new Map();
 
   /**
-   * The document's operations. An app gives Capsomer collab-editor's.
-   * @returns {import("./core.d.mts").DocModel}
+   * The document's operations (Capsomer collab-editor's).
+   * @returns {import("./core.mjs").DocModel}
    */
   get model() {
     throw new Error("DocRoom: the app's room gives `model`");
   }
 
   /**
-   * What `viewer` may do here now, or null when they may no longer be in the room. Thrown or rejected, the
-   * connection is closed and the editor reconnects through the door, which checks again.
+   * What `viewer` may do now, or null when no longer in the room. Thrown, the connection closes and reconnects through the door.
    * @param {RoomViewer} _viewer
    * @returns {Promise<Pick<RoomViewer, "access" | "deletesAny"> | null>}
    */
@@ -88,15 +106,15 @@ export class DocRoom extends YServer {
 
   /**
    * Where the comment threads are kept, or null for a room without comments.
-   * @returns {import("./core.d.mts").CommentStore | null}
+   * @returns {import("./core.mjs").CommentStore | null}
    */
   get comments() {
     return null;
   }
 
   /**
-   * After every store of the working copy: the app's own copy of it, for its backup.
-   * @param {{ markdown: string } & import("./core.d.mts").RoomMeta} _state
+   * After every store: the app's own copy of the working copy, for its backup.
+   * @param {{ markdown: string } & import("./core.mjs").RoomMeta} _state
    * @returns {Promise<void>}
    */
   async mirror(_state) {}
@@ -130,7 +148,7 @@ export class DocRoom extends YServer {
   }
 
   /**
-   * Who changed the document since the last save, by person id, with when they last did.
+   * Who changed the document since the last save, by person id and time.
    * @returns {Record<string, string>}
    */
   #contributors() {
@@ -145,7 +163,6 @@ export class DocRoom extends YServer {
 
   async onStart() {
     await super.onStart();
-    // A change by a person is theirs in the authorship record of the next save.
     this.document.on(
       "update",
       (/** @type {Uint8Array} */ _update, /** @type {unknown} */ origin) => {
@@ -159,7 +176,6 @@ export class DocRoom extends YServer {
         this.#put("contributors", JSON.stringify(who));
       },
     );
-    // Presence is the server's word: a name on a cursor is the person the door let in.
     this.document.awareness.on(
       "update",
       (/** @type {{ added: number[]; removed: number[] }} */ { added, removed }) => {
@@ -180,7 +196,7 @@ export class DocRoom extends YServer {
     });
   }
 
-  // the door's calls (RPC), each from a route that has checked the person's access
+  // the door's calls (RPC)
 
   /** Where the room stands. `seeded` false: nobody has opened the file since live editing began. */
   async status() {
@@ -208,17 +224,12 @@ export class DocRoom extends YServer {
 
   /**
    * Replaces the whole text for everyone. `unsaved`: the new text is not what the app holds.
-   * `expectedVersion`, when given, must still be the room's, so two people asking for the newer version
-   * cannot load it twice over someone's new work. A merge also gives `expectedMarkdown`, the text it was
-   * merged from, so nothing typed since is replaced, and `saved`, the text it now stands on.
-   * `doc`, the editor's JSON, goes in instead of the Markdown read (a document brought in from elsewhere,
-   * with its suggestions), and `threads` are its comment threads (`#bringThreads`).
-   * @param {import("./index.d.mts").ReplaceInput} input
+   * `expectedVersion` and `expectedMarkdown` refuse the replace when the room has moved on.
+   * @param {ReplaceInput} input
    */
   async replace(input) {
     await this.__unsafe_ensureInitialized();
     const { model, document } = this;
-    // A room nobody has opened has no options to read the text with: it starts from `seed`.
     if (!model.isSeeded(document)) return false;
     if (
       input.expectedVersion !== undefined &&
@@ -242,9 +253,8 @@ export class DocRoom extends YServer {
   }
 
   /**
-   * Comment threads that came with a brought-in document, each anchored on its words in the copy just
-   * loaded (the model's `anchor`), its first comment the thread and the rest its replies, in order.
-   * @param {import("./index.d.mts").BroughtThread[]} threads
+   * Comment threads that came with a brought-in document, anchored on their words in the copy just loaded.
+   * @param {BroughtThread[]} threads
    */
   async #bringThreads(threads) {
     const store = this.comments;
@@ -275,8 +285,7 @@ export class DocRoom extends YServer {
   }
 
   /**
-   * The working copy as the editor's JSON text, suggestions and all (`model.json`): for sending it elsewhere with
-   * them. Text, because what Yjs gives back is not all plain objects, which RPC refuses to carry.
+   * The working copy as the editor's JSON text, suggestions and all. Text, because RPC refuses Yjs's non-plain objects.
    */
   async json() {
     await this.__unsafe_ensureInitialized();
@@ -298,8 +307,7 @@ export class DocRoom extends YServer {
   }
 
   /**
-   * After a save: the version it made and the text it wrote. Gives back who had a hand in that text
-   * (everyone who changed it before the snapshot was taken) and forgets them until they change it again.
+   * After a save: the version it made and the text it wrote. Returns who changed it before the snapshot, and forgets them.
    * @param {{ version: string | null; markdown: string; snapshotAt: string }} input
    */
   async saved(input) {
@@ -319,8 +327,7 @@ export class DocRoom extends YServer {
   }
 
   /**
-   * After a write that sent no text (unpublish, unschedule): the new version, taken only when the app
-   * still holds the text the room last saved, so unsaved work stays checked against what it started from.
+   * After a write that sent no text (unpublish, unschedule): the new version, taken only when the app still holds the room's last saved text.
    * @param {{ version: string; source: string }} input
    */
   async rebase(input) {
@@ -345,7 +352,6 @@ export class DocRoom extends YServer {
       conn.close(4403, viewer ? "This file is not open yet. Reload the page." : "Forbidden");
       return;
     }
-    // The door looked the access up just now.
     conn.setState((/** @type {unknown} */ prev) => ({
       .../** @type {object | null} */ (prev),
       viewer,
@@ -380,8 +386,7 @@ export class DocRoom extends YServer {
    * @param {import("partyserver").WSMessage} message
    */
   onMessage(conn, message) {
-    // Awaiting the access check lets the room's other events in (Rules of Durable Objects, input gates:
-    // only the object's own storage holds them back), so one socket's messages are chained in order.
+    // The access check lets other events in (input gates), so one socket's messages are chained in order.
     const next = (this.#inbox.get(conn.id) ?? Promise.resolve())
       .then(() => this.#receive(conn, message))
       .catch((/** @type {unknown} */ error) =>
@@ -399,9 +404,7 @@ export class DocRoom extends YServer {
     const viewer = await this.#recheck(conn);
     if (!viewer) return;
     const bytes = bytesOf(message);
-    // RFC 6455 section 7.4.1 has close code 1009 for a message too big to process, but a closed provider
-    // reconnects and sends the same change again, so the room refuses it and the editor loads the room
-    // again, dropping it.
+    // Not close code 1009: a closed provider reconnects and resends the same change, so refuse and reload.
     if (!withinLimit(bytes?.byteLength ?? /** @type {string} */ (message).length, viewer.access)) {
       this.#send(conn, {
         t: "refused",
@@ -430,11 +433,9 @@ export class DocRoom extends YServer {
   }
 
   /**
-   * The connection's viewer with the access they hold now, asked of the app at most once a
-   * ROLE_RECHECK_MS, or null after closing a connection whose person has no access left. A demoted person
-   * keeps the socket at their new access, so an editor made a suggester has their next plain edit
-   * refused and their editor reloads as a suggester. The time of the check rides in the connection's
-   * state, which survives hibernation (serializeAttachment, Durable Objects "Use WebSockets").
+   * The connection's viewer with the access held now, asked of the app at most once a ROLE_RECHECK_MS, or
+   * null after closing the connection of a person with no access left. The check time rides in the
+   * connection's state, which survives hibernation.
    * @param {Connection} conn
    * @returns {Promise<RoomViewer | null>}
    */
@@ -476,19 +477,18 @@ export class DocRoom extends YServer {
   onCustomMessage(conn, raw) {
     const viewer = viewerOf(conn);
     if (!viewer) return;
-    /** @type {import("./core.d.mts").ClientMessage} */
+    /** @type {import("./core.mjs").ClientMessage} */
     let message;
     try {
       message = JSON.parse(raw);
     } catch {
       return;
     }
-    // Messages on one socket arrive in order, so the answer comes after every change sent before it.
     if (message?.t === "flush")
       return this.#send(conn, { t: "flushed", n: Number(message.n) || 0 });
     const store = this.comments;
     if (!store || !COMMENT_TYPES.has(message?.t)) return;
-    void applyComment(store, viewer, /** @type {import("./core.d.mts").CommentMessage} */ (message))
+    void applyComment(store, viewer, /** @type {import("./core.mjs").CommentMessage} */ (message))
       .then((refusal) =>
         refusal ? this.#send(conn, { t: "error", message: refusal }) : this.#sendComments(),
       )

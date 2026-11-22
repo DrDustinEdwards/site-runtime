@@ -18,7 +18,7 @@ export const other = /** @type {CryptoKeyPair} */ (
   await crypto.subtle.generateKey(keyParams, true, ["sign", "verify"])
 );
 export const publicJwk = { ...(await crypto.subtle.exportKey("jwk", pair.publicKey)), kid: "k1" };
-/** @type {import("../access-login.d.mts").KeySource} */
+/** @type {import("../access-login.mjs").KeySource} */
 export const keys = async (kid) => (kid === "k1" ? publicJwk : undefined);
 
 /** @param {unknown} payload @param {CryptoKey} [key] @param {Record<string, unknown>} [header] */

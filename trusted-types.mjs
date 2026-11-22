@@ -84,6 +84,7 @@ export function callerScript(stack, skip = 2) {
  * @param {string} sink such as "Element innerHTML"
  * @param {string} page
  * @param {{ url: string, line: number, column: number } | undefined} caller
+ * @returns {Array<{ type: "csp-violation"; body: Record<string, unknown> }>}
  */
 export function escapedReport(sink, page, caller) {
   return [

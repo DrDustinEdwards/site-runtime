@@ -11,6 +11,26 @@ import { base64url, concatBytes, fromBase64url } from "./encoding.mjs";
 import { timedFetch } from "./http.mjs";
 import { signJwt } from "./jwt.mjs";
 
+/**
+ * Web Push from a Worker (web-push.mjs): RFC 8291 aes128gcm encryption and RFC 8292 VAPID, on WebCrypto.
+ * @typedef {object} PushSubscriptionKeys
+ * @property {string} endpoint
+ * @property {string} p256dh
+ * @property {string} auth
+ */
+
+/**
+ * @typedef {object} VapidKey
+ * @property {JsonWebKey} jwk
+ * @property {string} publicKey The public key, 65 bytes uncompressed, base64url: what the browser subscribes with.
+ */
+
+/**
+ * @typedef {object} PushSent
+ * @property {number} status
+ * @property {boolean} gone The push service says the subscription is gone (404 or 410): stop sending to it.
+ */
+
 const RECORD_SIZE = 4096;
 const TTL_SECONDS = 24 * 60 * 60;
 const JWT_LIFETIME_SECONDS = 12 * 60 * 60;
@@ -30,7 +50,7 @@ const utf8 = (/** @type {string} */ s) => new Uint8Array(new TextEncoder().encod
 
 /** Why a subscription cannot be stored, or null. Checked at subscribe time, before any
  *  row is written, and again before each send.
- * @param {Partial<import("./web-push.d.mts").PushSubscriptionKeys>} sub
+ * @param {Partial<PushSubscriptionKeys>} sub
  * @returns {string | null}
  */
 export function subscriptionProblem(sub) {
@@ -59,7 +79,7 @@ export function subscriptionProblem(sub) {
 /**
  * The VAPID key from its secret, or why it cannot be used.
  * @param {string | undefined} secret
- * @returns {import("./web-push.d.mts").VapidKey | string}
+ * @returns {VapidKey | string}
  */
 export function readVapidKey(secret) {
   if (!secret) return "VAPID_PRIVATE_KEY is not set, so no push can be signed.";
@@ -101,7 +121,7 @@ async function hkdf(salt, ikm, info, bytes) {
 /**
  * RFC 8291: the aes128gcm body for one subscription, a single record. `fixed` pins the sender's ECDH key and salt, for
  * a test that checks the RFC's worked example.
- * @param {import("./web-push.d.mts").PushSubscriptionKeys} sub
+ * @param {PushSubscriptionKeys} sub
  * @param {Uint8Array} plaintext
  * @param {{ privateJwk?: JsonWebKey, salt?: Uint8Array<ArrayBuffer> }} [fixed]
  * @returns {Promise<Uint8Array<ArrayBuffer>>}
@@ -168,7 +188,7 @@ export async function encryptPayload(sub, plaintext, fixed = {}) {
 
 /**
  * RFC 8292: the Authorization header's JWT for one push service origin, signed through ./jwt.
- * @param {import("./web-push.d.mts").VapidKey} vapid
+ * @param {VapidKey} vapid
  * @param {string} audience the push service's origin
  * @param {string} subject a mailto: or https: contact
  * @param {Date} now
@@ -188,13 +208,13 @@ export function vapidJwt(vapid, audience, subject, now) {
 
 /** Encrypt and send one payload to one subscription. Never throws on a push service's
  *  answer; a network error is returned as status 0.
- * @param {import("./web-push.d.mts").VapidKey} vapid
+ * @param {VapidKey} vapid
  * @param {string} subject
- * @param {import("./web-push.d.mts").PushSubscriptionKeys} sub
+ * @param {PushSubscriptionKeys} sub
  * @param {unknown} payload
  * @param {Date} now
  * @param {typeof fetch} [fetcher] default ./http timedFetch, so a push service that stalls cannot hold the cron open
- * @returns {Promise<import("./web-push.d.mts").PushSent>}
+ * @returns {Promise<PushSent>}
  */
 export async function sendPush(vapid, subject, sub, payload, now, fetcher = timedFetch) {
   const problem = subscriptionProblem(sub);

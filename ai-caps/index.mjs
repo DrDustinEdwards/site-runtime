@@ -10,7 +10,14 @@
 import { logEvent } from "../log.mjs";
 import { windowKey } from "./core.mjs";
 
+/**
+ * The part of a KV namespace a counter uses.
+ * @typedef {{ get(key: string): Promise<string | null>; put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>; }} CounterKv
+ */
+
 export { windowKey, consume, spent, ensureBudgetTable, resetBudget } from "./core.mjs";
+
+/** @typedef {import("./core.mjs").SqlLike} SqlLike */
 
 const SECONDS_PER_DAY = 86400;
 

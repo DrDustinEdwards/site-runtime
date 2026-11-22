@@ -4,6 +4,21 @@ import { errors, schemaIssues } from "./http-errors.mjs";
 import { errorMessage } from "./log.mjs";
 
 /**
+ * A request body read to a byte ceiling, counted as it arrives (body.mjs).
+ * @typedef {object} BodySource
+ * @property {ReadableStream<Uint8Array> | null} body
+ */
+
+/**
+ * One part of a multipart/form-data body, as readMultipart yields it.
+ *
+ * - `filename`: The file name for a file part ("" when the picker was left empty), null for a text field.
+ * - `type`: The part's Content-Type, lowercased, without parameters ("" when it has none).
+ * - `chunks`: The part's bytes. Each call goes on from where the last stopped, so a reader may break out and call again.
+ * @typedef {{ name: string; filename: string | null; type: string; chunks(): AsyncGenerator<Uint8Array>; }} MultipartPart
+ */
+
+/**
  * A request body read to a byte ceiling, counted as the chunks arrive. The declared Content-Length can be absent or
  * understated, and `request.text()` holds the whole body in memory before any check can run, so neither is a cap.
  *
@@ -219,7 +234,7 @@ export function multipartBoundary(contentType) {
  * that is not multipart, or does not parse, throws a 400 Response. `readForm` stays the reader for small forms.
  * @param {Request} request
  * @param {number} max the ceiling in bytes, for the whole body
- * @returns {AsyncGenerator<import("./body.mjs").MultipartPart>}
+ * @returns {AsyncGenerator<MultipartPart>}
  */
 export async function* readMultipart(request, max) {
   if (!Number.isInteger(max) || max < 0)
@@ -302,7 +317,7 @@ export async function* readMultipart(request, max) {
 
 /**
  * A text field's value, read to at most `max` bytes (64 KiB by default); longer throws a 400 Response naming the field.
- * @param {import("./body.mjs").MultipartPart} part
+ * @param {MultipartPart} part
  * @param {number} [max]
  * @returns {Promise<string>}
  */
