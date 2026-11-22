@@ -64,6 +64,15 @@ export function purgeTags(
   pause?: (ms: number) => Promise<unknown>,
 ): Promise<boolean | null>;
 
+/** Purges asked within 250 ms of each other go out as one `purgeTags` request (the account's purge requests are rationed: Free is 5 a minute), each caller getting its outcome. `record` runs with the outcome and the merged reasons. */
+export function purgeCoalesced(
+  cache: PurgeCache | undefined,
+  tags: string[],
+  why: string,
+  record: (purged: boolean | null, why: string) => Promise<unknown>,
+  pause?: (ms: number) => Promise<unknown>,
+): Promise<boolean | null>;
+
 /** The KV key holding the last failed purge. */
 export const PURGE_FAILED_KEY: "purge:failed";
 
@@ -77,7 +86,7 @@ export function recordPurge(
   log?: (line: string) => void,
 ): Promise<void>;
 
-/** Mixes the `purgePages(why, tags?)` RPC method into the Renderer: `class Renderer extends withPurgePages(WorkerEntrypoint, { kv: (env) => env.APP_KV })`. With `kv`, each outcome is recorded for `purgeCheck`. */
+/** Mixes the `purgePages(why, tags?)` RPC method into the Renderer: `class Renderer extends withPurgePages(WorkerEntrypoint, { kv: (env) => env.APP_KV })`. Calls close together share one purge request (`purgeCoalesced`). With `kv`, each outcome is recorded for `purgeCheck`. */
 // oxlint-disable-next-line typescript/no-explicit-any -- a mixin's constructor must take (...args: any[]); unknown[] refuses WorkerEntrypoint (TS2345), never[] its subclass (TS2510)
 export function withPurgePages<T extends abstract new (...args: any[]) => object>(
   Base: T,

@@ -9,6 +9,7 @@ import {
   forRenderer,
   privateRender,
   publicPageHeaders,
+  purgeCoalesced,
   purgeTags,
   recordPurge,
   settleCacheHeaders,
@@ -251,6 +252,7 @@ test("a failed purge is kept until one succeeds, and /health warns with only its
       { kv: (env) => env.KV },
     ),
   };
+  globalThis.scheduler ??= { wait: (ms) => new Promise((done) => setTimeout(done, ms)) };
   assert.equal(await new Renderer().purgePages("write"), true);
   assert.equal((await status()).status, "pass");
   const limited = { success: false, errors: [{ code: 1134 }] };
@@ -265,6 +267,26 @@ test("a failed purge is kept until one succeeds, and /health warns with only its
   const refused = { purge: async () => ({ success: false, errors: [{ code: 1000 }] }) };
   assert.equal(await purgeTags(refused, ["posts"], "w", () => {}, pause), false);
   assert.equal(pauses.length, 2);
+});
+
+test("purges asked close together go out as one request with every tag, and the next batch starts fresh", async () => {
+  const calls = [];
+  const cache = {
+    purge: async ({ tags }) => {
+      calls.push(tags);
+      return { success: true };
+    },
+  };
+  const noPause = async () => {};
+  const recorded = [];
+  const record = async (purged, why) => void recorded.push([purged, why]);
+  const first = purgeCoalesced(cache, ["post:a", "posts"], "delete a", record, noPause);
+  const second = purgeCoalesced(cache, ["posts", "post:b"], "save b", record, noPause);
+  assert.deepEqual(await Promise.all([first, second]), [true, true]);
+  assert.deepEqual(calls, [["post:a", "posts", "post:b"]]);
+  assert.deepEqual(recorded, [[true, "delete a; save b"]]);
+  await purgeCoalesced(cache, ["posts"], "later", record, noPause);
+  assert.equal(calls.length, 2);
 });
 
 // A private page is kept out of Web Analytics by no-transform, which also stops the edge compressing it: the Worker
