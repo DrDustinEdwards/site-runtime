@@ -416,9 +416,54 @@ export async function recordPurge(kv, why, purged, log = console.error) {
   }
 }
 
+/** Purges asked within this long of each other go out as one request (ms). */
+const PURGE_WINDOW_MS = 250;
+/** Cloudflare accepts at most 100 tags in one purge request. */
+const PURGE_MAX_TAGS = 100;
+
+/**
+ * Purge requests are rationed per account (Free: 5 a minute, bucket of 25, Workers Caching always on the Free limits), so
+ * a write that asks several times, or several writes close together, would empty the bucket. Tags asked for within
+ * `PURGE_WINDOW_MS` are merged into one `purgeTags` request; each caller gets that request's outcome. One batch is open
+ * at a time per isolate, and a full one (100 tags) closes at once.
+ * @type {{ tags: Set<string>, whys: Set<string>, done: Promise<boolean | null> } | null}
+ */
+let openBatch = null;
+
+/**
+ * @param {Parameters<typeof purgeTags>[0]} cache
+ * @param {string[]} tags
+ * @param {string} why
+ * @param {(purged: boolean | null, why: string) => Promise<unknown>} record
+ * @param {(ms: number) => Promise<unknown>} [pause]
+ */
+export function purgeCoalesced(cache, tags, why, record, pause = (ms) => scheduler.wait(ms)) {
+  if (!openBatch || openBatch.tags.size + tags.length > PURGE_MAX_TAGS) {
+    const batch = {
+      tags: new Set(),
+      whys: new Set(),
+      done: /** @type {Promise<boolean | null>} */ (Promise.resolve(null)),
+    };
+    openBatch = batch;
+    batch.done = (async () => {
+      await pause(PURGE_WINDOW_MS);
+      if (openBatch === batch) openBatch = null;
+      const reason = [...batch.whys].join("; ");
+      const purged = await purgeTags(cache, [...batch.tags], reason);
+      await record(purged, reason);
+      return purged;
+    })();
+  }
+  for (const tag of tags) openBatch.tags.add(tag);
+  openBatch.whys.add(why);
+  return openBatch.done;
+}
+
 /**
  * The Renderer's `purgePages` RPC method, mixed into its class: `class Renderer extends withPurgePages(WorkerEntrypoint)`.
- * The method drops `tags` (default `PAGES_CACHE_TAG`) from the Renderer's own cache; RPC methods bypass the cache.
+ * The method drops `tags` (default `PAGES_CACHE_TAG`) from the Renderer's own cache; RPC methods bypass the cache. Calls
+ * close together share one purge request (`purgeCoalesced`). Awaiting it takes the window plus any rate-limit retries,
+ * so a write starts it in `waitUntil` and does not wait.
  * With `kv`, the outcome is recorded (`recordPurge`) for /health's `purgeCheck`, whichever way the purge was asked for.
  * @template {new (...args: any[]) => { ctx: { cache?: any }, env?: any }} T
  * @param {T} Base
@@ -427,10 +472,11 @@ export async function recordPurge(kv, why, purged, log = console.error) {
 export function withPurgePages(Base, { kv } = {}) {
   return class extends Base {
     /** @param {string} why @param {string[]} [tags] */
-    async purgePages(why, tags = [PAGES_CACHE_TAG]) {
-      const purged = await purgeTags(this.ctx.cache, tags, why);
-      if (kv) await recordPurge(kv(this.env), why, purged);
-      return purged;
+    purgePages(why, tags = [PAGES_CACHE_TAG]) {
+      const store = kv ? kv(this.env) : undefined;
+      return purgeCoalesced(this.ctx.cache, tags, why, (purged, reason) =>
+        recordPurge(store, reason, purged),
+      );
     }
   };
 }

@@ -806,7 +806,7 @@ What else the scheme does, and the helpers that do it:
 - **Pages that change on a schedule.** `publicPageHeaders({ until: nextPublishAt })` keeps a page that lists posts fresh
   no later than the next scheduled one (a minute at least): it goes live with no write to purge on.
 - **Purging.** `class Renderer extends withPurgePages(WorkerEntrypoint)` gives the Renderer its `purgePages(why, tags?)`
-  RPC method. In the gateway, `purgeAfterWrite(request, response, ctx, why)` asks for it after an accepted write.
+  RPC method. Purges asked within 250 ms of each other go out as one request with every tag (`purgeCoalesced`): the account's purge requests are rationed, and Workers Caching is always on the Free limits (5 a minute, a bucket of 25). A caller that awaits it waits for that window and any rate-limit retries (up to 15 s), so a write starts it in `waitUntil`. In the gateway, `purgeAfterWrite(request, response, ctx, why)` asks for it after an accepted write.
   From a cron or a queue, which have no Renderer of their own, `purgeViaRenderer(why)` asks over `exports` from
   "cloudflare:workers". `withPurgePages(Base, { kv: (env) => env.APP_KV })` also records each outcome in KV
   (`recordPurge`: a failed purge is kept, with no TTL, until one succeeds), and `purgeCheck(env.APP_KV)` in /health's
