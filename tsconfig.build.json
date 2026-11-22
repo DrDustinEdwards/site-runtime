@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["es2022", "dom", "dom.iterable"],
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "checkJs": false,
+    "rootDir": ".",
+    "outDir": "dist"
+  },
+  "include": [
+    "env.d.ts",
+    "*.mjs",
+    "members/*.mjs",
+    "rate-limit/*.mjs",
+    "doc-room/*.mjs",
+    "cron-lock/*.mjs",
+    "ai-caps/*.mjs"
+  ],
+  "exclude": ["update-*.mjs"]
+}

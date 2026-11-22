@@ -12,6 +12,7 @@
     "types": ["node", "@cloudflare/workers-types"]
   },
   "include": [
+    "env.d.ts",
     "*.mjs",
     "members/*.mjs",
     "rate-limit/*.mjs",
