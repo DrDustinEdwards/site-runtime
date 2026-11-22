@@ -797,9 +797,10 @@ What else the scheme does, and the helpers that do it:
 - **Nothing personal.** `settleCacheHeaders(response, request, { publicCookies })` also refuses to store a response with
   `Set-Cookie`, and one rendered for a request with a cookie other than `publicCookies`. `privateRender(response)` is the same for a page
   the gateway renders itself for one reader.
-- **Returning readers.** `settleCacheHeaders` stamps a stored page with `Last-Modified`, the time it was rendered. It
-  stays the same until a purge or a deploy renders the page again, so `forReader` answers a reader who already holds
-  it (`If-Modified-Since`, or `If-None-Match` for a page with its own `ETag`) with a 304 and no body.
+- **Returning readers.** `stampValidator` gives a shared page a weak `ETag` from its body, the same on every copy the
+  edge's servers store and after every purge that renders the same page, so `forReader` answers a reader who already
+  holds it (`If-None-Match`) with a 304 and no body. A page with a validator of its own keeps it; one with none still
+  gets `Last-Modified` from `settleCacheHeaders` (`If-Modified-Since`).
 - **Cookies that change nothing private.** `forReader(page, request, { publicCookies: ["theme"] })` keeps the shared
   header for a request carrying only those, so the browser may keep the page in its back/forward cache.
 - **Pages that change on a schedule.** `publicPageHeaders({ until: nextPublishAt })` keeps a page that lists posts fresh

@@ -36,6 +36,8 @@ export function settleCacheHeaders(
   request?: Request,
   options?: { publicCookies?: readonly string[] },
 ): Response;
+/** A shared 200 with no validator gets a weak ETag from its body, the same on every stored copy; anything else comes back as it was. Run before `settleCacheHeaders`. */
+export function stampValidator(response: Response, request?: Request): Promise<Response>;
 /** The request for the Renderer: a HEAD becomes a GET, so the cache only ever renders and stores whole pages. */
 export function forRenderer(request: Request): Request;
 

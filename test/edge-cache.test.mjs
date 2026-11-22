@@ -12,6 +12,7 @@ import {
   purgeTags,
   recordPurge,
   settleCacheHeaders,
+  stampValidator,
   withPurgePages,
 } from "../edge-cache.mjs";
 import { healthResponse, purgeCheck } from "../health.mjs";
@@ -330,4 +331,33 @@ test("a private page keeps no-transform and is compressed for the coding its rea
     settleCacheHeaders(page(), signedIn).headers.get("Cache-Control"),
     "private, no-store, no-transform",
   );
+});
+
+// Two stored copies of one page (the edge's servers each keep their own) must agree, or a conditional request that
+// reaches the other copy answers 200 for a page the reader holds.
+test("a shared page's ETag comes from its body, so every copy and render of it agrees", async () => {
+  const render = (body, headers = publicPageHeaders()) => new Response(body, { headers });
+  const first = await stampValidator(render("<p>a</p>"));
+  const second = await stampValidator(render("<p>a</p>"));
+  const changed = await stampValidator(render("<p>b</p>"));
+  assert.match(first.headers.get("ETag"), /^W\/"[\w+/-]{22}"$/);
+  assert.equal(await first.text(), "<p>a</p>");
+  assert.equal(first.headers.get("ETag"), second.headers.get("ETag"));
+  assert.notEqual(first.headers.get("ETag"), changed.headers.get("ETag"));
+  const settled = settleCacheHeaders(second);
+  assert.equal(settled.headers.has("Last-Modified"), false);
+  const held = first.headers.get("ETag");
+  assert.equal(
+    forReader(settled, new Request("https://example.com/", { headers: { "If-None-Match": held } }))
+      .status,
+    304,
+  );
+  const withCookie = await stampValidator(
+    render("x", { ...publicPageHeaders(), "Set-Cookie": "a=b" }),
+  );
+  const priv = await stampValidator(render("x", { "Cache-Control": "private, no-store" }));
+  const own = await stampValidator(render("x", { ...publicPageHeaders(), ETag: '"mine"' }));
+  assert.equal(withCookie.headers.has("ETag"), false);
+  assert.equal(priv.headers.has("ETag"), false);
+  assert.equal(own.headers.get("ETag"), '"mine"');
 });
