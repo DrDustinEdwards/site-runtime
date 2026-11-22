@@ -146,4 +146,16 @@ test("withRequestLog names the route and a refused input also writes input_valid
   assert.equal(databaseDownStatus(importing, 500, headers), 503);
   assert.equal(headers.get("Retry-After"), "60");
   assert.equal(headers.get("Cache-Control"), "no-store");
+
+  // R2's transient 10001 is one warning line, and the answer is a 503 too.
+  const media = new Request("https://example.com/media/x.jpg");
+  lines.length = 0;
+  handleServerError(new Error("get: We encountered an internal error. Please try again. (10001)"), {
+    request: media,
+  });
+  assert.deepEqual(
+    lines.map(({ event }) => event),
+    ["storage_unavailable"],
+  );
+  assert.equal(databaseDownStatus(media, 500, new Headers()), 503);
 });

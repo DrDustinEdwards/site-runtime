@@ -52,6 +52,7 @@
 import { applyHeaderSet, corpFor, UPLOAD_HEADERS } from "./headers.mjs";
 import { mediaType, textResponse } from "./http.mjs";
 import { errorMessage } from "./log.mjs";
+import { retryR2Read } from "./r2-object.mjs";
 
 /**
  * Astro's "limited" screen widths, the set it uses for images it generates ahead of time. A site's closed set starts
@@ -627,7 +628,7 @@ export function defineImages({
   async function serve(
     request,
     {
-      read,
+      read: readOnce,
       images,
       cache,
       prefix = "/media/",
@@ -652,6 +653,7 @@ export function defineImages({
       }
     }
     if (!key) return guarded(textResponse("Not found", 404));
+    const read = (/** @type {string} */ k) => retryR2Read(() => readOnce(k));
     const object = await read(key);
     const policy =
       object && typeof cacheControl === "function"

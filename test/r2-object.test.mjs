@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { contentDisposition, r2ObjectResponse } from "../r2-object.mjs";
+import { contentDisposition, r2ObjectResponse, retryR2Read } from "../r2-object.mjs";
 
 const BYTES = new TextEncoder().encode("0123456789");
 
@@ -91,4 +91,21 @@ test("contentDisposition keeps an ASCII name and adds filename* for any other", 
     "attachment; filename=\"R_sum_.pdf\"; filename*=UTF-8''R%C3%A9sum%C3%A9.pdf",
   );
   assert.equal(contentDisposition("inline"), "inline");
+});
+
+test("an R2 read that fails with 10001 is asked again; other errors and a third failure are thrown", async () => {
+  const pauses = [];
+  const pause = async (ms) => void pauses.push(ms);
+  const flaky = (failures, message) => {
+    let calls = 0;
+    return async () => {
+      if (calls++ < failures) throw new Error(message);
+      return "ok";
+    };
+  };
+  const internal = "get: We encountered an internal error. Please try again. (10001)";
+  assert.equal(await retryR2Read(flaky(2, internal), pause), "ok");
+  assert.deepEqual(pauses, [200, 600]);
+  await assert.rejects(retryR2Read(flaky(3, internal), pause), /\(10001\)/);
+  await assert.rejects(retryR2Read(flaky(1, "get: Not allowed (10003)"), pause), /10003/);
 });
