@@ -1,13 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import {
-  aiOutcomeCheck,
-  databaseDown,
-  healthResponse,
-  recordAiOutcome,
-  siteHealthResponse,
-} from "../health.mjs";
+import { aiOutcomeCheck, databaseDown, healthResponse, recordAiOutcome } from "../health.mjs";
 
 test("a stale backup warns at 200 with ok true; a database that throws fails at 503; the backup read is kept in the cache for the TTL", async () => {
   let reads = 0;
