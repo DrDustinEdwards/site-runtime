@@ -168,7 +168,10 @@ export function siteHealthResponse(env, { backup, checks = [], jobs }) {
     ping: () => env.DB.prepare("select 1").first(),
     backup,
     sha: deployedSha(env),
-    checks: [...checks, cronCheck(/** @type {any} */ (env.DB), { jobs, deployedAt: deployedAt(env) })],
+    checks: [
+      ...checks,
+      cronCheck(/** @type {any} */ (env.DB), { jobs, deployedAt: deployedAt(env) }),
+    ],
   });
 }
 
