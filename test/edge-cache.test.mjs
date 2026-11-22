@@ -340,7 +340,7 @@ test("a shared page's ETag comes from its body, so every copy and render of it a
   const first = await stampValidator(render("<p>a</p>"));
   const second = await stampValidator(render("<p>a</p>"));
   const changed = await stampValidator(render("<p>b</p>"));
-  assert.match(first.headers.get("ETag"), /^W\/"[\w+/-]{22}"$/);
+  assert.match(first.headers.get("ETag"), /^W\/"[\w+/]{22}=="$/);
   assert.equal(await first.text(), "<p>a</p>");
   assert.equal(first.headers.get("ETag"), second.headers.get("ETag"));
   assert.notEqual(first.headers.get("ETag"), changed.headers.get("ETag"));

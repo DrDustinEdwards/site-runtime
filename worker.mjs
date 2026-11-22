@@ -244,7 +244,7 @@ export function siteRenderer(Base, site) {
         const secured = await site.earlyHints(
           options.withSecurityHeaders(rendered, request, pageNonce(rendered, nonce), this.env),
         );
-        return settleCacheHeaders(await stampValidator(secured, request), request, {
+        return settleCacheHeaders(await stampValidator(secured), request, {
           publicCookies: options.publicCookies ?? [],
         });
       });
