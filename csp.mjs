@@ -53,7 +53,7 @@ export async function scriptHash(text) {
  */
 export async function integrityHash(content) {
   const bytes = typeof content === "string" ? new TextEncoder().encode(content) : content;
-  return `sha384-${toBase64(await crypto.subtle.digest("SHA-384", bytes))}`;
+  return `sha384-${toBase64(await crypto.subtle.digest("SHA-384", /** @type {BufferSource} */ (bytes)))}`;
 }
 
 /**

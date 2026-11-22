@@ -118,6 +118,116 @@ import { canonicalRedirect } from "./url.mjs";
 import { deployedSha } from "./deploy.mjs";
 import { withSentryRequest, withSiteSentry } from "./sentry.mjs";
 
+/** @import { ServerBuild } from "react-router" */
+
+/** @import { CronJob } from "./cron.mjs" */
+
+/** @import { OperatorTool } from "./operator.mjs" */
+
+/** @import { Preconnect, Preload } from "./preload.mjs" */
+
+/** @import { AccessSecrets, AdminSettings } from "./access.mjs" */
+
+/**
+ * The secrets and dashboard vars every site's Worker reads through site-runtime, which `wrangler types` cannot see. A
+ * site's env.d.ts extends it (`interface Env extends SiteSecrets {}`) and adds only its own. Each is optional where the
+ * code that reads it fails closed when it is unset.
+ *
+ * - `MAINTENANCE`: "1" or "true" puts the site in maintenance: every path but /health answers the 503 page (./maintenance).
+ * - `ADMIN_IDLE_SECRET`: Keys the admin idle cookie (withAdminIdle `secret`). Minted by the deploy (devkit worker-deploy `generated-secrets`).
+ * - `OPERATOR_TOKEN`: The bearer for /api/operator (./operator), 32 characters or more. Unset or short: the route answers 503.
+ * - `CARREL_SITE_KEY`: Carrel's key for site-api's /api/carrel/v1, 32 characters or more. Unset or short: every call is refused.
+ * - `ANTHROPIC_API_KEY`: The Anthropic key for the site's AI features (straight at Anthropic). Unset: those features say so.
+ * - `TURNSTILE_SITE_KEY`: Turnstile on the sign-in email link (./sign-in). On only when both are set.
+ * @typedef {AdminSettings & Partial<AccessSecrets> & { MAINTENANCE?: string; ADMIN_IDLE_SECRET: string; OPERATOR_TOKEN?: string; CARREL_SITE_KEY?: string; ANTHROPIC_API_KEY?: string; TURNSTILE_SITE_KEY?: string; TURNSTILE_SECRET_KEY?: string; }} SiteSecrets
+ */
+
+/**
+ * What a site step gets beside the request.
+ *
+ * - `render`: The page's route rendered in-process (a Carrel preview), with `nonce` and any extra context `set`.
+ * - `stylesheets`: The page stylesheet hrefs (the root's and `stylesheetRoutes`'), for a preview drawn outside React Router.
+ * - `purgeAfterWrite`: Purges the stored pages once a write it accepted has answered 2xx.
+ * - `secure`: The site's security set on `response`.
+ * @typedef {{ url: URL; render(request: Request, extra?: RenderExtra): Promise<Response>; stylesheets(): Promise<string[]>; purgeAfterWrite(request: Request, response: Response, why: string): void; secure(response: Response, request?: Request, nonce?: string): Response; }} GatewayKit
+ */
+
+/**
+ * @typedef {object} RenderExtra
+ * @property {string} [nonce]
+ * @property {(context: RouterContextProvider) => void} [set] Sets the site's own context keys for this one render (a preview's page).
+ */
+
+/**
+ * A site step: answers the request, or undefined to pass it on. The answer gets the security set (a policy it carries
+ * itself is kept).
+ * @template E
+ * @typedef {(
+ * request: Request,
+ * env: E,
+ * ctx: ExecutionContext,
+ * kit: GatewayKit,
+ * ) => Response | undefined | null | Promise<Response | undefined | null>} GatewayStep
+ */
+
+/**
+ * @template E
+ * @typedef {(
+ * request: Request,
+ * env: E,
+ * ctx: ExecutionContext,
+ * ) => Promise<Response>} FetchHandler
+ */
+
+/**
+ * @template E
+ * @typedef {object} SiteOptions
+ * @property {string} name The site's name on the maintenance page.
+ * @property {() => Promise<ServerBuild>} serverBuild `() => import("virtual:react-router/server-build")`.
+ * @property {string} [mode] `import.meta.env.MODE`.
+ * @property {(response: Response, request: Request, nonce?: string, env?: E) => Response} withSecurityHeaders The site's security set: pageSecurity's withSecurityHeaders.
+ * @property {| false | { host?: string; except?: string[]; before?: ( request: Request, env: E, ) => Response | null | undefined | Promise<Response | null | undefined>; keep?: (url: URL) => boolean; }} [canonical] canonicalRedirect's options (`host`, `except`), plus `before`, a site's own earlier move, and `keep`, a test for an address whose slash stays; false for none.
+ * @property {(request: Request, env: E) => Promise<Response | null> | Response | null} [files] Prelum's standardFiles handler (robots.txt, ai.txt, site.webmanifest, IndexNow key, ownership files).
+ * @property {string[]} [speculationExclude] Paths the hover prefetch never fetches, beyond NEVER_PREFETCH.
+ * @property {(env: E, ctx: ExecutionContext) => Record<string, OperatorTool>} [operator] The operator API's tools, served at /api/operator behind OPERATOR_TOKEN and RATE_LIMITER.
+ * @property {GatewayStep<E>[]} [steps] The site's own steps, in order, after the cross-site check and before the page.
+ * @property {string[]} [crossSiteExempt] Path prefixes a cross-site write may reach (default ["/api/auth/"]).
+ * @property {string[]} [purgeAfter] Path prefixes whose accepted live writes purge the stored pages (default ["/admin"]).
+ * @property {string[]} [publicCookies] Cookies that change nothing private; their values join the cache key (a theme).
+ * @property {(request: Request, url: URL, env: E) => boolean} [cacheable] False keeps a read from the Renderer (a private path, a signed-in-only area); the standard rule applies first.
+ * @property {( url: URL, env: E, ) => Promise<Parameters<typeof import("./edge-cache.mjs").publicPageHeaders>[0]>} [publicPages] For a site whose routes name no Cache-Control: a 200 the Renderer draws without one is stored, under these tags (publicPageHeaders' options: `tags`, `until`). A route's own Cache-Control is left alone.
+ * @property {(Preload | Preconnect)[]} [preloads] Preloads beyond the page stylesheets, for the Early Hints header (fonts).
+ * @property {readonly string[]} [stylesheetRoutes] Route ids beyond the root whose stylesheets every page loads, such as a layout's ("routes/_site"): they join the root's in the Early Hints header and in `stylesheets()`, which a preview drawn outside React Router reads.
+ * @property {(context: RouterContextProvider, env: E, ctx: ExecutionContext) => void} [context] Sets the site's own context keys on every render. cloudflareContext and cspNonceContext are set already.
+ * @property {(env: E) => Parameters<typeof import("./edge-cache.mjs").recordPurge>[0]} [purgeKv] The KV that keeps the last failed purge, for purgeCheck.
+ * @property {(response: Response, request: Request, env: E) => Response | Promise<Response>} [onNotFound] A 404's last word: site-api's tombstoned, a 410 for a path Carrel removed.
+ * @property {( env: E, ) => Parameters<typeof import("./not-found.mjs").countNotFound>[0] | undefined} [notFoundDb] Where 404s are counted; default env.DB.
+ * @property {(handler: FetchHandler<E>) => FetchHandler<E>} [wrap] Wraps the gateway inside the request log: Prelum's markdownCopies.
+ * @property {{ prefixes?: string[]; cookieName?: string; secret: (env: E) => string }[]} [adminIdle] Admin idle sign-outs (./access withAdminIdle), outermost first.
+ * @property {( env: E, scheduledTime: Date, ctx: ExecutionContext, ) => Record<string, CronJob[] | undefined> | Promise<Record<string, CronJob[] | undefined>>} [cron] The job lists by cron expression, for the firing at `scheduledTime`.
+ * @property {(env: E) => string | undefined} [sha] The deployed commit; default env.DEPLOY_SHA.
+ * @property {readonly string[]} [tokenRoutes] The site's token routes beside /preview/, as path prefixes without slashes ("u", "e/c"): the token after one is cut from the request log and from CSP reports (a report names the page it came from).
+ * @property {(path: string) => string | undefined} [routeName] Log route names for paths a site step answers.
+ */
+
+/**
+ * @template E
+ * @typedef {object} Site
+ * @property {SiteOptions<E>} options
+ * @property {(request: Request, env: E, ctx: ExecutionContext, extra?: RenderExtra) => Promise<Response>} render
+ * @property {(request: Request, env: E) => Promise<string | null>} renderHtml A page's HTML as the Renderer would render it, with no request context (a cron job reading its own pages), or null when it is not an OK HTML page.
+ * @property {() => Promise<string[]>} stylesheets
+ * @property {(page: Response) => Promise<Response>} earlyHints
+ * @property {() => Promise<void>} routesReady
+ * @property {(request: Request) => string | undefined} routeName
+ */
+
+/**
+ * A site's own handlers beside the shared fetch: a queue consumer, or a scheduled of its own in place of `cron`.
+ * @template E
+ * @typedef {Pick<ExportedHandler<E, any>, "queue" | "scheduled" | "email">} SiteHandlers
+ */
+
 /** The security.txt path (RFC 9116 section 3). */
 export const SECURITY_TXT_PATH = "/.well-known/security.txt";
 
@@ -129,8 +239,8 @@ const answeredFiles = new WeakMap();
 
 /**
  * @template E
- * @param {import("./worker.d.mts").SiteOptions<E>} options
- * @returns {import("./worker.d.mts").Site<E>}
+ * @param {SiteOptions<E>} options
+ * @returns {Site<E>}
  */
 export function defineSite(options) {
   const requestHandler = createRequestHandler(options.serverBuild, options.mode);
@@ -145,12 +255,13 @@ export function defineSite(options) {
   const build = async () => options.serverBuild();
   const dev = options.mode === "development";
 
-  /** @type {import("./worker.d.mts").Site<E>} */
+  /** @type {Site<E>} */
   const site = {
     options,
     async render(request, env, ctx, { nonce, set } = {}) {
       const context = new RouterContextProvider();
-      context.set(cloudflareContext, { env, ctx });
+      // E is the site's own Env.
+      context.set(cloudflareContext, { env: /** @type {Env} */ (env), ctx });
       context.set(cspNonceContext, nonce ?? null);
       options.context?.(context, env, ctx);
       set?.(context);
@@ -223,14 +334,20 @@ function gatewayRoute(path, extra) {
 
 /**
  * The cacheable entrypoint: `export class Renderer extends siteRenderer(WorkerEntrypoint, site) {}`.
- * @param {abstract new (...args: any[]) => { env: any, ctx: any }} Base
- * @param {import("./worker.d.mts").Site<any>} site
+ * @template {abstract new (...args: any[]) => object} T
+ * @param {T} Base WorkerEntrypoint
+ * @param {Site<any>} site
+ * @returns {T & (abstract new (...args: any[]) => { fetch(request: Request): Promise<Response>, purgePages(why: string, tags?: string[]): Promise<boolean | null> })}
  */
 export function siteRenderer(Base, site) {
   const { options } = site;
-  const Purging = withPurgePages(Base, options.purgeKv ? { kv: options.purgeKv } : {});
+  // The mixin's body sees the base as the concrete entrypoint it is at run time (withPurgePages says why).
+  const Purging =
+    /** @type {new (...args: any[]) => { env: any, ctx: any, purgePages(why: string, tags?: string[]): Promise<boolean | null> }} */ (
+      /** @type {unknown} */ (withPurgePages(Base, options.purgeKv ? { kv: options.purgeKv } : {}))
+    );
   const tokenPath = tokenPattern(options.tokenRoutes);
-  return class Renderer extends Purging {
+  class Renderer extends Purging {
     /** @param {Request} request */
     fetch(request) {
       // Its own invocation, so its own Sentry client: a cached page's render error is reported from here.
@@ -257,7 +374,8 @@ export function siteRenderer(Base, site) {
         });
       });
     }
-  };
+  }
+  return /** @type {any} */ (Renderer);
 }
 
 /** publicPageHeaders' edge lifetime: a day fresh, a week stale. */
@@ -329,10 +447,12 @@ function forOneReader(answer) {
  * The Worker's default export: `{ fetch, scheduled }` and the site's own `handlers` (a `queue`, or a `scheduled` of its
  * own), all under Sentry (./sentry).
  * @template E
- * @param {import("./worker.d.mts").Site<E>} site
- * @param {import("./worker.d.mts").SiteHandlers<E>} [handlers]
+ * @template {SiteHandlers<E>} [H={}]
+ * @param {Site<E>} site
+ * @param {H} [handlers]
+ * @returns {{ fetch: FetchHandler<E>, scheduled(controller: ScheduledController, env: E, ctx: ExecutionContext): Promise<void> } & H}
  */
-export function siteWorker(site, handlers = {}) {
+export function siteWorker(site, handlers = /** @type {H} */ ({})) {
   const { options } = site;
   const secure = options.withSecurityHeaders;
   const exempt = options.crossSiteExempt ?? ["/api/auth/"];
@@ -421,7 +541,7 @@ export function siteWorker(site, handlers = {}) {
       if (refused) return secure(refused, request, undefined, env);
     }
 
-    /** @type {import("./worker.d.mts").GatewayKit} */
+    /** @type {GatewayKit} */
     const kit = {
       url,
       render: (r, extra) => site.render(r, env, ctx, extra),

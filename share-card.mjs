@@ -30,6 +30,14 @@
 import { fnv1a32 } from "./encoding.mjs";
 import { logEvent } from "./log.mjs";
 
+/**
+ * A renderer: the card's HTML drawn to PNG bytes (`drawShareCard` from ./share-card-draw).
+ * @typedef {(
+ * html: string,
+ * options: { width: number; height: number; fonts: unknown[] },
+ * ) => Promise<Uint8Array | ArrayBuffer>} ShareCardDraw
+ */
+
 /** The share-card size every family site uses, the size Open Graph previews draw at. */
 export const SHARE_CARD_WIDTH = 1200;
 export const SHARE_CARD_HEIGHT = 630;

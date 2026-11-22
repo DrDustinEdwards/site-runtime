@@ -9,6 +9,8 @@ import { hitRules, idleDeadline, peekRules, purgeExpired } from "./core.mjs";
  *
  * A Worker that already has a Durable Object class it cannot rename can extend this one: the counting
  * lives in its own table, apart from anything the subclass stores.
+ * @template [E=Cloudflare.Env]
+ * @extends {DurableObject<E>}
  */
 export class RateLimiter extends DurableObject {
   /**

@@ -2,6 +2,30 @@ import { checkSecurityHeaders } from "./check.mjs";
 import { siteForOrigin } from "./sites.mjs";
 import { errorMessage } from "./log.mjs";
 
+/**
+ * @typedef {object} CrawlFinding
+ * @property {"error" | "warning"} severity
+ * @property {string} check A checklist item (checkSecurityHeaders' id, R4, I3), or "session" / "crawl" when the crawl could not run.
+ * @property {string} detail
+ */
+
+/**
+ * @typedef {object} CrawlResult
+ * @property {"pass" | "fail" | "error"} status
+ * @property {CrawlFinding[]} findings
+ */
+
+/**
+ * @typedef {object} CrawlOptions
+ * @property {string} origin The app's origin, as its registry entry names it.
+ * @property {(request: Request) => Promise<Response>} fetch The app's own fetch: its handler in-process, or the network.
+ * @property {Record<string, string>} headers What signs the request in (a session cookie, Access service-token headers). Never reported.
+ * @property {string[]} pages Pages, the first being the signed-in home: a redirect, 401 or 403 there makes the result "error".
+ * @property {string[]} [json] JSON reads, graded as subresources.
+ * @property {string[]} [actions] JSON actions probed for R4 with a text/plain and a form body, each of which must get 415.
+ * @property {string} [r4Note] A warning to add for R4 when the app is not probed, saying why.
+ */
+
 // THE SIGNED-IN CRAWL. A stranger's live check (bin/site-runtime-security.mjs) sees only the sign-in redirect of an app
 // behind a sign-in. An app grades the pages behind it itself, where the credential already lives, and publishes the
 // result as a report devkit's scoreboard reads (devkit live/areas.json, the reported check "signed-in-security"; GitHub
@@ -34,9 +58,6 @@ const SUB_HEADERS = {
   "Sec-Fetch-Site": "same-origin",
   "Sec-Fetch-Dest": "empty",
 };
-
-/** @typedef {import("./signed-in-crawl.d.mts").CrawlFinding} CrawlFinding */
-/** @typedef {import("./signed-in-crawl.d.mts").CrawlResult} CrawlResult */
 
 /** @param {string} origin @param {string} url @param {Response} response @returns {CrawlFinding[]} */
 function gradeResponse(origin, url, response) {
@@ -94,7 +115,7 @@ function firstScript(origin, url, html) {
   return null;
 }
 
-/** @param {import("./signed-in-crawl.d.mts").CrawlOptions} opts @returns {Promise<CrawlResult>} */
+/** @param {CrawlOptions} opts @returns {Promise<CrawlResult>} */
 export async function crawlApp(opts) {
   /** @type {CrawlFinding[]} */
   const findings = [];
@@ -189,7 +210,11 @@ export async function guardedCrawl(run) {
   }
 }
 
-/** @param {Record<string, CrawlResult>} sites @param {{ at: Date, ref: string }} meta */
+/**
+ * @param {Record<string, CrawlResult>} sites
+ * @param {{ at: Date, ref: string }} meta
+ * @returns {{ check: "signed-in-security", at: string, ref: string, sites: Record<string, CrawlResult> }}
+ */
 export function signedInReport(sites, meta) {
   return { check: SIGNED_IN_CHECK, at: meta.at.toISOString(), ref: meta.ref.slice(0, 60), sites };
 }

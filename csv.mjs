@@ -13,6 +13,18 @@
 
 import { attachmentResponse } from "./r2-object.mjs";
 
+/**
+ * One cell's value: a list is joined with "; "; null and undefined are empty; any other object is String()ed.
+ * @typedef {| string
+ * | number
+ * | bigint
+ * | boolean
+ * | Date
+ * | null
+ * | undefined
+ * | readonly (string | number)[]} CsvValue
+ */
+
 /** The Content-Type of a CSV answer. */
 export const CSV_CONTENT_TYPE = "text/csv; charset=utf-8";
 

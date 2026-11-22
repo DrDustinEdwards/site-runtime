@@ -28,6 +28,62 @@
 import { retryAfterSeconds } from "./http.mjs";
 import { errorMessage } from "./log.mjs";
 
+/**
+ * Starting a Claude Code routine from a site (routine.mjs).
+ * @typedef {object} RoutineConfig
+ * @property {string} url
+ * @property {string} token
+ * @property {string} routineId
+ */
+
+/**
+ * @typedef {| { ok: true; outcome: "started"; status: number; sessionId: string; sessionUrl: string }
+ * | {
+ *     ok: false;
+ *     outcome: "rate_limited";
+ *     retry: true;
+ *     status: 429;
+ *     retryAfter?: number;
+ *     error: string;
+ *   }
+ * | {
+ *     ok: false;
+ *     outcome: "unavailable";
+ *     retry: true;
+ *     status: number;
+ *     retryAfter?: number;
+ *     error: string;
+ *   }
+ * | { ok: false; outcome: "unreachable"; retry: true; error: string }
+ * | { ok: false; outcome: "refused"; retry: false; status: number; error: string }
+ * | { ok: false; outcome: "unknown"; retry: false; status?: number; error: string }} FireResult
+ */
+
+/**
+ * What `fireOnce` keeps per job key, as JSON. `firing` is a fire in flight; one older than 10 minutes is reported as
+ * `unknown` (its worker died mid-fire). `failed` is a sure non-start whose delete failed, and blocks nothing.
+ * @typedef {object} FireRecord
+ * @property {"firing" | "fired" | "unknown" | "failed"} state
+ * @property {string} at
+ * @property {string} [sessionId]
+ * @property {string} [sessionUrl]
+ * @property {string} [error]
+ */
+
+/**
+ * Where `fireOnce` keeps its records: a D1 table or a Durable Object, never KV (eventually consistent, so two fires can
+ * both read nothing). Values are JSON strings. `add` is required: it writes only when the key is absent and says
+ * whether it did (D1: INSERT ... ON CONFLICT DO NOTHING RETURNING), so two simultaneous fires cannot both reserve.
+ * @typedef {{ get(key: string): Promise<string | null>; put(key: string, value: string): Promise<unknown>; delete(key: string): Promise<unknown>; add(key: string, value: string): Promise<boolean>; }} FireStore
+ */
+
+/**
+ * @typedef {| (FireResult & {
+ *      unrecorded?: string;
+ *   })
+ * | { ok: false; outcome: "already_fired"; retry: false; record: FireRecord; error: string }} FireOnceResult
+ */
+
 const FIRE_URL =
   /^https:\/\/api\.anthropic\.com\/v1\/claude_code\/routines\/(trig_[A-Za-z0-9_-]{8,64})\/fire$/;
 const MAX_TEXT = 65_536;
@@ -61,7 +117,7 @@ export function routineId(url) {
 /**
  * @param {string | undefined} url
  * @param {string | undefined} token
- * @returns {import("./routine.mjs").RoutineConfig | { missing: string }}
+ * @returns {RoutineConfig | { missing: string }}
  */
 export function routineConfig(url, token) {
   const u = typeof url === "string" ? url.trim() : "";
@@ -77,10 +133,10 @@ export function routineConfig(url, token) {
 }
 
 /**
- * @param {import("./routine.mjs").RoutineConfig} config
+ * @param {RoutineConfig} config
  * @param {string} text
  * @param {typeof fetch} [fetcher]
- * @returns {Promise<import("./routine.mjs").FireResult>}
+ * @returns {Promise<FireResult>}
  */
 export async function fireRoutine(config, text, fetcher = fetch) {
   let res;
@@ -133,7 +189,7 @@ export async function fireRoutine(config, text, fetcher = fetch) {
 
 // A 2xx means a session was created. It counts as started only when the answer is a routine_fire naming a session;
 // otherwise it is unknown, never a reason to fire again.
-/** @param {Response} res @returns {Promise<import("./routine.mjs").FireResult>} */
+/** @param {Response} res @returns {Promise<FireResult>} */
 async function readAnswer(res) {
   const text = (await res.text().catch(() => "")).slice(0, ANSWER_MAX_CHARS);
   let body = null;
@@ -197,7 +253,7 @@ async function errorType(res) {
 
 // Retry-After as whole seconds: delta-seconds or an HTTP date (RFC 9110, 10.2.3). Absent or unreadable, it is left off.
 /**
- * @template {import("./routine.mjs").FireResult} T
+ * @template {FireResult} T
  * @param {T} result
  * @param {Response} res
  * @returns {T & { retryAfter?: number }}
@@ -243,7 +299,7 @@ export function d1FireStore(db, table = "routine_fires") {
   };
 }
 
-/** @param {unknown} raw @returns {import("./routine.mjs").FireRecord | null} */
+/** @param {unknown} raw @returns {FireRecord | null} */
 const readRecord = (raw) => {
   try {
     const record = typeof raw === "string" ? JSON.parse(raw) : raw;
@@ -257,12 +313,12 @@ const readRecord = (raw) => {
 const FIRING_STALE_MS = 10 * 60_000;
 
 /**
- * @param {import("./routine.mjs").FireStore} store
+ * @param {FireStore} store
  * @param {string} jobKey
- * @param {import("./routine.mjs").RoutineConfig} config
+ * @param {RoutineConfig} config
  * @param {string} text
  * @param {{ fetcher?: typeof fetch, force?: boolean, refireAfterMs?: number, now?: Date }} [options]
- * @returns {Promise<import("./routine.mjs").FireOnceResult>}
+ * @returns {Promise<FireOnceResult>}
  */
 export async function fireOnce(store, jobKey, config, text, options = {}) {
   if (typeof store?.add !== "function") {
@@ -272,10 +328,9 @@ export async function fireOnce(store, jobKey, config, text, options = {}) {
   }
   const { fetcher = fetch, force = false, refireAfterMs = Infinity, now = new Date() } = options;
   const key = `routine-fire:${jobKey}`;
-  const age = (/** @type {import("./routine.mjs").FireRecord} */ record) =>
-    now.getTime() - Date.parse(record.at);
+  const age = (/** @type {FireRecord} */ record) => now.getTime() - Date.parse(record.at);
   // A `failed` record is a sure non-start whose delete failed: it holds nothing.
-  const blocks = (/** @type {import("./routine.mjs").FireRecord} */ record) =>
+  const blocks = (/** @type {FireRecord} */ record) =>
     record.state !== "failed" && !force && !(age(record) >= refireAfterMs);
   // Reserve before posting, so a second caller sees "firing" and stays out; `add` lets only one caller reserve.
   const reservation = JSON.stringify({ state: "firing", at: now.toISOString() });

@@ -32,7 +32,34 @@ import { escapeHtml as escape } from "./html.mjs";
 import { originOf, ownerPage, respond } from "./owner-page.mjs";
 import { ipKey } from "./rate-limit/limit.mjs";
 
-/** @typedef {import("./mcp-login.d.mts").LoginEnv} LoginEnv */
+/** @import { OAuthHelpers } from "@cloudflare/workers-oauth-provider" */
+
+/** @import { AccessEnv } from "./access-login.mjs" */
+
+/**
+ *
+ * - `PUBLIC_ORIGIN`: The server's public origin, for the /callback address; the request's origin when unset.
+ * - `DEPLOY_SHA`: The deployed commit, for the default /health's `sha`.
+ * - `OAUTH_KV`: The provider's KV namespace; the owner page keeps its sign-ins and sessions there.
+ * @typedef {AccessEnv & { PUBLIC_ORIGIN?: string; DEPLOY_SHA?: string; OAUTH_PROVIDER: OAuthHelpers; OAUTH_KV: import("./owner-page.mjs").OwnerKv; }} LoginEnv
+ */
+
+/**
+ * @template {LoginEnv} E
+ *
+ * - `name`: The server's name, as the consent page and a refusal show it.
+ * - `scopes`: The read scope every grant holds, and the write scope the consent box adds.
+ * - `about`: The server's own paragraphs on the consent page (trusted HTML): what it does, and what the write box allows.
+ * - `admit`: Whether the email Access verified is let in. An object admits and is added to the grant's props, for a server with several people that keeps its own id for each (Carrel's personId); false or null refuses.
+ * - `admits`: Who is let in, for the consent page's line and the refusal. Default: the single configured administrator.
+ * - `wantsWrite`: Whether the consent page's write box starts ticked for the scopes a client asked for. Default: it asked for write.
+ * - `health`: The /health answer. Default: healthResponse({ sha: env.DEPLOY_SHA }) from ./health (application/health+json, no-store, noindex).
+ * - `audit`: The server's serverInfo name and version: when set, every callback writes a `sign-in` row to TOOL_CALL_LOG.
+ * - `revokeExistingGrants`: Passed to completeAuthorization. Default true: a new grant revokes the user's earlier ones for the same client. A server with two connectors sharing one client id passes false, so signing into one does not sign out the other.
+ * - `owner`: Default true: /owner serves the owner page (./owner-page), where the admitted person lists and revokes their grants and reads the tool-call log. Its sign-in returns through /callback. Needs OAUTH_KV. A server with several people passes `{ readsLog(env, email) }`, so only its owner reads everyone's calls; false turns the page off.
+ * @typedef {{ name: string; scopes: { read: string; write: string }; about: string; admit( env: E, user: { email: string; name?: string }, ): boolean | Record<string, unknown> | null | Promise<boolean | Record<string, unknown> | null>; admits?: { refusal: string }; wantsWrite?(requested: string[]): boolean; health?(env: E): Response | Promise<Response>; audit?: { name: string; version: string }; revokeExistingGrants?: boolean; owner?: boolean | { readsLog(env: E, email: string): boolean | Promise<boolean> }; }} LoginOptions
+ */
+
 /** @typedef {import("@cloudflare/workers-oauth-provider").AuthRequest} AuthRequest */
 /** @typedef {import("@cloudflare/workers-oauth-provider").ClientInfo} ClientInfo */
 
@@ -131,7 +158,7 @@ const NOT_CONFIGURED =
  * owner page on /owner (./owner-page) unless `owner` is false. A missing Access setting answers 503 on every sign-in
  * route.
  * @template {LoginEnv} E
- * @param {import("./mcp-login.d.mts").LoginOptions<E>} options
+ * @param {LoginOptions<E>} options
  */
 export function loginHandler({
   name,
@@ -159,7 +186,7 @@ export function loginHandler({
    */
   async function signInRow(env, request, caller, outcome, admitted) {
     if (!audit) return;
-    await recordAudit(/** @type {Partial<import("./audit-log.d.mts").AuditEnv>} */ (env), {
+    await recordAudit(/** @type {Partial<import("./audit-log.mjs").AuditEnv>} */ (env), {
       callId: crypto.randomUUID(),
       phase: "sign-in",
       caller,

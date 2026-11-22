@@ -6,6 +6,11 @@
  */
 
 /**
+ * Byte encodings (encoding.mjs). A string input is encoded as UTF-8 first.
+ * @typedef {Uint8Array | ArrayBuffer | string} Input
+ */
+
+/**
  * The parts' bytes one after another, in one new array.
  * @param {readonly Uint8Array[]} parts
  * @returns {Uint8Array<ArrayBuffer>}

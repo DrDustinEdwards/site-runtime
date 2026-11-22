@@ -21,10 +21,12 @@ import { limit, mustStop } from "./rate-limit/limit.mjs";
  * door with a 503): `resolveActor` reads that admin from the site's own store, and the actor then
  * goes through the same checks a signed-in admin does. A request with no Authorization header passes untouched. Each
  * refusal is logged under OWASP's names with its reason, never the token.
- * @param {{ token: (c: Ctx) => string | undefined, actorHeader: string,
- *   resolveActor: (c: Ctx, id: string) => Promise<Record<string, unknown> | null>,
- *   onActor: (c: Ctx, actor: Record<string, unknown>) => void, door?: string }} options
- * @returns {(c: Ctx, next: () => Promise<unknown>) => Promise<unknown>}
+ * @template {Ctx} [C=Ctx]
+ * @template {Record<string, unknown>} [A=Record<string, unknown>]
+ * @param {{ token: (c: C) => string | undefined, actorHeader: string,
+ *   resolveActor: (c: C, id: string) => Promise<A | null>,
+ *   onActor: (c: C, actor: A) => void, door?: string }} options
+ * @returns {(c: C, next: () => Promise<unknown>) => Promise<unknown>}
  */
 export function operatorBearer({ token, actorHeader, resolveActor, onActor, door = "operator" }) {
   /** @param {Request} request @param {string} reason @param {string} message */
@@ -73,9 +75,10 @@ export function operatorBearer({ token, actorHeader, resolveActor, onActor, door
  * A rate limit on site-runtime's RateLimiter Durable Object (./rate-limit): one bucket per `bucket` and caller, the
  * caller being `who(c)` (a user id) or, signed out, the edge address (clientIp). `onUnavailable` is required, as
  * limit() asks. Over the limit is logged and refused 429 `rate_limited`.
- * @param {{ limiter: (c: Ctx) => Parameters<typeof limit>[0], bucket: string, rules: { limit: number, windowSeconds: number }[],
- *   who?: (c: Ctx) => string | undefined, onUnavailable: "allow" | "refuse" }} options
- * @returns {(c: Ctx, next: () => Promise<unknown>) => Promise<unknown>}
+ * @template {Ctx} [C=Ctx]
+ * @param {{ limiter: (c: C) => Parameters<typeof limit>[0], bucket: string, rules: { limit: number, windowSeconds: number }[],
+ *   who?: (c: C) => string | undefined, onUnavailable: "allow" | "refuse" }} options
+ * @returns {(c: C, next: () => Promise<unknown>) => Promise<unknown>}
  */
 export function honoRateLimit({ limiter, bucket, rules, who, onUnavailable }) {
   return async (c, next) => {

@@ -3,50 +3,74 @@
 
 import { entryOverrides, permissionsAllowingSelf } from "./headers.mjs";
 export { PASSKEY_OVERRIDES, permissionsAllowingSelf } from "./headers.mjs";
+/** @typedef {import("./sites.mjs").ServedSiteEntry} ServedSiteEntry */
+/** @typedef {import("./sites.mjs").SignInProbes} SignInProbes */
+/** @typedef {import("./sites.mjs").SiteAssets} SiteAssets */
+/** @typedef {import("./sites.mjs").SiteOptIns} SiteOptIns */
 
 const s0 = "public, max-age=31536000, immutable";
 const s1 = "https://mcp.dustinedwards.info";
 const s2 = "public, max-age=300, must-revalidate";
 const s3 = "strict-origin-when-cross-origin";
-const s4 = {"value":"credentialless"};
-const s5 = {"value":"report-only"};
-const s6 = {"Cache-Control":s0};
-const s7 = {"Cross-Origin-Resource-Policy":"cross-origin"};
-const s8 = {"cloudflareWebAnalytics":{"value":true},"denyUnlisted":{"value":true},"coep":s4,"integrityPolicy":s5,"trustedTypes":{"value":true}};
-const s9 = {"Cache-Control":s2};
-const s10 = {"/*":s9};
-const s11 = {"Cross-Origin-Opener-Policy":{"value":null}};
-const s12 = {"coep":s4,"integrityPolicy":{"value":"enforce"},"trustedTypes":{"value":true},"denyUnlisted":{"value":true}};
-const s13 = {"value":"credentialless","reportOnly":true};
-const s14 = {"sources":{"img":["data:"]}};
-const s15 = {"/assets/*":s6};
-const s16 = {"value":["/fonts/*"]};
-const s17 = ["manifest-src 'self'"];
-const s18 = {"value":s3};
-const s19 = {"Referrer-Policy":s18};
-const s20 = {"/assets/*":s6,"/islands/*":s6,"/site-*":s6};
-const s21 = {"paths":s20};
+const s4 = /** @type {const} */ ({"value":"credentialless"});
+const s5 = /** @type {const} */ ({"value":"report-only"});
+const s6 = /** @type {const} */ ({"Cache-Control":s0});
+const s7 = /** @type {const} */ ({"Cross-Origin-Resource-Policy":"cross-origin"});
+const s8 = /** @type {const} */ ({"cloudflareWebAnalytics":{"value":true},"denyUnlisted":{"value":true},"coep":s4,"integrityPolicy":s5,"trustedTypes":{"value":true}});
+const s9 = /** @type {const} */ ({"Cache-Control":s2});
+const s10 = /** @type {const} */ ({"/*":s9});
+const s11 = /** @type {const} */ ({"Cross-Origin-Opener-Policy":{"value":null}});
+const s12 = /** @type {const} */ ({"coep":s4,"integrityPolicy":{"value":"enforce"},"trustedTypes":{"value":true},"denyUnlisted":{"value":true}});
+const s13 = /** @type {const} */ ({"value":"credentialless","reportOnly":true});
+const s14 = /** @type {const} */ ({"sources":{"img":["data:"]}});
+const s15 = /** @type {const} */ ({"/assets/*":s6});
+const s16 = /** @type {const} */ ({"value":["/fonts/*"]});
+const s17 = /** @type {const} */ (["manifest-src 'self'"]);
+const s18 = /** @type {const} */ ({"value":s3});
+const s19 = /** @type {const} */ ({"Referrer-Policy":s18});
+const s20 = /** @type {const} */ ({"/assets/*":s6,"/islands/*":s6,"/site-*":s6});
+const s21 = /** @type {const} */ ({"paths":s20});
 
+/** @type {ServedSiteEntry} */
 export const bsw = {"id":"bsw","origin":"https://bsw.dustin-edwards.workers.dev","oldSite":{"value":"https://biosciencewriters.com"},"optIns":{"cloudflareWebAnalytics":{"value":"manual"},"denyUnlisted":{"value":true},"coep":s4,"integrityPolicy":s5,"trustedTypes":{"value":true}},"assets":{"paths":{"/assets/*":s6,"/islands/*":s6,"/site-*":s6,"/brand/*":s6,"/team/*":s6,"/services/*":s6,"/og-image.png":s7,"/og/*":s7}}};
+/** @type {ServedSiteEntry} */
 export const capsid = {"id":"capsid","origin":"https://capsid.dustinedwards.info","optIns":s8,"assets":{"skipWorker":{"value":["/*"]},"policy":{},"reportOrigin":s1,"paths":s10}};
+/** @type {ServedSiteEntry} */
 export const capsidMcp = {"id":"capsid-mcp","origin":s1,"headers":s11,"optIns":s12};
+/** @type {ServedSiteEntry} */
 export const capsidPortal = {"id":"capsid-portal","origin":"https://portal.dustinedwards.info","optIns":{"denyUnlisted":{"value":true},"coep":s4,"integrityPolicy":{"value":"enforce"},"trustedTypes":{"value":true}},"signIn":{"admin":["/"]}};
+/** @type {ServedSiteEntry} */
 export const capsomer = {"id":"capsomer","origin":"https://capsomer.dustinedwards.info","headers":{"Permissions-Policy":{"value":/* @__PURE__ */ permissionsAllowingSelf("clipboard-write")},"X-Frame-Options":{"value":"sameorigin"}},"optIns":{"cloudflareWebAnalytics":{"value":true},"framedBySameOrigin":{"value":true},"embeds":{"value":true},"coep":s13,"integrityPolicy":{"value":"enforce"},"trustedTypes":{"value":true},"denyUnlisted":s5},"assets":{"skipWorker":{"value":["/assets/*"]},"policy":s14,"paths":s15}};
+/** @type {ServedSiteEntry} */
 export const carrel = {"id":"carrel","origin":"https://carrel.dustinedwards.info","optIns":s8,"assets":{"skipWorker":s16,"policy":{"noForms":true,"sources":{"img":["data:"]},"styleAttributesInline":true,"extraDirectives":s17},"paths":s10}};
+/** @type {ServedSiteEntry} */
 export const carrelDesk = {"id":"carrel-desk","origin":"https://desk.dustinedwards.info","optIns":{"strictDynamic":{"value":true},"coep":s13,"integrityPolicy":{"value":"enforce"},"trustedTypes":{"value":true},"denyUnlisted":s5},"assets":{"paths":s15},"signIn":{"admin":["/"]}};
+/** @type {ServedSiteEntry} */
 export const carrelMcp = {"id":"carrel-mcp","origin":"https://carrel-mcp.dustinedwards.info","headers":s11,"optIns":s12};
+/** @type {ServedSiteEntry} */
 export const dustinedwardsInfo = {"id":"dustinedwards-info","origin":"https://dustinedwards.info","headers":{"Referrer-Policy":s18,"Permissions-Policy":{"value":/* @__PURE__ */ permissionsAllowingSelf("clipboard-write", "screen-wake-lock")}},"optIns":{"cloudflareWebAnalytics":{"value":true},"embeds":{"value":true},"coep":s13,"integrityPolicy":{"value":"enforce"},"trustedTypes":{"value":true},"denyUnlisted":s5},"assets":{"paths":{"/assets/*":s6,"/islands/*":s6,"/site-*":s6,"/diagrams/*":s7,"/phage-hunters/*":s7,"/dustin-edwards-og-image.png":s7,"/dustin-edwards-logo.svg":s7,"/dustin-edwards-logo-dark.svg":s7}},"signIn":{"admin":["/lab-bench"],"mcp":["https://admin-mcp.dustinedwards.info/mcp"]}};
+/** @type {ServedSiteEntry} */
 export const dustinedwardsMcp = {"id":"dustinedwards-mcp","origin":"https://admin-mcp.dustinedwards.info","headers":s11,"optIns":s12};
+/** @type {ServedSiteEntry} */
 export const enarratio = {"id":"enarratio","origin":"https://enarratio.dustinedwards.info","optIns":s8,"assets":{"skipWorker":s16,"policy":s14,"paths":s10}};
+/** @type {ServedSiteEntry} */
 export const foxhound = {"id":"foxhound","origin":"https://foxhoundapp.com","headers":{"Referrer-Policy":s18,"Permissions-Policy":{"value":/* @__PURE__ */ permissionsAllowingSelf("publickey-credentials-get", "clipboard-write")}},"optIns":{"cloudflareWebAnalytics":{"value":true},"formTargets":{"value":["https://checkout.stripe.com","https://connect.stripe.com"]},"passkey":{"value":true},"embeds":{"value":true},"coep":s13,"integrityPolicy":s5,"trustedTypes":{"value":true},"denyUnlisted":s5},"assets":{"paths":{"/*.ico":s7,"/*.png":s7,"/assets/*":s6,"/islands/*":s6,"/site-*":s6}},"signIn":{"mcp":["https://admin-mcp.foxhoundapp.com/mcp","https://foxhoundapp.com/mcp"]}};
+/** @type {ServedSiteEntry} */
 export const foxhoundMcp = {"id":"foxhound-mcp","origin":"https://admin-mcp.foxhoundapp.com","headers":s11,"optIns":s12};
+/** @type {ServedSiteEntry} */
 export const foxing = {"id":"foxing","origin":"https://foxing.app","headers":s19,"optIns":{"cloudflareWebAnalytics":{"value":true},"baseUriSelf":{"value":true},"passkey":{"value":true},"coep":s13,"integrityPolicy":s5,"trustedTypes":{"value":true},"denyUnlisted":s5},"assets":s21,"signIn":{"mcp":["https://admin-mcp.foxing.app/mcp"]}};
+/** @type {ServedSiteEntry} */
 export const foxingMcp = {"id":"foxing-mcp","origin":"https://admin-mcp.foxing.app","optIns":s12};
+/** @type {ServedSiteEntry} */
 export const germomics = {"id":"germomics","origin":"https://germomics.com","headers":{"Referrer-Policy":s18,"Permissions-Policy":{"value":/* @__PURE__ */ permissionsAllowingSelf("autoplay", "clipboard-write", "web-share")}},"optIns":{"cloudflareWebAnalytics":{"value":true},"inlineStyles":{"value":true},"embeds":{"value":true},"coep":s13,"integrityPolicy":{"value":"enforce"},"trustedTypes":{"value":true},"denyUnlisted":s5},"assets":{"paths":{"/assets/*":s6,"/islands/*":s6,"/site-*":s6,"/fonts/*":{"Cache-Control":"public, max-age=86400"}}}};
+/** @type {ServedSiteEntry} */
 export const julieedwardsInfo = {"id":"julieedwards-info","origin":"https://julieedwards.info","optIns":{"cloudflareWebAnalytics":{"value":true},"denyUnlisted":{"value":true},"coep":s4,"integrityPolicy":{"value":"enforce"},"trustedTypes":{"value":true}},"assets":{"paths":{"/assets/*":{"Cache-Control":s0,"Cross-Origin-Resource-Policy":"cross-origin"},"/site-*":s6,"/opengraph-image.png":s7}}};
+/** @type {ServedSiteEntry} */
 export const prelum = {"id":"prelum","origin":"https://prelum.dustinedwards.info","optIns":{"cloudflareWebAnalytics":{"value":true},"denyUnlisted":{"value":true},"embeds":{"value":true},"coep":s13,"integrityPolicy":s5,"trustedTypes":{"value":true}},"assets":{"skipWorker":{"value":["/fonts/*","/katex/*","/images/*","/diagrams/*"]},"policy":{"noForms":true,"sources":{"img":["data:"],"media":["'self'"]},"styleAttributesInline":true,"extraDirectives":s17},"paths":{"/*":s9,"/elements.json":{"Access-Control-Allow-Origin":"*"},"/diagrams/*":{"Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; report-uri /csp-report; report-to csp-endpoint"}}}};
+/** @type {ServedSiteEntry} */
 export const txasm = {"id":"txasm","origin":"https://txasm.dustin-edwards.workers.dev","aliases":["https://txasm.org"],"headers":s19,"optIns":{"cloudflareWebAnalytics":{"value":true},"passkey":{"value":true},"coep":s13,"integrityPolicy":s5,"trustedTypes":{"value":true},"denyUnlisted":s5},"assets":s21,"signIn":{"admin":["/admin/access"]}};
 
+/** @type {readonly ServedSiteEntry[]} */
 export const SITES = /* @__PURE__ */ Object.freeze([dustinedwardsInfo, foxhound, foxing, germomics, julieedwardsInfo, bsw, txasm, carrel, carrelDesk, capsidPortal, capsidMcp, carrelMcp, capsid, enarratio, foxhoundMcp, dustinedwardsMcp, foxingMcp, capsomer, prelum]);
 
 /** The entry for an id; unknown ids throw. @param {string} id */

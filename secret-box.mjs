@@ -13,6 +13,13 @@
 
 import { fromBase64, fromHex, toHex } from "./encoding.mjs";
 
+/**
+ * The active key's id and every key that opens, by id.
+ * @typedef {object} Keyring
+ * @property {string} activeId
+ * @property {Map<string, Uint8Array<ArrayBuffer>>} byId
+ */
+
 const FORMAT = "v1";
 const IV_BYTES = 12;
 
@@ -38,7 +45,7 @@ function keyBytes(text, label) {
 /**
  * A keyring from the active key, its id and the keys that only open.
  * @param {{ key: string, id?: string, old?: { id: string, key: string }[], label?: string }} options
- * @returns {import("./secret-box.d.mts").Keyring}
+ * @returns {Keyring}
  */
 export function keyring({ key, id = "k1", old = [], label = "the active key" }) {
   if (!key?.trim()) throw new Error(`${label} is not set`);
@@ -60,15 +67,17 @@ export function keyring({ key, id = "k1", old = [], label = "the active key" }) 
 /**
  * The keyring from a Worker's env: the active key, its id (default "k1") and decrypt-only old keys as "id:key,id:key".
  * Foxhound's names are the defaults.
- * @param {Record<string, unknown>} env
+ * @param {object} env
  * @param {{ key?: string, id?: string, old?: string, defaultId?: string }} [names]
  */
 export function keyringFromEnv(env, names = {}) {
+  // A site passes its own Env, an interface with no index signature, so the parameter is `object`.
+  const vars = /** @type {Record<string, unknown>} */ (env);
   const keyName = names.key ?? "ENCRYPTION_KEY";
   const idName = names.id ?? "ENCRYPTION_KEY_ID";
   const oldName = names.old ?? "ENCRYPTION_KEYS_OLD";
   const text = (/** @type {string} */ name) =>
-    typeof env[name] === "string" ? /** @type {string} */ (env[name]) : undefined;
+    typeof vars[name] === "string" ? /** @type {string} */ (vars[name]) : undefined;
   /** @type {{ id: string, key: string }[]} */
   const old = [];
   for (const entry of (text(oldName) ?? "").split(",")) {
@@ -93,7 +102,7 @@ function importKey(bytes) {
 
 /**
  * Seal text under the active key.
- * @param {import("./secret-box.d.mts").Keyring} ring
+ * @param {Keyring} ring
  * @param {string} text
  */
 export async function seal(ring, text) {
@@ -120,7 +129,7 @@ export function keyIdOf(sealed) {
 
 /**
  * Open a sealed value. Throws on a malformed value, a key id the ring lacks, or a failed tag.
- * @param {import("./secret-box.d.mts").Keyring} ring
+ * @param {Keyring} ring
  * @param {string} sealed
  */
 export async function open(ring, sealed) {
@@ -145,7 +154,7 @@ export async function open(ring, sealed) {
 
 /**
  * Reseal a value onto the active key, or null when it is already there.
- * @param {import("./secret-box.d.mts").Keyring} ring
+ * @param {Keyring} ring
  * @param {string} sealed
  */
 export async function reseal(ring, sealed) {

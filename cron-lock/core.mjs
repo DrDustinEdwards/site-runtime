@@ -8,12 +8,23 @@
  */
 
 /**
+ * The cron lock's pure decisions (cron-lock/core.mjs).
+ * @typedef {object} LockRecord
+ * @property {number} heldUntil
+ * @property {string} token
+ */
+
+/**
+ * @typedef {{ granted: false } | { granted: true; record: LockRecord }} AcquireDecision
+ */
+
+/**
  * Whether a caller may take the lock, and the record it writes. An expiry of exactly now has run out.
- * @param {import("./core.d.mts").LockRecord | null} lock
+ * @param {LockRecord | null} lock
  * @param {number} now
  * @param {number} leaseMs
  * @param {string} token
- * @returns {import("./core.d.mts").AcquireDecision}
+ * @returns {AcquireDecision}
  */
 export function decideAcquire(lock, now, leaseMs, token) {
   if (lock !== null && lock.heldUntil > now) return { granted: false };
@@ -23,7 +34,7 @@ export function decideAcquire(lock, now, leaseMs, token) {
 /**
  * Whether a release may clear the lock: only its holder's. A stale holder's release is a no-op, the expected end of an
  * overrun.
- * @param {import("./core.d.mts").LockRecord | null} lock
+ * @param {LockRecord | null} lock
  * @param {string} token
  */
 export function decideRelease(lock, token) {

@@ -18,6 +18,11 @@ import { sendEmail } from "./email.mjs";
 import { logEvent } from "./log.mjs";
 import { dayKey } from "./time.mjs";
 
+/**
+ * What a site's `send` returns: true, or `{ sent, error }`. A throw counts as not sent.
+ * @typedef {boolean | { sent: boolean; error?: string }} AlertSent
+ */
+
 /** The migration: a D1 site adds it as its next file. `key` is what the alert is about (a job's name, a queue), `day`
  *  the UTC date, YYYY-MM-DD. */
 export const ALERTS_SQL = `CREATE TABLE IF NOT EXISTS alerts_sent (
@@ -59,7 +64,7 @@ export function describeAge(ms) {
  * Raise one alert at most once per key, kind and UTC day: claim the day's slot, `send`, and give the slot back when the
  * send did not go, so the next try sends. `send` resolves true (or `{ sent: true }`) when it went. Never throws.
  * @param {{
- *   db: import("./cron.d.mts").D1Like,
+ *   db: import("./cron.mjs").D1Like,
  *   key: string,
  *   kind: string,
  *   detail?: string,
@@ -91,10 +96,10 @@ export async function alertOnce({ db, key, kind, detail, now, send }) {
  * send_email binding (`mail`, `from`, `to`, `site`); with `send`, the site sends instead, given the new alerts all at once
  * or, with `each`, one alert per call. Never throws.
  * @param {{
- *   db: import("./cron.d.mts").D1Like,
- *   mail?: import("./email.d.mts").EmailBinding | null | undefined,
- *   from?: import("./email.d.mts").MailAddress,
- *   to?: import("./email.d.mts").MailAddress | import("./email.d.mts").MailAddress[],
+ *   db: import("./cron.mjs").D1Like,
+ *   mail?: import("./email.mjs").EmailBinding | null | undefined,
+ *   from?: import("./email.mjs").MailAddress,
+ *   to?: import("./email.mjs").MailAddress | import("./email.mjs").MailAddress[],
  *   site?: string,
  *   send?: (alerts: CronAlertItem[]) => Promise<boolean | { sent: boolean, error?: string }>,
  *   each?: boolean,
@@ -125,8 +130,8 @@ export async function cronAlert({
     (async (/** @type {CronAlertItem[]} */ alerts) =>
       (
         await sendEmail(mail, {
-          from: /** @type {import("./email.d.mts").MailAddress} */ (from),
-          to: /** @type {import("./email.d.mts").MailAddress} */ (to),
+          from: /** @type {import("./email.mjs").MailAddress} */ (from),
+          to: /** @type {import("./email.mjs").MailAddress} */ (to),
           subject: `${site}: ${alerts.length === 1 ? `cron ${alerts[0].kind} (${alerts[0].name})` : `${alerts.length} cron jobs not well`}`,
           text: `${alerts.map((a) => a.line).join("\n")}\n\nEach job is mailed once per day until it is well.`,
         })
@@ -217,7 +222,7 @@ export async function cronAlert({
 
 /**
  * Claim the one slot per key, kind and day: true means this caller may send it.
- * @param {import("./cron.d.mts").D1Like} db
+ * @param {import("./cron.mjs").D1Like} db
  * @param {string} key
  * @param {string} kind
  * @param {string} day
@@ -238,7 +243,7 @@ async function claim(db, key, kind, day, detail, at) {
 
 /**
  * Give a claimed slot back after a send that did not go.
- * @param {import("./cron.d.mts").D1Like} db
+ * @param {import("./cron.mjs").D1Like} db
  * @param {string} key
  * @param {string} kind
  * @param {string} day

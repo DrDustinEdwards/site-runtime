@@ -9,6 +9,11 @@ import {
   UNDELIVERABLE_EMAIL,
 } from "./sign-in-link.mjs";
 
+/**
+ * `text` is left out where the title says it all.
+ * @typedef {Readonly<{ title: string; text?: string }>} Words
+ */
+
 /** How long each email-change link works: an hour, Better Auth's default, and the words the mails say. */
 export const EMAIL_CHANGE_EXPIRES_IN_SECONDS = 60 * 60;
 export const EMAIL_CHANGE_EXPIRES_IN_WORDS = "1 hour";

@@ -6,6 +6,8 @@ import { consume, ensureBudgetTable, resetBudget, spent, windowKey } from "./cor
  * The site-wide AI budget: one instance (`idFromName("global")`) counts the uses of the day or the month and refuses the
  * one past the cap, atomically. A Worker exports and binds it as its own class. One that already has a class (the rate
  * limiter's) calls core.mjs's functions from its own methods instead.
+ * @template [E=Cloudflare.Env]
+ * @extends {DurableObject<E>}
  */
 export class DailyBudget extends DurableObject {
   /**

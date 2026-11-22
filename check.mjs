@@ -22,11 +22,20 @@ import { OWASP_REMOVE } from "./owasp-headers.mjs";
 import { FAMILY_DEVIATIONS, SITE_DEVIATIONS } from "./sites-deviations.mjs";
 import { SITES, siteEntry } from "./sites-values.mjs";
 
+/** @import { Deviation, ServedSiteEntry } from "./sites.mjs" */
+
+/**
+ * A served entry with its deviations' reasons, as the check reads it (sites-deviations.mjs).
+ * @typedef {ServedSiteEntry & {
+ * deviations?: Readonly<Record<string, Deviation>>;
+ * }} CheckedSiteEntry
+ */
+
 /**
  * The entry a check grades against: by id, or for the registry's own entry (the values a Worker imports, ./sites),
  * those values with the deviations they leave out; any other object as it is.
- * @param {string | import("./check.mjs").CheckedSiteEntry | undefined} site
- * @returns {import("./check.mjs").CheckedSiteEntry | undefined}
+ * @param {string | CheckedSiteEntry | undefined} site
+ * @returns {CheckedSiteEntry | undefined}
  */
 function registryEntry(site) {
   const values = typeof site === "string" ? siteEntry(site) : SITES.find((s) => s === site);
@@ -98,7 +107,7 @@ const FETCH_DIRECTIVES = [
  * A failed result an entry or the family declined, as the reason, or "". Only results a check marks as declinable are
  * looked up: K1's cookie prefix, the items every site is graded on unless it declines them (S2, C3, C7, C9, I3), and
  * the family's (FAMILY_DEVIATIONS).
- * @param {import("./check.mjs").CheckedSiteEntry | undefined} entry
+ * @param {CheckedSiteEntry | undefined} entry
  * @param {string} id
  * @param {string} [name] the cookie or thing the result is about, which a deviation's `value` must list when it has one
  * @returns {{ reason: string, family: boolean } | undefined}
@@ -139,7 +148,7 @@ function deniedFeatures(value) {
 
 /**
  * @typedef {{
- *   site?: string,
+ *   site?: string | CheckedSiteEntry,
  *   standard?: Readonly<Record<string, string>>,
  *   csp?: boolean,
  *   cloudflareWebAnalytics?: boolean | "manual",
@@ -749,7 +758,7 @@ export const failures = (results) => results.filter((r) => !r.pass && !r.warn &&
  * read from the signed text; an unsigned one is the family's deviation (FAMILY_DEVIATIONS.D3).
  * @param {{ url: string, origin?: string, status: number, headers: Headers, body: string, now?: number }} response
  *   `url` where it was fetched; `origin` the site's own, when it is served from elsewhere
- * @param {{ site?: string | import("./check.mjs").CheckedSiteEntry }} [options]
+ * @param {{ site?: string | CheckedSiteEntry }} [options]
  * @returns {CheckResult[]}
  */
 export function checkSecurityTxt(

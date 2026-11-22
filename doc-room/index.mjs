@@ -36,6 +36,29 @@ import {
   withinLimit,
 } from "./core.mjs";
 
+/**
+ * A comment thread brought in with a document: the words it is on (`from` to `to`, the document's
+ * positions), then its comments in order, the first the thread and the rest its replies.
+ * @typedef {object} BroughtThread
+ * @property {number} from
+ * @property {number} to
+ * @property {string} quote
+ * @property {{ personId: number; body: string; createdAt?: string }[]} comments
+ */
+
+/**
+ * @typedef {object} ReplaceInput
+ * @property {string} markdown
+ * @property {string | null} version
+ * @property {string} by
+ * @property {string | null} [expectedVersion]
+ * @property {boolean} [unsaved]
+ * @property {string} [expectedMarkdown]
+ * @property {string} [saved]
+ * @property {unknown} [doc] The editor's JSON, loaded instead of `markdown` read: a document brought in with its suggestions.
+ * @property {BroughtThread[]} [threads] Its comment threads, anchored by the model's `anchor` once the document is in.
+ */
+
 export * from "./core.mjs";
 
 const SYNC = 0;
@@ -43,8 +66,8 @@ const SYNC_STEP2 = 1;
 const SYNC_UPDATE = 2;
 const COMMENT_TYPES = new Set(["comment", "comment-edit", "comment-resolve", "comment-delete"]);
 
-/** @typedef {import("./core.d.mts").RoomViewer} RoomViewer */
-/** @typedef {import("./core.d.mts").ServerMessage} ServerMessage */
+/** @typedef {import("./core.mjs").RoomViewer} RoomViewer */
+/** @typedef {import("./core.mjs").ServerMessage} ServerMessage */
 /** @typedef {import("partyserver").Connection} Connection */
 /** @typedef {{ viewer?: RoomViewer; checkedAt?: number }} ConnState */
 
@@ -61,6 +84,11 @@ function bytesOf(message) {
     : new Uint8Array(message.buffer, message.byteOffset, message.byteLength);
 }
 
+/**
+ * The co-editing room: a site's Durable Object extends it and fills in `access`, `comments` and `mirror`.
+ * @template {Cloudflare.Env} [E=Cloudflare.Env]
+ * @extends {YServer<E>}
+ */
 export class DocRoom extends YServer {
   static options = { hibernate: true };
   // A second after typing stops, and at least every five while it goes on.
@@ -70,7 +98,7 @@ export class DocRoom extends YServer {
 
   /**
    * The document's operations. An app gives Capsomer collab-editor's.
-   * @returns {import("./core.d.mts").DocModel}
+   * @returns {import("./core.mjs").DocModel}
    */
   get model() {
     throw new Error("DocRoom: the app's room gives `model`");
@@ -88,7 +116,7 @@ export class DocRoom extends YServer {
 
   /**
    * Where the comment threads are kept, or null for a room without comments.
-   * @returns {import("./core.d.mts").CommentStore | null}
+   * @returns {import("./core.mjs").CommentStore | null}
    */
   get comments() {
     return null;
@@ -96,7 +124,7 @@ export class DocRoom extends YServer {
 
   /**
    * After every store of the working copy: the app's own copy of it, for its backup.
-   * @param {{ markdown: string } & import("./core.d.mts").RoomMeta} _state
+   * @param {{ markdown: string } & import("./core.mjs").RoomMeta} _state
    * @returns {Promise<void>}
    */
   async mirror(_state) {}
@@ -213,7 +241,7 @@ export class DocRoom extends YServer {
    * merged from, so nothing typed since is replaced, and `saved`, the text it now stands on.
    * `doc`, the editor's JSON, goes in instead of the Markdown read (a document brought in from elsewhere,
    * with its suggestions), and `threads` are its comment threads (`#bringThreads`).
-   * @param {import("./index.d.mts").ReplaceInput} input
+   * @param {ReplaceInput} input
    */
   async replace(input) {
     await this.__unsafe_ensureInitialized();
@@ -244,7 +272,7 @@ export class DocRoom extends YServer {
   /**
    * Comment threads that came with a brought-in document, each anchored on its words in the copy just
    * loaded (the model's `anchor`), its first comment the thread and the rest its replies, in order.
-   * @param {import("./index.d.mts").BroughtThread[]} threads
+   * @param {BroughtThread[]} threads
    */
   async #bringThreads(threads) {
     const store = this.comments;
@@ -476,7 +504,7 @@ export class DocRoom extends YServer {
   onCustomMessage(conn, raw) {
     const viewer = viewerOf(conn);
     if (!viewer) return;
-    /** @type {import("./core.d.mts").ClientMessage} */
+    /** @type {import("./core.mjs").ClientMessage} */
     let message;
     try {
       message = JSON.parse(raw);
@@ -488,7 +516,7 @@ export class DocRoom extends YServer {
       return this.#send(conn, { t: "flushed", n: Number(message.n) || 0 });
     const store = this.comments;
     if (!store || !COMMENT_TYPES.has(message?.t)) return;
-    void applyComment(store, viewer, /** @type {import("./core.d.mts").CommentMessage} */ (message))
+    void applyComment(store, viewer, /** @type {import("./core.mjs").CommentMessage} */ (message))
       .then((refusal) =>
         refusal ? this.#send(conn, { t: "error", message: refusal }) : this.#sendComments(),
       )

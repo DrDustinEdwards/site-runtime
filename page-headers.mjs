@@ -39,6 +39,42 @@ import {
 } from "./csp.mjs";
 import { applyHeaderSet, corpFor } from "./headers.mjs";
 
+/** @import { SitePolicy } from "./csp.mjs" */
+
+/**
+ * What a site's policy function is told about the response it is building the policy for.
+ * @template [Env=unknown]
+ * @typedef {object} PolicyContext
+ * @property {string | undefined} nonce The nonce this page is rendered with (none for a response that is not a page).
+ * @property {Request} request
+ * @property {URL} url
+ * @property {boolean} staged True when the Report-Only companion is being built, so a directive a browser ignores there can be left out.
+ * @property {Env | undefined} env The bindings passed as withSecurityHeaders' fourth argument.
+ */
+
+/**
+ * @template [Env=unknown]
+ * @typedef {object} PageSecurityOptions
+ * @property {Readonly<Record<string, string>>} set The site's header set: `buildSecurityHeaders({ site })`, plus any header of its own.
+ * @property {(context: PolicyContext<Env>) => SitePolicy | string} policy The site's Content-Security-Policy for one response. report-uri and report-to are filled in when not named. A string is the finished policy, sent as it is with no Report-Only companion (for answers that load nothing).
+ * @property {Partial<SitePolicy> | false} staged What the Report-Only companion adds (the registry entry's staging, e.g. `{ trustedTypes: true, denyUnlisted: true }`), or false for none.
+ * @property {string} [reportPath] Default CSP_REPORT_PATH.
+ * @property {string} [group] Default CSP_REPORT_GROUP.
+ * @property {boolean} [corp] Cross-Origin-Resource-Policy follows the content type (corpFor).
+ * @property {boolean} [renew] The site stores pages at the edge: an HTML page carrying a nonce other than this request's gets a fresh one per reader.
+ * @property {(contentType: string | null) => boolean} [unpoliced] True for a Content-Type the site sends no Content-Security-Policy or companion on (feeds, sitemaps, JSON, PDF); the rest of the set still goes on.
+ * @property {(pathname: string) => boolean} [noindex] Paths that also get `X-Robots-Tag: noindex`, covering resource routes and redirects where no meta tag can go.
+ * @property {(context: { request: Request; url: URL; env: Env | undefined; }) => string | undefined} [reportOrigin] The origin of a report sink that is not the request's own (an AI door outside Access); reports and Reporting-Endpoints go there.
+ */
+
+/**
+ * @template [Env=unknown]
+ *
+ * - `withSecurityHeaders`: The response with the site's headers; `nonce` is the one the page was rendered with, when the caller kept it.
+ * - `nonceFor`: The request's nonce, issued on first ask, for the render to put on its scripts.
+ * @typedef {{ withSecurityHeaders(response: Response, request: Request, nonce?: string, env?: Env): Response; nonceFor(request: Request): string; }} PageSecurity
+ */
+
 const NONCE_IN_POLICY = /'nonce-([A-Za-z0-9+/_=-]+)'/;
 const LOOPBACK = /^(localhost|127\.0\.0\.1|\[::1\])$/;
 
@@ -46,8 +82,9 @@ const LOOPBACK = /^(localhost|127\.0\.0\.1|\[::1\])$/;
 const isHtml = (headers) => (headers.get("Content-Type") ?? "").toLowerCase().includes("text/html");
 
 /**
- * @param {import("./page-headers.d.mts").PageSecurityOptions} options
- * @returns {import("./page-headers.d.mts").PageSecurity}
+ * @template [Env=unknown]
+ * @param {PageSecurityOptions<Env>} options
+ * @returns {PageSecurity<Env>}
  */
 export function pageSecurity({
   set,
@@ -82,7 +119,7 @@ export function pageSecurity({
    * @param {Response} response
    * @param {Request} request
    * @param {string} [given] the nonce the page was rendered with, when the caller kept it itself
-   * @param {unknown} [env] the request's bindings, for a policy or report origin that depends on them
+   * @param {Env} [env] the request's bindings, for a policy or report origin that depends on them
    */
   function withSecurityHeaders(response, request, given, env) {
     const url = new URL(request.url);

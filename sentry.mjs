@@ -30,14 +30,14 @@ reportErrorLines((event, error, extra) => {
 });
 
 /**
- * @param {import("./log.d.mts").ScrubOptions} scrub
+ * @param {import("./log.mjs").ScrubOptions} scrub
  * @param {Record<string, unknown> | undefined} data
  */
 const scrubbed = (scrub, data) => (data ? scrubFields(data, scrub) : data);
 
 /**
  * @template {import("@sentry/cloudflare").Event} T
- * @param {import("./log.d.mts").ScrubOptions} scrub
+ * @param {import("./log.mjs").ScrubOptions} scrub
  * @param {T} event
  * @returns {T}
  */
@@ -70,7 +70,7 @@ function scrubEvent(scrub, event) {
  * The SDK options for one invocation. Always an object, never undefined: with undefined the SDK reads `SENTRY_DSN`
  * from the env itself and would send with none of the scrubbing below.
  * @param {{ SENTRY_DSN?: string }} env
- * @param {import("./log.d.mts").ScrubOptions} [scrub]
+ * @param {import("./log.mjs").ScrubOptions} [scrub]
  * @returns {import("@sentry/cloudflare").CloudflareOptions}
  */
 export function sentryOptions(env, scrub = {}) {
@@ -98,7 +98,7 @@ export function sentryOptions(env, scrub = {}) {
  * and email, reporting with `sentryOptions`.
  * @template T
  * @param {T} handler
- * @param {import("./log.d.mts").ScrubOptions} [scrub]
+ * @param {import("./log.mjs").ScrubOptions} [scrub]
  * @returns {T}
  */
 export function withSiteSentry(handler, scrub = {}) {
@@ -113,7 +113,7 @@ export function withSiteSentry(handler, scrub = {}) {
  * @param {Request} request
  * @param {{ SENTRY_DSN?: string }} env
  * @param {ExecutionContext} ctx
- * @param {import("./log.d.mts").ScrubOptions} scrub
+ * @param {import("./log.mjs").ScrubOptions} scrub
  * @param {() => Promise<Response>} handler
  * @returns {Promise<Response>}
  */

@@ -11,6 +11,11 @@
 
 import { acceptedEncoding, isWrite, mediaType } from "./http.mjs";
 
+/**
+ * @typedef {object} PurgeCache
+ * @property {(options: { tags: string[] }) => Promise<{ success: boolean; errors?: unknown[] }>} [purge]
+ */
+
 /** Stored at the edge, never in a browser: a purge cannot reach a browser, so max-age stays 0. */
 export const SHARED_CACHE_CONTROL = "public, max-age=0";
 
@@ -463,12 +468,18 @@ export function purgeCoalesced(cache, tags, why, record, pause = wait) {
  * close together share one purge request (`purgeCoalesced`). Awaiting it takes the window plus any rate-limit retries,
  * so a write starts it in `waitUntil` and does not wait.
  * With `kv`, the outcome is recorded (`recordPurge`) for /health's `purgeCheck`, whichever way the purge was asked for.
- * @template {new (...args: any[]) => { ctx: { cache?: any }, env?: any }} T
- * @param {T} Base
+ * @template {abstract new (...args: any[]) => object} T
+ * @param {T} Base WorkerEntrypoint, or a class built on it
  * @param {{ kv?: (env: any) => Parameters<typeof recordPurge>[0] }} [options] the KV namespace to record in, from the Renderer's env
+ * @returns {T & (abstract new (...args: any[]) => { purgePages(why: string, tags?: string[]): Promise<boolean | null> })}
  */
 export function withPurgePages(Base, { kv } = {}) {
-  return class extends Base {
+  // JavaScript cannot declare the abstract class TypeScript asks of a mixin over an abstract base, so the body sees the
+  // base as the concrete entrypoint it is at run time.
+  const Entrypoint = /** @type {new (...args: any[]) => { ctx: { cache?: any }, env?: any }} */ (
+    /** @type {unknown} */ (Base)
+  );
+  const Mixed = class extends Entrypoint {
     /** @param {string} why @param {string[]} [tags] */
     purgePages(why, tags = [PAGES_CACHE_TAG]) {
       return purgeCoalesced(this.ctx.cache, tags, why, (purged, reason) =>
@@ -476,6 +487,7 @@ export function withPurgePages(Base, { kv } = {}) {
       );
     }
   };
+  return /** @type {any} */ (Mixed);
 }
 
 /**
@@ -516,6 +528,7 @@ export async function purgeViaRenderer(why, log = console.error) {
  * A site-api publish hook (its `PublishHook` shape) that purges the stored pages when a schedule changes one: a
  * schedule has no request, so no gateway purges after it. A Carrel request's write is purged by `purgeAfterWrite`.
  * @param {{ purge?: (why: string) => Promise<boolean | null> }} [options] `purgeViaRenderer` unless given
+ * @returns {{ name: "edge-page-purge"; run(event: { trigger: string; action: string; path: string | null }): Promise<boolean> }}
  */
 export function schedulePurgeHook({ purge = purgeViaRenderer } = {}) {
   return {

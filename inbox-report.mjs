@@ -14,6 +14,20 @@ import { CAPSID_ORIGIN } from "./access-sync.mjs";
 import { timedFetch } from "./http.mjs";
 import { errorMessage, logEvent } from "./log.mjs";
 
+/**
+ * An app's report to Capsid's inbox (inbox-report.mjs): POST /ops/inbox/report with the app's agent key.
+ * @typedef {object} InboxItem
+ * @property {string} title The app's words; cut to 200 characters.
+ * @property {string} [link] On the app's own origin; the receiver refuses any other.
+ * @property {string} [since] ISO time the oldest waiting thing began.
+ */
+
+/**
+ * @typedef {object} ReportResult
+ * @property {"skipped" | "sent" | "failed"} state
+ * @property {string} detail
+ */
+
 /** Where the report goes, on Capsid's origin. */
 export const INBOX_REPORT_PATH = "/ops/inbox/report";
 /** The receiver's limits: items per report, characters per title, bytes per body. */
@@ -37,8 +51,8 @@ export function capsidOrigin(env) {
 
 /**
  * Sends one report. Skipped (no request) without a key. Never throws.
- * @param {{ namespace: string, items: import("./inbox-report.mjs").InboxItem[], key: string | undefined, origin?: string, fetcher?: typeof fetch }} report
- * @returns {Promise<import("./inbox-report.mjs").ReportResult>}
+ * @param {{ namespace: string, items: InboxItem[], key: string | undefined, origin?: string, fetcher?: typeof fetch }} report
+ * @returns {Promise<ReportResult>}
  */
 export async function reportInbox({
   namespace,

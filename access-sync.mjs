@@ -10,6 +10,11 @@
  */
 import { errorMessage } from "./log.mjs";
 
+/**
+ * @typedef {| { ok: true; added: number; dropped: number }
+ * | { ok: false; refusal: string }} AccessSyncResult
+ */
+
 /** Where Capsid answers unless an app names another origin (a preview Capsid). */
 export const CAPSID_ORIGIN = "https://mcp.dustinedwards.info";
 

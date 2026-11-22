@@ -183,7 +183,10 @@ export function signInLinkProblem(url, { signedIn = false, now = Date.now() } = 
   return now - sent > SIGN_IN_EXPIRES_IN_SECONDS * 1000 ? "expired" : "used";
 }
 
-/** What the confirm page says for each problem: a title and a sentence, the action being "send yourself a new link". */
+/**
+ * What the confirm page says for each problem: a title and a sentence, the action being "send yourself a new link".
+ * @type {Readonly<Record<SignInLinkProblem, Readonly<{ title: string; text?: string }>>>}
+ */
 export const SIGN_IN_LINK_WORDS = Object.freeze({
   "signed-in": Object.freeze({ title: "You are already signed in" }),
   used: Object.freeze({

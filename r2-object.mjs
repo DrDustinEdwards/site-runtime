@@ -13,8 +13,29 @@
 import { textResponse } from "./http.mjs";
 import { isDatabaseDown } from "./log.mjs";
 
-/** @typedef {import("./r2-object.mjs").R2BucketLike} R2BucketLike */
-/** @typedef {import("./r2-object.mjs").R2FileOptions} R2FileOptions */
+/**
+ * One stored R2 object as an HTTP answer (r2-object.mjs): HEAD, ranges, 304, ETag, nosniff, Content-Disposition.
+ * @typedef {{ size: number; httpEtag: string; writeHttpMetadata(headers: Headers): void; }} R2ObjectHeadLike
+ */
+
+/**
+ * @typedef {R2ObjectHeadLike & { body: ReadableStream | null; range?: unknown; }} R2ObjectBodyLike
+ */
+
+/**
+ * @typedef {{ head(key: string): Promise<R2ObjectHeadLike | null>; get(key: string, options?: { range?: Headers }): Promise<R2ObjectBodyLike | null>; }} R2BucketLike
+ */
+
+/**
+ * @typedef {object} R2FileOptions
+ * @property {string} [cacheControl]
+ * @property {string} [contentType] Overrides the stored Content-Type (a PDF stored without one); application/octet-stream when neither has one.
+ * @property {"inline" | "attachment"} [disposition] Writes Content-Disposition (with `filename`, RFC 6266 and RFC 8187).
+ * @property {string} [filename]
+ * @property {boolean} [noindex] X-Robots-Tag: noindex, for a copy of a page's text.
+ * @property {string[]} [tags] Cache-Tag, for a purge by tag.
+ * @property {string} [notFound] The 404's text.
+ */
 
 /**
  * Runs an R2 read again, once after 300 ms, when R2 answers its transient 10001 or 10043 (its docs: retry); any other
@@ -28,7 +49,10 @@ export async function retryR2Read(read) {
     return await read();
   } catch (error) {
     if (!isDatabaseDown(error)) throw error;
-    await scheduler.wait(300);
+    // Workers' scheduler.wait; csv-client brings this file into the browser check, whose DOM Scheduler has none.
+    await /** @type {{ wait(ms: number): Promise<void> }} */ (
+      /** @type {unknown} */ (scheduler)
+    ).wait(300);
     return read();
   }
 }

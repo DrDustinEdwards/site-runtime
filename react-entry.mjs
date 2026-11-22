@@ -28,6 +28,18 @@ import { getNonce } from "./context.mjs";
 import { logEvent, requestFields } from "./log.mjs";
 import { NonceContext } from "./nonce.mjs";
 
+/** @import { EntryContext, RouterContextProvider } from "react-router" */
+
+/**
+ * @typedef {(
+ * request: Request,
+ * status: number,
+ * headers: Headers,
+ * routerContext: EntryContext,
+ * loadContext: Readonly<RouterContextProvider>,
+ * ) => Promise<Response>} HandleRequest
+ */
+
 export { handleServerError as handleError } from "./log.mjs";
 
 /** How long React Router waits on a pending promise before rejecting it (ms); the render stops a second later. */

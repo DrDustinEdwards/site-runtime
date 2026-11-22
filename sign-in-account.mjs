@@ -29,18 +29,43 @@ import { logEvent, OWASP_EVENTS } from "./log.mjs";
 import { DAILY_MINUTES } from "./cron.mjs";
 import { emailKey } from "./rate-limit/index.mjs";
 
+/**
+ * @typedef {(typeof SECURITY_NOTICE_KINDS)[number]} SecurityNoticeKind
+ */
+
+/**
+ * @typedef {object} SecurityHistoryEntry
+ * @property {| "sign-in" | "passkey-added" | "passkey-removed" | "sign-in-linked" | "sign-in-unlinked" | "email-changed" | "recovery"} kind
+ * @property {string | null} via The way in for a sign-in ("link", "code", "passkey", "google", "apple"), the provider for a link or unlink.
+ * @property {Date} at
+ * @property {string | null} device
+ * @property {string | null} location
+ */
+
+/**
+ * @typedef {object} AccountSession
+ * @property {string} id
+ * @property {string | null} device
+ * @property {Date} signedInAt
+ * @property {Date} lastActiveAt
+ * @property {boolean} current
+ * @property {string | null} location
+ */
+
 /** What `sendSecurityNotice` is called for. */
-export const SECURITY_NOTICE_KINDS = /* @__PURE__ */ Object.freeze([
-  "passkey-added",
-  "passkey-removed",
-  "sign-in-linked",
-  "sign-in-unlinked",
-  "email-changed",
-  "sessions-revoked",
-  "account-deleted",
-  "new-device",
-  "recovery",
-]);
+export const SECURITY_NOTICE_KINDS = /* @__PURE__ */ Object.freeze(
+  /** @type {const} */ ([
+    "passkey-added",
+    "passkey-removed",
+    "sign-in-linked",
+    "sign-in-unlinked",
+    "email-changed",
+    "sessions-revoked",
+    "account-deleted",
+    "new-device",
+    "recovery",
+  ]),
+);
 
 /**
  * How recent a sign-in must be for a risky change: 10 minutes. `./sign-in` sets Better Auth's session.freshAge to it,
@@ -278,8 +303,9 @@ export class SessionNotFresh extends Error {
   constructor() {
     super("Session is not fresh");
     this.name = "SessionNotFresh";
-    this.status = "FORBIDDEN";
-    this.statusCode = 403;
+    this.status = /** @type {const} */ ("FORBIDDEN");
+    this.statusCode = /** @type {const} */ (403);
+    /** @type {{ code: "SESSION_NOT_FRESH", message: string }} */
     this.body = { code: "SESSION_NOT_FRESH", message: "Session is not fresh" };
   }
 }
@@ -555,7 +581,7 @@ export function outcome(returned) {
  *   What one Better Auth request was: its endpoint path, route params and body, what it returned, whether it made a
  *   session (`ctx.context.newSession`), whose session it ran in, and for an OAuth callback whether it linked an account
  *   rather than signing in.
- * @typedef {{ event: string, fields: Record<string, unknown>, level?: "warn", email?: unknown, notice?: { kind: string, scope?: string, passkeyName?: string } }} AuthEvent
+ * @typedef {{ event: string, fields: Record<string, unknown>, level?: "warn", email?: unknown, notice?: { kind: SecurityNoticeKind, scope?: string, passkeyName?: string } }} AuthEvent
  */
 
 /**
@@ -738,7 +764,7 @@ const HISTORY_KINDS = /** @type {const} */ ({
  * @param {D1Like} db
  * @param {string} userId
  * @param {number} [limit]
- * @returns {Promise<{ kind: string, via: string | null, at: Date, device: string | null, location: string | null }[]>}
+ * @returns {Promise<SecurityHistoryEntry[]>}
  */
 export async function securityHistory(db, userId, limit = 50) {
   const changes = Object.keys(HISTORY_KINDS);
@@ -856,7 +882,7 @@ export async function pruneExpiredAuth(db, now = Date.now()) {
 /**
  * The nightly job that runs pruneAuthEvents and pruneExpiredAuth, named "prune-auth-events" on every site (one minute).
  * @param {D1Like} db
- * @returns {import("./cron.d.mts").CronJob}
+ * @returns {import("./cron.mjs").CronJob}
  */
 export function pruneAuthEventsJob(db) {
   return {
@@ -955,7 +981,7 @@ export function noticeDetail(
 
 /**
  * @typedef {{ id: string, email: string, name?: string | null }} NoticeUser
- * @typedef {(kind: string, notice: { user: NoticeUser, request?: Request, detail: NoticeDetail }) => Promise<void> | void} SendSecurityNotice
+ * @typedef {(kind: SecurityNoticeKind, notice: { user: NoticeUser, request?: Request, detail: NoticeDetail }) => Promise<void> | void} SendSecurityNotice
  */
 
 /**
@@ -964,7 +990,7 @@ export function noticeDetail(
  * isRecipientSuppressed) is a known state of the address, not a fault, so it is a warning,
  * `security_notice_undeliverable`; the sign-in page says so the next time a link is asked for.
  * @param {SendSecurityNotice} send
- * @param {string} kind
+ * @param {SecurityNoticeKind} kind
  * @param {{ user: NoticeUser, request?: Request, detail: NoticeDetail }} notice
  */
 export async function sendNoticeSafely(send, kind, notice) {

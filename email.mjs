@@ -20,6 +20,37 @@
 
 import { logEvent } from "./log.mjs";
 
+/**
+ * An address as the binding takes it: a bare address, or one with a display name.
+ * @typedef {string | { email: string; name?: string }} MailAddress
+ */
+
+/**
+ * One mail, in the binding's structured form (EmailMessageBuilder).
+ * @typedef {object} Mail
+ * @property {MailAddress} from
+ * @property {MailAddress | MailAddress[]} to
+ * @property {string} subject
+ * @property {string} [text]
+ * @property {string} [html]
+ * @property {MailAddress} [replyTo]
+ * @property {Record<string, string>} [headers] Custom headers on Email Service's allowlist (List-Unsubscribe, ...).
+ */
+
+/**
+ * The send_email binding (SendEmail in @cloudflare/workers-types, whatever its version's message types), or any object
+ * with a send. sendEmail hands it a Mail.
+ * @typedef {{ send(message: never): Promise<unknown>; }} EmailBinding
+ */
+
+/**
+ * What a send came back with. `code` is the binding's own (E_SENDER_NOT_VERIFIED, ...), `not_configured` for a missing
+ * binding, sender or recipient, `header_line_break` for an address holding a line break, or `unknown`. `error` has
+ * every secret and recipient cut out.
+ * @typedef {| { sent: true; messageId: string | null }
+ * | { sent: false; code: string; error: string }} SendOutcome
+ */
+
 const LINE_BREAK = /[\r\n]/;
 
 /**
@@ -124,10 +155,10 @@ function refused(code, error) {
 
 /**
  * Send one mail through the binding.
- * @param {import("./email.d.mts").EmailBinding | null | undefined} binding
- * @param {import("./email.d.mts").Mail} mail
+ * @param {EmailBinding | null | undefined} binding
+ * @param {Mail} mail
  * @param {{ secrets?: readonly (string | null | undefined)[] }} [options]
- * @returns {Promise<import("./email.d.mts").SendOutcome>}
+ * @returns {Promise<SendOutcome>}
  */
 export async function sendEmail(binding, mail, options = {}) {
   const to = Array.isArray(mail.to) ? mail.to : [mail.to];
@@ -144,7 +175,7 @@ export async function sendEmail(binding, mail, options = {}) {
   const headerText = Object.entries(mail.headers ?? {}).flat();
   if ([...names, ...headerText].some((a) => LINE_BREAK.test(a)))
     return refused("header_line_break", "an address or header holds a line break");
-  /** @type {import("./email.d.mts").Mail} */
+  /** @type {Mail} */
   const message = {
     ...mail,
     from: cleanAddress(mail.from),

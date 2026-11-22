@@ -132,6 +132,25 @@ import {
 } from "./sign-in-link.mjs";
 import { refuseDisposable } from "./sign-in-form.mjs";
 
+/**
+ * @typedef {object} SignInEnv
+ * @property {string} BETTER_AUTH_URL
+ * @property {string} [TURNSTILE_SITE_KEY]
+ * @property {string} [TURNSTILE_SECRET_KEY]
+ * @property {string} [GOOGLE_CLIENT_ID]
+ * @property {string} [GOOGLE_CLIENT_SECRET]
+ * @property {string} [APPLE_CLIENT_ID]
+ * @property {string} [APPLE_TEAM_ID]
+ * @property {string} [APPLE_KEY_ID]
+ * @property {string} [APPLE_PRIVATE_KEY]
+ */
+
+/**
+ * The hook that blanks an account row's OAuth tokens before Better Auth writes it.
+ * @typedef {object} NoOAuthTokensHook
+ * @property {() => Promise<{ data: { accessToken: null; refreshToken: null; idToken: null; accessTokenExpiresAt: null; refreshTokenExpiresAt: null; }; }>} before
+ */
+
 export {
   CONFIRM_PATH,
   EMAIL_CONFIRM_PATH,
@@ -177,6 +196,17 @@ export {
   sessionTouch,
   shouldOfferPasskey,
 } from "./sign-in-account.mjs";
+
+/** @import { BetterAuthPlugin } from "better-auth" */
+/** @typedef {import("./sign-in-link.mjs").EmailLinkProblem} EmailLinkProblem */
+/** @typedef {import("./sign-in-link.mjs").SignInLinkProblem} SignInLinkProblem */
+/** @typedef {import("./sign-in-account.mjs").AccountPasskey} AccountPasskey */
+/** @typedef {import("./sign-in-account.mjs").AccountSession} AccountSession */
+/** @typedef {import("./sign-in-account.mjs").D1Like} D1Like */
+/** @typedef {import("./sign-in-account.mjs").NoticeDetail} NoticeDetail */
+/** @typedef {import("./sign-in-account.mjs").SecurityHistoryEntry} SecurityHistoryEntry */
+/** @typedef {import("./sign-in-account.mjs").SecurityNoticeKind} SecurityNoticeKind */
+/** @typedef {import("./sign-in-account.mjs").SessionLookup} SessionLookup */
 
 /** Where a page posts the code: Better Auth's email OTP sign-in, which signs in, or makes the account, as the link does. */
 export const SIGN_IN_CODE_PATH = "/sign-in/email-otp";
@@ -281,6 +311,7 @@ export function turnstileSiteKey(env) {
  *   eventsDb?: import("./sign-in-account.mjs").D1Like, turnstile?: typeof TURNSTILE_OFF_UNTIL_KEYS,
  *   sessionDetails?: boolean, turnstileHostnames?: string[],
  * }} site
+ * @returns {Promise<{ emailAndPassword: { enabled: false }; plugins: [ ReturnType<typeof magicLink>, ReturnType<typeof emailOTP>, ReturnType<typeof passkey>, ...BetterAuthPlugin[], ]; disabledPaths: string[]; socialProviders: { google?: { clientId: string; clientSecret: string; mapProfileToUser: (profile: { email?: unknown }) => Promise<Record<string, never>> }; apple?: { clientId: string; clientSecret: string; mapProfileToUser: (profile: { email?: unknown }) => Promise<Record<string, never>> } }; account: { accountLinking: { enabled: true; disableImplicitLinking: true } }; session: { expiresIn: typeof SESSION_SECONDS; disableSessionRefresh: true; freshAge: typeof FRESH_SECONDS; additionalFields?: { location: { type: "string"; required: false; input: false }; deviceId: { type: "string"; required: false; input: false; returned: false } } }; databaseHooks?: { account: { create: NoOAuthTokensHook; update: NoOAuthTokensHook } }; rateLimit: { enabled: true; storage: "database"; customRules?: Record<string, { window: number; max: number }> }; advanced: { ipAddress: { ipAddressHeaders: ["cf-connecting-ip"] } }; trustedOrigins: string[] }>}
  */
 export async function signInOptions(
   env,
@@ -343,7 +374,7 @@ export async function signInOptions(
       );
     },
   });
-  /** @type {import("better-auth").BetterAuthPlugin[]} */
+  /** @type {[ReturnType<typeof magicLink>, ReturnType<typeof emailOTP>, ReturnType<typeof passkey>, ...BetterAuthPlugin[]]} */
   const plugins = [
     link,
     otp,

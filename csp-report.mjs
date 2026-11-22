@@ -86,6 +86,7 @@ const short = (/** @type {unknown} */ v, /** @type {number} */ max) =>
  * The `web-vital` entry as the line the receiver logs: INP only (Cloudflare Web Analytics already reports LCP and CLS),
  * its value and rating, the three subparts, the longest script and the style and layout work. Anything else is null.
  * @param {Record<string, unknown>} body
+ * @returns {{ event: "web_vital"; name: "INP"; value: number | undefined; rating: string | undefined; page: string | undefined; target: string | undefined; input_delay: number | undefined; processing: number | undefined; presentation: number | undefined; script: string | undefined; script_function: string | undefined; script_char: number | undefined; invoker: string | undefined; script_subpart: string | undefined; script_overlap: number | undefined; forced_style_layout: number | undefined; style_layout: number | undefined } | null}
  */
 export function summarizeVital(body) {
   if (body.name !== "INP" || ms(body.value) === undefined) return null;
@@ -147,6 +148,7 @@ export function reportBodies(parsed) {
  * the Reporting API's name or report-uri's.
  * @param {Record<string, unknown>} body
  * @param {string} [type] the report's type (default csp-violation)
+ * @returns {{ event: string; directive: string | undefined; blocked: string | undefined; page: string | undefined; source: string | undefined; line: number | undefined; column?: number; sink?: string; destination?: string; disposition: "enforce" | "report" | undefined }}
  */
 export function summarizeReport(body, type = "csp-violation") {
   const field = (/** @type {string[]} */ ...names) =>

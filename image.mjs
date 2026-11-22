@@ -55,6 +55,57 @@ import { errorMessage } from "./log.mjs";
 import { retryR2Read } from "./r2-object.mjs";
 
 /**
+ * Responsive images (image.mjs): the attributes a page writes for an image and the route that serves each size from
+ * the original in R2 through the Images binding, sharing one closed set of widths and crops. Widths, sizes and layouts
+ * are Astro's (MIT, Copyright (c) 2021 Fred K. Schott). A GIF's sizes stay animated (WebP, no AVIF) and offer their first
+ * frame under prefers-reduced-motion. A size URL ends in its format's extension and carries the file's version.
+ * @typedef {"constrained" | "fixed" | "full-width"} ImageLayout
+ */
+
+/**
+ * @typedef {"avif" | "webp"} ImageFormat
+ */
+
+/**
+ * Where a site's addresses for stored files live: its own origins, the route's prefix, keyPrefix and within.
+ * @typedef {object} AddressOptions
+ * @property {string[]} [origins] The site's own origins ("https://example.com"); an absolute address on any other host names no file.
+ * @property {string} [prefix] The route's path prefix. Default "/media/".
+ * @property {string} [keyPrefix] Put in front of the path to make the stored key, as the route's `keyPrefix`.
+ * @property {string} [within] The prefix every stored key has, as the route's `within`.
+ */
+
+/**
+ * An image for a share tag or structured data: its URL, size and served type.
+ * @typedef {object} SizedImageUrl
+ * @property {string} url
+ * @property {number} width
+ * @property {number} height
+ * @property {string} type
+ */
+
+/**
+ * @typedef {object} ImageAttributes
+ * @property {string} src
+ * @property {string | undefined} srcset
+ * @property {string | undefined} sizes
+ * @property {Array<{ type: string; srcset: string; media?: string }>} sources AVIF then WebP, for a `<picture>`; empty when the image gets no srcset. A GIF's are its still first frame (AVIF then WebP, each with `media` "(prefers-reduced-motion: reduce)"), then the animated WebP.
+ * @property {number | undefined} width
+ * @property {number | undefined} height
+ * @property {string | undefined} background The CSS background shown while it loads (placeholder over color, at the focal point); JPEG, WebP and AVIF only.
+ */
+
+/**
+ * @typedef {object} PictureProps
+ * @property {Array<{ type: string; srcSet: string; sizes: string | undefined; media: string | undefined; }>} sources One `<source>` each; empty when the page writes the `<img>` alone.
+ * @property {{ src: string; srcSet: string | undefined; sizes: string | undefined; width: number | undefined; height: number | undefined; alt: string; className: string | undefined; loading: "eager" | "lazy"; fetchPriority: "high" | undefined; decoding: "async"; style: { background?: string; objectPosition?: string } | undefined; }} img
+ */
+
+/**
+ * @typedef {"image/jpeg" | "image/png" | "image/webp" | "image/avif"} EditFormat
+ */
+
+/**
  * Astro's "limited" screen widths, the set it uses for images it generates ahead of time. A site's closed set starts
  * here; the layouts below add the requested width and twice it.
  */
@@ -307,6 +358,18 @@ export function imageSizes({ layout, width }) {
  */
 
 /**
+ * What `defineImages` returns: the page half and the route half over one closed set.
+ * - `widths`: The closed width set, ascending.
+ * - `url`: One size's URL; with no width, the original, versioned.
+ * - `shareImage`: og:image: 1200 x 630 around the focal point, image/jpeg; null with no size or not a raster. Needs `shareImages`.
+ * - `articleImages`: Article `image`: 16:9, 4:3 and 1:1 at 1200 wide, image/webp; [] with no size or not a raster. Needs `shareImages`.
+ * - `respond`: The original for a bare request, one transformed size for `?w=` (a GIF's first frame for `still=1`); 400 for anything outside the closed sets, and for a still of anything but a GIF.
+ * - `serve`: The /media route around `respond`: GET and HEAD only (405), the key from the path after `prefix` ("/media/"), `keyPrefix` put before it, refused (404) unless every segment is safe and it starts with `within`; `read(key)` reads (and rereads) it; `cacheControl` (default versionedCache()) is a string or a function of the file. Every answer, refusals too, carries UPLOAD_HEADERS.
+ * @template {string} U
+ * @typedef {{ widths: number[]; ratios: string[]; url( src: string, options: { width?: number; format?: ImageFormat | "jpeg"; ratio?: string; focus?: string | null; still?: boolean; version?: string | number | Date | null; }, ): string; attributes(image: StoredImage, use: U): ImageAttributes; shareImage(image: StoredImage): SizedImageUrl | null; articleImages(image: StoredImage): SizedImageUrl[]; respond( request: Request, options: { object: R2ObjectLike | null; images?: ImagesLike; cache?: Cache; cacheControl?: string; reread?: () => Promise<R2ObjectLike | null>; }, ): Promise<Response>; serve( request: Request, options: { read: (key: string) => Promise<R2ObjectLike | null>; images?: ImagesLike; cache?: Cache; prefix?: string; keyPrefix?: string; within?: string; cacheControl?: | string | ((file: { request: Request; url: URL; key: string; object: R2ObjectLike; }) => string | undefined | Promise<string | undefined>); }, ): Promise<Response>; }} Images
+ */
+
+/**
  * The image half and the route half of a site's responsive images, sharing one closed set of widths and crops.
  *
  * `uses` names each way the site shows images (`{ content: { layout: "constrained", width: 704 } }`); the closed width
@@ -316,6 +379,7 @@ export function imageSizes({ layout, width }) {
  *
  * @template {string} U
  * @param {{ uses: Record<U, ImageUse & { ratio?: string }>, breakpoints?: number[], quality?: number, shareImages?: boolean }} config
+ * @returns {Images<U>}
  */
 export function defineImages({
   uses,
@@ -689,7 +753,7 @@ export function defineImages({
  * passes "". Lazy by default; the page's first large image passes `priority`. An unset prop is undefined, which JSX
  * leaves out. With no `sources` the page writes the `<img>` alone. `focus` (the file's focal point) sets the `<img>`'s
  * `objectPosition`, for a box that crops it with object-fit: cover.
- * @param {import("./image.mjs").ImageAttributes} attrs
+ * @param {ImageAttributes} attrs
  * @param {{ alt: string, priority?: boolean, className?: string, focus?: unknown }} options
  */
 export function pictureProps(attrs, { alt, priority = false, className, focus }) {
@@ -727,7 +791,7 @@ export function pictureProps(attrs, { alt, priority = false, className, focus })
 /**
  * The preload for a page's LCP image (`./preload`): the first `<source>` any browser may take (AVIF, typed so a
  * browser without it skips the preload), its srcset and sizes, and fetchpriority=high. With no sources, the `<img>`'s.
- * @param {import("./image.mjs").ImageAttributes} attrs
+ * @param {ImageAttributes} attrs
  */
 export function imagePreload(attrs) {
   const source = attrs.sources.find((s) => !s.media);
@@ -751,7 +815,7 @@ const HTML_NAMES = /** @type {Record<string, string>} */ ({
 /**
  * `<picture>` markup for `attributes()`, for a page that writes HTML as a string: `pictureProps` written out, so the
  * two never differ.
- * @param {import("./image.mjs").ImageAttributes} attrs
+ * @param {ImageAttributes} attrs
  * @param {{ alt: string, priority?: boolean, className?: string }} options
  * @param {(value: string) => string} escape the site's HTML attribute escape (`escapeHtml` from ./html)
  */

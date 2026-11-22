@@ -36,6 +36,23 @@
 import { isDatabaseDown, logEvent, scrubText } from "./log.mjs";
 import { withTimeout } from "./time.mjs";
 
+/**
+ * Why a job in `cron_runs` is not well, with its last success (epoch ms) or null.
+ * @typedef {object} CronFinding
+ * @property {string} name
+ * @property {"failed" | "stale" | "never succeeded" | "never ran"} reason
+ * @property {number | null} lastOkAt
+ */
+
+/**
+ * What cronFindings and cronCheck read: the grace, the site's own list of jobs, when it was deployed, the clock.
+ * @typedef {object} CronFindingsOptions
+ * @property {number | ((everyMinutes: number) => number)} [graceMinutes] Minutes past a job's interval, or a function of the interval in minutes.
+ * @property {Array<{ name: string; everyMinutes: number | null }>} [jobs]
+ * @property {Date} [deployedAt]
+ * @property {Date} [now]
+ */
+
 /** The longest error stored. */
 export const CRON_ERROR_MAX = 500;
 
@@ -322,7 +339,7 @@ export async function runJobNow(
  * @param {D1Like | (() => D1Like) | null} db
  * @param {CronJob[] | (() => CronJob[])} jobs every job the site's triggers run, or a function giving them (called per call)
  * @param {CronOptions} [options]
- * @returns {import("./operator.d.mts").OperatorTool}
+ * @returns {import("./operator.mjs").OperatorTool}
  */
 export function runJobTool(db, jobs, options = {}) {
   const list = () => (typeof jobs === "function" ? jobs() : jobs);
@@ -357,7 +374,7 @@ export function runJobTool(db, jobs, options = {}) {
  * description says what the answer covers. Every site's Capsid Admin reads it the same way.
  * @param {() => unknown} status the site's backup read (d1-dump's backupHealth over its bucket, as /health's `backup`)
  * @param {{ files?: string[] }} [options]
- * @returns {import("./operator.d.mts").OperatorTool}
+ * @returns {import("./operator.mjs").OperatorTool}
  */
 export function backupStatusTool(status, { files = [] } = {}) {
   const covers =
@@ -376,7 +393,7 @@ export function backupStatusTool(status, { files = [] } = {}) {
  * (runJobTool), for a site's operatorResponse `tools`. `history` is the site's runJobs history, so a job run now is kept
  * in `cron_run_log` as its trigger keeps it.
  * @param {{ db: D1Like | (() => D1Like) | null, jobs: CronJob[] | (() => CronJob[]), backupStatus: () => unknown, files?: string[], history?: boolean | CronHistory }} options
- * @returns {{ backup_status: import("./operator.d.mts").OperatorTool, run_job: import("./operator.d.mts").OperatorTool }}
+ * @returns {{ backup_status: import("./operator.mjs").OperatorTool, run_job: import("./operator.mjs").OperatorTool }}
  */
 export function operatorJobTools({ db, jobs, backupStatus, files, history }) {
   return {

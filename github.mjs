@@ -11,6 +11,11 @@
 import { timedFetch } from "./http.mjs";
 import { githubAppJwt } from "./jwt.mjs";
 
+/**
+ * A fetch of `https://api.github.com${path}` that adds the caller's own token, timeout and cache.
+ * @typedef {(path: string, init?: RequestInit) => Promise<Response>} GithubCall
+ */
+
 export const GITHUB_API = "https://api.github.com";
 export const GITHUB_API_VERSION = "2022-11-28";
 

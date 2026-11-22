@@ -42,6 +42,102 @@ import { priceOf, promptOf } from "./ai-engine.mjs";
 import { retryAfterSeconds } from "./http.mjs";
 import { logEvent, scrubText } from "./log.mjs";
 
+/**
+ * @typedef {Readonly<{
+ * state: "active" | "deprecated" | "retired";
+ * deprecated: string | null;
+ * retires: string | null;
+ * notBefore: string | null;
+ * cacheMin: number | null;
+ * }>} ModelEntry
+ */
+
+/**
+ * @typedef {| "truncated"
+ * | "context_window"
+ * | "refusal"
+ * | "paused"
+ * | "unexpected_stop"
+ * | "invalid_output"
+ * | "spend_limit"
+ * | "rate_limited"
+ * | "unavailable"
+ * | "timeout"
+ * | "aborted"
+ * | "rejected"} FailureKind
+ */
+
+/**
+ * A Messages request body. `model` and `max_tokens` are required; `temperature`, `top_p`, `top_k` and `stream` are not allowed.
+ * @typedef {{ model: string; max_tokens: number; messages: Array<{ role: "user" | "assistant"; content: unknown }>; system?: string | Array<Record<string, unknown>>; temperature?: never; top_p?: never; top_k?: never; stream?: never; [key: string]: unknown; }} MessagesRequest
+ */
+
+/**
+ * Token counts: `cacheWrite` is five-minute cache writes, `cacheWrite1h` one-hour ones.
+ * @typedef {object} TokenCounts
+ * @property {number} input
+ * @property {number} output
+ * @property {number} cacheRead
+ * @property {number} cacheWrite
+ * @property {number} cacheWrite1h
+ */
+
+/**
+ * @typedef {Usage & {
+ * app: string;
+ * feature: string | null;
+ * model: string;
+ * modelStatus?: "retiring" | "retired" | "unknown";
+ * ok: boolean;
+ * kind: FailureKind | null;
+ * status: number | null;
+ * stopReason: string | null;
+ * requestId: string | null;
+ * providerType: string | null;
+ * errorName: string | null;
+ * errorMessage: string | null;
+ * durationMs: number;
+ * attempts: number;
+ * pauses: number;
+ * streamed: boolean;
+ * }} CallRecord
+ */
+
+/**
+ * @typedef {object} Common
+ * @property {Usage} usage
+ * @property {number} attempts
+ * @property {number} pauses
+ * @property {string | null} [requestId]
+ */
+
+/**
+ * @typedef {Common & {
+ * ok: true;
+ * text: string;
+ * content: unknown[];
+ * stopReason: "end_turn" | "stop_sequence" | "tool_use";
+ * stopSequence: string | null;
+ * }} MessageAnswer
+ */
+
+/**
+ * @typedef {Common & {
+ * ok: false;
+ * kind: FailureKind;
+ * error: string;
+ * retryable: boolean;
+ * status?: number;
+ * retryAfter?: number;
+ * providerType?: string;
+ * errorName?: string;
+ * errorMessage?: string;
+ * stopReason?: string | null;
+ * stopDetails?: unknown;
+ * content?: unknown[];
+ * }} MessageFailure
+ */
+
 export const ANTHROPIC_VERSION = "2026-10-21";
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_ATTEMPTS = 3;
@@ -156,7 +252,7 @@ function isoDate(text) {
  * row of `| API model name | Current state | Deprecated | Tentative retirement date |`. An empty object when the page
  * holds no such table, so a page that changed shape reads as "could not check", never as "nothing retiring".
  * @param {string} markdown
- * @returns {Record<string, Omit<import("./anthropic.d.mts").ModelEntry, "cacheMin">>}
+ * @returns {Record<string, Omit<ModelEntry, "cacheMin">>}
  */
 export function parseDeprecations(markdown) {
   /** @type {Record<string, any>} */
@@ -286,12 +382,12 @@ export const UNTRUSTED_DATA_RULE =
  * a failed call; throws only for a request that is wrong in code (no key, no `max_tokens`, a sampling parameter).
  * @param {AnthropicEnv} env
  * @param {string} app the site, as the log line names it
- * @param {Record<string, any>} request the Messages body (`model`, `max_tokens`, `messages`, `system`, ...) without `stream`
+ * @param {MessagesRequest} request the Messages body (`model`, `max_tokens`, `messages`, `system`, ...) without `stream`
  * @param {CallOptions} [options]
  * @returns {Promise<MessageResult>}
  */
 export function messages(env, app, request, options = {}) {
-  return answer(env, app, request, options, null);
+  return /** @type {Promise<MessageResult>} */ (answer(env, app, request, options, null));
 }
 
 /**
@@ -302,7 +398,7 @@ export function messages(env, app, request, options = {}) {
  * @param {Record<string, any>} request
  * @param {CallOptions} options
  * @param {((text: string) => unknown) | null} parse
- * @returns {Promise<MessageResult>}
+ * @returns {Promise<RawResult>}
  */
 async function answer(env, app, request, options, parse) {
   const call = prepare(env, app, request, options, false);
@@ -346,14 +442,20 @@ async function answer(env, app, request, options, parse) {
  * that does not parse is the `invalid_output` failure.
  * @param {AnthropicEnv} env
  * @param {string} app
- * @param {Record<string, any>} request
+ * @template [T=unknown]
+ * @param {MessagesRequest} request
  * @param {Record<string, unknown>} schema a JSON Schema with `additionalProperties: false` on each object
  * @param {CallOptions} [options]
- * @returns {Promise<MessageResult & { value?: unknown }>}
+ * @returns {Promise<(MessageAnswer & { value: T }) | MessageFailure>}
  */
 export function structured(env, app, request, schema, options = {}) {
-  const output_config = { ...request.output_config, format: { type: "json_schema", schema } };
-  return answer(env, app, { ...request, output_config }, options, JSON.parse);
+  const output_config = {
+    .../** @type {object} */ (request.output_config),
+    format: { type: "json_schema", schema },
+  };
+  return /** @type {Promise<(MessageAnswer & { value: T }) | MessageFailure>} */ (
+    answer(env, app, { ...request, output_config }, options, JSON.parse)
+  );
 }
 
 /**
@@ -362,9 +464,9 @@ export function structured(env, app, request, schema, options = {}) {
  * before the first byte; `pause_turn` ends a stream as the `paused` failure.
  * @param {AnthropicEnv} env
  * @param {string} app
- * @param {Record<string, any>} request
+ * @param {MessagesRequest} request
  * @param {CallOptions} [options]
- * @returns {AsyncGenerator<{ type: "text"; delta: string } | { type: "done"; result: MessageResult }>}
+ * @returns {AsyncGenerator<{ type: "text"; delta: string } | { type: "done"; result: MessageResult }, void, unknown>}
  */
 export async function* stream(env, app, request, options = {}) {
   const call = prepare(env, app, request, options, true);
@@ -375,8 +477,14 @@ export async function* stream(env, app, request, options = {}) {
   // A reader who stops early returns the generator at a `yield`; the call is still logged and metered then, as
   // `aborted`, with the tokens seen so far (they are billed).
   let reported = false;
-  const done = (/** @type {MessageResult} */ result) =>
-    ((reported = true), { type: /** @type {const} */ ("done"), result: finish(call, result) });
+  const done = (/** @type {RawResult} */ result) =>
+    (
+      (reported = true),
+      {
+        type: /** @type {const} */ ("done"),
+        result: /** @type {MessageResult} */ (finish(call, result)),
+      }
+    );
   try {
     sent = await send(call, call.body);
     if (!sent.ok) {
@@ -449,17 +557,32 @@ export async function* stream(env, app, request, options = {}) {
   }
 }
 
+/** @typedef {{ ANTHROPIC_API_KEY?: string; AI_GATEWAY_BASE_URL?: string; AI_GATEWAY_TOKEN?: string; AI_GATEWAY_ID?: string }} AnthropicEnv */
+
 /**
- * @typedef {{ ANTHROPIC_API_KEY?: string; AI_GATEWAY_BASE_URL?: string; AI_GATEWAY_TOKEN?: string; AI_GATEWAY_ID?: string }} AnthropicEnv
- * @typedef {{
- *   feature?: string; timeoutMs?: number; maxAttempts?: number; maxPauses?: number; cache?: boolean | "1h";
- *   betas?: string[]; signal?: AbortSignal; fetcher?: typeof fetch; sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
- *   log?: boolean; onResult?: (record: Record<string, unknown>) => void | Promise<void>;
- * }} CallOptions
- * @typedef {{ input: number; output: number; cacheRead: number; cacheWrite: number; cacheWrite1h: number }} Counts
- * @typedef {Counts & { long: Counts }} Usage
- * @typedef {{ ok: boolean; [key: string]: any }} MessageResult
+ * @typedef {object} CallOptions
+ * @property {string} [feature] The feature making the call, logged beside the site.
+ * @property {number} [timeoutMs] The deadline for the whole call, retries included (a stream: the longest silence). Default 60,000.
+ * @property {number} [maxAttempts] Attempts in all, the first included. Default 3.
+ * @property {number} [maxPauses] How many times a `pause_turn` is resent. Default 3.
+ * @property {boolean | "1h"} [cache] Unset: automatic caching when the system prompt, tools and messages together reach the model's minimum. true: always (5 min). "1h": always, one hour. false: never. A request with its own block-level `cache_control` gets no top-level one in any case.
+ * @property {string[]} [betas] Beta names for `anthropic-beta`.
+ * @property {AbortSignal} [signal] The caller's own abort (a reader who left).
+ * @property {typeof fetch} [fetcher]
+ * @property {(ms: number, signal?: AbortSignal) => Promise<void>} [sleep] The wait between retries; it is raced against `signal`, which it is also given.
+ * @property {boolean} [log] false: no `anthropic_call` log line.
+ * @property {(record: CallRecord) => void | Promise<void>} [onResult] Gets the log line's record after every call, for metering. Its failure is logged, never thrown.
  */
+
+/**
+ * A call's totals over every request it sent; `long` is the part from requests whose prompt passed the model's
+ * long-prompt line (ai-engine PRICES `long.above`), all zeros for a model without one.
+ * @typedef {TokenCounts & { long: TokenCounts }} Usage
+ */
+
+/** @typedef {MessageAnswer | MessageFailure} MessageResult */
+
+/** A result while it is being put together, before `finish` stamps its totals. @typedef {{ ok: boolean; [key: string]: any }} RawResult */
 
 /**
  * Checks the request and fixes everything one call needs: headers, URL, body, deadline and counters.
@@ -704,7 +827,7 @@ function backoff(attempt) {
 /**
  * A finished message as an answer or a typed failure, by its stop_reason.
  * @param {any} message
- * @returns {MessageResult}
+ * @returns {RawResult}
  */
 function stopped(message) {
   const stopReason = message.stop_reason ?? null;
@@ -743,7 +866,7 @@ function stopped(message) {
 /**
  * @param {string} kind
  * @param {Record<string, unknown>} fields
- * @returns {MessageResult}
+ * @returns {RawResult}
  */
 function failure(kind, fields) {
   return {
@@ -781,12 +904,12 @@ function add(total, usage, model) {
   if (above !== undefined && promptOf(one) > above) sum(total.long, one);
 }
 
-/** @returns {Counts} */
+/** @returns {TokenCounts} */
 function noTokens() {
   return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cacheWrite1h: 0 };
 }
 
-/** @param {Counts} total @param {Counts} one */
+/** @param {TokenCounts} total @param {TokenCounts} one */
 function sum(total, one) {
   total.input += one.input;
   total.output += one.output;
@@ -798,12 +921,12 @@ function sum(total, one) {
 /**
  * Stamps the call's totals on the result, writes its one log line and hands the record to `onResult`.
  * @param {ReturnType<typeof prepare>} call
- * @param {MessageResult} result
- * @returns {MessageResult}
+ * @param {RawResult} result
+ * @returns {RawResult}
  */
 function finish(call, result) {
   const { response: _response, idle: _idle, ...rest } = result;
-  /** @type {MessageResult} */
+  /** @type {RawResult} */
   const out = {
     ...rest,
     usage: { ...call.usage, long: { ...call.usage.long } },

@@ -18,6 +18,47 @@
 
 import { base64url, fromBase64url, fromBase64urlText, sha256 } from "./encoding.mjs";
 
+/**
+ * The upstream sign-in with Cloudflare Access for SaaS (OIDC), the one login every MCP server in the family uses.
+ * The state of a sign-in in flight is kept by the caller, with
+ * @cloudflare/workers-oauth-provider's beginUpstream and finishUpstream.
+ * @typedef {object} AccessEnv
+ * @property {string} [ACCESS_TEAM_DOMAIN] https://<team>.cloudflareaccess.com
+ * @property {string} [ACCESS_SAAS_CLIENT_ID]
+ * @property {string} [ACCESS_SAAS_CLIENT_SECRET]
+ */
+
+/**
+ * @typedef {object} AccessSaas
+ * @property {string} clientId
+ * @property {string} clientSecret
+ * @property {string} issuer https://<team>.cloudflareaccess.com/cdn-cgi/access/sso/oidc/<client id>
+ * @property {string} authorizationUrl
+ * @property {string} tokenUrl
+ * @property {string} jwksUrl
+ */
+
+/**
+ * Why a JWT was refused. Only a fault in the token is a refusal; a key source that throws is not caught.
+ * @typedef {| "malformed"
+ * | "algorithm"
+ * | "unknown-key"
+ * | "signature"
+ * | "issuer"
+ * | "audience"
+ * | "expired"
+ * | "not-yet-valid"} JwtRefusal
+ */
+
+/**
+ * @typedef {| { ok: true; claims: Record<string, unknown> }
+ * | { ok: false; reason: JwtRefusal }} JwtVerdict
+ */
+
+/**
+ * @typedef {{ ok: true; email: string; name?: string } | { ok: false; reason: string }} SignedIn
+ */
+
 const SKEW_SECONDS = 60;
 const TOKEN_TIMEOUT_MS = 15_000;
 /** How long a key fetch may take, so a slow JWKS endpoint cannot hold a sign-in open. */
@@ -63,7 +104,7 @@ export function newSignIn() {
 
 /**
  * Where the browser goes to sign in with Access.
- * @param {import("./access-login.d.mts").AccessSaas} saas
+ * @param {AccessSaas} saas
  * @param {{ redirectUri: string, state: string, verifier: string, nonce: string }} input
  */
 export async function authorizationUrl(saas, input) {
@@ -132,7 +173,7 @@ export function remoteKeys(jwksUrl) {
  * @param {string} token
  * @param {KeySource} keys
  * @param {{ issuer: string, audience: string, now?: number }} expect `now` in epoch milliseconds, for a test's clock
- * @returns {Promise<import("./access-login.d.mts").JwtVerdict>}
+ * @returns {Promise<JwtVerdict>}
  */
 export async function verifyJwt(token, keys, expect) {
   const parts = typeof token === "string" ? token.split(".") : [];
@@ -207,10 +248,10 @@ export async function verifyIdToken(token, keys, expect) {
  * client, carrying this sign-in's nonce, and naming an email that is not marked unverified. Anything else is a
  * refusal with a reason a log can carry; no token or secret is in it.
  * The exchange is bounded, so a hung token endpoint does not hold the sign-in (Grok audit 2026-10-21, CA-10).
- * @param {import("./access-login.d.mts").AccessSaas} saas
+ * @param {AccessSaas} saas
  * @param {{ code: string, redirectUri: string, verifier: string, nonce: string, now?: number }} input `now` in epoch ms, for a test's clock
  * @param {KeySource} [keys]
- * @returns {Promise<import("./access-login.d.mts").SignedIn>}
+ * @returns {Promise<SignedIn>}
  */
 export async function finishSignIn(saas, input, keys = remoteKeys(saas.jwksUrl)) {
   const response = await fetch(saas.tokenUrl, {

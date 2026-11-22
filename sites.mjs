@@ -43,6 +43,22 @@
 import { CSP_REPORT_GROUP, CSP_REPORT_PATH, buildPolicy } from "./csp.mjs";
 import { PASSKEY_OVERRIDES, corpFor, entryOverrides, permissionsAllowingSelf } from "./headers.mjs";
 
+/**
+ * `T` with every `reason` key removed, at any depth.
+ * @template T
+ * @typedef {T extends readonly (infer U)[]
+ * ? readonly WithoutReasons<U>[]
+ * : T extends object
+ *   ? { [K in keyof T as K extends "reason" ? never : K]: WithoutReasons<T[K]> }
+ *   : T} WithoutReasons
+ */
+
+/**
+ * An entry as `./sites` serves it (sites-values.mjs): SiteEntry without its reasons and deviations, which only the
+ * check reads (sites-deviations.mjs). Every function that takes an entry takes this, so a Worker passes what it imported.
+ * @typedef {WithoutReasons<Omit<SiteEntry, "deviations">>} ServedSiteEntry
+ */
+
 export { PASSKEY_OVERRIDES, permissionsAllowingSelf };
 
 const beacon = (/** @type {string} */ where) => ({

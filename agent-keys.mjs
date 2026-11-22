@@ -31,7 +31,7 @@ const KEY_MIN = 32;
 /**
  * The agent keys the Worker holds, by agent name: every `AGENT_KEY_*` secret with an agent's name and a value of at
  * least KEY_MIN characters.
- * @param {Record<string, unknown>} env
+ * @param {object} env
  * @returns {[name: string, key: string][]}
  */
 function agentKeys(env) {
@@ -54,7 +54,7 @@ export function bearerToken(authorization) {
 /**
  * Which agent presented this Authorization header: the lower-cased name of the `AGENT_KEY_*` secret its token matched,
  * or null.
- * @param {Record<string, unknown>} env
+ * @param {object} env
  * @param {string | null | undefined} authorization
  * @returns {Promise<string | null>}
  */
@@ -69,7 +69,7 @@ export async function agentPrincipal(env, authorization) {
 
 /**
  * The agent names the Worker holds a usable key for, sorted: what an owner page lists. Never the keys.
- * @param {Record<string, unknown>} env
+ * @param {object} env
  * @returns {string[]}
  */
 export function agentKeyNames(env) {
@@ -114,13 +114,16 @@ export const PROBE_PRINCIPAL = "live-check";
 /**
  * True when the header carries the server's list-only test key. Fails closed: no `MCP_PROBE_KEY`, a blank one or one
  * under KEY_MIN characters admits nothing, and the comparison is constant time.
- * @param {Record<string, unknown>} env
+ * @param {object} env
  * @param {string | null | undefined} authorization
  * @returns {Promise<boolean>}
  */
 export async function isProbeKey(env, authorization) {
+  // A site passes its own Env, an interface with no index signature, so the parameter is `object`.
+  const vars = /** @type {Record<string, unknown>} */ (env);
   const presented = bearerToken(authorization);
-  const key = typeof env[PROBE_KEY_SECRET] === "string" ? String(env[PROBE_KEY_SECRET]).trim() : "";
+  const key =
+    typeof vars[PROBE_KEY_SECRET] === "string" ? String(vars[PROBE_KEY_SECRET]).trim() : "";
   if (!presented || key.length < KEY_MIN) return false;
   return safeEqual(presented, key);
 }

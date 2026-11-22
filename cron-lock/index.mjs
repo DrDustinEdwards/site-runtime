@@ -11,7 +11,15 @@
 import { CRON_SKIPPED } from "../cron.mjs";
 import { logEvent } from "../log.mjs";
 
+/**
+ * @template T
+ * @typedef {{ idFromName(name: string): DurableObjectId; get(id: DurableObjectId): T; }} Namespace
+ */
+
 export { decideAcquire, decideRelease, lockHealth } from "./core.mjs";
+
+/** @typedef {import("./core.mjs").LockRecord} LockRecord */
+/** @typedef {import("./core.mjs").AcquireDecision} AcquireDecision */
 
 /** The ticker's alarm interval: five minutes. */
 export const TICKER_INTERVAL_MS = 5 * 60_000;

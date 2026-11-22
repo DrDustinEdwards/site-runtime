@@ -16,648 +16,547 @@
   },
   "files": [
     "index.mjs",
-    "index.d.mts",
     "access-sync.mjs",
-    "access-sync.d.mts",
     "headers.mjs",
-    "headers.d.mts",
     "csp.mjs",
-    "csp.d.mts",
     "csp-bypasses.mjs",
-    "csp-bypasses.d.mts",
     "csp-report.mjs",
-    "csp-report.d.mts",
     "page-headers.mjs",
-    "page-headers.d.mts",
     "context.mjs",
-    "context.d.mts",
     "kv-cache.mjs",
-    "kv-cache.d.mts",
     "check.mjs",
-    "check.d.mts",
     "sites.mjs",
-    "sites.d.mts",
     "sites-values.mjs",
-    "sites-values.d.mts",
     "sites-deviations.mjs",
     "owasp-headers.mjs",
-    "owasp-headers.d.mts",
     "update-owasp.mjs",
     "rate-limit",
     "cron-lock",
     "doc-room",
     "members",
     "access-login.mjs",
-    "access-login.d.mts",
     "mcp-login.mjs",
-    "mcp-login.d.mts",
     "audit-log.mjs",
-    "audit-log.d.mts",
     "mcp-server.mjs",
-    "mcp-server.d.mts",
     "admin-mcp.mjs",
-    "admin-mcp.d.mts",
     "agent-keys.mjs",
-    "agent-keys.d.mts",
     "owner-page.mjs",
-    "owner-page.d.mts",
     "body.mjs",
-    "body.d.mts",
     "access.mjs",
-    "access.d.mts",
     "access-drift.mjs",
-    "access-drift.d.mts",
     "html.mjs",
-    "html.d.mts",
     "health.mjs",
-    "health.d.mts",
     "image.mjs",
-    "image.d.mts",
     "prefetch.mjs",
-    "prefetch.d.mts",
     "preload.mjs",
-    "preload.d.mts",
     "edge-cache.mjs",
-    "edge-cache.d.mts",
     "server-timing.mjs",
-    "server-timing.d.mts",
     "static-site.mjs",
     "embeds.mjs",
-    "embeds.d.mts",
     "sri.mjs",
-    "sri.d.mts",
-    "static-site.d.mts",
     "speed.mjs",
     "sign-in-live.mjs",
     "session-check.mjs",
     "share-card.mjs",
-    "share-card.d.mts",
     "share-card-draw.mjs",
-    "share-card-draw.d.mts",
     "maintenance.mjs",
-    "maintenance.d.mts",
     "security-txt.mjs",
-    "security-txt.d.mts",
     "encoding.mjs",
-    "encoding.d.mts",
     "signed-token.mjs",
-    "signed-token.d.mts",
     "turnstile.mjs",
-    "turnstile.d.mts",
     "sign-in.mjs",
-    "sign-in.d.mts",
     "sign-in-path.mjs",
-    "sign-in-path.d.mts",
     "sign-in-link.mjs",
-    "sign-in-link.d.mts",
     "sign-in-account.mjs",
-    "sign-in-account.d.mts",
     "sign-in-client.mjs",
-    "sign-in-client.d.mts",
     "vitals-client.mjs",
-    "vitals-client.d.mts",
     "trusted-types.mjs",
-    "trusted-types.d.mts",
     "page-client.mjs",
-    "page-client.d.mts",
     "zod-jitless.mjs",
-    "zod-jitless.d.mts",
     "apple-secret.mjs",
-    "apple-secret.d.mts",
     "email.mjs",
-    "email.d.mts",
     "compare.mjs",
-    "compare.d.mts",
     "money.mjs",
-    "money.d.mts",
     "ai-gateway.mjs",
-    "ai-gateway.d.mts",
     "anthropic.mjs",
-    "anthropic.d.mts",
     "ai-engine.mjs",
-    "ai-engine.d.mts",
     "routine.mjs",
-    "routine.d.mts",
     "prose.mjs",
-    "prose.d.mts",
     "operator.mjs",
-    "operator.d.mts",
     "draft-gate.mjs",
-    "draft-gate.d.mts",
     "origin.mjs",
-    "origin.d.mts",
     "url.mjs",
-    "url.d.mts",
     "log.mjs",
-    "log.d.mts",
     "sentry.mjs",
-    "sentry.d.mts",
     "not-found.mjs",
-    "not-found.d.mts",
     "cron.mjs",
-    "cron.d.mts",
     "signed-in-crawl.mjs",
-    "signed-in-crawl.d.mts",
     "bin",
     "README.md",
     "nonce.mjs",
-    "nonce.d.mts",
     "react-entry.mjs",
-    "react-entry.d.mts",
     "deferred-scripts.mjs",
-    "deferred-scripts.d.mts",
     "hydrate-on-intent.mjs",
-    "hydrate-on-intent.d.mts",
     "http.mjs",
-    "http.d.mts",
     "sign-in-passkey.mjs",
-    "sign-in-passkey.d.mts",
     "sign-in-form.mjs",
-    "sign-in-form.d.mts",
     "sign-in-words.mjs",
-    "sign-in-words.d.mts",
     "disposable-domains.mjs",
     "update-disposable.mjs",
     "d1.mjs",
-    "d1.d.mts",
     "drizzle.mjs",
-    "drizzle.d.mts",
     "drizzle-check.mjs",
-    "drizzle-check.d.mts",
     "confirm.mjs",
-    "confirm.d.mts",
     "csv.mjs",
-    "csv.d.mts",
     "csv-client.mjs",
-    "csv-client.d.mts",
     "worker.mjs",
-    "worker.d.mts",
     "deploy.mjs",
-    "deploy.d.mts",
     "health-read.mjs",
-    "health-read.d.mts",
     "inbox-report.mjs",
-    "inbox-report.d.mts",
     "redact.mjs",
-    "redact.d.mts",
     "r2-object.mjs",
-    "r2-object.d.mts",
     "jwt.mjs",
-    "jwt.d.mts",
     "github.mjs",
-    "github.d.mts",
     "time.mjs",
-    "time.d.mts",
     "google-service-account.mjs",
-    "google-service-account.d.mts",
     "secret-box.mjs",
-    "secret-box.d.mts",
     "http-errors.mjs",
-    "http-errors.d.mts",
     "confirm-token.mjs",
-    "confirm-token.d.mts",
     "hono.mjs",
-    "hono.d.mts",
     "web-push.mjs",
-    "web-push.d.mts",
     "health-alert.mjs",
-    "health-alert.d.mts",
     "health-snapshot.mjs",
-    "health-snapshot.d.mts",
     "print-pdf.mjs",
-    "print-pdf.d.mts",
     "ai-caps",
     "ai-ask.mjs",
-    "ai-ask.d.mts",
     "cron-alert.mjs",
-    "cron-alert.d.mts",
     "newsletter.mjs",
-    "newsletter.d.mts"
+    "dist"
   ],
   "type": "module",
   "exports": {
     ".": {
-      "types": "./index.d.mts",
+      "types": "./dist/index.d.mts",
       "default": "./index.mjs"
     },
     "./headers": {
-      "types": "./headers.d.mts",
+      "types": "./dist/headers.d.mts",
       "default": "./headers.mjs"
     },
     "./csp": {
-      "types": "./csp.d.mts",
+      "types": "./dist/csp.d.mts",
       "default": "./csp.mjs"
     },
     "./page-headers": {
-      "types": "./page-headers.d.mts",
+      "types": "./dist/page-headers.d.mts",
       "default": "./page-headers.mjs"
     },
     "./context": {
-      "types": "./context.d.mts",
+      "types": "./dist/context.d.mts",
       "default": "./context.mjs"
     },
     "./kv-cache": {
-      "types": "./kv-cache.d.mts",
+      "types": "./dist/kv-cache.d.mts",
       "default": "./kv-cache.mjs"
     },
     "./csp-report": {
-      "types": "./csp-report.d.mts",
+      "types": "./dist/csp-report.d.mts",
       "default": "./csp-report.mjs"
     },
     "./body": {
-      "types": "./body.d.mts",
+      "types": "./dist/body.d.mts",
       "default": "./body.mjs"
     },
     "./confirm": {
-      "types": "./confirm.d.mts",
+      "types": "./dist/confirm.d.mts",
       "default": "./confirm.mjs"
     },
     "./html": {
-      "types": "./html.d.mts",
+      "types": "./dist/html.d.mts",
       "default": "./html.mjs"
     },
     "./health": {
-      "types": "./health.d.mts",
+      "types": "./dist/health.d.mts",
       "default": "./health.mjs"
     },
     "./deploy": {
-      "types": "./deploy.d.mts",
+      "types": "./dist/deploy.d.mts",
       "default": "./deploy.mjs"
     },
     "./health-read": {
-      "types": "./health-read.d.mts",
+      "types": "./dist/health-read.d.mts",
       "default": "./health-read.mjs"
     },
     "./image": {
-      "types": "./image.d.mts",
+      "types": "./dist/image.d.mts",
       "default": "./image.mjs"
     },
     "./r2-object": {
-      "types": "./r2-object.d.mts",
+      "types": "./dist/r2-object.d.mts",
       "default": "./r2-object.mjs"
     },
     "./prefetch": {
-      "types": "./prefetch.d.mts",
+      "types": "./dist/prefetch.d.mts",
       "default": "./prefetch.mjs"
     },
     "./preload": {
-      "types": "./preload.d.mts",
+      "types": "./dist/preload.d.mts",
       "default": "./preload.mjs"
     },
     "./edge-cache": {
-      "types": "./edge-cache.d.mts",
+      "types": "./dist/edge-cache.d.mts",
       "default": "./edge-cache.mjs"
     },
     "./server-timing": {
-      "types": "./server-timing.d.mts",
+      "types": "./dist/server-timing.d.mts",
       "default": "./server-timing.mjs"
     },
     "./embeds": {
-      "types": "./embeds.d.mts",
+      "types": "./dist/embeds.d.mts",
       "default": "./embeds.mjs"
     },
     "./static-site": {
-      "types": "./static-site.d.mts",
+      "types": "./dist/static-site.d.mts",
       "default": "./static-site.mjs"
     },
     "./sri": {
-      "types": "./sri.d.mts",
+      "types": "./dist/sri.d.mts",
       "default": "./sri.mjs"
     },
     "./share-card": {
-      "types": "./share-card.d.mts",
+      "types": "./dist/share-card.d.mts",
       "default": "./share-card.mjs"
     },
     "./share-card-draw": {
-      "types": "./share-card-draw.d.mts",
+      "types": "./dist/share-card-draw.d.mts",
       "default": "./share-card-draw.mjs"
     },
     "./maintenance": {
-      "types": "./maintenance.d.mts",
+      "types": "./dist/maintenance.d.mts",
       "default": "./maintenance.mjs"
     },
     "./security-txt": {
-      "types": "./security-txt.d.mts",
+      "types": "./dist/security-txt.d.mts",
       "default": "./security-txt.mjs"
     },
     "./encoding": {
-      "types": "./encoding.d.mts",
+      "types": "./dist/encoding.d.mts",
       "default": "./encoding.mjs"
     },
     "./jwt": {
-      "types": "./jwt.d.mts",
+      "types": "./dist/jwt.d.mts",
       "default": "./jwt.mjs"
     },
     "./github": {
-      "types": "./github.d.mts",
+      "types": "./dist/github.d.mts",
       "default": "./github.mjs"
     },
     "./time": {
-      "types": "./time.d.mts",
+      "types": "./dist/time.d.mts",
       "default": "./time.mjs"
     },
     "./google-service-account": {
-      "types": "./google-service-account.d.mts",
+      "types": "./dist/google-service-account.d.mts",
       "default": "./google-service-account.mjs"
     },
     "./signed-token": {
-      "types": "./signed-token.d.mts",
+      "types": "./dist/signed-token.d.mts",
       "default": "./signed-token.mjs"
     },
     "./turnstile": {
-      "types": "./turnstile.d.mts",
+      "types": "./dist/turnstile.d.mts",
       "default": "./turnstile.mjs"
     },
     "./sign-in-path": {
-      "types": "./sign-in-path.d.mts",
+      "types": "./dist/sign-in-path.d.mts",
       "default": "./sign-in-path.mjs"
     },
     "./sign-in": {
-      "types": "./sign-in.d.mts",
+      "types": "./dist/sign-in.d.mts",
       "default": "./sign-in.mjs"
     },
     "./sign-in-client": {
-      "types": "./sign-in-client.d.mts",
+      "types": "./dist/sign-in-client.d.mts",
       "default": "./sign-in-client.mjs"
     },
     "./vitals-client": {
-      "types": "./vitals-client.d.mts",
+      "types": "./dist/vitals-client.d.mts",
       "default": "./vitals-client.mjs"
     },
     "./trusted-types": {
-      "types": "./trusted-types.d.mts",
+      "types": "./dist/trusted-types.d.mts",
       "default": "./trusted-types.mjs"
     },
     "./page-client": {
-      "types": "./page-client.d.mts",
+      "types": "./dist/page-client.d.mts",
       "default": "./page-client.mjs"
     },
     "./zod-jitless": {
-      "types": "./zod-jitless.d.mts",
+      "types": "./dist/zod-jitless.d.mts",
       "default": "./zod-jitless.mjs"
     },
     "./apple-secret": {
-      "types": "./apple-secret.d.mts",
+      "types": "./dist/apple-secret.d.mts",
       "default": "./apple-secret.mjs"
     },
     "./email": {
-      "types": "./email.d.mts",
+      "types": "./dist/email.d.mts",
       "default": "./email.mjs"
     },
     "./compare": {
-      "types": "./compare.d.mts",
+      "types": "./dist/compare.d.mts",
       "default": "./compare.mjs"
     },
     "./money": {
-      "types": "./money.d.mts",
+      "types": "./dist/money.d.mts",
       "default": "./money.mjs"
     },
     "./check": {
-      "types": "./check.d.mts",
+      "types": "./dist/check.d.mts",
       "default": "./check.mjs"
     },
     "./sites": {
-      "types": "./sites-values.d.mts",
+      "types": "./dist/sites-values.d.mts",
       "default": "./sites-values.mjs"
     },
     "./owasp": {
-      "types": "./owasp-headers.d.mts",
+      "types": "./dist/owasp-headers.d.mts",
       "default": "./owasp-headers.mjs"
     },
     "./rate-limit": {
-      "types": "./rate-limit/index.d.mts",
+      "types": "./dist/rate-limit/index.d.mts",
       "default": "./rate-limit/index.mjs"
     },
     "./rate-limit/durable-object": {
-      "types": "./rate-limit/durable-object.d.mts",
+      "types": "./dist/rate-limit/durable-object.d.mts",
       "default": "./rate-limit/durable-object.mjs"
     },
     "./doc-room": {
-      "types": "./doc-room/index.d.mts",
+      "types": "./dist/doc-room/index.d.mts",
       "default": "./doc-room/index.mjs"
     },
     "./access-login": {
-      "types": "./access-login.d.mts",
+      "types": "./dist/access-login.d.mts",
       "default": "./access-login.mjs"
     },
     "./mcp-login": {
-      "types": "./mcp-login.d.mts",
+      "types": "./dist/mcp-login.d.mts",
       "default": "./mcp-login.mjs"
     },
     "./audit-log": {
-      "types": "./audit-log.d.mts",
+      "types": "./dist/audit-log.d.mts",
       "default": "./audit-log.mjs"
     },
     "./mcp-server": {
-      "types": "./mcp-server.d.mts",
+      "types": "./dist/mcp-server.d.mts",
       "default": "./mcp-server.mjs"
     },
     "./admin-mcp": {
-      "types": "./admin-mcp.d.mts",
+      "types": "./dist/admin-mcp.d.mts",
       "default": "./admin-mcp.mjs"
     },
     "./agent-keys": {
-      "types": "./agent-keys.d.mts",
+      "types": "./dist/agent-keys.d.mts",
       "default": "./agent-keys.mjs"
     },
     "./owner-page": {
-      "types": "./owner-page.d.mts",
+      "types": "./dist/owner-page.d.mts",
       "default": "./owner-page.mjs"
     },
     "./access": {
-      "types": "./access.d.mts",
+      "types": "./dist/access.d.mts",
       "default": "./access.mjs"
     },
     "./access-sync": {
-      "types": "./access-sync.d.mts",
+      "types": "./dist/access-sync.d.mts",
       "default": "./access-sync.mjs"
     },
     "./members": {
-      "types": "./members/index.d.mts",
+      "types": "./dist/members/index.d.mts",
       "default": "./members/index.mjs"
     },
     "./prose": {
-      "types": "./prose.d.mts",
+      "types": "./dist/prose.d.mts",
       "default": "./prose.mjs"
     },
     "./ai-gateway": {
-      "types": "./ai-gateway.d.mts",
+      "types": "./dist/ai-gateway.d.mts",
       "default": "./ai-gateway.mjs"
     },
     "./anthropic": {
-      "types": "./anthropic.d.mts",
+      "types": "./dist/anthropic.d.mts",
       "default": "./anthropic.mjs"
     },
     "./ai-engine": {
-      "types": "./ai-engine.d.mts",
+      "types": "./dist/ai-engine.d.mts",
       "default": "./ai-engine.mjs"
     },
     "./routine": {
-      "types": "./routine.d.mts",
+      "types": "./dist/routine.d.mts",
       "default": "./routine.mjs"
     },
     "./operator": {
-      "types": "./operator.d.mts",
+      "types": "./dist/operator.d.mts",
       "default": "./operator.mjs"
     },
     "./draft-gate": {
-      "types": "./draft-gate.d.mts",
+      "types": "./dist/draft-gate.d.mts",
       "default": "./draft-gate.mjs"
     },
     "./origin": {
-      "types": "./origin.d.mts",
+      "types": "./dist/origin.d.mts",
       "default": "./origin.mjs"
     },
     "./url": {
-      "types": "./url.d.mts",
+      "types": "./dist/url.d.mts",
       "default": "./url.mjs"
     },
     "./log": {
-      "types": "./log.d.mts",
+      "types": "./dist/log.d.mts",
       "default": "./log.mjs"
     },
     "./sentry": {
-      "types": "./sentry.d.mts",
+      "types": "./dist/sentry.d.mts",
       "default": "./sentry.mjs"
     },
     "./redact": {
-      "types": "./redact.d.mts",
+      "types": "./dist/redact.d.mts",
       "default": "./redact.mjs"
     },
     "./not-found": {
-      "types": "./not-found.d.mts",
+      "types": "./dist/not-found.d.mts",
       "default": "./not-found.mjs"
     },
     "./cron": {
-      "types": "./cron.d.mts",
+      "types": "./dist/cron.d.mts",
       "default": "./cron.mjs"
     },
     "./signed-in-crawl": {
-      "types": "./signed-in-crawl.d.mts",
+      "types": "./dist/signed-in-crawl.d.mts",
       "default": "./signed-in-crawl.mjs"
     },
     "./access-drift": {
-      "types": "./access-drift.d.mts",
+      "types": "./dist/access-drift.d.mts",
       "default": "./access-drift.mjs"
     },
     "./nonce": {
-      "types": "./nonce.d.mts",
+      "types": "./dist/nonce.d.mts",
       "default": "./nonce.mjs"
     },
     "./react-entry": {
-      "types": "./react-entry.d.mts",
+      "types": "./dist/react-entry.d.mts",
       "default": "./react-entry.mjs"
     },
     "./deferred-scripts": {
-      "types": "./deferred-scripts.d.mts",
+      "types": "./dist/deferred-scripts.d.mts",
       "default": "./deferred-scripts.mjs"
     },
     "./hydrate-on-intent": {
-      "types": "./hydrate-on-intent.d.mts",
+      "types": "./dist/hydrate-on-intent.d.mts",
       "default": "./hydrate-on-intent.mjs"
     },
     "./http": {
-      "types": "./http.d.mts",
+      "types": "./dist/http.d.mts",
       "default": "./http.mjs"
     },
     "./sign-in-passkey": {
-      "types": "./sign-in-passkey.d.mts",
+      "types": "./dist/sign-in-passkey.d.mts",
       "default": "./sign-in-passkey.mjs"
     },
     "./sign-in-form": {
-      "types": "./sign-in-form.d.mts",
+      "types": "./dist/sign-in-form.d.mts",
       "default": "./sign-in-form.mjs"
     },
     "./sign-in-words": {
-      "types": "./sign-in-words.d.mts",
+      "types": "./dist/sign-in-words.d.mts",
       "default": "./sign-in-words.mjs"
     },
     "./d1": {
-      "types": "./d1.d.mts",
+      "types": "./dist/d1.d.mts",
       "default": "./d1.mjs"
     },
     "./drizzle": {
-      "types": "./drizzle.d.mts",
+      "types": "./dist/drizzle.d.mts",
       "default": "./drizzle.mjs"
     },
     "./drizzle-check": {
-      "types": "./drizzle-check.d.mts",
+      "types": "./dist/drizzle-check.d.mts",
       "default": "./drizzle-check.mjs"
     },
     "./csv": {
-      "types": "./csv.d.mts",
+      "types": "./dist/csv.d.mts",
       "default": "./csv.mjs"
     },
     "./csv-client": {
-      "types": "./csv-client.d.mts",
+      "types": "./dist/csv-client.d.mts",
       "default": "./csv-client.mjs"
     },
     "./worker": {
-      "types": "./worker.d.mts",
+      "types": "./dist/worker.d.mts",
       "default": "./worker.mjs"
     },
     "./inbox-report": {
-      "types": "./inbox-report.d.mts",
+      "types": "./dist/inbox-report.d.mts",
       "default": "./inbox-report.mjs"
     },
     "./secret-box": {
-      "types": "./secret-box.d.mts",
+      "types": "./dist/secret-box.d.mts",
       "default": "./secret-box.mjs"
     },
     "./http-errors": {
-      "types": "./http-errors.d.mts",
+      "types": "./dist/http-errors.d.mts",
       "default": "./http-errors.mjs"
     },
     "./confirm-token": {
-      "types": "./confirm-token.d.mts",
+      "types": "./dist/confirm-token.d.mts",
       "default": "./confirm-token.mjs"
     },
     "./hono": {
-      "types": "./hono.d.mts",
+      "types": "./dist/hono.d.mts",
       "default": "./hono.mjs"
     },
     "./web-push": {
-      "types": "./web-push.d.mts",
+      "types": "./dist/web-push.d.mts",
       "default": "./web-push.mjs"
     },
     "./cron-lock": {
-      "types": "./cron-lock/index.d.mts",
+      "types": "./dist/cron-lock/index.d.mts",
       "default": "./cron-lock/index.mjs"
     },
     "./cron-lock/durable-object": {
-      "types": "./cron-lock/durable-object.d.mts",
+      "types": "./dist/cron-lock/durable-object.d.mts",
       "default": "./cron-lock/durable-object.mjs"
     },
     "./health-alert": {
-      "types": "./health-alert.d.mts",
+      "types": "./dist/health-alert.d.mts",
       "default": "./health-alert.mjs"
     },
     "./health-snapshot": {
-      "types": "./health-snapshot.d.mts",
+      "types": "./dist/health-snapshot.d.mts",
       "default": "./health-snapshot.mjs"
     },
     "./print-pdf": {
-      "types": "./print-pdf.d.mts",
+      "types": "./dist/print-pdf.d.mts",
       "default": "./print-pdf.mjs"
     },
     "./cron-alert": {
-      "types": "./cron-alert.d.mts",
+      "types": "./dist/cron-alert.d.mts",
       "default": "./cron-alert.mjs"
     },
     "./ai-caps": {
-      "types": "./ai-caps/index.d.mts",
+      "types": "./dist/ai-caps/index.d.mts",
       "default": "./ai-caps/index.mjs"
     },
     "./ai-caps/durable-object": {
-      "types": "./ai-caps/durable-object.d.mts",
+      "types": "./dist/ai-caps/durable-object.d.mts",
       "default": "./ai-caps/durable-object.mjs"
     },
     "./ai-ask": {
-      "types": "./ai-ask.d.mts",
+      "types": "./dist/ai-ask.d.mts",
       "default": "./ai-ask.mjs"
     },
     "./newsletter": {
-      "types": "./newsletter.d.mts",
+      "types": "./dist/newsletter.d.mts",
       "default": "./newsletter.mjs"
     }
   },

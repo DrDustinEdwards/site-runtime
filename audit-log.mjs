@@ -54,6 +54,37 @@
 import { base64url, fromBase64url, sha256Hex, toHex } from "./encoding.mjs";
 import { CREDENTIAL_PATTERN, STRIPE_KEY_PATTERN } from "./log.mjs";
 
+/**
+ * The MCP servers' append-only tool-call log, hash-chained (audit-log.mjs).
+ * @typedef {object} AuditEnv
+ * @property {{ idFromName(name: string): DurableObjectId; get(id: DurableObjectId): { fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>; }; }} TOOL_CALL_LOG Untyped or typed as wrangler generates it (`DurableObjectNamespace<ToolCallLog>`): the log reads it through fetch.
+ * @property {string} AUDIT_SIGNING_KEY The Worker secret the chain's Ed25519 signing key is derived from, at least 32 characters; required (devkit worker-deploy `generated-secrets`).
+ */
+
+/**
+ * @typedef {object} AuditRow
+ * @property {string} callId One tool call's id, shared by its rows; a fresh one for each other event.
+ * @property {| "started" | "finished" | "refused" | "sign-in" | "scope-challenge" | "rate-limited" | "revoked"} phase The event: a tool call's three, or one of the door's own.
+ * @property {string} caller A signed-in email or an agent principal, never a credential.
+ * @property {string} [tool] The tool, for a tool call or a scope challenge; empty otherwise.
+ * @property {Record<string, unknown>} [args]
+ * @property {{ isError: boolean; text: string; canceled?: boolean }} [result] `canceled` when the client closed the call (./mcp-server `invokeTool`'s signal).
+ * @property {{ name: string; version: string }} [server] The server's serverInfo name and version.
+ * @property {string} [clientId] The OAuth client the grant was issued to.
+ * @property {string} [clientName] The client's name ("Grok Bot"), so a row says which AI acted, not only its id.
+ * @property {string} [correlationId] From `correlationId`: the request's trace id, or a fresh one.
+ */
+
+/**
+ * What `verifyAuditChain` finds: every row checked, or the first that fails and why.
+ * @typedef {| { ok: true; hashed: number; signed: number }
+ * | {
+ *     ok: false;
+ *     seq: unknown;
+ *     reason: "hash" | "unsigned" | "unknown key" | "signature" | "key change";
+ *   }} ChainCheck
+ */
+
 const LONG_STRING = 200;
 /** Days a copied row stays in the log (L7). */
 export const AUDIT_KEEP_DAYS = 90;
@@ -170,7 +201,7 @@ async function keyId(publicKey) {
 export class ToolCallLog {
   /**
    * @param {DurableObjectState} state
-   * @param {Partial<import("./audit-log.d.mts").AuditEnv>} [env]
+   * @param {Partial<AuditEnv>} [env]
    */
   constructor(state, env) {
     this.sql = state.storage.sql;
@@ -240,7 +271,7 @@ export class ToolCallLog {
         );
       return Response.json(this.markExported(seq, hash, keepDays ?? AUDIT_KEEP_DAYS, verify));
     }
-    const row = /** @type {import("./audit-log.d.mts").AuditRow} */ (await request.json());
+    const row = /** @type {AuditRow} */ (await request.json());
     const append = this.tail.then(() => this.key).then((key) => this.append(row, key));
     this.tail = append.catch(() => {});
     await append;
@@ -387,13 +418,13 @@ export class ToolCallLog {
   }
 
   /**
-   * @param {import("./audit-log.d.mts").AuditRow | { callId: string, phase: string, caller: string, args: Record<string, unknown> }} row
+   * @param {AuditRow | { callId: string, phase: string, caller: string, args: Record<string, unknown> }} row
    * @param {ChainKey} key
    */
   async append(row, key) {
     const field = (/** @type {unknown} */ value) =>
       value === undefined || value === null ? null : String(value).slice(0, FIELD_CHARS);
-    const full = /** @type {import("./audit-log.d.mts").AuditRow} */ (row);
+    const full = /** @type {AuditRow} */ (row);
     /** @type {Record<string, string | null>} */
     const values = {
       at: new Date().toISOString(),
@@ -518,7 +549,7 @@ async function trust(publicKeys, rows) {
  * `from: null`. Without keys only the hashes are checked, and `signed` is 0.
  * @param {Array<Record<string, unknown>>} rows
  * @param {{ keys?: readonly string[], previous?: string | null }} [options]
- * @returns {Promise<{ ok: true, hashed: number, signed: number } | { ok: false, seq: unknown, reason: string }>}
+ * @returns {Promise<ChainCheck>}
  */
 export async function verifyAuditChain(rows, { keys = [], previous = null } = {}) {
   const trusted = await trust(keys, rows);
@@ -623,7 +654,7 @@ export function loggedResult(output) {
 
 /**
  * The log's one instance.
- * @param {Partial<import("./audit-log.d.mts").AuditEnv>} env
+ * @param {Partial<AuditEnv>} env
  * @returns {{ fetch(input: string, init?: RequestInit): Promise<Response> }}
  */
 function logStub(env) {
@@ -640,7 +671,7 @@ function logStub(env) {
  * Each batch is checked first (`verifyAuditChain`) with the bound secret's public key and the keys its anchors vouch
  * for, and the copy carries those keys and the result: `{ previous, keys, verified, rows }`. A batch that fails is still
  * copied, since it is the evidence; the failure goes to the Worker log, and `auditLogCheck` fails until a later run passes.
- * @param {Partial<import("./audit-log.d.mts").AuditEnv>} env
+ * @param {Partial<AuditEnv>} env
  * @param {{ put(key: string, value: string, options?: unknown): Promise<unknown> }} bucket
  * @param {{ prefix?: string, keepDays?: number }} [options]
  * @returns {Promise<{ exported: number, objects: string[], pruned: number, verified: { ok: true, hashed: number, signed: number } | { ok: false, seq: unknown, reason: string } | null }>}
@@ -718,9 +749,9 @@ export async function exportAuditLog(
  * call's `finished` row is 15 minutes late, when calls in the last hour pass `spikePerHour`, when rows have waited
  * more than two days for a copy, when the last copy's chain check failed, or when AUDIT_SIGNING_KEY is missing or short
  * (then nothing is logged and every tool call is refused). The detail gives counts, a seq and a reason only.
- * @param {Partial<import("./audit-log.d.mts").AuditEnv>} env
+ * @param {Partial<AuditEnv>} env
  * @param {{ spikePerHour?: number }} [options]
- * @returns {import("./health.d.mts").HealthCheck}
+ * @returns {import("./health.mjs").HealthCheck}
  */
 export function auditLogCheck(env, { spikePerHour = 600 } = {}) {
   return {
@@ -756,8 +787,8 @@ export function auditLogCheck(env, { spikePerHour = 600 } = {}) {
 /**
  * Appends one row. Throws when the binding is missing or the write fails, so the caller decides: a failed `started`
  * refuses the call, a failed `finished` is reported to the Worker log.
- * @param {Partial<import("./audit-log.d.mts").AuditEnv>} env
- * @param {import("./audit-log.d.mts").AuditRow} row
+ * @param {Partial<AuditEnv>} env
+ * @param {AuditRow} row
  */
 export async function appendAudit(env, row) {
   const response = await logStub(env).fetch("https://tool-call-log.invalid/append", {
@@ -771,8 +802,8 @@ export async function appendAudit(env, row) {
 /**
  * Appends a row whose failure changes nothing the caller does (a refusal, a sign-in, a challenge, a rate limit): a
  * failed write goes to the Worker log instead of throwing.
- * @param {Partial<import("./audit-log.d.mts").AuditEnv>} env
- * @param {import("./audit-log.d.mts").AuditRow} row
+ * @param {Partial<AuditEnv>} env
+ * @param {AuditRow} row
  */
 export async function recordAudit(env, row) {
   await appendAudit(env, row).catch((cause) =>

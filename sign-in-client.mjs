@@ -17,4 +17,7 @@ export {
   signalUnknownCredential,
 } from "./sign-in-passkey.mjs";
 
+/**
+ * @returns {[ReturnType<typeof magicLinkClient>, ReturnType<typeof emailOTPClient>, ReturnType<typeof passkeyClient>]}
+ */
 export const signInClientPlugins = () => [magicLinkClient(), emailOTPClient(), passkeyClient()];

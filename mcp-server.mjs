@@ -27,6 +27,79 @@ import { originRefusal, originVerdict } from "./origin.mjs";
 import { securityTxtResponse } from "./security-txt.mjs";
 import { errorMessage } from "./log.mjs";
 
+/**
+ * @typedef {object} ApiLeg
+ * @property {string} binding The env name of the service binding to the site's Worker.
+ * @property {string} token The env name of the bearer this Worker presents.
+ * @property {string} api The API's name as an error message opens with it ("The operator API").
+ * @property {string} userAgent
+ * @property {string[]} [require] Further env names that must be set, such as the acting admin's id.
+ */
+
+/**
+ * @typedef {| { kind: "admin"; props: { email: string } & Record<string, unknown>; scopes: readonly string[] }
+ * | { kind: "agent"; principal: string; scopes: readonly string[] }
+ * | {
+ *     kind: "person";
+ *     email: string;
+ *     clientId?: string;
+ *     clientName?: string;
+ *     scopes: readonly string[];
+ *   }
+ * | { kind: "probe"; principal: string; scopes: readonly string[] }} McpCaller
+ */
+
+/**
+ * One server, as refusals, the step-up challenge and the log name it.
+ * @typedef {object} McpServerInfo
+ * @property {string} site The site refusals name ("example.com").
+ * @property {{ read: string; write: string }} scopes
+ * @property {string} name serverInfo's name and version, for the log.
+ * @property {string} version
+ */
+
+/**
+ * The scope a tool declares: the level, the server's scope string, or a function of the arguments. Never an annotation.
+ * @template {string} [S=string]
+ * @typedef {| "read"
+ * | "write"
+ * | S
+ * | ((args: Record<string, unknown>) => "read" | "write" | S)} ToolScopeDeclaration
+ */
+
+/**
+ * @typedef {object} ToolText
+ * @property {boolean} [isError]
+ * @property {Array<{ type: "text"; text: string }>} content
+ */
+
+/**
+ * An MCP icon (`tools/list`, `serverInfo`): an https URL or a `data:image/` URI.
+ * @typedef {object} McpIcon
+ * @property {string} src
+ * @property {string} [mimeType]
+ * @property {string[]} [sizes]
+ * @property {"light" | "dark"} [theme]
+ */
+
+/**
+ * One finding on a `tools/list` result.
+ * @typedef {object} ToolListProblem
+ * @property {"T1" | "T2" | "T3" | "T4" | "T9"} item
+ * @property {string} tool
+ * @property {"error" | "warning"} severity
+ * @property {string} detail
+ */
+
+/**
+ * @typedef {| "tools/list"
+ * | "prompts/list"
+ * | "resources/list"
+ * | "resources/templates/list"
+ * | "resources/read"
+ * | "server/discover"} CacheableMethod
+ */
+
 // THE ERA ROUTER, and the prior-era shim.
 //
 // MCP 2026-07-28 removed the `initialize` handshake, sessions and the GET stream. The primary handler is built
@@ -47,10 +120,14 @@ import { errorMessage } from "./log.mjs";
  * malformed envelopes included, to the `legacy: "reject"` handler, which owns those error answers. The predicate reads
  * the body, so it is given a clone. Both handlers are built per call over the same factory.
  *
+ * @template F
+ * @template {object} O
+ * @template E
+ * @template C
  * @param {Request} request
- * @param {unknown} env
- * @param {unknown} ctx
- * @param {{ factory: unknown, options: Record<string, unknown>, createMcpHandler: Function, isLegacyRequest?: (request: Request) => Promise<boolean> | boolean }} sdk
+ * @param {E} env
+ * @param {C} ctx
+ * @param {{ factory: F, options: O, createMcpHandler: (factory: F, options: O & { legacy: "stateless" | "reject" }) => (request: Request, env: E, ctx: C) => Promise<Response>, isLegacyRequest?: (request: Request) => Promise<boolean> | boolean }} sdk
  * @returns {Promise<Response>}
  */
 export async function routeMcpEra(
@@ -180,32 +257,34 @@ export class ApiLegError extends Error {
  * and (`canceled`) when `signal`, the tool call's (P11), aborted before or while the request was out: a client that closed
  * the stream gets no further request sent for it.
  *
- * @param {Record<string, unknown>} env
+ * @param {object} env
  * @param {{ binding: string, token: string, api: string, userAgent: string, require?: string[] }} leg
  * @param {string} path
  * @param {{ method?: string, headers?: Record<string, string>, json?: unknown, anonymous?: boolean, signal?: AbortSignal }} [init]
  * @returns {Promise<{ status: number, ok: boolean, body: unknown }>}
  */
 export async function callApi(env, leg, path, init = {}) {
+  // A site passes its own Env, an interface with no index signature, so the parameter is `object`.
+  const vars = /** @type {Record<string, unknown>} */ (env);
   const unconfigured = (/** @type {string} */ what) =>
     new ApiLegError(
       `The MCP server is not configured: ${what}. Not configured means not open.`,
       "unconfigured",
     );
-  const fetcher = /** @type {{ fetch?: unknown } | undefined} */ (env[leg.binding]);
+  const fetcher = /** @type {{ fetch?: unknown } | undefined} */ (vars[leg.binding]);
   if (!fetcher || typeof fetcher.fetch !== "function")
     throw unconfigured(`the ${leg.binding} service binding is missing`);
-  if (!env.SITE_ORIGIN) throw unconfigured("SITE_ORIGIN is unset");
-  const token = env[leg.token];
+  if (!vars.SITE_ORIGIN) throw unconfigured("SITE_ORIGIN is unset");
+  const token = vars[leg.token];
   if (!init.anonymous && (typeof token !== "string" || token.length < 32))
     throw unconfigured(`${leg.token} is unset or shorter than 32 characters`);
   for (const name of leg.require ?? [])
-    if (typeof env[name] !== "string" || !String(env[name]).trim())
+    if (typeof vars[name] !== "string" || !String(vars[name]).trim())
       throw unconfigured(`${name} is unset`);
 
   // A path is the site's own: one that names another origin ("//host", "https://host") would carry the bearer there.
-  const target = new URL(path, String(env.SITE_ORIGIN));
-  if (target.origin !== new URL(String(env.SITE_ORIGIN)).origin)
+  const target = new URL(path, String(vars.SITE_ORIGIN));
+  if (target.origin !== new URL(String(vars.SITE_ORIGIN)).origin)
     throw new ApiLegError(
       `The path ${path} leaves ${leg.api}'s origin, so nothing was sent.`,
       "unconfigured",
@@ -381,17 +460,19 @@ export function mcpOriginRefusal(request, allowed = [], headers) {
 
 /**
  * The read and write scopes for a server's scope prefix (`dei` gives `dei.read` and `dei.write`).
- * @param {string} prefix
+ * @template {string} P
+ * @param {P} prefix
+ * @returns {{ read: `${P}.read`, write: `${P}.write`, all: [`${P}.read`, `${P}.write`] }}
  */
 export function mcpScopes(prefix) {
-  const read = `${prefix}.read`;
-  const write = `${prefix}.write`;
+  const read = /** @type {`${P}.read`} */ (`${prefix}.read`);
+  const write = /** @type {`${P}.write`} */ (`${prefix}.write`);
   return { read, write, all: [read, write] };
 }
 
 /**
  * The audit name of a caller: the signed-in email or the agent principal, never a credential.
- * @param {import("./mcp-server.d.mts").McpCaller} caller
+ * @param {McpCaller} caller
  */
 export function callerName(caller) {
   if (caller.kind === "person") return `access:${caller.email}`;
@@ -437,7 +518,7 @@ export function toolsForGrant(tools, held, scopes) {
  * Null when the call may proceed, or the refusal to show the caller. A tool with no declared scope never runs. A
  * `person` is one the server's door already verified (a server with several people), so only the grant's scopes decide.
  * @param {{ ADMIN_EMAIL?: string, CO_OWNER_EMAILS?: string }} env
- * @param {import("./mcp-server.d.mts").McpCaller | undefined} caller
+ * @param {McpCaller | undefined} caller
  * @param {string | null | undefined} scope
  * @param {{ site: string, scopes: { read: string, write: string } }} server
  * @returns {string | null}
@@ -468,9 +549,10 @@ export function authorizeCall(env, caller, scope, { site, scopes }) {
  * naming every scope the call needs (a write needs both) with `resource_metadata`, before the tool runs, and the client
  * can step up instead of reconnecting by hand. The challenge is logged. An agent key carries no OAuth token, so it gets
  * no challenge and `authorizeCall` refuses it in words.
- * @param {Partial<import("./audit-log.d.mts").AuditEnv>} env
- * @param {import("./mcp-server.d.mts").McpServerInfo} server
+ * @param {Partial<import("./audit-log.mjs").AuditEnv>} env
+ * @param {McpServerInfo} server
  * @param {{ name: string, scope?: unknown }} tool
+ * @returns {(context: { request: { params?: Record<string, unknown> }; authInfo?: { scopes: string[]; clientId?: string; extra?: Record<string, unknown> } }) => Promise<{ scopes: [string, ...string[]]; errorDescription: string } | undefined>}
  */
 export function toolScopeChallenge(env, server, tool) {
   /** @param {{ request: { params?: Record<string, unknown> }, authInfo?: { scopes: string[], clientId?: string, extra?: Record<string, unknown> } }} context */
@@ -478,6 +560,7 @@ export function toolScopeChallenge(env, server, tool) {
     const args = /** @type {Record<string, unknown>} */ (request.params?.arguments ?? {});
     const scope = toolScope(tool, args, server.scopes);
     if (!authInfo || scope === null || authInfo.scopes.includes(scope)) return undefined;
+    /** @type {[string, ...string[]]} */
     const needed =
       scope === server.scopes.write
         ? [server.scopes.read, server.scopes.write]
@@ -518,9 +601,9 @@ export function toolScopeChallenge(env, server, tool) {
  * signal to pass on (`callApi`'s `signal`, or a check between two writes), and a call that ran on after the client left
  * is logged `canceled`.
  * @template {{ isError?: boolean, content: Array<{ type: "text", text: string }> }} O
- * @param {{ ADMIN_EMAIL?: string, CO_OWNER_EMAILS?: string } & Partial<import("./audit-log.d.mts").AuditEnv>} env
- * @param {import("./mcp-server.d.mts").McpServerInfo} server
- * @param {{ caller: import("./mcp-server.d.mts").McpCaller | undefined, tool: { name: string, scope?: unknown }, args: Record<string, unknown>, meta?: Record<string, unknown>, signal?: AbortSignal, run: (signal?: AbortSignal) => Promise<O> }} call
+ * @param {{ ADMIN_EMAIL?: string, CO_OWNER_EMAILS?: string } & Partial<import("./audit-log.mjs").AuditEnv>} env
+ * @param {McpServerInfo} server
+ * @param {{ caller: McpCaller | undefined, tool: { name: string, scope?: unknown }, args: Record<string, unknown>, meta?: Record<string, unknown>, signal?: AbortSignal, run: (signal?: AbortSignal) => Promise<O> }} call
  * @returns {Promise<O | { isError: true, content: Array<{ type: "text", text: string }> }>}
  */
 export async function invokeTool(env, server, { caller, tool, args, meta, signal, run }) {
@@ -542,7 +625,7 @@ export async function invokeTool(env, server, { caller, tool, args, meta, signal
       : caller?.kind === "person"
         ? caller.clientName
         : undefined;
-  /** @type {Omit<import("./audit-log.d.mts").AuditRow, "phase">} */
+  /** @type {Omit<import("./audit-log.mjs").AuditRow, "phase">} */
   const row = {
     callId: crypto.randomUUID(),
     caller: caller ? callerName(caller) : "unknown",
@@ -611,12 +694,12 @@ export async function invokeTool(env, server, { caller, tool, args, meta, signal
  * for it; a tool whose action decides its scope stays listed and still steps up. Pair it with `mcpCacheHints()`, whose
  * hints are private, since the list now differs by grant.
  * @template {{ name: string, scope?: unknown }} T
- * @param {{ registerTool: (name: string, config: any, callback: (args: any, ctx: any) => unknown) => unknown }} mcp
+ * @param {{ registerTool(name: string, config: never, callback: never): unknown }} mcp any server whose registerTool takes a name, a config and a callback (the SDK's is generic and overloaded)
  * @param {readonly T[]} tools
  * @param {{
- *   env: { ADMIN_EMAIL?: string, CO_OWNER_EMAILS?: string } & Partial<import("./audit-log.d.mts").AuditEnv>,
- *   server: import("./mcp-server.d.mts").McpServerInfo,
- *   caller: import("./mcp-server.d.mts").McpCaller | undefined,
+ *   env: { ADMIN_EMAIL?: string, CO_OWNER_EMAILS?: string } & Partial<import("./audit-log.mjs").AuditEnv>,
+ *   server: McpServerInfo,
+ *   caller: McpCaller | undefined,
  *   icons?: ReadonlyArray<{ src: string, mimeType?: string, sizes?: string[] }>,
  *   config?: (tool: T) => Record<string, unknown>,
  *   run?: (tool: T, args: Record<string, unknown>, signal?: AbortSignal) => Promise<any>,
@@ -643,9 +726,14 @@ export function registerTools(mcp, tools, { env, server, caller, icons, config, 
       /** @type {Record<string, unknown>} */ args,
       /** @type {AbortSignal | undefined} */ signal,
     ) => tool.handler(env, args, signal));
+  // The SDK's registerTool is generic and overloaded, so the parameter only promises a name, a config and a callback.
+  const registrar =
+    /** @type {{ registerTool(name: string, config: object, callback: (args: any, ctx: any) => unknown): unknown }} */ (
+      mcp
+    );
   for (const tool of listed) {
     const own = configOf(tool);
-    mcp.registerTool(
+    registrar.registerTool(
       tool.name,
       {
         ...own,
@@ -706,8 +794,8 @@ const PROBE_BODY_MAX = 64 * 1024;
  * this key it has none. A refused notification is a 403, as it has no id to answer. Each refused message is a `refused`
  * row in the tool-call log, under `probe:live-check`, naming the method. A body that is not JSON goes on, for the SDK's
  * parse error, since it runs nothing.
- * @param {Partial<import("./audit-log.d.mts").AuditEnv>} env
- * @param {import("./mcp-server.d.mts").McpServerInfo} server
+ * @param {Partial<import("./audit-log.mjs").AuditEnv>} env
+ * @param {McpServerInfo} server
  * @param {Request} request
  * @returns {Promise<{ request: Request, refusal?: undefined } | { refusal: Response, request?: undefined }>}
  */
@@ -769,10 +857,10 @@ export async function probeRefusal(env, server, request) {
  * The list-only test key's whole door, for a server's `/mcp` before its OAuth provider: null when the request does not
  * carry the key (go on to OAuth). Otherwise the limiter, keyed on the key (fails closed; a limited request is a
  * `rate-limited` row), then `probeRefusal`, then `serve(request, probeCaller())` with the checked request.
- * @template {Partial<import("./audit-log.d.mts").AuditEnv>} E
+ * @template {Partial<import("./audit-log.mjs").AuditEnv>} E
  * @param {Request} request
  * @param {E} env
- * @param {{ server: import("./mcp-server.d.mts").McpServerInfo, limiter: Parameters<typeof checkRateLimit>[0], serve: (request: Request, caller: { kind: "probe", principal: string, scopes: string[] }) => Promise<Response> }} options
+ * @param {{ server: McpServerInfo, limiter: Parameters<typeof checkRateLimit>[0], serve: (request: Request, caller: { kind: "probe", principal: string, scopes: string[] }) => Promise<Response> }} options
  * @returns {Promise<Response | null>}
  */
 export async function probeDoor(request, env, { server, limiter, serve }) {
@@ -842,17 +930,18 @@ const DIALECT = "https://json-schema.org/draft/2020-12/schema";
  * boolean; T3 no `outputSchema` of type object; T4 an `inputSchema` that is not an object, a `$schema` other than 2020-12,
  * an object (at any depth) without `additionalProperties: false`, a `$ref` that is not local, and (a warning) a string
  * with no `pattern`, `enum`, `const` or `format`; T9 no icon, or one whose `src` is neither https nor a `data:image/`.
- * @param {ReadonlyArray<Record<string, any>>} tools
- * @returns {Array<{ item: string, tool: string, severity: "error" | "warning", detail: string }>}
+ * @param {ReadonlyArray<object>} tools
+ * @returns {ToolListProblem[]}
  */
 export function toolListProblems(tools) {
-  /** @type {Array<{ item: string, tool: string, severity: "error" | "warning", detail: string }>} */
+  /** @type {ToolListProblem[]} */
   const out = [];
   const seen = new Set();
-  for (const tool of tools) {
+  for (const listed of tools) {
+    const tool = /** @type {Record<string, any>} */ (listed);
     const name = String(tool?.name ?? "");
     const add = (
-      /** @type {string} */ item,
+      /** @type {ToolListProblem["item"]} */ item,
       /** @type {string} */ detail,
       severity = /** @type {"error" | "warning"} */ ("error"),
     ) => out.push({ item, tool: name, severity, detail });
@@ -888,7 +977,7 @@ export function toolListProblems(tools) {
  * T4 at every depth of a schema.
  * @param {any} schema
  * @param {string} at
- * @param {(item: string, detail: string, severity?: "error" | "warning") => void} add
+ * @param {(item: ToolListProblem["item"], detail: string, severity?: "error" | "warning") => void} add
  */
 function schemaProblems(schema, at, add) {
   if (!schema || typeof schema !== "object") return;
@@ -953,12 +1042,15 @@ const CACHEABLE = /** @type {const} */ ([
  * by the grant (`toolsForGrant`, a caller's namespaces) served from a shared cache is one person's list shown to
  * another.
  * @param {{ ttlMs?: number, shared?: ReadonlyArray<typeof CACHEABLE[number]> }} [options]
+ * @returns {Record<CacheableMethod, { ttlMs: number; cacheScope: "public" | "private" }>}
  */
 export function mcpCacheHints({ ttlMs = 60_000, shared = [] } = {}) {
-  return Object.fromEntries(
-    CACHEABLE.map((method) => [
-      method,
-      { ttlMs, cacheScope: shared.includes(method) ? "public" : "private" },
-    ]),
+  return /** @type {Record<CacheableMethod, { ttlMs: number; cacheScope: "public" | "private" }>} */ (
+    Object.fromEntries(
+      CACHEABLE.map((method) => [
+        method,
+        { ttlMs, cacheScope: shared.includes(method) ? "public" : "private" },
+      ]),
+    )
   );
 }
