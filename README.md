@@ -452,6 +452,8 @@ return healthResponse({
 });
 ```
 
+- `siteHealthResponse(env, { backup, checks, jobs })` is that call for a site with a D1 `env.DB`: `ping` on it, `sha` from
+  DEPLOY_SHA, your `checks`, then the cron check over `jobs` since the deploy.
 - A check is `{ name, level, alert, run }`, `level` "fail" by default or "warn". It fails when `run` throws, rejects, resolves
   `false` or resolves `{ ok: false, detail }`, or does not answer within `checkTimeoutMs` (3000 by default), so /health
   never hangs on a binding. A thrown error's text is the detail, scrubbed by `./log` and cut to 200 characters; a failed

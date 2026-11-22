@@ -28,6 +28,8 @@
  * where only custom domains get functional cache operations) or `backupTtlMs` is 0, every request reads.
  */
 
+import { cronCheck } from "./cron.mjs";
+import { deployedAt, deployedSha } from "./deploy.mjs";
 import { PURGE_FAILED_KEY } from "./edge-cache.mjs";
 import {
   DATABASE_DOWN_RETRY_AFTER,
@@ -151,6 +153,25 @@ export async function healthResponse({
       "Cache-Control": "no-store",
       "X-Robots-Tag": "noindex",
     },
+  });
+}
+
+/**
+ * The /health every site with a D1 database answers: `healthResponse` with `ping` on `env.DB`, `sha` from DEPLOY_SHA,
+ * and the "cron" check over `jobs` since the deploy, after the site's own `checks`.
+ * @param {{ DB: { prepare(sql: string): { first(): Promise<unknown> } } }} env
+ * @param {{ backup?: () => Promise<unknown>, checks?: HealthCheck[], jobs: Array<{ name: string, everyMinutes: number | null }> }} site
+ * @returns {Promise<Response>}
+ */
+export function siteHealthResponse(env, { backup, checks = [], jobs }) {
+  return healthResponse({
+    ping: () => env.DB.prepare("select 1").first(),
+    backup,
+    sha: deployedSha(env),
+    checks: [
+      ...checks,
+      cronCheck(/** @type {any} */ (env.DB), { jobs, deployedAt: deployedAt(env) }),
+    ],
   });
 }
 
