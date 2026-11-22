@@ -87,6 +87,7 @@ import {
   publicPageHeaders,
   purgeAfterWrite,
   settleCacheHeaders,
+  stampValidator,
   withPurgePages,
 } from "./edge-cache.mjs";
 import { cookiePairs } from "./headers.mjs";
@@ -243,7 +244,9 @@ export function siteRenderer(Base, site) {
         const secured = await site.earlyHints(
           options.withSecurityHeaders(rendered, request, pageNonce(rendered, nonce), this.env),
         );
-        return settleCacheHeaders(secured, request, { publicCookies: options.publicCookies ?? [] });
+        return settleCacheHeaders(await stampValidator(secured, request), request, {
+          publicCookies: options.publicCookies ?? [],
+        });
       });
     }
   };

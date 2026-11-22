@@ -237,6 +237,34 @@ export function settleCacheHeaders(response, request, { publicCookies = [] } = {
 }
 
 /**
+ * A shared page's ETag, from its body, so every stored copy of the same page carries the same validator. A
+ * render-time `Last-Modified` differs between the copies the edge's servers each store, so a reader holding one copy
+ * got 200 for a conditional request answered by another, and again after every purge. Run before
+ * `settleCacheHeaders`, which then leaves the validator alone. A page that is not shared, has a cookie to set, or
+ * names its own validator comes back as it was. Weak, since the edge compresses the body it sends.
+ * @param {Response} response
+ * @param {Request} [request]
+ * @returns {Promise<Response>}
+ */
+export async function stampValidator(response, request) {
+  if (
+    response.status !== 200 ||
+    !response.body ||
+    request?.method === "HEAD" ||
+    response.headers.get("Cache-Control") !== SHARED_CACHE_CONTROL ||
+    response.headers.has("Set-Cookie") ||
+    response.headers.has("ETag") ||
+    response.headers.has("Last-Modified")
+  )
+    return response;
+  const body = await response.arrayBuffer();
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", body)).subarray(0, 16);
+  const headers = new Headers(response.headers);
+  headers.set("ETag", `W/"${btoa(String.fromCharCode(...digest)).replace(/=+$/, "")}"`);
+  return new Response(body, { status: response.status, statusText: response.statusText, headers });
+}
+
+/**
  * The request the gateway sends the Renderer: a HEAD goes as a GET, so what the Workers cache renders and stores, on a
  * miss or a refresh of a stale page, is always the whole page. `forReader` then sends a HEAD reader the headers only.
  * @param {Request} request
