@@ -90,6 +90,7 @@
     "log.mjs",
     "sentry.mjs",
     "not-found.mjs",
+    "render-html.mjs",
     "cron.mjs",
     "signed-in-crawl.mjs",
     "bin",
