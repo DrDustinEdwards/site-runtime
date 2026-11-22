@@ -93,9 +93,9 @@ test("contentDisposition keeps an ASCII name and adds filename* for any other", 
   assert.equal(contentDisposition("inline"), "inline");
 });
 
-test("an R2 read that fails with 10001 is asked again; other errors and a third failure are thrown", async () => {
-  const pauses = [];
-  const pause = async (ms) => void pauses.push(ms);
+test("an R2 read that fails with 10001 is asked again once; other errors and a second failure are thrown", async (t) => {
+  const waits = [];
+  t.mock.method(globalThis, "setTimeout", (fn, ms) => (waits.push(ms), fn()));
   const flaky = (failures, message) => {
     let calls = 0;
     return async () => {
@@ -104,8 +104,8 @@ test("an R2 read that fails with 10001 is asked again; other errors and a third 
     };
   };
   const internal = "get: We encountered an internal error. Please try again. (10001)";
-  assert.equal(await retryR2Read(flaky(2, internal), pause), "ok");
-  assert.deepEqual(pauses, [200, 600]);
-  await assert.rejects(retryR2Read(flaky(3, internal), pause), /\(10001\)/);
-  await assert.rejects(retryR2Read(flaky(1, "get: Not allowed (10003)"), pause), /10003/);
+  assert.equal(await retryR2Read(flaky(1, internal)), "ok");
+  assert.deepEqual(waits, [300]);
+  await assert.rejects(retryR2Read(flaky(2, internal)), /\(10001\)/);
+  await assert.rejects(retryR2Read(flaky(1, "get: Not allowed (10003)")), /10003/);
 });

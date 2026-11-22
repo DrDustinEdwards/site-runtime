@@ -11,30 +11,25 @@
  */
 
 import { textResponse } from "./http.mjs";
-import { isR2Unavailable } from "./log.mjs";
+import { isDatabaseDown } from "./log.mjs";
 
 /** @typedef {import("./r2-object.mjs").R2BucketLike} R2BucketLike */
 /** @typedef {import("./r2-object.mjs").R2FileOptions} R2FileOptions */
 
-/** Pauses (ms) before each new try of an R2 read that failed for a moment. */
-const R2_RETRY_PAUSES = [200, 600];
-
 /**
- * Runs an R2 read again, after a short pause and twice at most, when R2 answers 10001 or 10043 (its docs: retry);
- * any other error, and the third failure, is thrown as it was.
+ * Runs an R2 read again, once after 300 ms, when R2 answers its transient 10001 or 10043 (its docs: retry); any other
+ * error, and a second failure, is thrown as it was.
  * @template T
  * @param {() => Promise<T>} read
- * @param {(ms: number) => Promise<unknown>} [pause]
  * @returns {Promise<T>}
  */
-export async function retryR2Read(read, pause = (ms) => new Promise((r) => setTimeout(r, ms))) {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await read();
-    } catch (error) {
-      if (attempt >= R2_RETRY_PAUSES.length || !isR2Unavailable(error)) throw error;
-      await pause(R2_RETRY_PAUSES[attempt]);
-    }
+export async function retryR2Read(read) {
+  try {
+    return await read();
+  } catch (error) {
+    if (!isDatabaseDown(error)) throw error;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    return read();
   }
 }
 
@@ -123,7 +118,7 @@ export async function r2ObjectResponse(request, bucket, key, options = {}) {
     return textResponse("Method not allowed", 405, { allow: "GET, HEAD" });
 
   if (request.method === "HEAD") {
-    const head = await retryR2Read(() => bucket.head(key));
+    const head = await bucket.head(key);
     if (!head) return notFound();
     const headers = fileHeaders(head, options);
     headers.set("content-length", String(head.size));
@@ -138,7 +133,7 @@ export async function r2ObjectResponse(request, bucket, key, options = {}) {
     );
   } catch (error) {
     // R2 refuses a range it cannot satisfy; the answer says how long the object is.
-    if (!ranged || isR2Unavailable(error)) throw error;
+    if (!ranged || isDatabaseDown(error)) throw error;
     const head = await bucket.head(key);
     if (!head) return notFound();
     return new Response(null, {

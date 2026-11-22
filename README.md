@@ -1190,10 +1190,10 @@ ETag, Accept-Ranges, Content-Length and nosniff. For a file a site serves whole 
 game assets, an EPUB's parts (`noindex` for a copy of a page's text). `contentDisposition(disposition, filename)`
 writes RFC 6266's `filename`, plus RFC 8187's `filename*` when the name is not plain ASCII; `attachmentResponse(body,
 { filename, type })` is a generated export as a download (no-store). Pictures go through `./image`'s `serve`.
-`retryR2Read(() => bucket.get(key))` asks again, after 200 ms and 600 ms, when R2 answers its transient 10001 or 10043
-(Cloudflare's R2 error codes: retry with backoff); `r2ObjectResponse` and `serve` use it, and a route with its own read
-wraps it. What still fails reaches `handleServerError` as one `storage_unavailable` warning, and the answer is a 503
-with `Retry-After` (`databaseDownStatus`, which now covers R2 as well as D1).
+`retryR2Read(() => bucket.get(key))` asks again once, after 300 ms, when R2 answers its transient 10001 or 10043
+(Cloudflare's R2 error codes: retry); `r2ObjectResponse` and `serve` use it, and a route with its own read
+wraps it. What still fails reaches `handleServerError` as a warning-level `server_error` line, and the answer is a 503
+with `Retry-After` (`isDatabaseDown` and `databaseDownStatus` now cover R2 as well as D1).
 
 `./redact`: `redact(text)` gives `{ text, redactions }` with every secret-shaped value replaced by `[REDACTED:<kind>]`
 (private keys, Anthropic and Stripe keys, JWTs, GitHub and Slack tokens, AWS key ids, Authorization values,
