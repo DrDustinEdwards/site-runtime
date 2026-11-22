@@ -95,7 +95,9 @@ test("contentDisposition keeps an ASCII name and adds filename* for any other", 
 
 test("an R2 read that fails with 10001 is asked again once; other errors and a second failure are thrown", async (t) => {
   const waits = [];
-  t.mock.method(globalThis, "setTimeout", (fn, ms) => (waits.push(ms), fn()));
+  // Workers have scheduler.wait; Node does not.
+  globalThis.scheduler = { wait: async (/** @type {number} */ ms) => void waits.push(ms) };
+  t.after(() => delete globalThis.scheduler);
   const flaky = (failures, message) => {
     let calls = 0;
     return async () => {

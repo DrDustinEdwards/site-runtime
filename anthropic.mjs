@@ -566,10 +566,7 @@ function hasBreakpoint(request) {
  * @returns {Promise<void>}
  */
 function defaultSleep(ms, signal) {
-  return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener("abort", () => (clearTimeout(timer), resolve()), { once: true });
-  });
+  return scheduler.wait(ms, { signal }).catch(() => {});
 }
 
 /**

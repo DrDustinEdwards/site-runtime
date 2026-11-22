@@ -188,15 +188,12 @@ async function runCheck({ name, level = "fail", alert = false, run }, timeoutMs)
     detail === undefined
       ? undefined
       : scrubText(alert && !ran ? `could not run: ${detail}` : detail).slice(0, CHECK_DETAIL_MAX);
+  const reported = raised || (level === "fail" && ran);
   if (level === "fail" || alert)
     logEvent(
-      raised
-        ? "health_alert"
-        : level === "fail" && ran
-          ? "health_check_failed"
-          : "health_check_unavailable",
+      raised ? "health_alert" : reported ? "health_check_failed" : "health_check_unavailable",
       { check: name, detail: cut },
-      { level: (level === "fail" && ran) || raised ? "error" : "warn" },
+      { level: reported ? "error" : "warn" },
     );
   return {
     name,

@@ -28,7 +28,7 @@ export async function retryR2Read(read) {
     return await read();
   } catch (error) {
     if (!isDatabaseDown(error)) throw error;
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await scheduler.wait(300);
     return read();
   }
 }
