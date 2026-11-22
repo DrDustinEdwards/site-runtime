@@ -16,13 +16,12 @@ import { isR2Unavailable } from "./log.mjs";
 /** @typedef {import("./r2-object.mjs").R2BucketLike} R2BucketLike */
 /** @typedef {import("./r2-object.mjs").R2FileOptions} R2FileOptions */
 
-/** Pauses (ms) before each new try of an R2 read that failed for a moment: short, because a reader is waiting. */
+/** Pauses (ms) before each new try of an R2 read that failed for a moment. */
 const R2_RETRY_PAUSES = [200, 600];
 
 /**
- * Runs an R2 read (`bucket.get` or `head`) and, when R2 answers with its transient error (10001 or 10043, which its
- * docs say to retry with backoff), asks again after a short pause, twice. Any other error, and the third failure, is
- * thrown as it was; a route that lets it reach ./log's serverErrorHandler answers 503 with a warning, not a site error.
+ * Runs an R2 read again, after a short pause and twice at most, when R2 answers 10001 or 10043 (its docs: retry);
+ * any other error, and the third failure, is thrown as it was.
  * @template T
  * @param {() => Promise<T>} read
  * @param {(ms: number) => Promise<unknown>} [pause]
