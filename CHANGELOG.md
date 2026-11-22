@@ -1,5 +1,11 @@
 # @dustinedwards/site-runtime
 
+## 0.176.1
+
+### Patch Changes
+
+- Make the /health response smaller: the backup warning and the optional fields are read and left out in fewer lines, with the same JSON body.
+
 ## 0.176.0
 
 ### Minor Changes
