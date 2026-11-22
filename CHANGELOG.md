@@ -1,5 +1,12 @@
 # @dustinedwards/site-runtime
 
+## 0.174.0
+
+### Minor Changes
+
+- `site.renderHtml(request, env)` renders a page's HTML through the site's own handler with no request context, for a cron job that reads its own pages (germomics and txasm's page-dates job each had this copy).
+- ./health adds `siteHealthResponse(env, { backup, checks, jobs })`: healthResponse with the D1 ping, the deployed commit and the cron check that every site with a database repeated.
+
 ## 0.173.13
 
 ### Patch Changes
