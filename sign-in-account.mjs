@@ -1,28 +1,22 @@
 /**
- * Account security for `./sign-in`, apart from it so it needs no Better Auth import (and `npm test` covers it without
- * one); `./sign-in` re-exports it and runs it from Better Auth's hooks.
+ * Account security for `./sign-in`, apart from it so it needs no Better Auth import; `./sign-in` re-exports it and
+ * runs it from Better Auth's hooks.
  *
  * - THE AUTH EVENT LOG (F2): one `./log` line per sign-in event, named from the OWASP Logging Vocabulary
- *   (OWASP_EVENTS): sign-in success and failure by way in, a link or code sent, a per-address limit hit, sign-out, a
- *   session revoked, a passkey added or removed, a sign-in method linked or unlinked, the email changed, the account
- *   deleted, and a refusal for want of a fresh sign-in. A line holds the user's id and, where there is no user yet, the
- *   address as `emailKey` hashes it; never the address, a token, a code or a session id.
+ *   (OWASP_EVENTS). A line holds the user's id and, where there is no user yet, the address as `emailKey` hashes it;
+ *   never the address, a token, a code or a session id.
  * - SECURITY NOTICES (A8, E1, NIST SP 800-63B-4 4.1.2.1 and 4.6): the site's `sendSecurityNotice(kind, { user,
- *   request, detail })` hears of each change to how a person signs in, with what happened, when, the device in plain
- *   words, the coarse place Cloudflare saw (`request.cf`) and what to do if it was not them. A failed send is logged
- *   and never undoes or blocks the change.
+ *   request, detail })` hears of each change to how a person signs in, with when, the device in plain words and the
+ *   coarse place Cloudflare saw (`request.cf`). A failed send is logged and never undoes or blocks the change.
  * - SECURITY HISTORY (E5): with the site's D1 (`eventsDb`), each event is also a row in `auth_events`
- *   (AUTH_EVENTS_SQL); `securityHistory` reads a person's sign-ins, passkey and email changes back with date and device,
- *   and `authEventCounts` gives /health's spike check (`./health` authSpikeCheck) its counts.
- * - FRESH SIGN-IN (A7, D6): `requireFreshSession` for a site's own risky routes (export, delete), the same 10-minute
- *   rule `./sign-in` holds Better Auth's endpoints to.
- * - THE SESSIONS LIST (D5): `sessionRows` turns Better Auth's `listSessions` rows into what a page shows. With
- *   `sessionDetails` (`./sign-in`) each session also keeps its coarse place and when it was last used
- *   (`sessionTouch`), and a long-lived random device id from a cookie (E4's new-device notice reads it).
- * - PASSKEYS (A3, A5, A9): `passkeyProvider` names a passkey's provider from its AAGUID, so a list never shows a blank;
- *   `accountPasskeys` gives a page each passkey with its name, provider, when made and when last used (with
- *   `eventsDb`); `shouldOfferPasskey` and `dismissPasskeyOffer` keep the offer of a passkey after another sign-in to
- *   people with none who have not just said "Not now"; `needsSecondPasskey` is the nudge toward a second one.
+ *   (AUTH_EVENTS_SQL); `securityHistory` reads them back and `authEventCounts` feeds /health's spike check.
+ * - FRESH SIGN-IN (A7, D6): `requireFreshSession` for a site's own risky routes, the same 10-minute rule `./sign-in`
+ *   holds Better Auth's endpoints to.
+ * - THE SESSIONS LIST (D5): `sessionRows` turns `listSessions` rows into what a page shows; with `sessionDetails`
+ *   (`./sign-in`) each session keeps its coarse place, last use (`sessionTouch`) and a device id from a cookie (E4).
+ * - PASSKEYS (A3, A5, A9): `passkeyProvider` names a provider from its AAGUID; `accountPasskeys` lists each passkey;
+ *   `shouldOfferPasskey` and `dismissPasskeyOffer` keep the offer after sign-in for people with none who have not
+ *   said "Not now"; `needsSecondPasskey` is the nudge toward a second one.
  */
 import { isRecipientSuppressed } from "./email.mjs";
 import { logEvent, OWASP_EVENTS } from "./log.mjs";
@@ -73,8 +67,6 @@ export const SECURITY_NOTICE_KINDS = /* @__PURE__ */ Object.freeze(
  */
 export const FRESH_SECONDS = 10 * 60;
 
-// devices and places
-
 // First match wins: Edge, Opera and Samsung Internet also say Chrome, Chrome on iOS says Safari, and every browser on an
 // iPhone says "like Mac OS X", so the specific names come first.
 /** @type {[RegExp, string][]} */
@@ -98,7 +90,7 @@ const SYSTEMS = [
 ];
 
 /**
- * The browser and system a user agent names, in plain words ("Safari on iPhone", "Chrome on Windows"), one of them
+ * The browser and system a user agent names ("Safari on iPhone", "Chrome on Windows"), one of them
  * alone when only one is known, or null. An iPad that asks for the desktop site says Macintosh, so it reads as a Mac.
  * @param {string | null | undefined} userAgent
  * @returns {string | null}
@@ -136,23 +128,21 @@ function countryName(code) {
   }
 }
 
-// session details: place, last active, device
-
 /** How often a session's last activity is written: at most once in five minutes (txasm's touch). */
 export const SESSION_TOUCH_SECONDS = 5 * 60;
 
 /**
- * The device cookie (`sessionDetails`): a random id, signed, set at each sign-in and kept 400 days (the longest a
- * browser keeps a cookie, RFC 6265bis), stored on the session row as `deviceId`. Better Auth names it with its prefix:
- * `__Secure-better-auth.device` on https. Clear-Site-Data at sign-out clears it, so the next sign-in there is a new device.
+ * The device cookie (`sessionDetails`): a random signed id set at each sign-in and kept 400 days (the longest a browser
+ * keeps a cookie, RFC 6265bis), stored on the session row as `deviceId`; `__Secure-better-auth.device` on https.
+ * Clear-Site-Data at sign-out clears it.
  */
 export const DEVICE_COOKIE = "device";
 export const DEVICE_COOKIE_SECONDS = 400 * 24 * 60 * 60;
 
 /**
- * The session columns `sessionDetails` needs, as a migration a site adds (drop a line for a column it has already;
- * txasm and Foxhound have `location`). In a Drizzle schema: `location: text("location")`, `deviceId: text("device_id")`.
- * With `eventsDb`, AUTH_EVENTS_DEVICE_SQL as well.
+ * The session columns `sessionDetails` needs, as a migration a site adds (drop a line for a column it has; txasm and
+ * Foxhound have `location`). Drizzle: `location: text("location")`, `deviceId: text("device_id")`. With `eventsDb`,
+ * AUTH_EVENTS_DEVICE_SQL as well.
  */
 export const SESSION_DETAILS_SQL = `ALTER TABLE session ADD COLUMN location TEXT;
 ALTER TABLE session ADD COLUMN device_id TEXT;
@@ -165,10 +155,9 @@ export const AUTH_EVENTS_DEVICE_SQL = `ALTER TABLE auth_events ADD COLUMN device
 /** @typedef {{ headers: Headers, request?: Request, asResponse: false }} SessionLookup */
 
 /**
- * The argument for a site's own `auth.api.getSession` with `sessionDetails`: on a GET the request too, so the session's
- * place follows the person; any other method leaves it out, so Better Auth never holds a POST's request. Always
- * `asResponse: false`: given a request, Better Auth 1.7.12 answers with a Response unless told otherwise, and a
- * Response has no `user`, so every signed-in page reads the person as signed out (Foxing #169, txasm).
+ * The argument for a site's own `auth.api.getSession` with `sessionDetails`: on a GET the request too, so the place
+ * follows the person. Always `asResponse: false`: given a request, Better Auth 1.7.12 answers with a Response, which
+ * has no `user`, so every page reads the person as signed out (Foxing #169, txasm).
  * @param {Request} request
  * @returns {SessionLookup}
  */
@@ -179,10 +168,9 @@ export function sessionLookup(request) {
 }
 
 /**
- * What to write to a session on use, or null when nothing: `updatedAt` now once SESSION_TOUCH_SECONDS have passed since
- * the last write (with `location` when it is known), or at once when the row has no place yet and this request has one
- * (txasm's rule). Better Auth's sliding refresh is off (`./sign-in`), so nothing else moves `updatedAt`, and freshness
- * counts from `createdAt`, so a touch never makes a sign-in look recent.
+ * What to write to a session on use, or null: `updatedAt` now once SESSION_TOUCH_SECONDS have passed (with `location`
+ * when known), or at once when the row has no place yet and this request has one. Freshness counts from `createdAt`,
+ * so a touch never makes a sign-in look recent.
  * @param {{ updatedAt?: Date | string | null, createdAt?: Date | string | null, location?: unknown }} session
  * @param {string | null} place `coarseLocation` of the request, null when unknown
  * @param {number} [now]
@@ -197,9 +185,8 @@ export function sessionTouch(session, place, now = Date.now()) {
 }
 
 /**
- * Whether a sign-in's device is new to the person, by device id when their sessions or history carry any (a browser
- * that brought no cookie, or another person's, is new), else by `deviceName` of the user agent as before. A first
- * sign-in is no new device.
+ * Whether a sign-in's device is new to the person, by device id when their sessions or history carry any, else by
+ * `deviceName` of the user agent. A first sign-in is no new device.
  * @param {{ id: string | null, name: string | null }} device
  * @param {{ ids: (string | null)[], names: (string | null)[] }} seen
  */
@@ -209,18 +196,15 @@ export function isNewSignInDevice(device, seen) {
   return isNewDevice(device.name, seen.names);
 }
 
-// the sessions list
-
 /**
  * @typedef {{ id: string, token: string, userAgent?: string | null, createdAt: Date | string, updatedAt?: Date | string | null, location?: unknown }} SessionRow
  */
 
 /**
  * Better Auth's `listSessions` rows as a page shows them, the current session first, then the most recently active:
- * `device` (deviceName, null when the user agent names nothing), `signedInAt`, `lastActiveAt` (`updatedAt`, which
- * with `sessionDetails` moves on use, at most every SESSION_TOUCH_SECONDS; without it Better Auth never moves it, since
- * refresh is off, so it is the sign-in time), `current`, and `location` when the site stores one on the session. No token: a row goes into the page, and another device's token
- * there would let a script on the page take over that session. `revokeSessionById` ends one by its `id`.
+ * `device`, `signedInAt`, `lastActiveAt` (`updatedAt`, moved on use only with `sessionDetails`), `current`, and
+ * `location` when stored. No token: another device's would let a script on the page take over that session.
+ * `revokeSessionById` ends one by its `id`.
  * @param {SessionRow[]} sessions
  * @param {string | null | undefined} currentToken the token of the session that asks (`getSession`'s `session.token`)
  */
@@ -285,8 +269,6 @@ export async function revokeSessionById(auth, request, id) {
   return true;
 }
 
-// fresh sign-in
-
 /**
  * Whether a session was made within `freshSeconds`. @param {{ createdAt: Date | string | number }} session
  * @param {number} [freshSeconds] @param {number} [now]
@@ -335,13 +317,9 @@ export async function requireFreshSession(auth, request) {
   throw new SessionNotFresh();
 }
 
-// passkey names
-
 /**
  * The providers people use, by AAGUID, named as passkeydeveloper/passkey-authenticator-aaguids (aaguid.json, read
- * 2026-10-31) names them; the rest of that list is security keys and SDKs. The YubiKey 5 entries are the retail models
- * in the FIDO Metadata Service that list's combined view draws on (mds3.fidoalliance.org, blob 293, read 2026-10-31),
- * previews and enterprise profiles left out. Names only, no icons. Better Auth stores the AAGUID on each passkey row.
+ * 2026-10-31); the YubiKey 5 entries are the retail models in the FIDO Metadata Service (blob 293, read 2026-10-31).
  */
 const PROVIDERS = {
   "fbfc3007-154e-4ecc-8c0b-6e020557d7bd": "Apple Passwords",
@@ -384,10 +362,9 @@ const PROVIDERS = {
 const ZERO_AAGUID = "00000000-0000-0000-0000-000000000000";
 
 /**
- * The passkey's provider in words, from its AAGUID, else null: what registration stores as the name, so an unknown
- * one stays blank and a later list can still name it. Apple's own passkeys report the all-zero AAGUID when the site
- * asks for no attestation (as `./sign-in` does), so with the user agent of an iPhone, iPad or Mac a zero reads as Apple
- * Passwords, the provider every browser there saves to unless the person picked another, which has its own AAGUID.
+ * The passkey's provider in words, from its AAGUID, else null (registration stores it as the name, so an unknown one
+ * stays blank). With no attestation (as `./sign-in` asks) Apple reports the all-zero AAGUID, so with an iPhone, iPad
+ * or Mac user agent a zero reads as Apple Passwords.
  * @param {string | null | undefined} aaguid
  * @param {string | null} [userAgent] the browser that made it, at registration
  * @returns {string | null}
@@ -448,8 +425,8 @@ export function passkeyRows(passkeys, lastUsed = new Map()) {
 
 /**
  * When each of a person's passkeys last signed them in, by passkey id: the newest passkey sign-in row in
- * `auth_events`, which `./sign-in` writes with the passkey's id in `change`. Rows go after a year (`pruneAuthEvents`),
- * so a passkey unused for a year has none. Better Auth 1.7.12 keeps no last-used time of its own.
+ * `auth_events` (`change` is the passkey's id). Rows go after a year (`pruneAuthEvents`). Better Auth 1.7.12 keeps no
+ * last-used time.
  * @param {D1Like} db @param {string} userId
  * @returns {Promise<Map<string, Date>>}
  */
@@ -466,8 +443,7 @@ export async function passkeyLastUsed(db, userId) {
 
 /**
  * The asker's passkeys for the account page (`passkeyRows`), with when each was last used when `db` is the site's
- * `eventsDb`; null when nobody is signed in. Listing needs no fresh sign-in, and neither does renaming one
- * (`authClient.passkey.updatePasskey({ id, name })`); deleting one does (FRESH_SECONDS).
+ * `eventsDb`; null when nobody is signed in. Listing and renaming need no fresh sign-in; deleting does (FRESH_SECONDS).
  * @param {{ api: {
  *   getSession(o: SessionLookup): Promise<{ user: { id: string } } | null>,
  *   listPasskeys(o: { headers: Headers }): Promise<PasskeyRow[]>,
@@ -513,8 +489,7 @@ export function dismissPasskeyOffer(db, userId, { request, at } = {}) {
 
 /**
  * Whether to offer a passkey after a sign-in by link, code, Google or Apple (A3): the person has none and has not
- * said "Not now" in the last PASSKEY_OFFER_DAYS. The page also asks the browser (`canOfferPasskey` in
- * `./sign-in-client`) and skips the offer on a device with no platform authenticator.
+ * said "Not now" in the last PASSKEY_OFFER_DAYS. The page also checks `canOfferPasskey` (`./sign-in-client`).
  * @param {D1Like} db the site's `eventsDb`
  * @param {string} userId
  * @param {unknown[] | number} passkeys the person's passkeys (`listPasskeys`), or how many
@@ -528,8 +503,6 @@ export async function shouldOfferPasskey(db, userId, passkeys, now = Date.now())
     .all();
   return results.length === 0;
 }
-
-// which event a request was
 
 /** The ways in, by Better Auth endpoint. `/callback/:id` and `/sign-in/social` name the provider instead. */
 const SIGN_IN_VIA = {
@@ -685,18 +658,15 @@ export async function logAuthEvent(
     });
 }
 
-// the event table and the security history
-
 /**
  * @typedef {{ prepare(sql: string): { bind(...values: unknown[]): { run(): Promise<unknown>, all(): Promise<{ results: any[] }> } } }} D1Like
  */
 
 /**
- * The migration: a site that passes `eventsDb` adds it as its next file under `migrations/`. One row per auth event:
- * `at` in epoch ms, the OWASP `event`, the `change` or `scope` its line carries (for a passkey sign-in, the passkey's
- * id, `passkeyLastUsed`), the way in (`via`), and the device
- * and coarse place of the request. No address, token or code. `user_id` is null before there is a user (a failed
- * sign-in, a link mailed), and those rows are kept 30 days, a person's own a year (`pruneAuthEvents`).
+ * The migration a site that passes `eventsDb` adds as its next file under `migrations/`: one row per auth event, with
+ * `at` in epoch ms, the OWASP `event`, the `change` or `scope` its line carries (a passkey's id for a passkey sign-in),
+ * `via`, and the device and coarse place. No address, token or code. `user_id` is null before there is a user; those
+ * rows are kept 30 days, a person's own a year (`pruneAuthEvents`).
  */
 export const AUTH_EVENTS_SQL = `CREATE TABLE IF NOT EXISTS auth_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -830,8 +800,7 @@ export async function hadPasskey(db, userId) {
 }
 
 /**
- * Whether a sign-in's device is one the person has not signed in from before: they have signed in before (another
- * session, or a sign-in in their history) and never from this device. A first sign-in is no new device.
+ * Whether the person has signed in before but never from this device. A first sign-in is no new device.
  * @param {string | null} device @param {(string | null)[]} seen
  */
 export function isNewDevice(device, seen) {
@@ -868,10 +837,9 @@ export async function pruneAuthEvents(db, now = Date.now()) {
 }
 
 /**
- * Deletes Better Auth's expired sessions and expired one-time values (sign-in links, codes, email-change tokens).
- * Better Auth deletes a verification row only when it is used and never deletes an expired session, so they pile up
- * (Foxing had 230 expired verification rows and 181 expired sessions on 2026-10-30). The same cleanup as EmDash 1.4.0
- * (emdash-cms/emdash#4287, MIT). Every site's tables are `session` and `verification`, with `expires_at` in ms.
+ * Deletes Better Auth's expired sessions and expired one-time values (links, codes, email-change tokens), which it
+ * never deletes itself. The same cleanup as EmDash 1.4.0 (emdash-cms/emdash#4287, MIT). The tables are `session` and
+ * `verification`, with `expires_at` in ms.
  * @param {D1Like} db @param {number} [now]
  */
 export async function pruneExpiredAuth(db, now = Date.now()) {
@@ -895,8 +863,6 @@ export function pruneAuthEventsJob(db) {
     },
   };
 }
-
-// security notices
 
 const PROVIDER_NAMES = /** @type {Record<string, string>} */ ({ google: "Google", apple: "Apple" });
 
@@ -986,9 +952,8 @@ export function noticeDetail(
 
 /**
  * Calls the site's sender and never throws: a failure is logged (`security_notice_failed`, the kind and the error with
- * any address cut out) and the change it tells of stands. A recipient on Email Service's suppression list (`./email`
- * isRecipientSuppressed) is a known state of the address, not a fault, so it is a warning,
- * `security_notice_undeliverable`; the sign-in page says so the next time a link is asked for.
+ * any address cut out) and the change stands. A recipient on Email Service's suppression list (`./email`
+ * isRecipientSuppressed) is a warning, `security_notice_undeliverable`, not a fault.
  * @param {SendSecurityNotice} send
  * @param {SecurityNoticeKind} kind
  * @param {{ user: NoticeUser, request?: Request, detail: NoticeDetail }} notice

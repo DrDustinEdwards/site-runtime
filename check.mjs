@@ -1,12 +1,9 @@
 /**
- * The reusable half of dustinedwards.info's header gate: what a response must carry, checked on the
- * response itself. A site runs it in CI against its own rendered responses (a Worker test), and the
- * site-runtime-security bin runs it against the live site.
+ * The reusable half of dustinedwards.info's header gate: what a response must carry, checked on the response
+ * itself, in a site's CI (a Worker test) and by the site-runtime-security bin against the live site.
  *
- * Every check names the failure it prevents (capsid/research/design-shared-functions.md, point 5):
- * sites sending no security headers at all, and report-only policies with no report sink, which enforce
- * nothing and tell nobody. Each result carries the checklist item it proves (`id`: T2, H1, C4 and so on, the
- * ids the live check reports under), and a `warn` result is advice that fails nothing.
+ * Every check names the failure it prevents (capsid/research/design-shared-functions.md, point 5). Each result
+ * carries the checklist item it proves (`id`: T2, H1, C4 and so on), and a `warn` result fails nothing.
  */
 
 import {
@@ -32,8 +29,8 @@ import { SITES, siteEntry } from "./sites-values.mjs";
  */
 
 /**
- * The entry a check grades against: by id, or for the registry's own entry (the values a Worker imports, ./sites),
- * those values with the deviations they leave out; any other object as it is.
+ * The entry a check grades against: by id, or the registry's own entry with the deviations it leaves out; any
+ * other object as it is.
  * @param {string | CheckedSiteEntry | undefined} site
  * @returns {CheckedSiteEntry | undefined}
  */
@@ -104,9 +101,8 @@ const FETCH_DIRECTIVES = [
 ];
 
 /**
- * A failed result an entry or the family declined, as the reason, or "". Only results a check marks as declinable are
- * looked up: K1's cookie prefix, the items every site is graded on unless it declines them (S2, C3, C7, C9, I3), and
- * the family's (FAMILY_DEVIATIONS).
+ * A failed result an entry or the family declined, as the reason, or "". Only declinable results are looked up:
+ * K1's cookie prefix, S2, C3, C7, C9, I3, and the family's (FAMILY_DEVIATIONS).
  * @param {CheckedSiteEntry | undefined} entry
  * @param {string} id
  * @param {string} [name] the cookie or thing the result is about, which a deviation's `value` must list when it has one
@@ -139,7 +135,6 @@ export function parsePolicy(policy) {
 
 /**
  * The features a Permissions-Policy denies outright (`feature=()`).
- *
  * @param {string} value
  */
 function deniedFeatures(value) {
@@ -286,8 +281,8 @@ export function checkSecurityHeaders(headers, options = {}) {
         missing.length ? `allows ${missing.join(", ")}; got ${JSON.stringify(got)}` : "",
       );
     } else {
-      // Shared media may be cross-origin (corpFor); everything else, Referrer-Policy included, is exactly what the site
-      // declared, so a site that sends no-referrer cannot slide back to a looser policy that is still "strict".
+      // Shared media may be cross-origin (corpFor); everything else is exactly what the site declared, so no-referrer
+      // cannot slide back to a looser "strict" policy.
       const accepted =
         name === "Cross-Origin-Resource-Policy" ? [floor, corpFor(contentType)] : [floor];
       result(
@@ -364,7 +359,6 @@ export function checkSecurityHeaders(headers, options = {}) {
       name,
     );
   }
-  // A response that sets a cookie is one person's; stored at the edge, it would hand that cookie to the next reader.
   if (cookies.length > 0) {
     const cache = headers.get("Cache-Control") ?? "";
     result(
@@ -456,7 +450,7 @@ export function checkSecurityHeaders(headers, options = {}) {
   if (!enforced) return results;
 
   // Headers joins a repeated header with ", ", and no source holds a comma, so a comma means two policies, which a
-  // browser enforces together: the stricter wins on every directive, and a page breaks for no reason anyone can read.
+  // browser enforces together (the stricter wins on every directive).
   result(
     "C13",
     "one enforced policy, sent once",
@@ -482,8 +476,7 @@ export function checkSecurityHeaders(headers, options = {}) {
     Boolean(scripts),
     "neither directive is present, so any script runs",
   );
-  // script-src-elem and script-src-attr override script-src for the scripts they govern, and worker-src for workers, so
-  // each one present is held to the same rules.
+  // script-src-elem, script-src-attr and worker-src override script-src, so each one present is held to the same rules.
   const scriptDirectives = /** @type {Array<[string, string[]]>} */ ([
     ["scripts", scripts ?? []],
     ...["script-src-elem", "script-src-attr", "worker-src"].flatMap((d) =>
@@ -491,7 +484,6 @@ export function checkSecurityHeaders(headers, options = {}) {
     ),
   ]);
   for (const [label, sources] of scripts ? scriptDirectives : scriptDirectives.slice(1)) {
-    // Browsers match keywords in any case.
     const keywords = sources.map((s) => s.toLowerCase());
     const noun = label === "scripts" ? "script" : label;
     const inlineDeclared = label === "scripts" && inlineScripts === "unsafe-inline";
@@ -536,7 +528,7 @@ export function checkSecurityHeaders(headers, options = {}) {
     );
   }
   // 'unsafe-inline' beside a nonce or hash is ignored by browsers, so only an effective one counts. Style attributes
-  // (style-src-attr) run no code and are the one inline allowance the builder offers.
+  // (style-src-attr) run no code.
   for (const directive of ["style-src", "style-src-elem"]) {
     const sources = (
       policy.get(directive) ??
@@ -634,9 +626,8 @@ export function checkSecurityHeaders(headers, options = {}) {
     ancestors?.length === 1 && framers.includes(ancestors[0] ?? ""),
     `got ${ancestors ? ancestors.join(" ") : "ABSENT (it does not fall back to default-src)"}`,
   );
-  // form-action may be absent: an OAuth consent page leaves it out on purpose, since browsers apply it to every redirect
-  // hop and the last hop is the client's redirect_uri. When it is present it must keep forms on this origin, beside
-  // the off-site targets the site declared (formTargets, as it passed them to the builder).
+  // form-action may be absent: an OAuth consent page leaves it out (browsers apply it to every redirect hop, the last
+  // being the client's redirect_uri). Present, it must keep forms on this origin beside the declared formTargets.
   const forms = policy.get("form-action");
   const declaredForms = formTargets.length > 0;
   result(
@@ -709,8 +700,7 @@ export function checkSecurityHeaders(headers, options = {}) {
       group === CSP_REPORT_GROUP,
       `got ${group} (CSP_REPORT_GROUP, ./csp)`,
     );
-  // Every group a header reports to (the policy's report-to, COEP's report-to, Integrity-Policy's endpoints) must be
-  // one Reporting-Endpoints defines, or its reports go nowhere.
+  // Every group a header reports to must be one Reporting-Endpoints defines, or its reports go nowhere.
   const endpoints = headers.get("Reporting-Endpoints") ?? "";
   const groups = new Set([
     ...(group ? [group] : []),
@@ -754,8 +744,8 @@ export const failures = (results) => results.filter((r) => !r.pass && !r.warn &&
 /**
  * /.well-known/security.txt graded against RFC 9116: served 200 as `text/plain; charset=utf-8` (D1), one Contact and
  * exactly one Expires under a year out (D2), a warning 30 days before it (D4), and a Canonical naming the URL it is
- * served from or the site's own (D3). An OpenPGP-signed file must carry its whole signature block, and its fields are
- * read from the signed text; an unsigned one is the family's deviation (FAMILY_DEVIATIONS.D3).
+ * served from or the site's own (D3). A signed file must carry its whole signature block; an unsigned one is the
+ * family's deviation (FAMILY_DEVIATIONS.D3).
  * @param {{ url: string, origin?: string, status: number, headers: Headers, body: string, now?: number }} response
  *   `url` where it was fetched; `origin` the site's own, when it is served from elsewhere
  * @param {{ site?: string | CheckedSiteEntry }} [options]

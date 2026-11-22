@@ -3,52 +3,38 @@
  * (ruling mcp-2026-10-10, rule 12.4), and of the door's own events: a sign-in, a scope challenge, a rate-limited request.
  *
  * A Durable Object with synchronous SQLite, one instance for the Worker, reached only from the Worker's own code. It
- * has no UPDATE: a row is written once and never changed. Its one DELETE is retention (L7), and it removes only rows
- * already copied out (L6) and older than the retention period. Read it on the server's owner page (./owner-page, L9),
- * in the Cloudflare dashboard's Durable Object data view, or in the copies.
+ * has no UPDATE; its one DELETE is retention (L7), and it removes only rows already copied out (L6) and past retention.
+ * Read it on the owner page (./owner-page, L9), in the dashboard's Durable Object data view, or in the copies.
  *
- * - EXPORT (L6). `exportAuditLog(env, bucket)`, from the Worker's cron, copies the rows not yet copied to R2, one JSON
- *   object per batch at `<prefix><first seq>-<last seq>.json` (`{ previous, rows }`, `previous` the hash of the row
- *   before the first, so `verifyAuditChain(rows, key, previous)` checks each copy on its own). Put an object lock (a
- *   bucket lock rule, as the backups have) on the prefix, so the copy cannot be changed or removed inside its period.
- *   Only then does the log mark the rows copied.
- * - RETENTION (L7). After each copy, rows that are copied and older than `keepDays` (AUDIT_KEEP_DAYS, 90) are deleted.
- *   A row never copied is never deleted, however old.
- * - ALERT (L8). `auditLogCheck(env)` is a /health check, level warn and alert: it fails when a `started` row has had no
- *   `finished` row for 15 minutes (a call ran and the log stopped hearing of it), when calls in the last hour pass
- *   `spikePerHour`, or when rows have waited more than two days for a copy.
+ * - EXPORT (L6). `exportAuditLog(env, bucket)`, from the cron, copies the rows not yet copied to R2, one JSON object per
+ *   batch at `<prefix><first seq>-<last seq>.json` (`{ previous, keys, verified, rows }`, `previous` the hash of the row
+ *   before the first), then marks them copied. Put an object lock on the prefix. Each batch is verified first with the
+ *   public key of the bound secret; a failing batch is still copied (it is the evidence) and `auditLogCheck` fails
+ *   until a later batch passes.
+ * - RETENTION (L7). Rows that are copied and older than `keepDays` (AUDIT_KEEP_DAYS, 90) are deleted; a row never
+ *   copied is never deleted.
+ * - ALERT (L8). `auditLogCheck(env)` is a /health check (warn and alert): it fails when a `started` row has had no
+ *   `finished` row for 15 minutes, when calls in the last hour pass `spikePerHour`, or when rows wait over two days.
  *
- * A refused call is one `refused` row and sent nothing on. An allowed call is two rows: `started` is written before the
- * API is called, and the call is refused if that write fails, so no tool runs unlogged. `finished` carries the result;
- * if that write fails the call has already happened, so the failure goes to the Worker log.
+ * A refused call is one `refused` row. An allowed call is two: `started` is written before the API is called (the call
+ * is refused if that write fails, so no tool runs unlogged), `finished` carries the result (its failure goes to the
+ * Worker log). A row carries the caller's audit name (never a credential), the tool, the arguments and result, the
+ * server's name and version, the OAuth client id and a correlation id (the `_meta.traceparent` trace id, else fresh). A
+ * long string argument is stored as its length and a SHA-256 prefix. Every value is a bound parameter, so a CR or LF is
+ * data, never a new row.
  *
- * A row carries the caller's audit name (a signed-in email or an agent principal, never a credential), the tool, the
- * arguments and the result, the server's name and version, the OAuth client id and a correlation id (the trace id of
- * the request's `_meta.traceparent`, else a fresh one). A long string argument is stored as its length and a SHA-256
- * prefix, enough to prove which bytes were sent without keeping a second copy of the content. Every value is a bound
- * parameter in its own column and the arguments and result are JSON, so a CR or LF in them is data, never a new row.
- *
- * Tamper evidence: each row's `hash` is SHA-256 over the previous row's hash and this row's values, and each row is
- * signed: `sig` is an Ed25519 signature (RFC 8032) of `hash` under a key derived from the Worker secret
- * `AUDIT_SIGNING_KEY` (HKDF-SHA-256, RFC 5869), and `key_id` names the public key that checks it. The design follows AWS
- * CloudTrail's log file validation: a keyless hash chain that never breaks, signatures that name their key's
- * fingerprint, and public keys a verifier keeps after the private one is retired.
- * - The secret is required. Without it no row is written, so no tool runs (a `started` row is refused) and
- *   `auditLogCheck` fails. devkit's worker-deploy mints it (`generated-secrets: AUDIT_SIGNING_KEY`); nobody sees it.
- * - KEY ANCHOR. When the log starts with a key that did not sign its newest row (the first key, or a new one), it first
- *   writes a `chain-key` row, signed by the new key: `{ from, fromPublicKey, to, publicKey }`. Its hash covers the
- *   newest row before it, so the new key vouches for everything before; `from: null` marks the move from the unsigned
- *   rows of before 0.85. Rotating is replacing the secret (README, The tool-call log); the chain goes on unbroken.
- * - VERIFY. `verifyAuditChain(rows, { keys, previous })` checks every hash, then every signature against trusted public
- *   keys. A key is trusted when it is given, or when an anchor signed by a trusted key names it as `fromPublicKey`. A
- *   key changes only at an anchor, and an unsigned row passes only before a `from: null` anchor, so stripping the
- *   signatures and recomputing the hashes fails.
- * - Who can forge: nobody without the secret, which an editor of the table (the dashboard's data view, an edited export)
- *   does not have. Code deployed to the Worker can read it and so could sign false rows; the object-locked copies in R2
- *   bound that to rows not yet copied. Neither the hash nor the signature catches rows cut off the end.
- * - EXPORT CHECK. `exportAuditLog` verifies each batch before it copies it, with the public key of the bound secret,
- *   and writes that key and the result into the copy (`{ previous, key, verified, rows }`), so a copy checks on its
- *   own. A batch that fails is still copied (it is the evidence), and `auditLogCheck` fails until a later batch passes.
+ * Tamper evidence: each row's `hash` is SHA-256 over the previous row's hash and its values, and `sig` is an Ed25519
+ * signature (RFC 8032) of `hash` under a key derived (HKDF-SHA-256) from the Worker secret `AUDIT_SIGNING_KEY`; `key_id`
+ * names the public key. The design follows AWS CloudTrail's log file validation.
+ * - The secret is required. Without it no row is written, so no tool runs, and `auditLogCheck` fails. devkit's
+ *   worker-deploy mints it (`generated-secrets: AUDIT_SIGNING_KEY`).
+ * - KEY ANCHOR. When the newest row was not signed by the current key, the log first writes a `chain-key` row signed
+ *   by the new key: `{ from, fromPublicKey, to, publicKey }`, its hash covering the newest row before it; `from: null`
+ *   marks the move from the unsigned rows of before 0.85. Rotating is replacing the secret (README, The tool-call log).
+ * - VERIFY. `verifyAuditChain(rows, { keys, previous })` checks every hash, then every signature against trusted keys:
+ *   given, or named by an anchor signed by a trusted key. An unsigned row passes only before a `from: null` anchor.
+ * - Who can forge: nobody without the secret; code deployed to the Worker can read it, which the object-locked copies
+ *   bound to rows not yet copied. Neither hash nor signature catches rows cut off the end.
  */
 
 import { base64url, fromBase64url, sha256Hex, toHex } from "./encoding.mjs";
@@ -100,7 +86,6 @@ const RECENT_MAX = 100;
 const KEY_CHARS = 32;
 const ANCHOR = "chain-key";
 
-// The columns added after the table first shipped, each nullable, so an existing log migrates in place.
 const ADDED = [
   "server",
   "version",
@@ -111,9 +96,7 @@ const ADDED = [
   "key_id",
   "sig",
 ];
-// The values a row's hash covers, in this order; a signed row's hash also covers its key_id. `client_name` is not here:
-// it was added after rows existed, so rowHash covers it only when it is set (before key_id), and every older row keeps
-// the hash it was written with.
+// Hashed in order; client_name (when set) and key_id (when signed) follow, so older rows keep their hash.
 const HASHED = [
   "at",
   "call_id",
@@ -460,7 +443,6 @@ export class ToolCallLog {
  */
 function rowHash(previous, row) {
   const values = HASHED.map((name) => row[name] ?? null);
-  // Only a row that names its client covers the name, so a row written before the column existed still verifies.
   if (row.client_name != null) values.push(row.client_name);
   if (row.key_id != null) values.push(row.key_id);
   return sha256Hex(`${previous ?? ""}\n${JSON.stringify(values)}`);
@@ -503,8 +485,7 @@ async function signedBy(key, row) {
 }
 
 /**
- * The keys trusted for `rows`: each given public key, then each key a trusted key's `chain-key` row names as
- * `fromPublicKey`, until no more are added. Maps a key id to its public key and verifying key.
+ * The keys trusted for `rows`: each given public key, then each `fromPublicKey` a trusted key's `chain-key` row names.
  * @param {readonly string[]} publicKeys
  * @param {Array<Record<string, unknown>>} rows
  */
@@ -539,14 +520,10 @@ async function trust(publicKeys, rows) {
 }
 
 /**
- * Checks the chain over rows as the table holds them, in `seq` order (an export from the data view, or a copy's rows):
- * every hash, then, with `keys`, every signature. Rows from before the hash column are skipped. `previous` is the hash
- * of the row before the first given one, for a slice that starts mid-chain (a copy's `previous`).
- *
- * With `keys` (trusted public keys, base64url): a signed row must verify under a trusted key; a key is trusted when it
- * is given or when a `chain-key` row signed by a trusted key names it as `fromPublicKey`; the key changes only at a
- * `chain-key` row whose `from` is the key before; and an unsigned row passes only before a `chain-key` row with
- * `from: null`. Without keys only the hashes are checked, and `signed` is 0.
+ * Checks the chain over rows in `seq` order: every hash, then, with `keys` (trusted public keys, base64url), every
+ * signature. Rows from before the hash column are skipped. `previous` is the hash of the row before the first given
+ * one (a copy's `previous`). The key changes only at a `chain-key` row whose `from` is the key before; an unsigned row
+ * passes only before a `chain-key` row with `from: null`. Without keys only hashes are checked, and `signed` is 0.
  * @param {Array<Record<string, unknown>>} rows
  * @param {{ keys?: readonly string[], previous?: string | null }} [options]
  * @returns {Promise<ChainCheck>}
@@ -595,8 +572,7 @@ export async function verifyAuditChain(rows, { keys = [], previous = null } = {}
 }
 
 /**
- * The correlation id of one request: the trace id of its W3C `_meta.traceparent` when that is well formed, else a
- * fresh id of the same shape, so the log and a tracing system name a call alike.
+ * The correlation id of one request: its W3C `_meta.traceparent` trace id when well formed, else a fresh one.
  * @param {Record<string, unknown>} [meta]
  */
 export function correlationId(meta) {
@@ -664,13 +640,10 @@ function logStub(env) {
 }
 
 /**
- * Copies the rows not yet copied to `bucket` (L6), then deletes copied rows older than `keepDays` (L7). Run it from the
- * Worker's cron (./cron's `runJobs`); each run copies up to 20 batches of 1000 rows and the next run goes on. Throws
- * when a write fails, so the job is recorded as failed and nothing is marked copied that is not.
- *
- * Each batch is checked first (`verifyAuditChain`) with the bound secret's public key and the keys its anchors vouch
- * for, and the copy carries those keys and the result: `{ previous, keys, verified, rows }`. A batch that fails is still
- * copied, since it is the evidence; the failure goes to the Worker log, and `auditLogCheck` fails until a later run passes.
+ * Copies the rows not yet copied to `bucket` (L6), then deletes copied rows older than `keepDays` (L7). Run it from
+ * the cron (./cron's `runJobs`); each run copies up to 20 batches of 1000 rows. Throws when a write fails, so nothing
+ * is marked copied that is not. The copy is `{ previous, keys, verified, rows }`; a batch that fails verification is
+ * still copied and logged.
  * @param {Partial<AuditEnv>} env
  * @param {{ put(key: string, value: string, options?: unknown): Promise<unknown> }} bucket
  * @param {{ prefix?: string, keepDays?: number }} [options]
@@ -697,7 +670,6 @@ export async function exportAuditLog(
     if (!response.ok) throw new Error(`the tool-call log answered ${response.status} to ${path}`);
     return /** @type {any} */ (await response.json());
   };
-  // Every key the current one vouches for, through the anchors still in the table.
   const keys = [...(await trust([current.publicKey], (await call("/anchors")).rows)).values()].map(
     (k) => k.publicKey,
   );
@@ -745,10 +717,9 @@ export async function exportAuditLog(
 }
 
 /**
- * The tool-call log's /health check (L8, ./health's `healthResponse({ checks })`), level warn and alert: fails when a
- * call's `finished` row is 15 minutes late, when calls in the last hour pass `spikePerHour`, when rows have waited
- * more than two days for a copy, when the last copy's chain check failed, or when AUDIT_SIGNING_KEY is missing or short
- * (then nothing is logged and every tool call is refused). The detail gives counts, a seq and a reason only.
+ * The tool-call log's /health check (L8, ./health's `healthResponse({ checks })`): fails as the header lists, when the
+ * last copy's chain check failed, or when AUDIT_SIGNING_KEY is missing or short. The detail gives counts, a seq and a
+ * reason only.
  * @param {Partial<AuditEnv>} env
  * @param {{ spikePerHour?: number }} [options]
  * @returns {import("./health.mjs").HealthCheck}
@@ -785,8 +756,7 @@ export function auditLogCheck(env, { spikePerHour = 600 } = {}) {
 }
 
 /**
- * Appends one row. Throws when the binding is missing or the write fails, so the caller decides: a failed `started`
- * refuses the call, a failed `finished` is reported to the Worker log.
+ * Appends one row. Throws when the binding is missing or the write fails.
  * @param {Partial<AuditEnv>} env
  * @param {AuditRow} row
  */
@@ -800,8 +770,7 @@ export async function appendAudit(env, row) {
 }
 
 /**
- * Appends a row whose failure changes nothing the caller does (a refusal, a sign-in, a challenge, a rate limit): a
- * failed write goes to the Worker log instead of throwing.
+ * Appends a row whose failure changes nothing the caller does: a failed write goes to the Worker log, not a throw.
  * @param {Partial<AuditEnv>} env
  * @param {AuditRow} row
  */

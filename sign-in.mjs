@@ -1,93 +1,70 @@
 /**
  * The one way a person signs in to any of the family's sites, as Better Auth options a site spreads into its own
- * betterAuth({ ... }) beside its database, sessions and hooks. Chosen 2026-10-24 from current practice (passkeys first,
- * an emailed link as the way in before a passkey exists, social sign-in only where a consumer app wants the reach);
- * admins are not here, they come through Cloudflare Access (`./access`).
+ * betterAuth({ ... }) beside its database, sessions and hooks (passkeys first, an emailed link before a passkey exists,
+ * social sign-in only where a consumer app wants the reach). Admins are not here, they come through Cloudflare Access
+ * (`./access`).
  *
- * - PASSKEY: the main way in, phishing-proof because the browser ties it to this site's domain. Its relying party is the
- *   host of BETTER_AUTH_URL, so a passkey made on the live site works only there. The site's headers need
- *   PASSKEY_OVERRIDES (`./headers`), or OSHP's Permissions-Policy refuses every passkey sign-in. A new passkey must be
- *   discoverable (residentKey "required"), so it signs in from the browser's own list without an email typed first.
+ * - PASSKEY: its relying party is the host of BETTER_AUTH_URL. The site's headers need PASSKEY_OVERRIDES (`./headers`),
+ *   or OSHP's Permissions-Policy refuses every passkey sign-in. A new passkey must be discoverable (residentKey
+ *   "required"), so it signs in from the browser's own list.
  * - EMAIL LINK AND CODE: first sign-in, a new device, recovery. No passwords: emailAndPassword is off. The one mail
- *   carries a link and a six-digit code (Better Auth's email OTP). The link signs in the browser that opens it, which
- *   is the mail app's, often not the tab that asked (a private window, a phone); the code is typed into the tab that
- *   asked, so that tab signs in too (Foxhound's live test, 2026-10-29). Both work once and last 10 minutes
- *   (SIGN_IN_EXPIRES_IN_SECONDS), and both are stored hashed. A wrong code counts: three and the code is spent, though
- *   the link still works, and a wrong code counts against the address too, across links (CODE_EMAIL_RULES). Only the
- *   link request mails: the email OTP plugin's own send endpoints are off (disabledPaths), so the Turnstile check and
- *   the five a minute on the link request cover every sign-in mail.
- * - THE CODE WORKS ONLY IN THE BROWSER THAT ASKED (`codeBrowser`, Dustin's yes 2026-11-18, the Mythos review's
- *   finding 2): the request that mails a code sets a signed CODE_COOKIE holding a random value whose SHA-256 is stored
- *   beside the code, and a code typed with no cookie, or another browser's, is refused (400 CODE_OTHER_BROWSER) before
- *   the code is read, so it spends none of the code's tries or the address's. NIST SP 800-63B-4 3.2.5: a typed code is
- *   not bound to the session it signs in; this binds it. A guesser must now ask for each code it guesses, which needs
- *   a Turnstile pass, spends the address's five mails an hour and puts a mail in the person's inbox. The newest request
- *   replaces the binding, as it replaces the code. The link is not bound: it is a long random token, and it opens in
- *   the mail app's browser by design. The phone app's code (`appCode`) is bound the same way; its client keeps the
- *   cookie (Better Auth's Expo client stores every Set-Cookie).
- * - THE LINK OPENS A PAGE, NOT A SIGN-IN: Better Auth's link is a GET that signs in, so a mail scanner that opens every
- *   link would spend it. The mailed URL is the site's confirm page (`confirmPath`, CONFIRM_PATH by default) with the
- *   token in its query; the page shows one button, and its route action passes the POST to confirmSignInLink
- *   (`./sign-in-link.mjs`), which runs the verify. A GET of the page signs nobody in.
- * - PER ADDRESS, AS WELL AS PER IP (`emailLimiter`, the site's RateLimiter Durable Object): five sign-in mails an hour
- *   per address, so someone spread over many addresses cannot bomb one inbox; three wrong codes an hour and ten a day
- *   per address, counted across links while a code for it is live, so a new link brings a new code but no fresh
- *   tries; ten failed passkey or social sign-ins an hour per address, counted only once the request proved the address
- *   (a real passkey's owner, or the address Google or Apple answered a callback with), so naming a person spends
- *   nothing of theirs; and 100 a month per passkey (NIST SP 800-63B-4's cap). Checked in before hooks,
- *   so the form's auth.api call and a POST straight to /api/auth spend the same budget. A failing counter lets a mail
- *   or a passkey through (a Durable Object hiccup must never lock a person out, Foxhound's RULES.md 4.10), but refuses
- *   a typed code, which is the one thing a guesser can try a million of; the link in the mail still works.
+ *   carries a link and a six-digit code (Better Auth's email OTP); the link signs in the browser that opens it (often
+ *   not the tab that asked), the code is typed into the tab that asked. Both work once, last 10 minutes
+ *   (SIGN_IN_EXPIRES_IN_SECONDS) and are stored hashed. Three wrong codes spend the code, and wrong codes count against
+ *   the address across links (CODE_EMAIL_RULES). Only the link request mails: the OTP plugin's own send endpoints are
+ *   off (disabledPaths), so the Turnstile check and the five a minute cover every sign-in mail.
+ * - THE CODE WORKS ONLY IN THE BROWSER THAT ASKED (`codeBrowser`, Dustin's yes 2026-11-18, the Mythos review's finding
+ *   2): the request that mails a code sets a signed CODE_COOKIE holding a random value whose SHA-256 is stored beside
+ *   the code; a code typed with no cookie, or another browser's, is refused (400 CODE_OTHER_BROWSER) before the code is
+ *   read, so it spends none of the tries (NIST SP 800-63B-4 3.2.5). The newest request replaces the binding. The link
+ *   is not bound (a long random token, opened in the mail app's browser by design). The app's code (`appCode`) is bound
+ *   the same way.
+ * - THE LINK OPENS A PAGE, NOT A SIGN-IN: Better Auth's link is a GET that signs in, so a mail scanner would spend it.
+ *   The mailed URL is the site's confirm page (`confirmPath`, CONFIRM_PATH by default) with the token in its query; its
+ *   route action passes the POST to confirmSignInLink (`./sign-in-link.mjs`). A GET of the page signs nobody in.
+ * - PER ADDRESS, AS WELL AS PER IP (`emailLimiter`, the site's RateLimiter Durable Object): five sign-in mails an hour,
+ *   three wrong codes an hour and ten a day (across links), ten failed passkey or social sign-ins an hour (counted only
+ *   once the request proved the address), and 100 a month per passkey (NIST SP 800-63B-4's cap). Checked in before
+ *   hooks, so the form's auth.api call and a POST to /api/auth spend the same budget. A failing counter lets a mail or
+ *   a passkey through (Foxhound's RULES.md 4.10) but refuses a typed code, the one thing a guesser can try a million of.
  * - WHAT THE MAIL CARRIES: the site's sendMagicLink({ email, url, token, code }) gets the confirm page's link (`url`,
- *   which holds `token`) and the six-digit `code`. The mail must carry both, the link untouched and the code as text
- *   (Capsomer's magicLink template takes `code`), and say they last SIGN_IN_EXPIRES_IN_WORDS. A mail without the code
- *   leaves the tab that asked with nothing to type. Neither is ever logged: each signs in, so a send error must have
- *   them cut out.
+ *   which holds `token`) and the `code`. The mail must carry both, the link untouched and the code as text, and say
+ *   they last SIGN_IN_EXPIRES_IN_WORDS. Neither is ever logged: each signs in, so a send error must have them cut out.
  * - THE APP'S CODE, only when the site asks (`appCode: true`, with `sendSignInCode`). A phone app cannot open the link
- *   (it opens in the phone's browser) and cannot show the Turnstile widget, so it asks for a code alone at
- *   /email-otp/send-verification-otp (APP_CODE_PATH) and signs in at SIGN_IN_CODE_PATH. That one path is turned back on;
- *   every other email OTP path stays off. The code is the same plugin's (sign-in only, stored hashed, three tries, 15
- *   minutes); sendSignInCode({ email, code }) mails it, and only for a sign-in: a request for any other kind of code
- *   mails nothing. With no Turnstile in front of it, it is held to three a minute per address (APP_CODE_RATE_LIMIT).
+ *   or show the Turnstile widget, so it asks for a code alone at APP_CODE_PATH and signs in at SIGN_IN_CODE_PATH; every
+ *   other email OTP path stays off. `sendSignInCode({ email, code })` mails it, only for a sign-in. With no Turnstile
+ *   in front, it is held to three a minute per address (APP_CODE_RATE_LIMIT).
  * - NO OAUTH TOKENS: with `social: true` the options carry `databaseHooks.account`, which blank Google's and Apple's
- *   tokens on every account write Better Auth makes (createOAuthUser, linkAccount, updateAccount). Sign-in reads none of
- *   them, so none are stored. A site with hooks of its own merges them: `databaseHooks: { ...signIn.databaseHooks, user }`.
- * - NO DISPOSABLE ADDRESSES: a plugin's user create hook refuses a new account at a disposable domain, whichever way it
- *   is made (`./sign-in-form`, isDisposableEmail, from a maintained CC0 list), as BAD_REQUEST `disposable_email`. An
- *   existing account keeps working. A plugin's hook, so a site's own `databaseHooks.user` runs beside it.
- * - TURNSTILE on the email link when TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY are both set (a key without its secret
- *   would show a widget nothing checks; a secret without its key would refuse everyone). The link is the one endpoint
- *   that mails a stranger. Without both, the link request is refused (503 TURNSTILE_NOT_SET): it fails closed. A site
- *   waiting for its keys sets `turnstile: "off-until-keys"`, which lets it through unchecked with a warning line on
- *   every request. The widget is `./turnstile`.
+ *   tokens on every account write. A site with hooks of its own merges them: `databaseHooks: { ...signIn.databaseHooks, user }`.
+ * - NO DISPOSABLE ADDRESSES: a plugin's user create hook refuses a new account at a disposable domain
+ *   (`./sign-in-form`, isDisposableEmail), as BAD_REQUEST `disposable_email`. An existing account keeps working.
+ * - TURNSTILE on the email link when TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY are both set. Without both, the link
+ *   request is refused (503 TURNSTILE_NOT_SET): it fails closed. A site waiting for its keys sets
+ *   `turnstile: "off-until-keys"`, which lets it through with a warning line on every request. The widget is `./turnstile`.
  * - GOOGLE AND APPLE only when the site asks (`social: true`) and has the settings: GOOGLE_CLIENT_ID and
  *   GOOGLE_CLIENT_SECRET; APPLE_CLIENT_ID, APPLE_TEAM_ID, APPLE_KEY_ID and APPLE_PRIVATE_KEY (`./apple-secret` makes the
  *   secret). Apple comes with Google, since an iPhone app that offers Google sign-in must offer Apple's too.
  * - FRESH: adding or deleting a passkey, changing the email, unlinking Google or Apple, deleting the account and
- *   listing sessions need a sign-in in the last FRESH_SECONDS (Better Auth's freshAge, which defaults to a day, and for
- *   passkey delete and email change, which Better Auth leaves out, a before hook here). Listing and renaming passkeys
- *   do not. A site's own risky routes call requireFreshSession (`./sign-in-account.mjs`).
- * - SESSIONS END SESSION_SECONDS (30 days) after their sign-in, used or not: Better Auth's sliding refresh is off. A
- *   session also ends after SESSION_IDLE_SECONDS (7 days) unused (`sessionIdlePlugin`): its `updatedAt` moves on every read
- *   through /get-session, at most every SESSION_TOUCH_SECONDS, and a request with an idle session's cookie deletes it.
+ *   listing sessions need a sign-in in the last FRESH_SECONDS (Better Auth's freshAge, and a before hook here for
+ *   passkey delete and email change, which Better Auth leaves out). A site's own risky routes call requireFreshSession.
+ * - SESSIONS END SESSION_SECONDS (30 days) after their sign-in: Better Auth's sliding refresh is off. A session also
+ *   ends after SESSION_IDLE_SECONDS (7 days) unused (`sessionIdlePlugin`): its `updatedAt` moves on every read through
+ *   /get-session, at most every SESSION_TOUCH_SECONDS, and a request with an idle session's cookie deletes it.
  * - SESSION DETAILS, when the site asks (`sessionDetails: true`, with SESSION_DETAILS_SQL's columns): each session keeps
- *   its coarse place (`coarseLocation` of request.cf) and a device id from a long-lived signed cookie (DEVICE_COOKIE),
- *   both set when it is made, and its place moves with the `updatedAt` that every site's sessions have. So the sessions list says where and when each was last used, and the
- *   new-device notice knows a second browser of the same make from the first.
- * - SIGN-OUT CLEARS THE BROWSER: Better Auth's /sign-out answers with LOGOUT_HEADERS (`./headers`, Clear-Site-Data).
+ *   its coarse place (`coarseLocation` of request.cf) and a device id from a signed cookie (DEVICE_COOKIE), so the
+ *   sessions list says where and when each was last used and the new-device notice tells a second browser of the same
+ *   make from the first.
+ * - SIGN-OUT CLEARS THE BROWSER: /sign-out answers with LOGOUT_HEADERS (`./headers`, Clear-Site-Data).
  * - EVERY AUTH EVENT IS LOGGED, AND EVERY CHANGE TO HOW A PERSON SIGNS IN IS TOLD TO THEM (`./sign-in-account.mjs`):
- *   one `./log` line per event, with OWASP's names, from a plugin's hooks, so a site gets it with no code; and with the
- *   site's `sendSecurityNotice`, a notice for a passkey added or removed, a sign-in method linked or unlinked, the email
- *   changed (to both addresses), every session ended, the account deleted, a sign-in from a device not seen before,
- *   and a recovery (a sign-in by email with no passkey left). A notice that fails to send is logged and the change
- *   stands. With `eventsDb` (the site's D1, AUTH_EVENTS_SQL) each event is also a row, the person's security history.
+ *   one `./log` line per event from a plugin's hooks, and with the site's `sendSecurityNotice` a notice for each change
+ *   (passkey, linked method, email to both addresses, sessions ended, account deleted, new device, recovery). A notice
+ *   that fails to send is logged and the change stands. With `eventsDb` (AUTH_EVENTS_SQL) each event is also a row.
  * - A CHANGED EMAIL OR A RECOVERY ENDS EVERY OTHER SESSION; deleting the account ends them all (Better Auth).
  * - ACCOUNTS ARE JOINED ONLY BY A SIGNED-IN PERSON (linkSocial), never by a matching email at sign-in, the recurring
  *   takeover path.
- * - RATE LIMITED IN THE DATABASE, keyed on Cloudflare's client address: Better Auth counts each request in one atomic
- *   database step, in every environment (not only when NODE_ENV says production), and the magic-link plugin adds its
- *   own five a minute. Sessions and the counts live in the site's D1 (the `session` and `rateLimit` tables), never KV,
- *   which is eventually consistent: a sign-out would take up to a minute to hold and a count could be lost.
+ * - RATE LIMITED IN THE DATABASE, keyed on Cloudflare's client address, in every environment, and the magic-link plugin
+ *   adds its own five a minute. Sessions and counts live in the site's D1 (`session`, `rateLimit`), never KV, which is
+ *   eventually consistent: a sign-out would take up to a minute to hold and a count could be lost.
  *
  * Async, because Apple's secret is signed with WebCrypto. A site builds its auth once per isolate and keeps the promise.
  */
@@ -219,17 +196,13 @@ export const APP_CODE_RATE_LIMIT = Object.freeze({ window: 60, max: 3 });
 
 /**
  * How long a session lasts from its sign-in, however much it is used: 30 days, NIST SP 800-63B-4's overall timeout for
- * AAL1 ("SHOULD be no more than 30 days"). Better Auth's default is 7 days that slide forward with every use, so a
- * session in steady use never ends; refresh is off, so this is a cap. Admin pages sit behind Cloudflare Access, whose
- * own session is the admin's shorter limit.
+ * AAL1. Better Auth's default slides forward with every use; refresh is off, so this is a cap.
  */
 export const SESSION_SECONDS = 30 * 24 * 60 * 60;
 
 /**
- * How long a session may sit unused before it ends: 7 days. OWASP ASVS 5 v7.3.1 (L2) asks for an inactivity timeout set
- * by the application's risk; NIST SP 800-63B-4 sets none at AAL1 (these sign-ins are email link or passkey, one factor
- * each) and an hour at AAL2, which Admin gets from Cloudflare Access (`ADMIN_IDLE_SECONDS`). A week keeps a reader or
- * merchant signed in across a holiday and ends a forgotten browser well before the 30-day cap.
+ * How long a session may sit unused before it ends: 7 days. OWASP ASVS 5 v7.3.1 (L2) asks for an inactivity timeout
+ * set by risk; NIST SP 800-63B-4 sets none at AAL1, and Admin gets its hour from Cloudflare Access (`ADMIN_IDLE_SECONDS`).
  */
 export const SESSION_IDLE_SECONDS = 7 * 24 * 60 * 60;
 
@@ -463,10 +436,9 @@ export async function signInOptions(
 }
 
 /**
- * Awaits a sign-in mail's send. A recipient on Email Service's suppression list (the site's sender threw `./email`
- * EmailNotSent, or anything with its code) becomes a 422 UNDELIVERABLE_EMAIL, so the page can say no mail can reach that
- * address instead of "check your inbox"; Email Service refuses it before any delivery attempt
- * (developers.cloudflare.com/email-service/concepts/email-lifecycle/). Any other failure is thrown as it came.
+ * Awaits a sign-in mail's send. A recipient on Email Service's suppression list (the sender threw `./email`
+ * EmailNotSent, or anything with its code) becomes a 422 UNDELIVERABLE_EMAIL, so the page can say no mail can reach
+ * that address. Any other failure is thrown as it came.
  * @param {unknown} sending a promise of the send, or what a synchronous sender returned
  */
 async function refuseUndeliverable(sending) {
@@ -481,14 +453,9 @@ async function refuseUndeliverable(sending) {
   }
 }
 
-/**
- * Refuses a disposable address (`./sign-in-form`, refuseDisposable): a new account's, whichever way it is made, and a
- * new address asked for on Better Auth's own /change-email, so a direct call is refused as the account page's
- * accountFormAction refuses it.
- */
-// `@__PURE__` on the module-level createAuthMiddleware calls (it only wraps the handler): without it a bundler keeps
-// these objects in every client chunk that imports a constant from here, and with NO_DISPOSABLE the 168 KB
-// disposable-domain list (0.121.0 added 60 KB gzip to Foxing's sign-in pages).
+// Refuses a disposable address (`./sign-in-form`, refuseDisposable) on a new account and on /change-email. `@__PURE__`
+// on module-level createAuthMiddleware calls: without it a bundler keeps these objects, and NO_DISPOSABLE's 168 KB
+// list, in every client chunk that imports a constant from here.
 const NO_DISPOSABLE = {
   id: "no-disposable-email",
   init: () => ({ options: { databaseHooks: { user: { create: { before: refuseDisposable } } } } }),
