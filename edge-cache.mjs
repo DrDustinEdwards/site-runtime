@@ -256,7 +256,7 @@ export async function stampValidator(response) {
   )
     return response;
   const body = await response.arrayBuffer();
-  const sum = new Uint8Array(await crypto.subtle.digest("SHA-256", body), 0, 16);
+  const sum = new Uint8Array(await crypto.subtle.digest("SHA-256", body));
   const out = new Response(body, response);
   out.headers.set("ETag", `W/"${btoa(String.fromCharCode(...sum))}"`);
   return out;
