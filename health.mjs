@@ -118,11 +118,8 @@ export async function healthResponse({
       level: "warn",
       run: async () => {
         backupStatus = await keptBackup(backup, backupTtlMs, sha, cache);
-        const warning =
-          backupStatus &&
-          typeof backupStatus === "object" &&
-          "warning" in backupStatus &&
-          backupStatus.warning;
+        const warning = /** @type {{ warning?: unknown } | null | undefined} */ (backupStatus)
+          ?.warning;
         return warning ? { ok: false, detail: String(warning) } : true;
       },
     });
@@ -134,15 +131,15 @@ export async function healthResponse({
     : results.some((r) => r.status === "warn")
       ? "warn"
       : "pass";
-  const db = ping ? { db: results[0]?.status === "pass" ? "up" : "down" } : {};
   const alerts = results.filter((r) => r.alert).map((r) => r.name);
+  // JSON.stringify leaves out an undefined value, so a field that does not apply is undefined, not a spread.
   const body = {
     status,
     ok: status !== "fail",
-    ...(alerts.length ? { alerts } : {}),
-    ...db,
-    ...(backupStatus === undefined ? {} : { backup: backupStatus }),
-    ...(sha ? { sha } : {}),
+    alerts: alerts.length ? alerts : undefined,
+    db: ping ? (results[0]?.status === "pass" ? "up" : "down") : undefined,
+    backup: backupStatus,
+    sha: sha || undefined,
     time: now.toISOString(),
     checks: results,
   };
