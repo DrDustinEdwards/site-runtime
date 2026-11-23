@@ -47,6 +47,7 @@ test("a boot that failed is never retried, and the page stops intercepting press
     let prevented = false;
     listeners.click({
       target: link,
+      button: 0,
       preventDefault: () => (prevented = true),
       stopImmediatePropagation() {},
     });

@@ -1447,7 +1447,7 @@ const auth = betterAuth({
   request with an idle session's cookie deletes it (/get-session answers null, other routes 401 `SESSION_IDLE`).
   Admin pages are behind Cloudflare Access, whose session (24 hours by default) is the admin's limit.
 - Fresh sign-in (A7, D6): `session.freshAge` is `FRESH_SECONDS` (10 minutes; Better Auth's default is a day). Better
-  Auth 1.7.12 then answers 403 `SESSION_NOT_FRESH` unless the session was made in the last 10 minutes on: adding a
+  Auth 1.7.25 then answers 403 `SESSION_NOT_FRESH` unless the session was made in the last 10 minutes on: adding a
   passkey (`/passkey/generate-register-options`, `/passkey/verify-registration`), unlinking Google or Apple
   (`/unlink-account`) and listing sessions (`/list-sessions`), all through its `freshSessionMiddleware`; and deleting the
   account (`/delete-user`, its own check, 400 `SESSION_EXPIRED`, when no deletion mail is set). Better Auth leaves
@@ -1603,7 +1603,7 @@ its own and the notices by passing one function.
   a list shows: the name, else the provider.
 - The passkey list (A5): `await accountPasskeys(auth, request, env.DB)` gives the asker's passkeys, oldest first, as `{
   id, credentialId, name, provider, createdAt, lastUsedAt }` (`passkeyRows` over Better Auth's `listPasskeys`; the
-  public credential id for the Signal API, no public key), or null when nobody is signed in. Better Auth 1.7.12 keeps no last-used time, so with `eventsDb` each
+  public credential id for the Signal API, no public key), or null when nobody is signed in. Better Auth 1.7.25 keeps no last-used time, so with `eventsDb` each
   passkey sign-in's `auth_events` row carries the passkey's id in `change`, and `passkeyLastUsed(db, userId)` reads the
   newest per passkey: no migration beyond `AUTH_EVENTS_SQL`. Rows go after a year, so a passkey unused that long shows
   no date, and passkeys used before this version show none until their next sign-in. Rename is Better Auth's own
@@ -1630,7 +1630,7 @@ its own and the notices by passing one function.
   | `signalAllAcceptedCredentials({ credentialIds })`            | inside `signalPasskeys`; alone where only the list matters                                                                                                                                                                                                                         |
   | `signalUnknownCredential({ credentialId })`                  | after the person deletes a passkey on the site, with that row's `credentialId`                                                                                                                                                                                                     |
 
-  `userId` is a passkey's user handle, and @better-auth/passkey 1.7.12 makes a new random handle for every passkey and
+  `userId` is a passkey's user handle, and @better-auth/passkey 1.7.25 makes a new random handle for every passkey and
   stores none (`generate-register-options`), so the one handle a page can know is that of the passkey that signed in
   on this browser (`webauthn.response.response.userHandle`), which `signInWithPasskey` keeps in localStorage per relying
   party; a page may pass `userId` itself. Without one the calls do nothing, and they reach that passkey alone. A

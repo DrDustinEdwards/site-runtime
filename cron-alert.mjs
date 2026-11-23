@@ -132,7 +132,7 @@ export async function cronAlert({
         await sendEmail(mail, {
           from: /** @type {import("./email.mjs").MailAddress} */ (from),
           to: /** @type {import("./email.mjs").MailAddress} */ (to),
-          subject: `${site}: ${alerts.length === 1 ? `cron ${alerts[0].kind} (${alerts[0].name})` : `${alerts.length} cron jobs not well`}`,
+          subject: `${site ? `${site}: ` : ""}${alerts.length === 1 ? `cron ${alerts[0].kind} (${alerts[0].name})` : `${alerts.length} cron jobs not well`}`,
           text: `${alerts.map((a) => a.line).join("\n")}\n\nEach job is mailed once per day until it is well.`,
         })
       ).sent);

@@ -63,7 +63,7 @@ export const SECURITY_NOTICE_KINDS = /* @__PURE__ */ Object.freeze(
 
 /**
  * How recent a sign-in must be for a risky change: 10 minutes. `./sign-in` sets Better Auth's session.freshAge to it,
- * and its own check holds passkey delete and email change to it too (Better Auth 1.7.12 does not).
+ * and its own check holds passkey delete and email change to it too (Better Auth 1.7.25 does not).
  */
 export const FRESH_SECONDS = 10 * 60;
 
@@ -157,7 +157,7 @@ export const AUTH_EVENTS_DEVICE_SQL = `ALTER TABLE auth_events ADD COLUMN device
 /**
  * The argument for a site's own `auth.api.getSession` with `sessionDetails`: on a GET the request too, so the place
  * follows the person. Always `asResponse: false`: given a request, Better Auth 1.7.12 answers with a Response, which
- * has no `user`, so every page reads the person as signed out (Foxing #169, txasm).
+ * has no `user`: every page reads the person as signed out (Foxing #169).
  * @param {Request} request
  * @returns {SessionLookup}
  */
@@ -425,8 +425,7 @@ export function passkeyRows(passkeys, lastUsed = new Map()) {
 
 /**
  * When each of a person's passkeys last signed them in, by passkey id: the newest passkey sign-in row in
- * `auth_events` (`change` is the passkey's id). Rows go after a year (`pruneAuthEvents`). Better Auth 1.7.12 keeps no
- * last-used time.
+ * `auth_events` (`change` is the passkey's id; rows go after a year, `pruneAuthEvents`). Better Auth keeps no last-used time.
  * @param {D1Like} db @param {string} userId
  * @returns {Promise<Map<string, Date>>}
  */
@@ -510,6 +509,7 @@ const SIGN_IN_VIA = {
   "/sign-in/email-otp": "code",
   "/passkey/verify-authentication": "passkey",
 };
+const providerVia = (/** @type {any} */ id) => (["google", "apple"].includes(id) ? id : "unknown");
 /** The endpoints that mail a sign-in link or code. */
 const SENT_VIA = { "/sign-in/magic-link": "link", "/email-otp/send-verification-otp": "code" };
 /** The session revocations, and which sessions each ends. */
@@ -577,9 +577,9 @@ export function authEvent({ path, params, body, returned, signedIn, userId, link
   const via = Object.hasOwn(SIGN_IN_VIA, path)
     ? SIGN_IN_VIA[/** @type {keyof typeof SIGN_IN_VIA} */ (path)]
     : path === "/callback/:id"
-      ? params?.id
+      ? providerVia(params?.id)
       : path === "/sign-in/social" && body?.idToken
-        ? String(body.provider)
+        ? providerVia(body.provider)
         : null;
   if (via) {
     if (signedIn) return { event: OWASP_EVENTS.signInSuccess, fields: { via, ...user } };

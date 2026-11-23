@@ -5,8 +5,8 @@
  * stored. wrangler config: `"cache": { "enabled": true }` and
  * `"exports": { "default": { "type": "worker", "cache": { "enabled": false } }, "Renderer": { "type": "worker", "cache": { "enabled": true } } }`.
  *
- * A stored page is the same for every reader: no per-request CSP nonce (trust inline scripts by hash), no cookie,
- * nothing signed in. Signed-in pages keep `private, no-store`.
+ * A stored page is the same for every reader: no nonce shared between readers (hash the inline scripts, or `renewNonce`
+ * in ./csp), no cookie, nothing signed in. Signed-in pages keep `private, no-store`.
  */
 
 import { acceptedEncoding, isWrite, mediaType } from "./http.mjs";

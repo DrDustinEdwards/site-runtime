@@ -467,9 +467,9 @@ export function registrationRefusal(configured, clientMetadata) {
 export async function registrationLimited(request, kv, configured, now = Date.now()) {
   // One address is an IPv4 address or an IPv6 /64 (ipKey), so a host cannot register from each address it holds.
   const address = ipKey("dcr-rate:addr", request).key;
-  const metadata = await request
-    .clone()
-    .json()
+  // Capped before the counters are read, so a huge body costs one small read, not a parse.
+  const metadata = await readCapped(request.clone(), 8 * 1024)
+    .then((text) => (text ? JSON.parse(text) : null))
     .catch(() => null);
   const allowed =
     metadata !== null &&

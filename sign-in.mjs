@@ -233,7 +233,7 @@ export const PASSKEY_FAILURE_RULES = Object.freeze([
 /** The one value of `turnstile` that lets the link request through without keys, until the site has them. */
 export const TURNSTILE_OFF_UNTIL_KEYS = "off-until-keys";
 
-/** Better Auth endpoints whose own check has no age limit in 1.7.12, held to FRESH_SECONDS here. */
+/** Better Auth endpoints whose own check has no age limit in 1.7.25, held to FRESH_SECONDS here. */
 const FRESH_PATHS = new Set(["/passkey/delete-passkey", "/change-email"]);
 
 /** What every account write stores in place of Google's and Apple's tokens (`social: true`). */
@@ -1171,11 +1171,7 @@ function codeBrowser() {
 }
 
 /** The endpoints whose failures count against an address and a passkey. */
-const FAILURE_LIMITED = new Set([
-  "/passkey/verify-authentication",
-  "/sign-in/social",
-  "/callback/:id",
-]);
+const FAILURE_LIMITED = new Set(["/passkey/verify-authentication", "/callback/:id"]);
 
 /**
  * The per-address limits as one plugin. Its before hooks run after the captcha plugin and Better Auth's per-IP limit

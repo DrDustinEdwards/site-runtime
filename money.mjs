@@ -181,7 +181,7 @@ export function moneyInputValue(amount, currency, options) {
 
 /**
  * A figure someone typed ("45", "1,250.50", " 12.5 ") back into the stored integer, or null when it is blank,
- * negative or not a number. Grouping commas are allowed; a currency sign is not, so "$45" is null and the form says
+ * negative or not a number. Commas are allowed only as thousands groups ("1,250.50", not "12,50"); a currency sign is not, so "$45" is null and the form says
  * what it wants.
  * @param {string | null | undefined} text
  * @param {string} currency
@@ -189,7 +189,8 @@ export function moneyInputValue(amount, currency, options) {
  * @returns {number | null}
  */
 export function parseMoneyInput(text, currency, options) {
-  const trimmed = (text ?? "").trim().replace(/,/g, "");
-  if (!/^\d*\.?\d+$|^\d+\.$/.test(trimmed)) return null;
-  return fromMajorUnits(Number(trimmed), currency, options);
+  const trimmed = (text ?? "").trim();
+  // A comma only groups thousands, so "12,50" is not a figure (it is no 1,250).
+  if (!/^\d{1,3}(,\d{3})+(\.\d+)?$|^\d*\.?\d+$|^\d+\.$/.test(trimmed)) return null;
+  return fromMajorUnits(Number(trimmed.replace(/,/g, "")), currency, options);
 }

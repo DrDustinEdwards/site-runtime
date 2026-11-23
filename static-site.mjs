@@ -31,7 +31,7 @@ import {
   buildStagedPolicy,
   reportingEndpoints,
 } from "./csp.mjs";
-import { receiveCspReport } from "./csp-report.mjs";
+import { rateLimitAllow, receiveCspReport } from "./csp-report.mjs";
 import { UNCACHED } from "./edge-cache.mjs";
 import { applyHeaderSet, buildSecurityHeaders, headersFile } from "./headers.mjs";
 import { healthResponse } from "./health.mjs";
@@ -182,11 +182,7 @@ export function staticSite({
       if (redirect) return applyHeaderSet(redirect, headers);
       if (reportPath && url.pathname === reportPath) {
         const limiter = env.CSP_REPORT_RATE_LIMIT;
-        // Keyed on the edge-set client address, which is counted and never logged; a refusal drops the report (still 204).
-        const allow = limiter
-          ? async (/** @type {Request} */ r) =>
-              (await limiter.limit({ key: r.headers.get("CF-Connecting-IP") ?? "unknown" })).success
-          : undefined;
+        const allow = limiter ? rateLimitAllow(limiter) : undefined;
         return receiveCspReport(request, { headers, allow });
       }
       if (health !== false && url.pathname === health)

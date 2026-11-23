@@ -244,6 +244,8 @@ export function checkChange(actor, change, { catalog, primaryOwnerEmail, termEnd
       catalog.titles.get(/** @type {MemberRow} */ (change.target).title)
     );
     if (!title.expires) return refuse(`${title.label} does not expire`);
+    const wider = title.permissions.filter((p) => !actor.permissions.has(p));
+    if (wider.length) return refuse(`you cannot grant what you do not hold: ${wider.join(", ")}`);
     if (change.target?.status === "removed")
       return refuse("a removed person is added again, not renewed");
   }

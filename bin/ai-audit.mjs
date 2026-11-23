@@ -722,23 +722,23 @@ async function grantProxy(/** @type {string} */ endpoint, /** @type {string} */ 
   return { url: `http://127.0.0.1:${address.port}/mcp`, close: () => server.close() };
 }
 
+/** What npx may see: its paths, proxy and Node settings, never a job's secrets (its install scripts run with them). */
+const NPX_ENV =
+  /^(PATH|HOME|USERPROFILE|TMP|TEMP|TMPDIR|SystemRoot|APPDATA|LOCALAPPDATA|ComSpec|PATHEXT|CI|NODE_.*|npm_config_.*|SSL_CERT_.*|(HTTPS?|NO|ALL)_PROXY)$/i;
+
 /**
  * Runs the pinned MCP conformance suite through npx, without the grant in its environment, and reads its checks: the
  * count over the checks that apply, the failing ids, and the ones left out, or why there is none. Two kinds of failure
- * say nothing about the server and are left out (a warning names them): one the suite marks untestable (it needs the
- * suite's own diagnostic tools, test_logging_tool and the like, which a production server does not ship), and a
- * caching check on a list the server answers -32601 for when its server/discover declares no such capability (SEP-2549
- * asks hints of results, and a server with no prompts has no prompts/list result; MCP lifecycle: a client must not use a
- * capability the server did not declare).
+ * say nothing about the server and are left out (a warning names them): one the suite marks untestable (it needs its
+ * own diagnostic tools, which a production server does not ship), and a caching check on a list the server answers
+ * -32601 for when its server/discover declares no such capability (SEP-2549; a client must not use an undeclared one).
  * @param {string[]} args
  * @param {Record<string, unknown> | null} [capabilities] the server's declared capabilities, when known
  */
 function runMcpConformance(args, capabilities = null) {
-  const env = { ...process.env };
-  delete env[grantEnv];
-  // The checks are read from the checks.json the suite writes under --output-dir, never from its stdout: the CLI exits
-  // before a pipe drains, so a large tools/list (printed twice by http-header-validation) cut the JSON short and left the
-  // scenario "could not run" (Capsid, run 55, 2026-11-06).
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => NPX_ENV.test(k)));
+  // Read from the checks.json under --output-dir, never stdout: the CLI exits before a pipe drains, so a large
+  // tools/list (printed twice by http-header-validation) cut the JSON short ("could not run", Capsid run 55).
   const dir = mkdtempSync(join(tmpdir(), "mcp-conformance-"));
   return new Promise((resolve) => {
     let out = "";

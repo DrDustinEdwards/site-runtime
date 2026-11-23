@@ -9,6 +9,7 @@ import {
   isDisposableEmail,
   safeNextPath,
   signInFormAction,
+  startSocialSignIn,
 } from "../sign-in-form.mjs";
 
 /** An auth whose handler records each request and answers with `reply(path, body)`. */
@@ -559,4 +560,19 @@ test("PLANT: the code works only in the browser that asked for it, and another b
     (await post("/sign-in/email-otp", { email, otp: appCode }, cookieHeader(app))).status,
     200,
   );
+});
+
+test("a social start goes through the handler, so Better Auth's limiter counts it", async () => {
+  const auth = fakeAuth(() =>
+    json(200, { url: "https://accounts.example.com/o" }, { "Set-Cookie": "state=1; HttpOnly" }),
+  );
+  const start = await startSocialSignIn(auth, request(), {
+    provider: "google",
+    callbackURL: "/in",
+    errorCallbackURL: "/err",
+  });
+  assert.equal(start?.location, "https://accounts.example.com/o");
+  assert.deepEqual(start?.headers.getSetCookie(), ["state=1; HttpOnly"]);
+  assert.equal(auth.seen[0].path, "/api/auth/sign-in/social");
+  assert.equal(auth.seen[0].body.newUserCallbackURL, "/in");
 });

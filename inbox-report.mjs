@@ -6,7 +6,7 @@
  * badge. The bearer is the app's own Capsid agent key (CAPSID_AGENT_KEY), with the write grant on its namespace.
  *
  * Never on a page's path: a failure is logged and returned, never thrown, so a cron job decides what a failure means.
- * Items over the receiver's limits are cut here (20 items, 200-character titles), since the receiver refuses the
+ * Items over the receiver's limits are cut here (20 items, 200-character titles, 16 KiB in all), since the receiver refuses the
  * whole report for one item outside them.
  */
 
@@ -71,6 +71,9 @@ export async function reportInbox({
       ...(since ? { since } : {}),
     })),
   };
+  // The receiver answers 413 for a body over its byte limit, so the last items go first (a title is cut by characters).
+  const bytes = () => new TextEncoder().encode(JSON.stringify(body)).length;
+  while (body.items.length > 0 && bytes() > MAX_INBOX_REPORT_BYTES) body.items.pop();
   try {
     const response = await fetcher(`${origin.replace(/\/+$/, "")}${INBOX_REPORT_PATH}`, {
       method: "POST",

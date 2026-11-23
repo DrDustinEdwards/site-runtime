@@ -312,6 +312,9 @@ test("loggedArgs and loggedResult cut credentials out and digest what is long, n
       sha256: createHash("sha256").update(JSON.stringify(big)).digest("hex").slice(0, 16),
     },
   });
+  // A truncated private key takes the JSON's closing quotes with it: stored by length and hash, never a throw.
+  const pem = { note: { pem: "-----BEGIN PRIVATE KEY-----\nabc" } };
+  assert.equal(typeof (await loggedArgs(pem)).note, "object");
   assert.deepEqual(loggedResult({ content: [{ text: `made ${key}` }, { text: "done" }] }), {
     isError: false,
     text: "made [key]\ndone",

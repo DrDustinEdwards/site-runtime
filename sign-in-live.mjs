@@ -233,7 +233,7 @@ export async function signInFindings({ origin, from, probes }) {
     private_(signOut, "sign-out");
     cookies(signOut);
 
-    // Better Auth checks the Origin only on a request that carries a cookie (1.7.12 dist/api/middlewares/origin-check.mjs:101-108).
+    // Better Auth checks the Origin only on a request that carries a cookie (1.7.25 dist/api/middlewares/origin-check.mjs:101-108).
     const foreign = await get(`${base}/api/auth/sign-out`, {
       method: "POST",
       headers: {
