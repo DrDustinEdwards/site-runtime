@@ -29,6 +29,7 @@ import { auditLogCheck, exportAuditLog, recordAudit } from "./audit-log.mjs";
 import { DAILY_MINUTES, runJobTool, runJobs } from "./cron.mjs";
 import { durableObjectCheck, healthResponse, kvCheck, r2Check } from "./health.mjs";
 import { deployedSha } from "./deploy.mjs";
+import { clientIp } from "./http.mjs";
 import { errorMessage, logEvent, withRequestLog } from "./log.mjs";
 import { operatorResponse } from "./operator.mjs";
 import {
@@ -452,12 +453,7 @@ export function adminMcpWorker({
       site,
       securityTxt,
       allowReport: async (request, env) =>
-        (
-          await checkRateLimit(
-            env.MCP_RATE_LIMIT,
-            `csp-report:${request.headers.get("CF-Connecting-IP") ?? "unknown"}`,
-          )
-        ).allowed,
+        (await checkRateLimit(env.MCP_RATE_LIMIT, `csp-report:${clientIp(request)}`)).allowed,
     },
   );
 

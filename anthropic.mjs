@@ -31,7 +31,7 @@
  *   meters calls. A stream the reader leaves early is logged as `aborted` with the tokens seen so far.
  */
 
-const ANTHROPIC_ORIGIN = "https://api.anthropic.com";
+import { ANTHROPIC_ORIGIN } from "./ai-gateway.mjs";
 import { priceOf, promptOf } from "./ai-engine.mjs";
 import { retryAfterSeconds } from "./http.mjs";
 import { logEvent, scrubText } from "./log.mjs";
@@ -508,7 +508,7 @@ export async function* stream(env, app, request, options = {}) {
   }
 }
 
-/** @typedef {{ ANTHROPIC_API_KEY?: string; AI_GATEWAY_BASE_URL?: string; AI_GATEWAY_TOKEN?: string; AI_GATEWAY_ID?: string }} AnthropicEnv */
+/** @typedef {{ ANTHROPIC_API_KEY?: string }} AnthropicEnv */
 
 /**
  * @typedef {object} CallOptions

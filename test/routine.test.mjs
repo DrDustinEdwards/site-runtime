@@ -218,6 +218,19 @@ test("PLANT: fireOnce, on its D1 store, refuses a job key already fired or unkno
   );
   assert.equal(posts, 4);
 
+  // Two callers taking over one stale record: only one wins the compare-and-set, so one session starts.
+  const stale = {
+    fetcher: counting(answer(200, STARTED)),
+    refireAfterMs: 30 * 60_000,
+    now: new Date(later.getTime() + 31 * 60_000),
+  };
+  const both = await Promise.all([
+    fireOnce(store, "job-2", config, "t", stale),
+    fireOnce(store, "job-2", config, "t", stale),
+  ]);
+  assert.deepEqual(both.map((r) => r.ok).sort(), [false, true]);
+  assert.equal(posts, 5);
+
   // Two fires at once: the reservation stops the second before it posts.
   let release;
   const slow = async () => (

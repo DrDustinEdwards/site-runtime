@@ -185,6 +185,9 @@ export function hydrateOnIntent({ selector, press, warm }) {
     (event) => {
       const found = control(event);
       if (failed || !(found instanceof HTMLElement)) return;
+      // A new-tab click or a modified one is the browser's own: the server's page does it without the app.
+      if (event.defaultPrevented || event.button !== 0) return;
+      if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
       event.preventDefault();
       event.stopImmediatePropagation();
       pending =

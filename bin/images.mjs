@@ -8,8 +8,8 @@
  * `--from` fetches from where the site is served now while judging every URL as `--origin`, for a site not yet on its
  * domain. Pages are the home page and the sitemap's (one level of sitemap index), at most 25. Each finding is an
  * annotation line, `::error title=<item>::<proof URL> <detail>` (or `::warning`; what a request that got no answer left
- * unmeasured is `::notice title=<item>::<url> could not measure: <reason>`, exit 3 when nothing failed), the contract devkit-live and
- * prelum-audit keep; exit 0 with no errors, 1 with errors, 2 when it could not run (no origin, home page unreachable).
+ * unmeasured is `::notice title=<item>::<url> could not measure: <reason>`, exit 3 when nothing failed), the contract
+ * devkit-live and prelum-audit keep; exit 0 with no errors, 1 with errors, 2 when it could not run (no origin, home page unreachable).
  *
  * Where an image sits on a 390 px phone (DPR 3) and a 1440 px desktop (DPR 1) is estimated from the HTML (`placeImages`):
  * text, headings, images by their width, height and sizes, and runs of alike cards laid out as a grid. Only an image
@@ -388,8 +388,7 @@ async function auditPage({ url, origin, html, headers, load, probe, onSite, site
         vp.width,
       );
       const pick = shownAt > 0 ? picked(img, shownAt, vp, absolute, files) : null;
-      // A fixed small slot (an icon, 48 px or less) with one file is served at 2x, Cloudflare's guidance for a fixed-size image
-      // (developers.cloudflare.com/images/transform-images/make-responsive-images): a 1x file is blurry on the many 2x screens.
+      // A fixed small slot (an icon, 48 px or less) with one file is served at 2x (Cloudflare's responsive-images guidance).
       const slack = shownAt <= SMALL_SLOT && !attrs.srcset ? 2 : 1.5;
       if (pick && pick.width > slack * shownAt * vp.dpr) {
         add(
@@ -623,8 +622,7 @@ async function auditPage({ url, origin, html, headers, load, probe, onSite, site
       problems.push(
         attrs.preload === undefined ? 'no preload="none"' : `preload="${attrs.preload}"`,
       );
-    // A sourceless <audio> is a player's one element, which plays what the reader picks later (germomics' dock): the
-    // transcript belongs with the episode it is given, not with every page the player sits on.
+    // A sourceless <audio> is a player's one element (germomics' dock): its transcript belongs with the episode it is given.
     const sourced = attrs.src !== undefined || descendants(audio).some((e) => e.tag === "source");
     if (!transcript && sourced) problems.push("no transcript link on the page");
     if (problems.length)
@@ -923,8 +921,7 @@ function privateExif(tiff) {
   const view = new DataView(tiff.buffer, tiff.byteOffset, tiff.byteLength);
   const little = tiff[0] === 0x49 && tiff[1] === 0x49;
   if (!little && !(tiff[0] === 0x4d && tiff[1] === 0x4d)) return [];
-  // An IFD lists at most what fits in the block, and all the IFDs of one block share a budget of entries: a 64,000-entry
-  // IFD whose entries each name a 64,000-entry sub-IFD, the same one or distinct ones, was four billion steps.
+  // An IFD lists at most what fits in the block, and all the IFDs of one block share a budget of entries (nested 64,000-entry IFDs were 4 billion steps).
   let budget = 100_000;
   const entries = (/** @type {number} */ ifd) => {
     const length = Math.min(
@@ -1485,7 +1482,10 @@ function isPlaceholderAlt(alt, src) {
   if (!said) return false;
   if (said === "image" || said === "photo" || /^(https?:\/\/|www\.)\S+$/.test(said)) return true;
   if (!src) return false;
-  const file = decodeURIComponent(new URL(src).pathname.split("/").pop() ?? "").toLowerCase();
+  let file = (new URL(src).pathname.split("/").pop() ?? "").toLowerCase();
+  try {
+    file = decodeURIComponent(file).toLowerCase();
+  } catch {} // a malformed %-sequence: the raw name still compares
   return said === file || said === file.replace(/\.[a-z0-9]+$/, "");
 }
 

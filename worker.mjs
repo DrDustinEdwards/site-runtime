@@ -9,8 +9,7 @@
  * 3. /.well-known/security.txt (./security-txt, RFC 9116).
  * 4. The standard files (Prelum's standardFiles), when the site passes `files`.
  * 5. The speculation rules file (./prefetch), with the site's exclude list.
- * 6. CSP reports (./csp-report), limited per caller address through CSP_REPORT_RATE_LIMIT; with no binding, or over the
- *    limit, a report is dropped (still 204).
+ * 6. CSP reports (./csp-report), limited per caller address by CSP_REPORT_RATE_LIMIT; with none, or over it, dropped (204).
  * 7. The operator API (./operator) at /api/operator, when the site passes `operator`.
  * 8. A cross-site write is refused (./origin refuseCrossSite) on every path but `crossSiteExempt` (default
  *    /api/auth/), before the steps, so an app's own cookie-authenticated API gets the check too.
@@ -292,6 +291,7 @@ export function siteRenderer(Base, site) {
       return withSentryRequest(request, this.env, this.ctx, { tokenPath }, async () => {
         const nonce = generateNonce();
         const shared = options.publicPages?.(new URL(request.url), this.env);
+        shared?.catch(() => {}); // awaited only for a cacheable 200: a failing lookup must not go unhandled
         const rendered = await site.render(request, this.env, this.ctx, { nonce });
         if (shared && rendered.status === 200 && !rendered.headers.has("Cache-Control"))
           for (const [name, value] of Object.entries(publicPageHeaders(await shared)))

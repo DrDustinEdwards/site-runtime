@@ -41,8 +41,8 @@ const STANDARD_URL = /^https:\/\/gateway\.ai\.cloudflare\.com\/v1\/[^/]+\/([^/]+
 
 /**
  * The base URL for a site's Anthropic calls and the headers that go with them. Pass `baseURL` and `headers` to the
- * Anthropic SDK as `baseURL` and `defaultHeaders`, or fetch `${baseURL}/v1/messages` with `headers` added (./anthropic
- * does that).
+ * Anthropic SDK as `baseURL` and `defaultHeaders`, or fetch `${baseURL}/v1/messages` with `headers` added. ./anthropic
+ * does not: it calls api.anthropic.com directly, so its calls are not in the gateway.
  * @param {{ AI_GATEWAY_BASE_URL?: string; AI_GATEWAY_TOKEN?: string; AI_GATEWAY_ID?: string }} env
  * @param {string} app the site's name, as the gateway's logs should show it
  * @param {string} [feature] the feature making the call ("dunning-email", "companion"), logged beside `app`

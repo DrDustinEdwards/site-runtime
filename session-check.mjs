@@ -18,15 +18,34 @@ const TEST_FILE = /\.(?:test|spec)\.[^.]+$/;
 const CALL = /\bapi\s*\.\s*getSession\s*\(\s*/g;
 
 /**
- * The source with its comments blanked to spaces, so line numbers hold. A `//` inside a string is left alone only
- * when it follows a `:` (a URL), which is all a session read sits next to.
+ * The source with its comments blanked to spaces, so line numbers hold. One scan that skips string and template
+ * literals, so a `"/*"` or `"/admin/*"` in a string opens no comment.
  * @param {string} source
  */
 function withoutComments(source) {
-  const blank = (/** @type {string} */ text) => text.replace(/[^\n]/g, " ");
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, blank)
-    .replace(/(^|[^:])\/\/[^\n]*/g, (match, before) => before + blank(match.slice(before.length)));
+  let out = "";
+  for (let i = 0; i < source.length;) {
+    const c = source[i];
+    const next = source[i + 1];
+    let end = i + 1;
+    if (c === "/" && next === "/") {
+      end = source.indexOf("\n", i);
+      if (end < 0) end = source.length;
+    } else if (c === "/" && next === "*") {
+      end = source.indexOf("*/", i + 2);
+      end = end < 0 ? source.length : end + 2;
+    } else if (c === '"' || c === "'" || c === "`") {
+      while (end < source.length && source[end] !== c) end += source[end] === "\\" ? 2 : 1;
+      end = Math.min(end + 1, source.length);
+      out += source.slice(i, end);
+      i = end;
+      continue;
+    }
+    const piece = source.slice(i, end);
+    out += c === "/" && (next === "/" || next === "*") ? piece.replace(/[^\n]/g, " ") : piece;
+    i = end;
+  }
+  return out;
 }
 
 /**

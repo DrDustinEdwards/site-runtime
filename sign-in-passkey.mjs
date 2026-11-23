@@ -56,7 +56,7 @@ export function passkeyUserHandle(user, rpId = pageHost() ?? "") {
 /**
  * Tells the provider which of this user's passkeys the site still accepts, so one deleted here leaves the provider's
  * list. `userId` is the passkey's user handle, base64url, as the sign-in gave it (`webauthn.response.response.userHandle`,
- * which signInWithPasskey keeps: the default): @better-auth/passkey 1.7.12 makes a new random handle for each passkey
+ * which signInWithPasskey keeps: the default): @better-auth/passkey 1.7.25 makes a new random handle for each passkey
  * and stores none, so a handle reaches only the passkey made with it. `credentialIds` are the account's credential ids
  * (`accountPasskeys` rows' `credentialId`). `user` is the signed-in account's id, which picks the kept handle when
  * `userId` is not passed. Resolves true when the browser took the signal; false with no handle.

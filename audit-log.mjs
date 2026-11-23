@@ -607,10 +607,10 @@ export async function loggedArgs(args) {
     } else if (text.length > LONG_STRING * (typeof value === "string" ? 1 : 5)) {
       out[key] = { chars: text.length, sha256: (await sha256Hex(text)).slice(0, 16) };
     } else {
-      out[key] =
-        typeof value === "string"
-          ? withoutCredentials(value)
-          : JSON.parse(withoutCredentials(text));
+      // Each string alone: a truncated private key would take the closing quotes of a whole text with it.
+      const leaf = (/** @type {string} */ _key, /** @type {unknown} */ v) =>
+        typeof v === "string" ? withoutCredentials(v) : v;
+      out[key] = JSON.parse(JSON.stringify(value, leaf));
     }
   }
   return out;

@@ -74,7 +74,9 @@ import { errorMessage } from "./log.mjs";
  * Where `fireOnce` keeps its records: a D1 table or a Durable Object, never KV (eventually consistent, so two fires can
  * both read nothing). Values are JSON strings. `add` is required: it writes only when the key is absent and says
  * whether it did (D1: INSERT ... ON CONFLICT DO NOTHING RETURNING), so two simultaneous fires cannot both reserve.
- * @typedef {{ get(key: string): Promise<string | null>; put(key: string, value: string): Promise<unknown>; delete(key: string): Promise<unknown>; add(key: string, value: string): Promise<boolean>; }} FireStore
+ * So is `replace(key, expected, value)`, which writes only while the value is still `expected` (D1: UPDATE ... WHERE
+ * value = ?), so two fires taking over one stale record cannot both win.
+ * @typedef {{ get(key: string): Promise<string | null>; put(key: string, value: string): Promise<unknown>; delete(key: string): Promise<unknown>; add(key: string, value: string): Promise<boolean>; replace(key: string, expected: string, value: string): Promise<boolean>; }} FireStore
  */
 
 /**
@@ -296,6 +298,17 @@ export function d1FireStore(db, table = "routine_fires") {
         key,
         value,
       ).first()) != null,
+    replace: async (
+      /** @type {string} */ key,
+      /** @type {string} */ expected,
+      /** @type {string} */ value,
+    ) =>
+      (await run(
+        `UPDATE ${table} SET value = ?3 WHERE key = ?1 AND value = ?2 RETURNING key`,
+        key,
+        expected,
+        value,
+      ).first()) != null,
   };
 }
 
@@ -321,9 +334,9 @@ const FIRING_STALE_MS = 10 * 60_000;
  * @returns {Promise<FireOnceResult>}
  */
 export async function fireOnce(store, jobKey, config, text, options = {}) {
-  if (typeof store?.add !== "function") {
+  if (typeof store?.add !== "function" || typeof store.replace !== "function") {
     throw new TypeError(
-      "fireOnce needs a store with an atomic add (D1 or a Durable Object); KV's get then put lets two fires through",
+      "fireOnce needs a store with an atomic add and replace (D1 or a Durable Object); KV's get then put lets two fires through",
     );
   }
   const { fetcher = fetch, force = false, refireAfterMs = Infinity, now = new Date() } = options;
@@ -335,8 +348,18 @@ export async function fireOnce(store, jobKey, config, text, options = {}) {
   // Reserve before posting, so a second caller sees "firing" and stays out; `add` lets only one caller reserve.
   const reservation = JSON.stringify({ state: "firing", at: now.toISOString() });
   if (!(await store.add(key, reservation))) {
-    let earlier = readRecord(await store.get(key));
-    if (earlier !== null && blocks(earlier)) {
+    const raw = await store.get(key);
+    let earlier = readRecord(raw);
+    // A record that does not block is taken over by compare-and-set on what was read, so of two callers that read the
+    // same stale record only one wins; a row that vanished is reserved with `add` again.
+    const took =
+      earlier === null || !blocks(earlier)
+        ? typeof raw === "string"
+          ? await store.replace(key, raw, reservation)
+          : await store.add(key, reservation)
+        : false;
+    if (!took) {
+      earlier ??= { state: "firing", at: now.toISOString() };
       if (earlier.state === "firing" && !(age(earlier) < FIRING_STALE_MS))
         earlier = {
           ...earlier,
@@ -352,7 +375,6 @@ export async function fireOnce(store, jobKey, config, text, options = {}) {
         error: `${jobKey} was already fired${at} (${earlier.state}${earlier.sessionUrl ? `, ${earlier.sessionUrl}` : ""}); each fire is a new session.`,
       };
     }
-    await store.put(key, reservation);
   }
   const fired = await fireRoutine(config, text, fetcher);
   // A fire that certainly started nothing frees the key (or, when the delete fails, marks it `failed`); a session, or a

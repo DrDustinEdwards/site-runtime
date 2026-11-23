@@ -130,6 +130,19 @@ function handlerURL(auth, request, path) {
 }
 
 /**
+ * One signed-out POST through Better Auth's handler, never `auth.api`: only the handler runs its per-address limiter.
+ * @param {AuthLike} auth @param {Request} request @param {string} path @param {Headers} headers @param {unknown} body
+ */
+const postToHandler = (auth, request, path, headers, body) =>
+  auth.handler(
+    new Request(handlerURL(auth, request, path), {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    }),
+  );
+
+/**
  * The headers Better Auth's handler is handed for a signed-out POST: the origin it checks, the address its limiter
  * counts and the user agent; and, for a typed code, the one cookie that says this browser asked for it (CODE_COOKIE,
  * under any prefix), never the browser's other cookies.
@@ -191,18 +204,12 @@ export async function requestSignInLink(auth, request, link) {
   const headers = forwardedHeaders(request);
   if (link.captchaToken) headers.set("x-captcha-response", link.captchaToken);
   try {
-    const res = await auth.handler(
-      new Request(handlerURL(auth, request, "/sign-in/magic-link"), {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          email: link.email,
-          callbackURL: link.callbackURL,
-          newUserCallbackURL: link.newUserCallbackURL ?? link.callbackURL,
-          ...(link.errorCallbackURL ? { errorCallbackURL: link.errorCallbackURL } : {}),
-        }),
-      }),
-    );
+    const res = await postToHandler(auth, request, "/sign-in/magic-link", headers, {
+      email: link.email,
+      callbackURL: link.callbackURL,
+      newUserCallbackURL: link.newUserCallbackURL ?? link.callbackURL,
+      ...(link.errorCallbackURL ? { errorCallbackURL: link.errorCallbackURL } : {}),
+    });
     if (res.ok) return { status: "sent", headers: setCookies(res) };
     const code = await errorCode(res);
     // Better Auth's per-IP limit, or the address's five mails an hour (EMAIL_RATE_LIMITED), which says "later".
@@ -244,13 +251,8 @@ export async function requestSignInLink(auth, request, link) {
  */
 export async function signInWithCode(auth, request, { email, code }) {
   try {
-    const res = await auth.handler(
-      new Request(handlerURL(auth, request, CODE_PATH), {
-        method: "POST",
-        headers: forwardedHeaders(request, { codeCookie: true }),
-        body: JSON.stringify({ email, otp: code }),
-      }),
-    );
+    const headers = forwardedHeaders(request, { codeCookie: true });
+    const res = await postToHandler(auth, request, CODE_PATH, headers, { email, otp: code });
     if (res.ok) return { status: "signed-in", headers: setCookies(res) };
     const reason = await errorCode(res);
     // The status and Better Auth's code only: the body can carry the address.
@@ -349,10 +351,10 @@ export async function signInFormAction(auth, request, form, site) {
 }
 
 /**
- * Starts a Google or Apple sign-in from the page's form POST (`/auth/google`, `/auth/apple`), so the provider, the
- * landing and the state cookie are all decided on the server, never by a client-side call. Answers the provider's
- * URL and Better Auth's Set-Cookie (its OAuth state), or null when the provider is not set up.
- * @param {AuthLike & { api: { signInSocial: (input: { body: { provider: string, callbackURL: string, newUserCallbackURL: string, errorCallbackURL: string }, headers: Headers, asResponse: true }) => Promise<Response> } }} auth
+ * Starts a Google or Apple sign-in from the page's form POST (`/auth/google`, `/auth/apple`), so the provider and the
+ * landing are decided on the server. Through `auth.handler`, so Better Auth's per-address limiter counts it. Answers the
+ * provider's URL and Better Auth's Set-Cookie (its OAuth state), or null when the provider is not set up.
+ * @param {AuthLike} auth
  * @param {Request} request
  * @param {{ provider: string, callbackURL: string, newUserCallbackURL?: string, errorCallbackURL: string }} start
  * @returns {Promise<{ location: string, headers: Headers } | null>}
@@ -362,15 +364,11 @@ export async function startSocialSignIn(
   request,
   { provider, callbackURL, newUserCallbackURL, errorCallbackURL },
 ) {
-  const res = await auth.api.signInSocial({
-    body: {
-      provider,
-      callbackURL,
-      newUserCallbackURL: newUserCallbackURL ?? callbackURL,
-      errorCallbackURL,
-    },
-    headers: request.headers,
-    asResponse: true,
+  const res = await postToHandler(auth, request, "/sign-in/social", forwardedHeaders(request), {
+    provider,
+    callbackURL,
+    newUserCallbackURL: newUserCallbackURL ?? callbackURL,
+    errorCallbackURL,
   });
   const { url } = /** @type {{ url?: unknown }} */ (await res.json().catch(() => ({})));
   if (typeof url !== "string" || !url.startsWith("https://")) return null;

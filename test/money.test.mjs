@@ -34,7 +34,21 @@ test("moneyInputValue and parseMoneyInput round-trip, and refuse what is not a p
   assert.equal(parseMoneyInput("5000", "jpy"), 5000);
   assert.equal(parseMoneyInput("0.1", "usd"), 10);
   assert.equal(parseMoneyInput("12.5", "usd", { scale: 6 }), 12_500_000);
-  for (const bad of ["", "  ", "-5", "$45", "abc", "1e3", "4.5.0", null]) {
+  for (const bad of [
+    "12,50",
+    "1,2",
+    "1,25",
+    "1,2345",
+    ",5",
+    "",
+    "  ",
+    "-5",
+    "$45",
+    "abc",
+    "1e3",
+    "4.5.0",
+    null,
+  ]) {
     assert.equal(parseMoneyInput(bad, "usd"), null, String(bad));
   }
   assert.equal(toMajorUnits(5000, "kwd"), 5);

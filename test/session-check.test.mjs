@@ -13,6 +13,9 @@ test("directSessionReads flags a getSession call written by hand and passes sess
     "    headers,", // 6
     "  });", // 7
     "/* api.getSession({ headers }) */ const client = await authClient.getSession();", // 8
+    'const run_worker_first = ["/*"];', // 9
+    "await auth.api.getSession({ headers });", // 10
+    "/** a later doc block */", // 11
   ].join("\n");
-  assert.deepEqual(directSessionReads(source), [2, 4]);
+  assert.deepEqual(directSessionReads(source), [2, 4, 10]);
 });
