@@ -31,7 +31,7 @@
  *   meters calls. A stream the reader leaves early is logged as `aborted` with the tokens seen so far.
  */
 
-import { ANTHROPIC_ORIGIN } from "./ai-gateway.mjs";
+const ANTHROPIC_ORIGIN = "https://api.anthropic.com";
 import { priceOf, promptOf } from "./ai-engine.mjs";
 import { retryAfterSeconds } from "./http.mjs";
 import { logEvent, scrubText } from "./log.mjs";

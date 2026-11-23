@@ -5,7 +5,7 @@ The shared runtime code for the portfolio's sites (ruling capsid/rulings/shared-
 `./rate-limit/durable-object`), the members model (`./members`), the Access for SaaS sign-in (`./access-login`), the MCP
 servers' consent and sign-in handler (`./mcp-login`), tool-call log (`./audit-log`), server scaffold (`./mcp-server`), the admin MCP Worker built from them (`./admin-mcp`) and named agent keys (`./agent-keys`), the Access request-token check
 (`./access`), the check that an Access application lets in exactly the site's admins (`./access-drift`, `site-runtime-access-drift`), the capped body reader (`./body`), one HTML escape (`./html`), one constant-time secret compare (`./compare`), the one mail send (`./email`), the /health response (`./health`), the security.txt file (`./security-txt`), responsive images and their edits (`./image`), link prefetch (`./prefetch`), preloads and Early Hints (`./preload`), the Worker in front of a static site (`./static-site`), the edge page cache (`./edge-cache`), the Server-Timing header (`./server-timing`), the share-card image (`./share-card`), one set of byte encodings (`./encoding`), the signed token behind emailed links (`./signed-token`), where a site's Anthropic calls go
-(`./ai-gateway`), starting a Claude Code routine (`./routine`), the check on AI-written prose with the measure of an author's voice (`./prose`), the one sign-in every site
+starting a Claude Code routine (`./routine`), the check on AI-written prose with the measure of an author's voice (`./prose`), the one sign-in every site
 offers (`./sign-in`, `./sign-in-client`, `./apple-secret`), INP attribution in the browser (`./vitals-client`), the page's Trusted Types default policy (`./trusted-types`), the one call every client entry makes first (`./page-client`), hydrate on intent (`./deferred-scripts`, `./hydrate-on-intent`), the Cloudflare Turnstile widget and its server check (`./turnstile`), the same-origin check for
 resource routes (`./origin`), the trailing-slash redirect, the gone list and the slug-rename redirect (`./url`), one structured log line and its scrubbers (`./log`, with the `handleError` that leaves a route 404 unlogged), the 404 counter, the redirect table
 (`./not-found`), scheduled jobs with their record, their run-now tool, `run_job`, and the Worker's `scheduled` body (`./cron`), the Worker glue for a site's security headers (`./page-headers`: set, nonce, policy, Report-Only companion, report endpoint, edge-cache nonce renewal) and the per-request bindings and nonce on React Router's context (`./context`). `./body` also reads a form or JSON to a ceiling and throws the 413.
@@ -1236,26 +1236,7 @@ configuration error, not a bad link.
 
 ## Where a site's model calls go
 
-Claude calls go straight to Anthropic (`./anthropic`), paid from the Anthropic account's credits. `./ai-gateway` is for
-the other models: it routes Workers AI calls through Cloudflare AI Gateway so they log the same way on every site.
-
-```js
-import { anthropicRoute } from "@dustinedwards/site-runtime/ai-gateway";
-const { gateway, gatewayId } = anthropicRoute(env, "example"); // site-api's media suggester reads the gateway id from this
-```
-
-Claude (`./anthropic`) never uses it: those calls always go to Anthropic. The route's base URL and headers stay for a
-caller that still sends a non-Claude model through the gateway.
-
-- `AI_GATEWAY_BASE_URL` unset: Anthropic's origin and no extra header, so nothing changes until the gateway exists. Set:
-  the gateway's Anthropic endpoint, `https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/anthropic`. A value
-  that is not https or does not end in `/anthropic` throws.
-- The site's own Anthropic key stays the credential; the gateway stores none.
-- `AI_GATEWAY_TOKEN`, when set, goes as `cf-aig-authorization: Bearer ...`, which an authenticated gateway requires.
-- `cf-aig-collect-log-payload: false` keeps request and response bodies out of the gateway's logs (the metadata log of
-  model, tokens, cost and status stays), and `cf-aig-metadata: {"app": ..., "feature": ...}` names the site (and, when
-  `anthropicRoute(env, app, feature)` is given one, the feature) on every log entry, so one gateway serves every site.
-- `gatewayId` is the id in a standard gateway URL, else `AI_GATEWAY_ID`, else null (a custom domain names no id).
+Claude calls go straight to Anthropic (`./anthropic`), paid from the Anthropic account's credits.
 
 `model` is the id of the model that wrote the text (default Claude). `TELLS` and `OUT_OF_PLACE` were seen in Claude's
 output only, so for any other model (a Llama on Workers AI, as the suggester's alt text) they are left out and only what
@@ -1495,7 +1476,7 @@ const auth = betterAuth({
   only a sign-in code is mailed: a request for any other kind mails nothing. With no Turnstile in front of it, it is
   held to three a minute (`APP_CODE_RATE_LIMIT`, in `rateLimit.customRules`). A site that spreads its own `rateLimit`
   keeps `...signIn.rateLimit`. This replaces a second `emailOTP` plugin beside the shared one (Foxing's), which does
-  not work: the shared `disabledPaths` turn its send path off (404), and Better Auth 1.7.12 logs an endpoint conflict.
+  not work: the shared `disabledPaths` turn its send path off (404), and Better Auth 1.7.25 logs an endpoint conflict.
 - No OAuth tokens: with `social: true` the options carry `databaseHooks.account`, which blank Google's and Apple's
   access, refresh and ID tokens on every account write Better Auth makes (createOAuthUser, linkAccount, updateAccount).
   Nothing in sign-in reads them, so none are stored. A site with hooks of its own merges them:
