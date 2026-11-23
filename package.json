@@ -581,7 +581,7 @@
     "changeset": "changeset"
   },
   "dependencies": {
-    "@sentry/cloudflare": "10.78.0",
+    "@sentry/cloudflare": "11.16.0",
     "@takumi-rs/wasm": "2.20.0",
     "isbot": "5.2.3",
     "takumi-js": "2.20.0",
