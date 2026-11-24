@@ -161,9 +161,6 @@ export {
   passkeyLastUsed,
   passkeyProvider,
   passkeyRows,
-  pruneAuthEvents,
-  pruneAuthEventsJob,
-  pruneExpiredAuth,
   requireFreshSession,
   revokeSessionById,
   securityHistory,
@@ -173,6 +170,7 @@ export {
   sessionTouch,
   shouldOfferPasskey,
 } from "./sign-in-account.mjs";
+export { pruneAuthEvents, pruneAuthEventsJob, pruneExpiredAuth } from "./sign-in-prune.mjs";
 
 /** @import { BetterAuthPlugin } from "better-auth" */
 /** @typedef {import("./sign-in-link.mjs").EmailLinkProblem} EmailLinkProblem */

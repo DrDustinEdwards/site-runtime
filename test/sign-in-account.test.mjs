@@ -8,7 +8,12 @@ import { betterAuth } from "better-auth";
 import { memoryAdapter } from "better-auth/adapters/memory";
 
 import { authSpikeCheck } from "../health.mjs";
-import { SESSION_IDLE_SECONDS, signInOptions } from "../sign-in.mjs";
+import {
+  SESSION_IDLE_SECONDS,
+  pruneAuthEvents,
+  pruneExpiredAuth,
+  signInOptions,
+} from "../sign-in.mjs";
 import {
   AUTH_EVENTS_DEVICE_SQL,
   AUTH_EVENTS_SQL,
@@ -23,8 +28,6 @@ import {
   isNewSignInDevice,
   logAuthEvent,
   passkeyProvider,
-  pruneAuthEvents,
-  pruneExpiredAuth,
   requireFreshSession,
   revokeSessionById,
   securityHistory,
