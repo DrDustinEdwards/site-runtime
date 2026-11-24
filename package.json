@@ -583,9 +583,9 @@
   },
   "dependencies": {
     "@sentry/cloudflare": "11.16.0",
-    "@takumi-rs/wasm": "2.20.0",
+    "@takumi-rs/wasm": "2.22.1",
     "isbot": "5.2.3",
-    "takumi-js": "2.20.0",
+    "takumi-js": "2.22.1",
     "web-vitals": "6.2.3"
   },
   "devDependencies": {
