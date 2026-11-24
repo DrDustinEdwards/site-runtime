@@ -13,12 +13,7 @@
  * are dropped. A scrubber that throws drops the report.
  */
 
-import {
-  captureException,
-  captureMessage,
-  withSentry,
-  wrapRequestHandler,
-} from "@sentry/cloudflare";
+import { captureException, captureMessage, withSentry } from "@sentry/cloudflare";
 import { reportErrorLines, scrubFields, scrubText, scrubUrl } from "./log.mjs";
 
 // An error line's report: the thrown Error with its stack, else the event's name, tagged with the event and carrying
@@ -84,8 +79,16 @@ export function sentryOptions(env, scrub = {}) {
   };
   return {
     dsn: env.SENTRY_DSN || undefined,
-    // Written out so a changed SDK default cannot turn on IP addresses, cookies or user data unnoticed.
-    sendDefaultPii: false,
+    // Written out so a changed SDK default cannot turn on user data, cookies, headers, bodies or query strings unnoticed.
+    dataCollection: {
+      userInfo: false,
+      cookies: false,
+      httpHeaders: false,
+      httpBodies: [],
+      urlQueryParams: false,
+    },
+    // The scrub of a transaction below runs only with static spans; the default, streamed spans, skips it.
+    traceLifecycle: "static",
     // 0, not absent: absent, the SDK reads SENTRY_TRACES_SAMPLE_RATE from the env.
     tracesSampleRate: 0,
     beforeSend: scrubOrDrop,
@@ -118,5 +121,9 @@ export function withSiteSentry(handler, scrub = {}) {
  * @returns {Promise<Response>}
  */
 export function withSentryRequest(request, env, ctx, scrub, handler) {
-  return wrapRequestHandler({ options: sentryOptions(env, scrub), request, context: ctx }, handler);
+  const wrapped = withSentry(
+    () => sentryOptions(env, scrub),
+    /** @type {any} */ ({ fetch: () => handler() }),
+  );
+  return wrapped.fetch(request, env, ctx);
 }

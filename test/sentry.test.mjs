@@ -12,6 +12,7 @@ async function sentBy(env, fetch) {
   const g = /** @type {any} */ (globalThis);
   const had = { als: g.AsyncLocalStorage, fetch: g.fetch, error: console.error };
   g.AsyncLocalStorage = AsyncLocalStorage; // the Workers runtime's, under nodejs_compat or nodejs_als
+  delete g.__SENTRY_CLOUDFLARE_CLIENT__; // the SDK keeps one client per isolate; each case starts without it
   /** @type {string[]} */
   const sent = [];
   g.fetch = async (/** @type {any} */ _url, /** @type {RequestInit} */ init) => {
