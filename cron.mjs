@@ -98,7 +98,7 @@ ON CONFLICT (name) DO UPDATE SET last_failed_at = excluded.last_failed_at, last_
 /**
  * @typedef {{ prepare(sql: string): { bind(...values: unknown[]): { run(): Promise<unknown>, all(): Promise<{ results: unknown[] }> } } }} D1Like
  * @typedef {{ name: string, everyMinutes: number | null, timeoutMs?: number, holdOnTimeout?: boolean, backup?: boolean, run: (signal: AbortSignal, run: { startedAt: number }) => Promise<unknown> }} CronJob
- * @typedef {{ job: string, status: "ok" | "skipped" | "failed" | "refused", ms: number, result?: unknown, reason?: string, error?: string, down?: true }} CronOutcome
+ * @typedef {{ job: string, status: "ok" | "skipped" | "failed" | "refused", ms: number, result?: unknown, reason?: string, error?: string, down?: boolean }} CronOutcome
  * @typedef {{ keep?: number, retentionDays?: number }} CronHistory
  * @typedef {{ now?: () => number, timeoutMs?: number, history?: boolean | CronHistory }} CronOptions
  */
@@ -246,11 +246,12 @@ async function runOne(
     };
   } catch (error) {
     const at = now();
-    // Recorded failed either way; only the level differs, as for the record write above.
+    // Read from the error and its causes: the stored text below has lost them. Recorded failed either way; only the level differs.
+    const down = isDatabaseDown(error);
     logEvent(
       "cron_job_failed",
       { name, ms: at - started, error },
-      { level: isDatabaseDown(error) ? "warn" : "error" },
+      { level: down ? "warn" : "error" },
     );
     const text = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
     const stored = scrubText(text).slice(0, CRON_ERROR_MAX);
@@ -261,14 +262,7 @@ async function runOne(
       await work.catch(() => undefined);
       logEvent("cron_job_overran", { name, ms: now() - started }, { level: "error" });
     }
-    return {
-      job: name,
-      status: "failed",
-      ms: at - started,
-      error: stored,
-      // Read from the error and its causes, which the stored text no longer carries.
-      ...(isDatabaseDown(error) ? { down: true } : {}),
-    };
+    return { job: name, status: "failed", ms: at - started, error: stored, down };
   }
 }
 
