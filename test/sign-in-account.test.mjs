@@ -533,7 +533,10 @@ test("pruneExpiredAuth drops old rate-limit rows, and runs on a site without the
   db.db.exec(`INSERT INTO rate_limit VALUES ('old', 0), ('new', ${now - 1000})`);
   await pruneExpiredAuth(db, now);
   assert.deepEqual(
-    db.db.prepare("SELECT key FROM rate_limit").all().map((r) => r.key),
+    db.db
+      .prepare("SELECT key FROM rate_limit")
+      .all()
+      .map((r) => r.key),
     ["new"],
   );
   db.db.exec("DROP TABLE rate_limit");
