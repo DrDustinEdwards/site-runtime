@@ -1,6 +1,6 @@
 {
   "baseline": {
-    "measured_at": "1099541",
+    "measured_at": "668453e",
     "knip": {},
     "jscpd": {
       "clones": 9,
@@ -20,7 +20,7 @@
       "bin/images.mjs": 1562,
       "bin/site-runtime-security.mjs": 514,
       "check.mjs": 863,
-      "cron.mjs": 610,
+      "cron.mjs": 609,
       "csp.mjs": 575,
       "doc-room/index.mjs": 531,
       "edge-cache.mjs": 530,
@@ -36,12 +36,12 @@
     },
     "tests": {
       "files": 81,
-      "cases": 463
+      "cases": 464
     },
     "comments": {
       "lines": 10895,
-      "code": 34808,
-      "percentage": 23.84
+      "code": 34817,
+      "percentage": 23.83
     }
   }
 }
