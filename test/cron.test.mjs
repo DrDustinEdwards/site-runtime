@@ -209,3 +209,14 @@ test("a job that failed because D1 was down is recorded failed but does not fail
     /too much load/,
   );
 });
+
+test("a job whose error wraps a D1 outage as its cause does not fail the invocation", async () => {
+  const wrapped = new Error("1 site API schedule(s) failed", {
+    cause: new Error("D1_ERROR: internal error; reference = abc"),
+  });
+  await assert.doesNotReject(
+    runJobs(d1(), [{ name: "sweep", everyMinutes: 1, run: () => Promise.reject(wrapped) }], {
+      now: () => Date.UTC(2026, 10, 24),
+    }),
+  );
+});

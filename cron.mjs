@@ -98,7 +98,7 @@ ON CONFLICT (name) DO UPDATE SET last_failed_at = excluded.last_failed_at, last_
 /**
  * @typedef {{ prepare(sql: string): { bind(...values: unknown[]): { run(): Promise<unknown>, all(): Promise<{ results: unknown[] }> } } }} D1Like
  * @typedef {{ name: string, everyMinutes: number | null, timeoutMs?: number, holdOnTimeout?: boolean, backup?: boolean, run: (signal: AbortSignal, run: { startedAt: number }) => Promise<unknown> }} CronJob
- * @typedef {{ job: string, status: "ok" | "skipped" | "failed" | "refused", ms: number, result?: unknown, reason?: string, error?: string }} CronOutcome
+ * @typedef {{ job: string, status: "ok" | "skipped" | "failed" | "refused", ms: number, result?: unknown, reason?: string, error?: string, down?: true }} CronOutcome
  * @typedef {{ keep?: number, retentionDays?: number }} CronHistory
  * @typedef {{ now?: () => number, timeoutMs?: number, history?: boolean | CronHistory }} CronOptions
  */
@@ -261,7 +261,14 @@ async function runOne(
       await work.catch(() => undefined);
       logEvent("cron_job_overran", { name, ms: now() - started }, { level: "error" });
     }
-    return { job: name, status: "failed", ms: at - started, error: stored };
+    return {
+      job: name,
+      status: "failed",
+      ms: at - started,
+      error: stored,
+      // Read from the error and its causes, which the stored text no longer carries.
+      ...(isDatabaseDown(error) ? { down: true } : {}),
+    };
   }
 }
 
@@ -290,7 +297,7 @@ export async function runJobs(
   // A job that failed because the database was down is recorded and logged as a warning, but does not also fail
   // the invocation (Cloudflare's alerts and Sentry would report it as the site's error).
   const failed = outcomes
-    .filter((o) => o.status === "failed" && !isDatabaseDown(o.error))
+    .filter((o) => o.status === "failed" && !o.down)
     .map((o) => o.job);
   if (failed.length && rethrow) throw new Error(`cron jobs failed: ${failed.join(", ")}`);
   return outcomes;
