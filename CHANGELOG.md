@@ -1,5 +1,11 @@
 # @dustinedwards/site-runtime
 
+## 0.181.0
+
+### Minor Changes
+
+- `pruneExpiredAuth` also deletes Better Auth's sign-in rate-limit rows a day after their last request, on sites that have the table. txasm's own job for it goes.
+
 ## 0.180.0
 
 ### Minor Changes
