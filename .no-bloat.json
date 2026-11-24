@@ -1,6 +1,6 @@
 {
   "baseline": {
-    "measured_at": "5f094b8",
+    "measured_at": "668453e",
     "knip": {},
     "jscpd": {
       "clones": 9,
@@ -20,7 +20,7 @@
       "bin/images.mjs": 1562,
       "bin/site-runtime-security.mjs": 514,
       "check.mjs": 863,
-      "cron.mjs": 610,
+      "cron.mjs": 609,
       "csp.mjs": 575,
       "doc-room/index.mjs": 531,
       "edge-cache.mjs": 530,
@@ -28,20 +28,20 @@
       "mcp-login.mjs": 506,
       "mcp-server.mjs": 964,
       "prose.mjs": 1234,
-      "sign-in-account.mjs": 978,
+      "sign-in-account.mjs": 936,
       "sign-in-form.mjs": 597,
-      "sign-in.mjs": 1303,
+      "sign-in.mjs": 1301,
       "sites.mjs": 813,
       "worker.mjs": 549
     },
     "tests": {
       "files": 81,
-      "cases": 462
+      "cases": 464
     },
     "comments": {
-      "lines": 10885,
-      "code": 34776,
-      "percentage": 23.84
+      "lines": 10895,
+      "code": 34817,
+      "percentage": 23.83
     }
   }
 }

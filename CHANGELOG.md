@@ -1,5 +1,29 @@
 # @dustinedwards/site-runtime
 
+## 0.181.2
+
+### Patch Changes
+
+- A cron job whose error carries a database outage as its cause (site-api's "schedule(s) failed") no longer fails the scheduled invocation: runJobs read the stored text, which had lost the cause.
+
+## 0.181.1
+
+### Patch Changes
+
+- Publishes `sign-in-prune.mjs`, which 0.181.0's `./sign-in` imports but left out of the package, so installs of 0.181.0 fail to build.
+
+## 0.181.0
+
+### Minor Changes
+
+- `pruneExpiredAuth` also deletes Better Auth's sign-in rate-limit rows a day after their last request, on sites that have the table. txasm's own job for it goes.
+
+## 0.180.0
+
+### Minor Changes
+
+- `./sign-in-client` exports `signInAgainIfStale(error, signInHref)`, the browser step Foxing and Foxhound each wrote: on Better Auth's SESSION_NOT_FRESH it sends the person to sign in again and back to the page.
+
 ## 0.179.0
 
 ### Minor Changes

@@ -1306,6 +1306,7 @@ const auth = betterAuth({
 // where and when each session was last used: signInOptions(env, { ..., sessionDetails: true }) with SESSION_DETAILS_SQL
 // the sign-in page's loader: signInMethods(env, { social: true }) -> { google, apple, turnstileSiteKey }
 // the browser: createAuthClient({ plugins: signInClientPlugins() }) from "@dustinedwards/site-runtime/sign-in-client"
+// a stale session in the browser (SESSION_NOT_FRESH): if (signInAgainIfStale(error, (next) => `/login?next=${encodeURIComponent(next)}`)) return
 // sendMagicLink({ email, url, token, code }) mails the link and the code together
 // a phone app: signInOptions(env, { ..., appCode: true, sendSignInCode: ({ email, code }) => mailCode(email, code) })
 // a site's own export or delete route: await requireFreshSession(auth, request) (throws SESSION_NOT_FRESH when stale)

@@ -8,7 +8,12 @@ import { betterAuth } from "better-auth";
 import { memoryAdapter } from "better-auth/adapters/memory";
 
 import { authSpikeCheck } from "../health.mjs";
-import { SESSION_IDLE_SECONDS, signInOptions } from "../sign-in.mjs";
+import {
+  SESSION_IDLE_SECONDS,
+  pruneAuthEvents,
+  pruneExpiredAuth,
+  signInOptions,
+} from "../sign-in.mjs";
 import {
   AUTH_EVENTS_DEVICE_SQL,
   AUTH_EVENTS_SQL,
@@ -23,7 +28,6 @@ import {
   isNewSignInDevice,
   logAuthEvent,
   passkeyProvider,
-  pruneAuthEvents,
   requireFreshSession,
   revokeSessionById,
   securityHistory,
@@ -521,4 +525,23 @@ test("a site's session read carries the request on a GET only, and always asks f
     body: "x=1",
   });
   assert.deepEqual(sessionLookup(form), { headers: form.headers, asResponse: false });
+});
+
+test("pruneExpiredAuth drops old rate-limit rows, and runs on a site without the table", async () => {
+  const db = d1();
+  const now = 10 * 24 * 60 * 60 * 1000;
+  db.db.exec(
+    "CREATE TABLE session (expires_at INTEGER); CREATE TABLE verification (expires_at INTEGER); CREATE TABLE rate_limit (key TEXT, last_request INTEGER)",
+  );
+  db.db.exec(`INSERT INTO rate_limit VALUES ('old', 0), ('new', ${now - 1000})`);
+  await pruneExpiredAuth(db, now);
+  assert.deepEqual(
+    db.db
+      .prepare("SELECT key FROM rate_limit")
+      .all()
+      .map((r) => r.key),
+    ["new"],
+  );
+  db.db.exec("DROP TABLE rate_limit");
+  await pruneExpiredAuth(db, now);
 });
