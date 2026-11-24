@@ -296,9 +296,7 @@ export async function runJobs(
     outcomes.push(await runOne(write, job, { now, timeoutMs, history: keeping }));
   // A job that failed because the database was down is recorded and logged as a warning, but does not also fail
   // the invocation (Cloudflare's alerts and Sentry would report it as the site's error).
-  const failed = outcomes
-    .filter((o) => o.status === "failed" && !o.down)
-    .map((o) => o.job);
+  const failed = outcomes.filter((o) => o.status === "failed" && !o.down).map((o) => o.job);
   if (failed.length && rethrow) throw new Error(`cron jobs failed: ${failed.join(", ")}`);
   return outcomes;
 }
