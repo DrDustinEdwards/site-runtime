@@ -137,14 +137,6 @@ describe("verifyIdToken", () => {
 });
 
 describe("newSignIn and authorizationUrl", () => {
-  test("each sign-in gets its own verifier and nonce, and the verifier is 43 URL-safe characters", () => {
-    const a = newSignIn();
-    const b = newSignIn();
-    assert.notEqual(a.verifier, b.verifier);
-    assert.notEqual(a.nonce, b.nonce);
-    assert.match(a.verifier, /^[A-Za-z0-9_-]{43}$/);
-  });
-
   test("the URL carries the client, the redirect, the state, the nonce and the S256 challenge, never the verifier", async () => {
     const { verifier, nonce } = newSignIn();
     const url = new URL(

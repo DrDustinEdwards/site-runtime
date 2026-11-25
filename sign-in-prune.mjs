@@ -19,7 +19,7 @@ export async function pruneAuthEvents(db, now = Date.now()) {
 /**
  * Deletes Better Auth's expired sessions and expired one-time values (links, codes, email-change tokens), which it
  * never deletes itself, and its sign-in rate-limit counts a day after their last request (the `rate_limit` table, on
- * sites that have one). The same cleanup as EmDash 1.4.0 (emdash-cms/emdash#4287, MIT). The tables are `session` and
+ * sites that have one). The tables are `session` and
  * `verification`, with `expires_at` in ms.
  * @param {D1Like} db @param {number} [now]
  */

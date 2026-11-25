@@ -41,7 +41,6 @@ import { errorMessage } from "./log.mjs";
 
 export const SIGNED_IN_CHECK = "signed-in-security";
 export const SIGNED_IN_REPORT_PATH = "/reports/signed-in-security.json";
-/** A path no app serves, for the signed-in 404. */
 export const SIGNED_IN_MISSING_PATH = "/signed-in-crawl-404";
 const MAX_FINDINGS = 60;
 

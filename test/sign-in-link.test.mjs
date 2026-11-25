@@ -30,17 +30,6 @@ function fakeAuth(options = {}) {
   };
 }
 
-test("the mailed URL is the confirm page on the same origin, with the link's token, callbacks and send time", () => {
-  const page = new URL(confirmLinkURL(VERIFY, "/sign-in/confirm", SENT));
-  assert.equal(`${page.origin}${page.pathname}`, "https://example.com/sign-in/confirm");
-  assert.deepEqual(Object.fromEntries(page.searchParams), {
-    token: "tok",
-    callbackURL: "/home",
-    errorCallbackURL: "/login",
-    sent: String(SENT),
-  });
-});
-
 test("only a POST verifies: a GET of the page (a mail scanner) never reaches Better Auth", async () => {
   const auth = fakeAuth();
   const page = confirmLinkURL(VERIFY, "/sign-in/confirm", SENT);

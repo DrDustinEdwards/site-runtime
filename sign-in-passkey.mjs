@@ -1,7 +1,7 @@
 /**
  * The browser's passkey calls, with no dependency (so Capsomer's sign-in screen and settings use them without Better
- * Auth installed): the passkey sign-in that keeps the provider in step, the WebAuthn Signal API calls (A6), and whether
- * this device can make a passkey at all (A3). `./sign-in-client` re-exports them beside the client plugins.
+ * Auth installed): the passkey sign-in that keeps the provider in step, the WebAuthn Signal API calls, and whether
+ * this device can make a passkey at all. `./sign-in-client` re-exports them beside the client plugins.
  */
 
 /**
