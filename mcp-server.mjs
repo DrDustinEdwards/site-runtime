@@ -472,3 +472,11 @@ export function outsideResult(label, value) {
     ? { content }
     : { content, structuredContent: { notice: OUTSIDE_DATA_NOTICE, ...value } };
 }
+
+/**
+ @typedef {"tools/list" | "prompts/list" | "resources/list" | "resources/templates/list" | "resources/read" | "server/discover"} CacheableMethod 
+ */
+
+/**
+ @typedef {{ item: "T1" | "T2" | "T3" | "T4" | "T9"; tool: string; severity: "error" | "warning"; detail: string }} ToolListProblem 
+ */

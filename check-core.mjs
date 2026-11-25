@@ -27,11 +27,7 @@ export function registryEntry(site) {
   return deviations ? { ...values, deviations } : values;
 }
 
-/**
- * @typedef {{ id: string, name: string, pass: boolean, detail: string, warn?: boolean, notice?: boolean }} CheckResult
- *   `warn`: advice, or an item the site declared a deviation for; `notice`: an item no family site can meet
- *   (FAMILY_DEVIATIONS). Neither fails anything.
- */
+/** @import { CheckResult } from "./check.mjs" */
 
 /**
  * A failed result an entry or the family declined, as the reason, or "". Only declinable results are looked up:

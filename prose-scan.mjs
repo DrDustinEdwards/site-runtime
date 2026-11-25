@@ -12,13 +12,13 @@ import {
   phraseRegExp,
 } from "./prose-habits.mjs";
 import { paragraphsOf, proseLines, quote, sentenceSpread } from "./prose-lines.mjs";
-/** @typedef {import("./prose-lines.mjs").Spread} Spread */
+/** @import { Spread } from "./prose.mjs" */
 
 /** The most findings one scan returns: past a dozen, a session rewrites instead of editing. */
 const MAX_FINDINGS = 12;
 
 /** @typedef {"length" | "filler" | "word" | "shape" | "detail" | "source"} SlopKind */
-/** @typedef {{ kind: SlopKind, excerpt: string, line: number, say: string }} SlopFinding */
+/** @import { SlopFinding } from "./prose.mjs" */
 
 /** Joiner dashes per 1,000 words of the excerpts: an author who writes a dash a page keeps theirs. @param {string} text */
 function dashRate(text) {

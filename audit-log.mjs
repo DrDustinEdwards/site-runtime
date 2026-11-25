@@ -288,3 +288,17 @@ export async function recordAudit(env, row) {
     ),
   );
 }
+
+/**
+ @typedef {{ id: string, publicKey: string, sign(hash: string): Promise<string> }} ChainKey 
+ */
+
+/**
+ * What `verifyAuditChain` finds: every row checked, or the first that fails and why.
+ * @typedef {| { ok: true; hashed: number; signed: number }
+ * | {
+ *     ok: false;
+ *     seq: unknown;
+ *     reason: "hash" | "unsigned" | "unknown key" | "signature" | "key change";
+ *   }} ChainCheck
+ */

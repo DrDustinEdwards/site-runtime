@@ -447,3 +447,8 @@ export function carrelSchedulesJob(run, { timeoutMs = 50_000 } = {}) {
 export function backupJob(run, { name = "backup", timeoutMs = 5 * 60_000 } = {}) {
   return { name, backup: true, everyMinutes: DAILY_MINUTES, timeoutMs, run };
 }
+
+/**
+ * @typedef {{ startedAt: number, finishedAt: number, outcome: "ok" | "refused" | "failed", reason: string }} CronRun
+ 
+ */

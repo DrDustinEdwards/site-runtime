@@ -6,8 +6,8 @@
  *
  * @typedef {{ limit: number, windowSeconds: number }} Rule
  * @typedef {{ exec: (query: string, ...bindings: unknown[]) => { toArray: () => any[] } }} Sql
- * @typedef {{ ok: boolean, used: number, limit: number, retryAfterSeconds: number, window: number }} Hit
  */
+/** @import { Hit } from "./index.mjs" */
 
 const TABLE_SQL =
   "CREATE TABLE IF NOT EXISTS rate_window (window_seconds INTEGER PRIMARY KEY, window_index INTEGER NOT NULL, count INTEGER NOT NULL)";

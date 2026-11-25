@@ -2,7 +2,7 @@
 
 import { chunks, percentile, sentences, words } from "./prose-voice.mjs";
 
-/** @typedef {{ short: number, mid: number, long: number, longest: number }} Spread */
+/** @import { Spread } from "./prose.mjs" */
 
 /** Excerpt sentences shorter than this are left out of the spread ("Dr." and "Fig." cut by the splitter, "Yes."). */
 const SPREAD_MIN_WORDS = 4;

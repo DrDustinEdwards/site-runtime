@@ -5,8 +5,8 @@
 
 import { canonicalJson, sha256Hex } from "./encoding.mjs";
 
-/** @typedef {{ item: "T1" | "T2" | "T3" | "T4" | "T9"; tool: string; severity: "error" | "warning"; detail: string }} ToolListProblem */
-/** @typedef {"tools/list" | "prompts/list" | "resources/list" | "resources/templates/list" | "resources/read" | "server/discover"} CacheableMethod */
+/** @import { ToolListProblem } from "./mcp-server.mjs" */
+/** @import { CacheableMethod } from "./mcp-server.mjs" */
 
 // Over `tools/list` as a client receives it, shared by a server's own test and the daily live check (bin/ai-audit.mjs).
 const TOOL_NAME = /^[A-Za-z0-9_.-]{1,128}$/;

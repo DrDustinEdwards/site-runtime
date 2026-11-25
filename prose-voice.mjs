@@ -65,9 +65,9 @@ const MAX_Z = 5;
 const MIN_SPREAD = 0.15;
 
 /** @typedef {Record<string, number>} Features */
-/** @typedef {{ mean: Features, spread: Features, chunks: number, words: number, usual?: number }} Profile */
+/** @import { Profile } from "./prose.mjs" */
 /** @typedef {{ name: string, value: number, mean: number, z: number }} FeatureReading */
-/** @typedef {{ distance: number, furthest: FeatureReading[] }} VoiceReading */
+/** @import { VoiceReading } from "./prose.mjs" */
 
 const CONTRACTION =
   /(?:n['’]t|['’](?:re|ve|ll|d|m)|^(?:it|that|there|here|what|who|where|how|he|she|let)['’]s)$/u;

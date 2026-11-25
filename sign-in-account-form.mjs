@@ -79,8 +79,8 @@ export const ACCOUNT_INTENTS = Object.freeze(
  * What the account page shows after one of its posts: which post (`intent`), whether it worked, the error words, and
  * `stale` when it needs a sign-in from the last FRESH_SECONDS first; `sentTo` is the current address the first
  * email-change link went to.
- * @typedef {{ intent: string, ok: boolean, error: string | null, stale: boolean, sentTo: string | null }} AccountFormState
  */
+/** @import { AccountFormState } from "./sign-in-form.mjs" */
 
 /** @param {unknown} error */
 const isNotFresh = (error) =>

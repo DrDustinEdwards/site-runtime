@@ -103,7 +103,7 @@ export class ToolCallLog {
 
   /**
    * Writes the `chain-key` row when the key that signed the newest row is not this one (or no row is signed yet).
-   * @param {import("./audit-chain.mjs").ChainKey} key
+   * @param {import("./audit-log.mjs").ChainKey} key
    */
   async anchor(key) {
     const newest = this.sql
@@ -242,7 +242,7 @@ export class ToolCallLog {
 
   /**
    * @param {import("./audit-log.mjs").AuditRow | { callId: string, phase: string, caller: string, args: Record<string, unknown> }} row
-   * @param {import("./audit-chain.mjs").ChainKey} key
+   * @param {import("./audit-log.mjs").ChainKey} key
    */
   async append(row, key) {
     const field = (/** @type {unknown} */ value) =>

@@ -14,7 +14,12 @@ import { OWASP_REMOVE } from "./owasp-headers.mjs";
 export { declined, parsePolicy } from "./check-core.mjs";
 export { checkSecurityTxt } from "./check-security-txt.mjs";
 
-/** @typedef {import("./check-core.mjs").CheckResult} CheckResult */
+/**
+ * @typedef {{ id: string, name: string, pass: boolean, detail: string, warn?: boolean, notice?: boolean }} CheckResult
+ *   `warn`: advice, or an item the site declared a deviation for; `notice`: an item no family site can meet
+ *   (FAMILY_DEVIATIONS). Neither fails anything.
+ 
+ */
 /** @typedef {import("./check-core.mjs").CheckedSiteEntry} CheckedSiteEntry */
 
 const ONE_YEAR = 31536000;

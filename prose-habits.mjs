@@ -1,7 +1,7 @@
 /** The tells, patterns and out-of-place words `checkProse` flags, and the rules a model is told before it writes. See ./prose.mjs. */
 
 /** @typedef {"critical" | "high" | "medium" | "low"} Severity */
-/** @typedef {{ check: string, message: string, excerpt: string | null, line: number | null, severity: Severity, sign: string | null }} ProseIssue */
+/** @import { ProseIssue } from "./prose.mjs" */
 
 /**
  * The sections of Wikipedia's field guide to AI writing that the checks map to ("Wikipedia:Signs of AI writing",
@@ -95,7 +95,7 @@ export const OUT_OF_PLACE = [
   "genuinely",
 ];
 
-/** @typedef {{ check: string, sign: string, severity: Severity, re: RegExp, say: string }} PatternRule */
+/** @import { PatternRule } from "./prose.mjs" */
 
 /**
  * What a chatbot leaves in text, an error in any published text whoever wrote the rest, so all high: its refusal, its

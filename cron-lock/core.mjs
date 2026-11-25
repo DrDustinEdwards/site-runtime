@@ -14,9 +14,7 @@
  * @property {string} token
  */
 
-/**
- * @typedef {{ granted: false } | { granted: true; record: LockRecord }} AcquireDecision
- */
+/** @import { AcquireDecision } from "./index.mjs" */
 
 /**
  * Whether a caller may take the lock, and the record it writes. An expiry of exactly now has run out.

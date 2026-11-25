@@ -3,7 +3,7 @@ import { recordAuthEvent } from "./sign-in-audit.mjs";
 import { sessionLookup } from "./sign-in-sessions.mjs";
 
 /** @typedef {import("./sign-in-audit.mjs").D1Like} D1Like */
-/** @typedef {import("./sign-in-sessions.mjs").SessionLookup} SessionLookup */
+/** @typedef {import("./sign-in-account.mjs").SessionLookup} SessionLookup */
 
 /**
  * The providers people use, by AAGUID, named as passkeydeveloper/passkey-authenticator-aaguids (aaguid.json, read
@@ -87,8 +87,8 @@ export function passkeyLabel(passkey) {
 /**
  * @typedef {{ id: string, name?: string | null, aaguid?: string | null, credentialID?: string | null, createdAt?: Date | string | null }} PasskeyRow
  *   A row of Better Auth's `listPasskeys`.
- * @typedef {{ id: string, credentialId: string | null, name: string, provider: string, createdAt: Date | null, lastUsedAt: Date | null }} AccountPasskey
  */
+/** @import { AccountPasskey } from "./sign-in-account.mjs" */
 
 /**
  * The passkeys as a page lists them, oldest first: `id` (for rename and delete), `credentialId` (the public credential

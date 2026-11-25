@@ -102,9 +102,7 @@ export function cronCheck(db, options = {}) {
   };
 }
 
-/**
- * @typedef {{ startedAt: number, finishedAt: number, outcome: "ok" | "refused" | "failed", reason: string }} CronRun
- */
+/** @import { CronRun } from "./cron.mjs" */
 
 /**
  * The newest runs of each job from `cron_run_log` (runJobs' `history`), newest first, in one read. Every name asked
