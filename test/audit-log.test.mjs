@@ -256,7 +256,7 @@ test("PLANT: the copy lands in R2 checked and checks on its own; only copied row
   assert.equal(first.pruned, 3);
   assert.deepEqual(
     db
-      .prepare("SELECT seq FROM calls")
+      .prepare("SELECT seq FROM calls ORDER BY seq")
       .all()
       .map((r) => r.seq),
     [3, 5],
