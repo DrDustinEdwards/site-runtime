@@ -1,6 +1,6 @@
 /**
  * Hono middleware for the doors a site's API shares, written as plain `(c, next)` functions so nothing here imports
- * Hono (the 2026-11-11 shared-code audit, item 41d, from Foxing's packages/api). Each refusal throws an AppError
+ * Hono. Each refusal throws an AppError
  * (./http-errors), so the app's `onError(honoErrorHandler())` answers it as problem details.
  */
 

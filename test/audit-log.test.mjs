@@ -64,7 +64,7 @@ test("PLANT: an old plain chain is anchored by the first key, appends sent at on
     "CREATE TABLE calls (seq INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, call_id TEXT NOT NULL, " +
       "phase TEXT NOT NULL, caller TEXT NOT NULL, tool TEXT NOT NULL, args TEXT NOT NULL, result TEXT, hash TEXT)",
   );
-  // A row from before the hash column, then one plain SHA-256 row as 0.83 wrote it.
+  // A row from before the hash column, then one plain SHA-256 row (the chain before it was signed).
   db.exec(
     "INSERT INTO calls (at, call_id, phase, caller, tool, args) VALUES ('2026-10-01T00:00:00.000Z', 'old', 'started', 'access:a@example.com', 't', '{}')",
   );

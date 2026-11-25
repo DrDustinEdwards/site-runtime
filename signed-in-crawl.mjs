@@ -1,5 +1,5 @@
 import { checkSecurityHeaders } from "./check.mjs";
-import { siteForOrigin } from "./sites.mjs";
+import { siteForOrigin } from "./sites-values.mjs";
 import { errorMessage } from "./log.mjs";
 
 /**

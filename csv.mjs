@@ -7,8 +7,7 @@
  * twice. A text cell a spreadsheet would read as a formula gets an apostrophe in front, so it opens as text (OWASP,
  * https://owasp.org/www-community/attacks/CSV_Injection): `=`, `+`, `-`, `@`, tab, CR, LF, and the full-width
  * ＝ ＋ － ＠ that spreadsheets fold to ASCII. A number, boolean or date cannot hold a formula and is written as itself,
- * and so is a text that is only a number (`-5.00`), so an amount stays a number. Germomics' subscriber export had no
- * guard; Foxhound, Capsid, dustinedwards.info and Capsomer each had a writer (the 2026-11-11 third audit pass).
+ * and so is a text that is only a number (`-5.00`), so an amount stays a number.
  */
 
 import { attachmentResponse } from "./r2-object.mjs";

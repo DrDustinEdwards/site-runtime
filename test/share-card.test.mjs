@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { cardText, googleFont, renderShareCard, shareCardResponse } from "../share-card.mjs";
+import { mapCache } from "./map-cache.mjs";
 
 /** A stand-in renderer: it records the HTML, and returns `out` or fails. */
 function fakeDraw(/** @type {Uint8Array | Error} */ out, /** @type {string[]} */ seen) {
@@ -42,12 +43,7 @@ test("a card's text keeps & and cannot open a tag; whitespace between tags goes;
 
 test("a Google Font is read once, then from the cache", async () => {
   const store = new Map();
-  const cache = /** @type {Cache} */ (
-    /** @type {unknown} */ ({
-      match: async (/** @type {string} */ k) => store.get(k)?.clone(),
-      put: async (/** @type {string} */ k, /** @type {Response} */ r) => void store.set(k, r),
-    })
-  );
+  const cache = mapCache(store);
   let calls = 0;
   const get = /** @type {typeof fetch} */ (
     async (url) => {
@@ -64,12 +60,7 @@ test("a Google Font is read once, then from the cache", async () => {
 
 test("the card route serves the cache, renders and keeps a miss, and answers a failed render with a 503", async () => {
   const store = new Map();
-  const cache = /** @type {Cache} */ (
-    /** @type {unknown} */ ({
-      match: async (/** @type {string} */ k) => store.get(k)?.clone(),
-      put: async (/** @type {string} */ k, /** @type {Response} */ v) => void store.set(k, v),
-    })
-  );
+  const cache = mapCache(store);
   let built = 0;
   const html = () => (built++, "<div></div>");
   const ok = fakeDraw(new Uint8Array([137, 80]), []);

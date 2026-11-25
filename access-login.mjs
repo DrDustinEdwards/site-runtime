@@ -247,7 +247,7 @@ export async function verifyIdToken(token, keys, expect) {
  * Exchanges Access's code for tokens and verifies the ID token: signed by the SaaS app's keys, issued by it, for this
  * client, carrying this sign-in's nonce, and naming an email that is not marked unverified. Anything else is a
  * refusal with a reason a log can carry; no token or secret is in it.
- * The exchange is bounded, so a hung token endpoint does not hold the sign-in (Grok audit 2026-10-21, CA-10).
+ * The exchange is bounded, so a hung token endpoint does not hold the sign-in.
  * @param {AccessSaas} saas
  * @param {{ code: string, redirectUri: string, verifier: string, nonce: string, now?: number }} input `now` in epoch ms, for a test's clock
  * @param {KeySource} [keys]

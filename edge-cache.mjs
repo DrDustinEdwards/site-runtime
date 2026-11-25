@@ -520,7 +520,7 @@ export async function purgeViaRenderer(why, log = console.error) {
 export function schedulePurgeHook({ purge = purgeViaRenderer } = {}) {
   return {
     name: "edge-page-purge",
-    // site-api 0.22.0 sends a null path for a schedule of an item never published: no page exists, so nothing is stored.
+    // site-api sends a null path for a schedule of an item never published: no page exists, so nothing is stored.
     /** @param {{ trigger: string, action: string, path: string | null }} event */
     async run(event) {
       if (event.trigger !== "schedule" || event.path === null) return true;

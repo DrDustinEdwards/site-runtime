@@ -1,11 +1,11 @@
 {
   "baseline": {
-    "measured_at": "668453e",
+    "measured_at": "45c365d",
     "knip": {},
     "jscpd": {
-      "clones": 9,
-      "lines": 71,
-      "percentage": 0.15,
+      "clones": 0,
+      "lines": 0,
+      "percentage": 0,
       "unread": 0
     },
     "shared copies": {
@@ -17,9 +17,9 @@
       "anthropic.mjs": 926,
       "audit-log.mjs": 790,
       "bin/ai-audit.mjs": 975,
-      "bin/images.mjs": 1562,
+      "bin/images.mjs": 1395,
       "bin/site-runtime-security.mjs": 514,
-      "check.mjs": 863,
+      "check.mjs": 856,
       "cron.mjs": 609,
       "csp.mjs": 575,
       "doc-room/index.mjs": 531,
@@ -27,11 +27,11 @@
       "image.mjs": 917,
       "mcp-login.mjs": 506,
       "mcp-server.mjs": 964,
-      "prose.mjs": 1234,
+      "prose.mjs": 944,
       "sign-in-account.mjs": 936,
       "sign-in-form.mjs": 597,
-      "sign-in.mjs": 1301,
-      "sites.mjs": 813,
+      "sign-in.mjs": 1300,
+      "sites.mjs": 783,
       "worker.mjs": 549
     },
     "tests": {
@@ -39,9 +39,9 @@
       "cases": 464
     },
     "comments": {
-      "lines": 10895,
-      "code": 34817,
-      "percentage": 23.83
+      "lines": 10900,
+      "code": 34761,
+      "percentage": 23.87
     }
   }
 }

@@ -183,6 +183,39 @@ function deniedFeatures(value) {
  */
 
 /**
+ * The `result` function a check records its findings with. A failure that `declinable` names (the cookie or thing a
+ * declared deviation may cover, or true for the item as a whole) and the entry declares becomes a warning, or a notice
+ * for a family deviation; `showDetail` keeps the finding after the reason.
+ * @param {CheckResult[]} results
+ * @param {ReturnType<typeof registryEntry>} entry
+ * @param {boolean} showDetail
+ */
+function resultRecorder(results, entry, showDetail) {
+  return (
+    /** @type {string} */ id,
+    /** @type {string} */ name,
+    /** @type {boolean} */ pass,
+    /** @type {string} */ detail,
+    warn = false,
+    /** @type {string | boolean} */ declinable = false,
+  ) => {
+    const deviation =
+      !pass && declinable
+        ? declined(entry, id, typeof declinable === "string" ? declinable : undefined)
+        : undefined;
+    if (deviation)
+      results.push({
+        id,
+        name,
+        pass,
+        detail: `declared deviation: ${deviation.reason}${showDetail ? ` (${detail})` : ""}`,
+        ...(deviation.family ? { notice: true } : { warn: true }),
+      });
+    else results.push({ id, name, pass, detail, ...(warn ? { warn } : {}) });
+  };
+}
+
+/**
  * @param {Headers} headers a real response's headers
  * @param {CheckOptions} [options]
  * @returns {CheckResult[]}
@@ -214,29 +247,7 @@ export function checkSecurityHeaders(headers, options = {}) {
   } = options;
   /** @type {CheckResult[]} */
   const results = [];
-  /** `declinable`: the cookie or thing a declared deviation may cover, or true for the item as a whole. */
-  const result = (
-    /** @type {string} */ id,
-    /** @type {string} */ name,
-    /** @type {boolean} */ pass,
-    /** @type {string} */ detail,
-    warn = false,
-    /** @type {string | boolean} */ declinable = false,
-  ) => {
-    const deviation =
-      !pass && declinable
-        ? declined(entry, id, typeof declinable === "string" ? declinable : undefined)
-        : undefined;
-    if (deviation)
-      results.push({
-        id,
-        name,
-        pass,
-        detail: `declared deviation: ${deviation.reason} (${detail})`,
-        ...(deviation.family ? { notice: true } : { warn: true }),
-      });
-    else results.push({ id, name, pass, detail, ...(warn ? { warn } : {}) });
-  };
+  const result = resultRecorder(results, entry, true);
   const contentType = headers.get("Content-Type") ?? "";
   const html = /^\s*text\/html/i.test(contentType);
 
@@ -758,25 +769,7 @@ export function checkSecurityTxt(
   const entry = registryEntry(site);
   /** @type {CheckResult[]} */
   const results = [];
-  const result = (
-    /** @type {string} */ id,
-    /** @type {string} */ name,
-    /** @type {boolean} */ pass,
-    /** @type {string} */ detail,
-    warn = false,
-    declinable = false,
-  ) => {
-    const deviation = !pass && declinable ? declined(entry, id) : undefined;
-    if (deviation)
-      results.push({
-        id,
-        name,
-        pass,
-        detail: `declared deviation: ${deviation.reason}`,
-        ...(deviation.family ? { notice: true } : { warn: true }),
-      });
-    else results.push({ id, name, pass, detail, ...(warn ? { warn } : {}) });
-  };
+  const result = resultRecorder(results, entry, false);
   result("D1", "security.txt is served", status === 200, `answers ${status}`);
   if (status !== 200) return results;
   const type = headers.get("Content-Type") ?? "";

@@ -222,7 +222,7 @@ export function adminMcpWorker({
         logEvent("door_refused", { reason: "not-admitted" }, { level: "warn" });
         return refuse(`Forbidden. This grant does not belong to an administrator of ${name}.`, 403);
       }
-      // A grant with no scope list is refused, not read as read-only (Grok audit 2026-10-21, FX-16).
+      // A grant with no scope list is refused, not read as read-only.
       if (!Array.isArray(auth?.scope))
         return refuse("This grant carries no scope. Sign in again.", 403);
       /** @type {AdminMcpCaller} */

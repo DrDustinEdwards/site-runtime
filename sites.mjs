@@ -39,7 +39,7 @@
  */
 
 import { CSP_REPORT_GROUP, CSP_REPORT_PATH, buildPolicy } from "./csp.mjs";
-import { PASSKEY_OVERRIDES, corpFor, entryOverrides, permissionsAllowingSelf } from "./headers.mjs";
+import { PASSKEY_OVERRIDES, corpFor, permissionsAllowingSelf } from "./headers.mjs";
 
 /**
  * `T` with every `reason` key removed, at any depth.
@@ -128,7 +128,7 @@ export const FAMILY_DEVIATIONS = /* @__PURE__ */ Object.freeze({
   R4: "JSON routes refusing text/plain and form bodies (requireJson, ./body): the live check has no session, and every JSON route a stranger can reach answers 401 before it reads a body, so only the site's own code can show it.",
 });
 
-// Area 2 (2026-10-31): S2, C3, C7, C9, I3, staged or declined with the reason the site's code gives.
+// S2, C3, C7, C9 and I3, staged or declined with the reason the site's code gives.
 const coepCredentialless = {
   value: /** @type {const} */ ("credentialless"),
   reason:
@@ -781,33 +781,3 @@ export const SITES = /* @__PURE__ */ Object.freeze([
   capsomer,
   prelum,
 ]);
-
-/**
- * The entry for an id; unknown ids throw, so a typo never grades a site against the bare standard.
- * @param {string} id
- * @returns {SiteEntry}
- */
-export function siteEntry(id) {
-  const entry = SITES.find((s) => s.id === id);
-  if (!entry) throw new Error(`${JSON.stringify(id)} is not in the site registry (sites.mjs)`);
-  return entry;
-}
-
-/**
- * The entry whose origin or alias is `origin`, or undefined.
- * @param {string} origin
- * @returns {SiteEntry | undefined}
- */
-export function siteForOrigin(origin) {
-  const bare = new URL(origin).origin;
-  return SITES.find((s) => s.origin === bare || (s.aliases ?? []).includes(bare));
-}
-
-/**
- * The header overrides an entry declares (entryOverrides, ./headers), by id.
- * @param {string} id
- * @returns {Record<string, HeaderOverride>}
- */
-export function siteOverrides(id) {
-  return entryOverrides(siteEntry(id));
-}

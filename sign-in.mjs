@@ -13,8 +13,7 @@
  *   (SIGN_IN_EXPIRES_IN_SECONDS) and are stored hashed. Three wrong codes spend the code, and wrong codes count against
  *   the address across links (CODE_EMAIL_RULES). Only the link request mails: the OTP plugin's own send endpoints are
  *   off (disabledPaths), so the Turnstile check and the five a minute cover every sign-in mail.
- * - THE CODE WORKS ONLY IN THE BROWSER THAT ASKED (`codeBrowser`, Dustin's yes 2026-11-18, the Mythos review's finding
- *   2): the request that mails a code sets a signed CODE_COOKIE holding a random value whose SHA-256 is stored beside
+ * - THE CODE WORKS ONLY IN THE BROWSER THAT ASKED (`codeBrowser`): the request that mails a code sets a signed CODE_COOKIE holding a random value whose SHA-256 is stored beside
  *   the code; a code typed with no cookie, or another browser's, is refused (400 CODE_OTHER_BROWSER) before the code is
  *   read, so it spends none of the tries (NIST SP 800-63B-4 3.2.5). The newest request replaces the binding. The link
  *   is not bound (a long random token, opened in the mail app's browser by design). The app's code (`appCode`) is bound
@@ -1047,7 +1046,7 @@ function providerAddress(namespace) {
 /**
  * The address a failed passkey or social sign-in counts against, and the passkey's own key. A failure counts against
  * an address only when the request proved something about it, so nobody can spend a person's budget by naming them
- * (the Mythos review's finding 1, 2026-11-18): a passkey's owner, by a credential id that is a real passkey, or the
+ * a passkey's owner, by a credential id that is a real passkey, or the
  * address the provider answered a web callback with (`providerAddress`), after the provider checked the person. The
  * app's ID token names an address it has not proved (it fails before its signature checks out), and a callback
  * before the provider answers names none, so Better Auth's per-IP limit is all that holds those.

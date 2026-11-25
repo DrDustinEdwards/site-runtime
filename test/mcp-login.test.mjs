@@ -76,14 +76,30 @@ const realFetch = globalThis.fetch;
 let tokenClaims;
 let lastNonce = "";
 
+/** The claims of a valid sign-in by the administrator; a test overrides what it refuses on. */
+const claimsFor = (
+  /** @type {string} */ nonce,
+  /** @type {Record<string, unknown>} */ over = {},
+) => ({
+  iss: ISSUER,
+  aud: "client-id",
+  exp: Math.floor(Date.now() / 1000) + 300,
+  nonce,
+  email: "Admin@Example.com",
+  ...over,
+});
+
+/** The sign-in came back to the client as access_denied, with nothing granted. */
+function assertDenied(/** @type {Response} */ res, /** @type {{ completed?: unknown }} */ seen) {
+  assert.equal(
+    new URL(res.headers.get("location") ?? "").searchParams.get("error"),
+    "access_denied",
+  );
+  assert.equal(seen.completed, undefined);
+}
+
 beforeEach(() => {
-  tokenClaims = (nonce) => ({
-    iss: ISSUER,
-    aud: "client-id",
-    exp: Math.floor(Date.now() / 1000) + 300,
-    nonce,
-    email: "Admin@Example.com",
-  });
+  tokenClaims = claimsFor;
   globalThis.fetch = /** @type {typeof fetch} */ (
     async (input, init) => {
       const url = String(input);
@@ -221,13 +237,7 @@ describe("the callback", () => {
     await team.fetch(new Request(`${ORIGIN}/callback?code=c1&state=upstream-state`), env);
     assert.equal(seen.completed?.props.personId, 7);
     const other = setup();
-    tokenClaims = (nonce) => ({
-      iss: ISSUER,
-      aud: "client-id",
-      exp: Math.floor(Date.now() / 1000) + 300,
-      nonce,
-      email: "someone@example.com",
-    });
+    tokenClaims = (nonce) => claimsFor(nonce, { email: "someone@example.com" });
     await approve(other.env, false);
     lastNonce = other.seen.upstream?.data.nonce ?? "";
     const res = await team.fetch(
@@ -243,47 +253,23 @@ describe("the callback", () => {
 
   test("PLANT: anyone else is refused back to the client, and nothing is granted", async () => {
     const { env, seen } = setup();
-    tokenClaims = (nonce) => ({
-      iss: ISSUER,
-      aud: "client-id",
-      exp: Math.floor(Date.now() / 1000) + 300,
-      nonce,
-      email: "someone@example.com",
-    });
+    tokenClaims = (nonce) => claimsFor(nonce, { email: "someone@example.com" });
     const res = await signIn(env, seen);
-    assert.equal(
-      new URL(res.headers.get("location") ?? "").searchParams.get("error"),
-      "access_denied",
-    );
-    assert.equal(seen.completed, undefined);
+    assertDenied(res, seen);
   });
 
   test("PLANT: an unset ADMIN_EMAIL admits nobody", async () => {
     const { env, seen } = setup();
     env.ADMIN_EMAIL = " ";
     const res = await signIn(env, seen);
-    assert.equal(
-      new URL(res.headers.get("location") ?? "").searchParams.get("error"),
-      "access_denied",
-    );
-    assert.equal(seen.completed, undefined);
+    assertDenied(res, seen);
   });
 
   test("PLANT: a token carrying another sign-in's nonce is refused", async () => {
     const { env, seen } = setup();
-    tokenClaims = () => ({
-      iss: ISSUER,
-      aud: "client-id",
-      exp: Math.floor(Date.now() / 1000) + 300,
-      nonce: "another",
-      email: "admin@example.com",
-    });
+    tokenClaims = () => claimsFor("another", { email: "admin@example.com" });
     const res = await signIn(env, seen);
-    assert.equal(
-      new URL(res.headers.get("location") ?? "").searchParams.get("error"),
-      "access_denied",
-    );
-    assert.equal(seen.completed, undefined);
+    assertDenied(res, seen);
   });
 });
 

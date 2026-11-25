@@ -193,7 +193,7 @@ test("the owner sees their grants, the agent keys and the log, revokes only by t
   assert.equal(gone.status, 303, "sent back to sign in");
 });
 
-// 0.143.0 gave every answer a one-directive policy, which replaced the site's default on plain-text errors.
+// A one-directive policy on every answer would replace the site's default on plain-text errors.
 test("respond: a plain-text answer leaves the policy to the site, a page frames nothing", () => {
   assert.equal(respond("no", 400).headers.get("content-security-policy"), null);
   assert.equal(respond("no", 400).headers.get("x-frame-options"), "DENY");

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { annotation, auditImages, readImage } from "../bin/images.mjs";
+import { readImage } from "../bin/image-file.mjs";
+import { annotation, auditImages } from "../bin/images.mjs";
 
 /** A PNG's signature and header for its size, then an eXIf chunk whose TIFF points to a GPS IFD with one entry. */
 function pngWithGps(width, height) {

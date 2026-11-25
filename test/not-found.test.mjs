@@ -1,6 +1,6 @@
 // The 404 counter in an in-memory SQLite: one row per path, referring host and day, the query never kept.
 import assert from "node:assert/strict";
-import { DatabaseSync } from "node:sqlite";
+import { d1 } from "./sqlite-d1.mjs";
 import { test } from "node:test";
 
 import {
@@ -32,23 +32,8 @@ const FIRST_SHAPE = `CREATE TABLE \`page_404_daily\` (
 );
 CREATE UNIQUE INDEX \`page_404_daily_day_path_uq\` ON \`page_404_daily\` (\`day\`,\`path\`);`;
 
-/** A D1-shaped wrapper over node:sqlite. */
-function d1(sql = NOT_FOUND_SQL) {
-  const db = new DatabaseSync(":memory:");
-  db.exec(sql);
-  return {
-    db,
-    prepare: (/** @type {string} */ sql) => ({
-      bind: (/** @type {any[]} */ ...v) => ({
-        run: async () => db.prepare(sql).run(...v),
-        all: async () => ({ results: db.prepare(sql).all(...v) }),
-      }),
-    }),
-  };
-}
-
 test("a 404 to a GET adds to its path's row for the day; the query, a POST and a 200 count nothing", async () => {
-  const store = d1();
+  const store = d1(NOT_FOUND_SQL);
   /** @type {Promise<unknown>[]} */
   const pending = [];
   const ctx = { waitUntil: (/** @type {Promise<unknown>} */ p) => void pending.push(p) };
