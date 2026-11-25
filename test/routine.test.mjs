@@ -49,7 +49,6 @@ test("a fire sends the documented headers and body, and reads the session, the l
     sessionId: "session_01abcdefgh",
     sessionUrl: "https://claude.ai/code/session_01abcdefgh",
   });
-  // The cse_ id form a real answer gave (carrel, 2026-11-08) is read as started, not left unknown.
   const cse = await fireRoutine(
     config,
     "t",
@@ -128,7 +127,6 @@ test("PLANT: a fire that may have reached Anthropic is unknown, never retried; o
     });
   });
   assert.deepEqual([refused.outcome, refused.retry], ["unreachable", true]);
-  // A 2xx is a session even when its answer cannot be read.
   const unreadable = await fireRoutine(config, "t", answer(200, { type: "something_else" }));
   assert.deepEqual(
     [unreadable.ok, unreadable.outcome, unreadable.retry],
@@ -218,7 +216,6 @@ test("PLANT: fireOnce, on its D1 store, refuses a job key already fired or unkno
   );
   assert.equal(posts, 4);
 
-  // Two callers taking over one stale record: only one wins the compare-and-set, so one session starts.
   const stale = {
     fetcher: counting(answer(200, STARTED)),
     refireAfterMs: 30 * 60_000,
@@ -231,7 +228,6 @@ test("PLANT: fireOnce, on its D1 store, refuses a job key already fired or unkno
   assert.deepEqual(both.map((r) => r.ok).sort(), [false, true]);
   assert.equal(posts, 5);
 
-  // Two fires at once: the reservation stops the second before it posts.
   let release;
   const slow = async () => (
     await new Promise((r) => (release = r)),
@@ -247,7 +243,6 @@ test("PLANT: fireOnce, on its D1 store, refuses a job key already fired or unkno
   release();
   assert.equal((await first).ok, true);
 
-  // A sure non-start whose delete fails leaves `failed`, which blocks nothing; a reservation left by a dead worker is unknown.
   const flaky = {
     ...store,
     delete: async () => {

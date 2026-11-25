@@ -65,11 +65,9 @@ const failing = async () => {
 
 test("an error line and a throw are reported, with nothing personal in them", async () => {
   const text = await sentBy({ SENTRY_DSN: "https://key@o1.ingest.example.com/1" }, failing);
-  // A clean result counts only if both reports went out.
   assert.match(text, /"event":"billing_failed"/);
   assert.match(text, /boom for \[email\]/);
   assert.doesNotMatch(text, /"type":"transaction"/);
-  // The 500's access line is not a second report.
   assert.doesNotMatch(text, /"event":"request"/);
   for (const needle of [
     "tok_SECRET123",

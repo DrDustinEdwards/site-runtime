@@ -40,7 +40,6 @@ test("a failed job does not stop the next, the run throws naming it, and the che
   assert.deepEqual(await cronCheck(store, at(5)).run(), { ok: false, detail: "backup failed" });
   await runJobs(store, [{ ...jobs[0], run: async () => {} }], { now: () => t0 + 60_000 });
   assert.equal(await cronCheck(store, at(11)).run(), true);
-  // publish runs every minute: its own interval plus 10 minutes of grace.
   assert.deepEqual(await cronCheck(store, at(12)).run(), { ok: false, detail: "publish stale" });
 });
 
@@ -95,7 +94,6 @@ test("a hung job times out as failed and the next still runs; a daily job warns 
 
   const registered = [jobs[1], { name: "prune", everyMinutes: 1440 }];
   const at = (/** @type {number} */ minutes) => new Date(t0 + minutes * 60_000);
-  // 1440 + 144 minutes: the deploy is recent, so prune's absence is not yet a warning.
   assert.equal(
     await cronCheck(store, { jobs: registered, deployedAt: at(0), now: at(1584) }).run(),
     true,
@@ -175,37 +173,30 @@ test("a refused run is not a success", () => {
   assert.equal(runsSucceeded(call("refused")), false);
 });
 
-test("a job that failed because D1 was down is recorded failed but does not fail the invocation", async () => {
+test("a job that failed because D1 was down, or whose error wraps that as its cause, is recorded failed but does not fail the invocation", async () => {
   const store = d1(CRON_SQL);
-  const t0 = Date.UTC(2026, 10, 20);
   const down = new Error(
     "D1_ERROR: Your account is generating too much load on D1 DBs. Please back off.",
   );
+  const wrapped = new Error("1 site API schedule(s) failed", {
+    cause: new Error("D1_ERROR: internal error; reference = abc"),
+  });
   const outcomes = await runJobs(
     store,
-    [{ name: "sweep", everyMinutes: 1, run: async () => Promise.reject(down) }],
-    { now: () => t0 },
+    [
+      { name: "sweep", everyMinutes: 1, run: async () => Promise.reject(down) },
+      { name: "wrapped", everyMinutes: 1, run: () => Promise.reject(wrapped) },
+    ],
+    { now: () => Date.UTC(2026, 10, 20) },
   );
-  assert.equal(outcomes[0]?.status, "failed");
+  assert.deepEqual(
+    outcomes.map((o) => o.status),
+    ["failed", "failed"],
+  );
   assert.match(
     String(
       store.db.prepare("SELECT last_error FROM cron_runs WHERE name = 'sweep'").get()?.last_error,
     ),
     /too much load/,
-  );
-});
-
-test("a job whose error wraps a D1 outage as its cause does not fail the invocation", async () => {
-  const wrapped = new Error("1 site API schedule(s) failed", {
-    cause: new Error("D1_ERROR: internal error; reference = abc"),
-  });
-  await assert.doesNotReject(
-    runJobs(
-      d1(CRON_SQL),
-      [{ name: "sweep", everyMinutes: 1, run: () => Promise.reject(wrapped) }],
-      {
-        now: () => Date.UTC(2026, 10, 24),
-      },
-    ),
   );
 });

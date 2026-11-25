@@ -26,20 +26,16 @@ test("a miss reads and keeps it at KV's 60 s floor; a hit, a refused value and a
   assert.deepEqual(await kvCached(ns, "k", { ttl: 5 }, read), { n: 1 });
   assert.equal(ns.store.get("k")?.ttl, 60);
   assert.deepEqual(await kvCached(ns, "k", { ttl: 5 }, read), { n: 1 });
-  // A kept value of the wrong shape is a miss; a value `keep` refuses is answered and not kept.
   const shaped = (/** @type {any} */ v) => typeof v?.m === "number";
   assert.deepEqual(await kvCached(ns, "k", { ttl: 5, valid: shaped, keep: () => false }, read), {
     n: 2,
   });
   assert.equal(ns.store.get("k")?.value, '{"n":1}');
-  // A KV that throws on both sides still answers.
   assert.deepEqual(await kvCached(kv({ broken: true }), "k", { ttl: 5 }, read), { n: 3 });
-  // A read that throws keeps nothing and throws on.
   await assert.rejects(
     kvCached(ns, "x", { ttl: 5 }, async () => Promise.reject(new Error("db down"))),
   );
   assert.equal(ns.store.has("x"), false);
-  // `refresh` skips the hit and still keeps the new value.
   assert.deepEqual(await kvCached(ns, "k", { ttl: 5, refresh: true }, read), { n: 4 });
   assert.deepEqual(await kvCached(ns, "k", { ttl: 5 }, read), { n: 4 });
 });
