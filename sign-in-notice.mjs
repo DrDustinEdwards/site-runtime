@@ -27,14 +27,7 @@ const PROVIDER_NAMES = /** @type {Record<string, string>} */ ({ google: "Google"
 const providerName = (providerId) =>
   (providerId && PROVIDER_NAMES[providerId]) || providerId || "A sign-in method";
 
-/**
- * @typedef {{
- *   title: string, what: string | null, at: Date, when: string, device: string | null, location: string | null, secure: string,
- *   scope?: string, passkeyName?: string, provider?: string, oldEmail?: string, newEmail?: string,
- * }} NoticeDetail
- *   `title` for the subject and heading, `what` a sentence only when the title leaves something out (else null), `at` and `when` (in words, UTC), the device and place of the request
- *   that made the change (null when unknown), and `secure`: what to do if it was not the person.
- */
+/** @import { NoticeDetail } from "./sign-in-account.mjs" */
 
 const IF_NOT_YOU =
   "If this was not you, sign in now, remove any passkey or sign-in method you do not recognize, and sign out of every other device.";

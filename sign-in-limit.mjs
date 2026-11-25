@@ -106,7 +106,7 @@ const FAILURE_LIMITED = new Set(["/passkey/verify-authentication", "/callback/:i
  */
 export function emailLimit(namespace) {
   /**
-   * @param {string} path @param {string} bucket @param {import("./rate-limit/limit.mjs").Verdict} verdict @param {unknown} email
+   * @param {string} path @param {string} bucket @param {import("./rate-limit/index.mjs").Verdict} verdict @param {unknown} email
    */
   const refuse = async (path, bucket, verdict, email) => {
     if (verdict.status === "unavailable") {

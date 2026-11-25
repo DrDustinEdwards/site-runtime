@@ -1,4 +1,11 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["local>DrDustinEdwards/devkit"]
+  "extends": ["local>DrDustinEdwards/devkit"],
+  "packageRules": [
+    {
+      "description": "@sentry/cloudflare 11 adds about 20 KiB to a Worker (and over 240 KiB where the bundler keeps @sentry/conventions whole), pushing Foxhound, Foxing and julieedwards.info over their size budgets (0.182.0).",
+      "matchPackageNames": ["@sentry/cloudflare"],
+      "allowedVersions": "<11"
+    }
+  ]
 }

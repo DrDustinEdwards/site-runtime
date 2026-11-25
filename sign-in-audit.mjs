@@ -5,13 +5,14 @@ import { coarseLocation, deviceName } from "./sign-in-device.mjs";
 /** @typedef {import("./sign-in-notice.mjs").SecurityNoticeKind} SecurityNoticeKind */
 
 /**
- * @typedef {object} SecurityHistoryEntry
  * @property {| "sign-in" | "passkey-added" | "passkey-removed" | "sign-in-linked" | "sign-in-unlinked" | "email-changed" | "recovery"} kind
  * @property {string | null} via The way in for a sign-in ("link", "code", "passkey", "google", "apple"), the provider for a link or unlink.
  * @property {Date} at
  * @property {string | null} device
  * @property {string | null} location
+ 
  */
+/** @import { SecurityHistoryEntry } from "./sign-in-account.mjs" */
 
 /**
  * Whether a sign-in's device is new to the person, by device id when their sessions or history carry any, else by
@@ -76,8 +77,8 @@ export function outcome(returned) {
  *   What one Better Auth request was: its endpoint path, route params and body, what it returned, whether it made a
  *   session (`ctx.context.newSession`), whose session it ran in, and for an OAuth callback whether it linked an account
  *   rather than signing in.
- * @typedef {{ event: string, fields: Record<string, unknown>, level?: "warn", email?: unknown, notice?: { kind: SecurityNoticeKind, scope?: string, passkeyName?: string } }} AuthEvent
  */
+/** @import { AuthEvent } from "./sign-in-account.mjs" */
 
 /**
  * The log line, and the notice if any, for one Better Auth request, or null for a request that is not an auth event.

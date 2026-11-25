@@ -2,7 +2,8 @@
 
 import { registryEntry, resultRecorder } from "./check-core.mjs";
 
-/** @import { CheckResult, CheckedSiteEntry } from "./check-core.mjs" */
+/** @import { CheckedSiteEntry } from "./check-core.mjs" */
+/** @import { CheckResult } from "./check.mjs" */
 
 const DAY = 86_400_000;
 

@@ -42,7 +42,7 @@ ALTER TABLE session ADD COLUMN device_id TEXT;
 export const AUTH_EVENTS_DEVICE_SQL = `ALTER TABLE auth_events ADD COLUMN device_id TEXT;
 `;
 
-/** @typedef {{ headers: Headers, request?: Request, asResponse: false }} SessionLookup */
+/** @import { SessionLookup } from "./sign-in-account.mjs" */
 
 /**
  * The argument for a site's own `auth.api.getSession` with `sessionDetails`: on a GET the request too, so the place

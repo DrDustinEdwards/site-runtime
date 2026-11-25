@@ -38,13 +38,23 @@ import {
 } from "./prose-voice.mjs";
 /** @typedef {import("./prose-voice.mjs").Features} Features */
 /** @typedef {import("./prose-voice.mjs").FeatureReading} FeatureReading */
-/** @typedef {import("./prose-voice.mjs").Profile} Profile */
-/** @typedef {import("./prose-voice.mjs").VoiceReading} VoiceReading */
+/**
+ @typedef {{ mean: Features, spread: Features, chunks: number, words: number, usual?: number }} Profile 
+ */
+/**
+ @typedef {{ distance: number, furthest: FeatureReading[] }} VoiceReading 
+ */
 /** @typedef {import("./prose-habits.mjs").Severity} Severity */
-/** @typedef {import("./prose-habits.mjs").ProseIssue} ProseIssue */
-/** @typedef {import("./prose-lines.mjs").Spread} Spread */
+/**
+ @typedef {{ check: string, message: string, excerpt: string | null, line: number | null, severity: Severity, sign: string | null }} ProseIssue 
+ */
+/**
+ @typedef {{ short: number, mid: number, long: number, longest: number }} Spread 
+ */
 /** @typedef {import("./prose-scan.mjs").SlopKind} SlopKind */
-/** @typedef {import("./prose-scan.mjs").SlopFinding} SlopFinding */
+/**
+ @typedef {{ kind: SlopKind, excerpt: string, line: number, say: string }} SlopFinding 
+ */
 
 export {
   VOICE_THRESHOLD,
@@ -66,3 +76,7 @@ export {
 } from "./prose-habits.mjs";
 export { sentenceSpread, voiceExcerpts } from "./prose-lines.mjs";
 export { instructionFor, slopScan } from "./prose-scan.mjs";
+
+/**
+ @typedef {{ check: string, sign: string, severity: Severity, re: RegExp, say: string }} PatternRule 
+ */

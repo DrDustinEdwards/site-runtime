@@ -4,8 +4,8 @@ import { errorMessage } from "../log.mjs";
 
 /**
  * @typedef {"ok" | "limited" | "unavailable"} Status
- * @typedef {{ status: Status, used: number, limit: number, retryAfterSeconds: number, window?: number, detail?: string }} Verdict
  */
+/** @import { Verdict } from "./index.mjs" */
 
 /**
  * One use of `key` against `rules`. `onUnavailable` is required, with no default, so every call site
@@ -15,7 +15,7 @@ import { errorMessage } from "../log.mjs";
  * after a failed one.
  *
  * @template Id
- * @param {{ idFromName(name: string): Id, get(id: Id): { hit: (rules: import("./core.mjs").Rule[]) => Promise<import("./core.mjs").Hit>, peek?: (rules: import("./core.mjs").Rule[]) => Promise<import("./core.mjs").Hit> } } | undefined} namespace
+ * @param {{ idFromName(name: string): Id, get(id: Id): { hit: (rules: import("./core.mjs").Rule[]) => Promise<import("./index.mjs").Hit>, peek?: (rules: import("./core.mjs").Rule[]) => Promise<import("./index.mjs").Hit> } } | undefined} namespace
  * @param {string} key
  * @param {import("./core.mjs").Rule[]} rules
  * @param {{ onUnavailable: "allow" | "refuse", peek?: boolean }} options

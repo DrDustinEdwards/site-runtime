@@ -2,17 +2,9 @@
 
 import { base64url, fromBase64url, sha256Hex } from "./encoding.mjs";
 
-/** @typedef {{ id: string, publicKey: string, sign(hash: string): Promise<string> }} ChainKey */
+/** @import { ChainKey } from "./audit-log.mjs" */
 
-/**
- * What `verifyAuditChain` finds: every row checked, or the first that fails and why.
- * @typedef {| { ok: true; hashed: number; signed: number }
- * | {
- *     ok: false;
- *     seq: unknown;
- *     reason: "hash" | "unsigned" | "unknown key" | "signature" | "key change";
- *   }} ChainCheck
- */
+/** @import { ChainCheck } from "./audit-log.mjs" */
 
 /** The shortest AUDIT_SIGNING_KEY accepted, as for ADMIN_IDLE_SECRET: worker-deploy mints 43 characters. */
 const KEY_CHARS = 32;

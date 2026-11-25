@@ -5,11 +5,7 @@
 
 import { mediaType } from "./http.mjs";
 
-/**
- * @typedef {{ body: ReadableStream, httpEtag: string, httpMetadata?: { contentType?: string }, customMetadata?: Record<string, string>, writeHttpMetadata(headers: Headers): void }} R2ObjectLike
- * @typedef {{ output(options: { format: string, quality?: number, anim?: boolean }): Promise<{ response(): Response }> }} ImagesOutput
- * @typedef {{ input(stream: ReadableStream): ImagesOutput & { transform(options: object): ImagesOutput } }} ImagesLike
- */
+/** @import { R2ObjectLike } from "./image.mjs" */
 
 /** Cloudflare's documented default; omitting it makes the binding write lossless WebP. */
 export const IMAGE_QUALITY = 85;

@@ -49,11 +49,30 @@ export {
 } from "./sign-in-passkey-rows.mjs";
 
 /** @typedef {import("./sign-in-audit.mjs").D1Like} D1Like */
-/** @typedef {import("./sign-in-audit.mjs").SecurityHistoryEntry} SecurityHistoryEntry */
-/** @typedef {import("./sign-in-notice.mjs").NoticeDetail} NoticeDetail */
+/**
+ * @typedef {object} SecurityHistoryEntry
+ */
+/**
+ * @typedef {{
+ *   title: string, what: string | null, at: Date, when: string, device: string | null, location: string | null, secure: string,
+ *   scope?: string, passkeyName?: string, provider?: string, oldEmail?: string, newEmail?: string,
+ * }} NoticeDetail
+ *   `title` for the subject and heading, `what` a sentence only when the title leaves something out (else null), `at` and `when` (in words, UTC), the device and place of the request
+ *   that made the change (null when unknown), and `secure`: what to do if it was not the person.
+ */
 /** @typedef {import("./sign-in-notice.mjs").SecurityNoticeKind} SecurityNoticeKind */
 /** @typedef {import("./sign-in-notice.mjs").SendSecurityNotice} SendSecurityNotice */
-/** @typedef {import("./sign-in-passkey-rows.mjs").AccountPasskey} AccountPasskey */
+/**
+ * @typedef {{ id: string, credentialId: string | null, name: string, provider: string, createdAt: Date | null, lastUsedAt: Date | null }} AccountPasskey
+ 
+ */
 /** @typedef {import("./sign-in-sessions.mjs").AccountSession} AccountSession */
-/** @typedef {import("./sign-in-sessions.mjs").SessionLookup} SessionLookup */
+/**
+ @typedef {{ headers: Headers, request?: Request, asResponse: false }} SessionLookup 
+ */
 /** @typedef {import("./sign-in-sessions.mjs").SessionRow} SessionRow */
+
+/**
+ * @typedef {{ event: string, fields: Record<string, unknown>, level?: "warn", email?: unknown, notice?: { kind: SecurityNoticeKind, scope?: string, passkeyName?: string } }} AuthEvent
+ 
+ */

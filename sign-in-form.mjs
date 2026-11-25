@@ -290,3 +290,8 @@ export async function authHandler(auth, request) {
   res.headers.set("Cache-Control", "no-store");
   return res;
 }
+
+/**
+ * @typedef {{ intent: string, ok: boolean, error: string | null, stale: boolean, sentTo: string | null }} AccountFormState
+ 
+ */

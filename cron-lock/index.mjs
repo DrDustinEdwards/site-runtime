@@ -18,7 +18,10 @@ import { logEvent } from "../log.mjs";
 export { decideAcquire, decideRelease, lockHealth } from "./core.mjs";
 
 /** @typedef {import("./core.mjs").LockRecord} LockRecord */
-/** @typedef {import("./core.mjs").AcquireDecision} AcquireDecision */
+/**
+ * @typedef {{ granted: false } | { granted: true; record: LockRecord }} AcquireDecision
+ 
+ */
 
 export const TICKER_INTERVAL_MS = 5 * 60_000;
 
