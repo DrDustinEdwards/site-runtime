@@ -21,7 +21,7 @@ const callbackAddress = new WeakMap();
 
 /**
  * The providers' `mapProfileToUser`: it maps nothing, and notes the address the provider answered with for the
- * callback's request, so a failed callback counts against it (F1). When that address is already over
+ * callback's request, so a failed callback counts against it. When that address is already over
  * SIGN_IN_FAILURE_RULES the callback stops here, before any account is read, and goes back to the sign-in's error page
  * with `?error=EMAIL_RATE_LIMITED`.
  * @param {Parameters<typeof limit>[0] | undefined} namespace

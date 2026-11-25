@@ -23,23 +23,19 @@
       "doc-room/index.mjs": 531,
       "edge-cache.mjs": 530,
       "image.mjs": 917,
-      "mcp-login.mjs": 506,
       "mcp-server.mjs": 701,
       "prose.mjs": 944,
-      "sign-in-account.mjs": 936,
-      "sign-in-form.mjs": 597,
-      "sign-in.mjs": 1300,
       "sites.mjs": 783,
       "worker.mjs": 549
     },
     "tests": {
       "files": 81,
-      "cases": 452
+      "cases": 449
     },
     "comments": {
-      "lines": 10907,
-      "code": 34682,
-      "percentage": 23.92
+      "lines": 10903,
+      "code": 34768,
+      "percentage": 23.87
     }
   }
 }

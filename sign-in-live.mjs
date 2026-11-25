@@ -251,7 +251,7 @@ export async function signInFindings({ origin, from, probes }) {
         `a sign-out from another origin with a cookie answered ${foreign.status}, not 403`,
       );
 
-    // The confirm page stays a warning until every site has the route (site-runtime 0.36.0's confirmSignInLink). The
+    // The confirm page stays a warning until every site has the route (confirmSignInLink). The
     // site's own path: the first that is not a 404, beside a sign-in page found first.
     const near = [...pages].map((page) => `${new URL(page).pathname.replace(/\/$/, "")}/confirm`);
     let tried = /** @type {Got | undefined} */ (undefined);

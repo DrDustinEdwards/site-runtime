@@ -51,7 +51,6 @@ export { accountFormAction, accountOptions, ACCOUNT_INTENTS } from "./sign-in-ac
  * once more; one already a path is left alone, since a second decode would rewrite its query. With `within`, the path
  * must also be one of those paths or under one ("/account" takes "/account", "/account/x" and "/account?x"), after its
  * dot segments are resolved, so "/account/../admin" is "/admin".
- * Foxhound's next-path.ts, which carried Recova's validateRedirect with its two holes closed.
  * @param {unknown} raw
  * @param {{ fallback?: string, within?: readonly string[] }} [options]
  */

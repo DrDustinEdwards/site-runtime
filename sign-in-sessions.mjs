@@ -18,7 +18,7 @@ import { deviceName } from "./sign-in-device.mjs";
  */
 export const FRESH_SECONDS = 10 * 60;
 
-/** How often a session's last activity is written: at most once in five minutes (txasm's touch). */
+/** How often a session's last activity is written: at most once in five minutes. */
 export const SESSION_TOUCH_SECONDS = 5 * 60;
 
 /**

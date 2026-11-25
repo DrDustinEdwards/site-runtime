@@ -149,12 +149,11 @@ export async function accountPasskeys(auth, request, db) {
   return passkeyRows(passkeys, lastUsed);
 }
 
-/** Whether the account page suggests adding another passkey (A9): exactly one, so losing that device locks them out. */
+/** Whether the account page suggests adding another passkey: exactly one, so losing that device locks them out. */
 export function needsSecondPasskey(/** @type {unknown[]} */ passkeys) {
   return passkeys.length === 1;
 }
 
-/** How long a "Not now" on the passkey offer holds: 30 days. */
 export const PASSKEY_OFFER_DAYS = 30;
 /** The `auth_events` event of a "Not now" on the passkey offer: no log line, not in the security history. */
 const PASSKEY_OFFER_DISMISSED = "passkey_offer_dismissed";
@@ -175,7 +174,7 @@ export function dismissPasskeyOffer(db, userId, { request, at } = {}) {
 }
 
 /**
- * Whether to offer a passkey after a sign-in by link, code, Google or Apple (A3): the person has none and has not
+ * Whether to offer a passkey after a sign-in by link, code, Google or Apple: the person has none and has not
  * said "Not now" in the last PASSKEY_OFFER_DAYS. The page also checks `canOfferPasskey` (`./sign-in-client`).
  * @param {D1Like} db the site's `eventsDb`
  * @param {string} userId

@@ -182,7 +182,6 @@ export async function accountFormAction(auth, request, form, site) {
     return answer({ sentTo: fresh.user.email });
   }
 
-  // delete-account
   if (!form.get("confirm")) return answer({ error: ACCOUNT_WORDS.noConfirm }, 400);
   const refused = await site.beforeDelete?.(fresh.user, form);
   if (refused) return answer({ error: refused }, 409);

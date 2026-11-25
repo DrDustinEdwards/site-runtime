@@ -214,8 +214,6 @@ export const SIGN_IN_LINK_WORDS = Object.freeze({
   }),
 });
 
-// the email-change links
-
 /**
  * The page an email-change link opens, for Better Auth's link: the link's origin, `confirmPath`, and the token alone
  * (the page sets its own callback when it posts). For both mails: `user.changeEmail.sendChangeEmailConfirmation`'s

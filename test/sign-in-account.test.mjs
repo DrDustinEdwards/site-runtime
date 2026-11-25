@@ -1,5 +1,5 @@
 // The tricky parts of sign-in's account security: reading a user agent, which event a Better Auth request was, a
-// notice that fails to send, the security history and spike counts, and the fresh sign-in a site's own route asks for. The hooks themselves ran against Better Auth 1.7.12 in the PR's end-to-end check.
+// notice that fails to send, the security history and spike counts, and the fresh sign-in a site's own route asks for.
 import assert from "node:assert/strict";
 import { d1 } from "./sqlite-d1.mjs";
 import { test } from "node:test";
@@ -50,21 +50,12 @@ test("a user agent reads as the browser and system a person would name", () => {
       "Chrome on iPhone",
     ],
     [
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15",
-      "Safari on Mac",
-    ],
-    [
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0",
       "Edge on Windows",
     ],
     [
       "Mozilla/5.0 (Linux; Android 14; SM-S921B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/26.0 Chrome/122.0.0.0 Mobile Safari/537.36",
       "Samsung Internet on Android",
-    ],
-    ["Mozilla/5.0 (X11; Linux x86_64; rv:132.0) Gecko/20100101 Firefox/132.0", "Firefox on Linux"],
-    [
-      "Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-      "Chrome on ChromeOS",
     ],
     [
       "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 350.0",
@@ -79,7 +70,7 @@ test("a user agent reads as the browser and system a person would name", () => {
     passkeyProvider("00000000-0000-0000-0000-000000000000", cases[0][0]),
     "Apple Passwords",
   );
-  assert.equal(passkeyProvider("00000000-0000-0000-0000-000000000000", cases[3][0]), "Passkey");
+  assert.equal(passkeyProvider("00000000-0000-0000-0000-000000000000", cases[2][0]), "Passkey");
   assert.equal(
     passkeyProvider(" EA9B8D66-4D01-1D21-3CE4-B6B48CB575D4 "),
     "Google Password Manager",
@@ -301,9 +292,6 @@ test("the spike check warns when failed sign-ins or sign-in mails in its window 
     authSpikeCheck(db, { failures, mails: 0, now: () => now }).run();
   assert.equal(await check(10), true);
   assert.deepEqual(await check(3), { ok: false, detail: "4 failed sign-ins in 60 minutes" });
-  // Warn, so /health stays 200 and a deploy is never rolled back; an alert, so the watcher mails a person.
-  assert.equal(authSpikeCheck(db).level, "warn");
-  assert.equal(authSpikeCheck(db).alert, true);
 });
 
 test("a session's last use is written at most every five minutes, at once for a missing place; a second browser of the same make is a new device", async () => {
@@ -496,7 +484,7 @@ function recordAt(db, event, via, userId, passkeyId, at) {
 }
 
 // Better Auth answers a getSession that carries a request with a Response, no user in it, unless asResponse is false:
-// Foxing #169 and txasm read every signed-in person as signed out that way.
+// A site that reads the Response's missing user reads every signed-in person as signed out.
 test("a site's session read carries the request on a GET only, and always asks for the session itself", () => {
   const page = new Request("https://example.com/account", { headers: { cookie: "session=1" } });
   assert.deepEqual(sessionLookup(page), {

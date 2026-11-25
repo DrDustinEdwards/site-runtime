@@ -157,7 +157,7 @@ export function loginHandler({
   owner = true,
 }) {
   const serverName = escape(name);
-  // The owner page (A15, L9) shares the sign-in and admission check.
+  // The owner page shares the sign-in and admission check.
   const ownerRoutes = owner
     ? ownerPage({ name, admit, server: audit, ...(typeof owner === "object" ? owner : {}) })
     : null;
