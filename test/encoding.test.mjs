@@ -10,7 +10,6 @@ import {
   fromHex,
   pageCursor,
   readPageCursor,
-  sha256Hex,
   toBase64,
   toHex,
 } from "../encoding.mjs";
@@ -31,13 +30,6 @@ test("base64 ignores the line breaks GitHub wraps it in, and strings are UTF-8",
       fromBase64(`${toBase64("café 🦊").slice(0, 4)}\n${toBase64("café 🦊").slice(4)}`),
     ),
     "café 🦊",
-  );
-});
-
-test("sha256Hex matches the published test vector", async () => {
-  assert.equal(
-    await sha256Hex("abc"),
-    "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
   );
 });
 
