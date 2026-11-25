@@ -79,7 +79,11 @@ export {
 export { editImage } from "./image-edit.mjs";
 export { imagePreload, pictureHtml, pictureProps } from "./image-markup.mjs";
 
-/** @import { ImagesLike, R2ObjectLike } from "./image-core.mjs" */
+/**
+ * @typedef {{ body: ReadableStream, httpEtag: string, httpMetadata?: { contentType?: string }, customMetadata?: Record<string, string>, writeHttpMetadata(headers: Headers): void }} R2ObjectLike
+ * @typedef {{ output(options: { format: string, quality?: number, anim?: boolean }): Promise<{ response(): Response }> }} ImagesOutput
+ * @typedef {{ input(stream: ReadableStream): ImagesOutput & { transform(options: object): ImagesOutput } }} ImagesLike
+ */
 
 /** @typedef {"avif" | "webp"} ImageFormat */
 

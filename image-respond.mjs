@@ -14,7 +14,7 @@ import {
 } from "./image-core.mjs";
 import { errorMessage } from "./log.mjs";
 
-/** @import { ImagesLike, R2ObjectLike } from "./image-core.mjs" */
+/** @import { ImagesLike, R2ObjectLike } from "./image.mjs" */
 
 const VERSION = /^[A-Za-z0-9_-]{1,40}$/;
 

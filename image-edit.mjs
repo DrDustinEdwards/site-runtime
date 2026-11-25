@@ -2,7 +2,7 @@
 
 import { IMAGE_QUALITY } from "./image-core.mjs";
 
-/** @import { ImagesLike } from "./image-core.mjs" */
+/** @import { ImagesLike } from "./image.mjs" */
 
 const EDIT_FORMATS = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
 
