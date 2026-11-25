@@ -76,6 +76,10 @@ test("installationToken narrows the token to what was asked for", async () => {
     fetcher: async () => new Response("Not Found", { status: 404 }),
   });
   await assert.rejects(missing, /not installed on this repo/);
+  await assert.rejects(
+    installationToken({ appId: "1", privateKey, userAgent: "test", owner: "o", repo: ".." }),
+    /not a GitHub owner or repo/,
+  );
 });
 
 test("parsePrUrl takes a pull request URL and nothing that merely mentions one", () => {
@@ -86,4 +90,5 @@ test("parsePrUrl takes a pull request URL and nothing that merely mentions one",
   });
   assert.equal(parsePrUrl("see https://github.com/o/r/pull/12"), null);
   assert.equal(parsePrUrl("https://github.com/o/r/issues/12"), null);
+  assert.equal(parsePrUrl("https://github.com/../r/pull/1"), null);
 });

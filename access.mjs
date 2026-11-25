@@ -25,6 +25,7 @@ import { KEYS_MAX_AGE_MS, verifyJwt } from "./access-login.mjs";
 import { safeEqual } from "./compare.mjs";
 import { base64url, fromBase64urlText, hmacSha256 } from "./encoding.mjs";
 import { logEvent } from "./log.mjs";
+import { isSameOriginPath } from "./url.mjs";
 
 /** @import { JwtRefusal } from "./access-login.mjs" */
 
@@ -271,10 +272,10 @@ export function accessSignInUrl(request, { path = "/admin/access" } = {}) {
  * @returns {string}
  */
 export function safeAdminNext(next, { prefix = "/admin", path = "/admin/access" } = {}) {
-  if (!next || next.includes("\\") || next.startsWith(path)) return prefix;
-  if (next === prefix || next.startsWith(`${prefix}/`) || next.startsWith(`${prefix}?`))
-    return next;
-  return prefix;
+  if (!next || !isSameOriginPath(next) || next.startsWith(path)) return prefix;
+  const under = new URL(next, "https://site.invalid").pathname;
+  if (under !== prefix && !under.startsWith(`${prefix}/`)) return prefix;
+  return next;
 }
 
 /** An admin's Access session ends after this long without a request: an hour, in seconds. */

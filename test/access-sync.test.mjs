@@ -31,6 +31,7 @@ test("posts the whole list, and turns every answer into a result", async () => {
   assert.deepEqual(sent, { ok: true, added: 1, dropped: 2 });
   assert.equal(ok.calls[0]?.url, "https://mcp.dustinedwards.info/ops/access-sync");
   assert.equal(new Headers(ok.calls[0]?.init.headers).get("authorization"), `Bearer ${KEY}`);
+  assert.equal(ok.calls[0]?.init.redirect, "manual");
   assert.deepEqual(JSON.parse(String(ok.calls[0]?.init.body)), {
     namespace: "sample",
     members: ["alex@example.com"],

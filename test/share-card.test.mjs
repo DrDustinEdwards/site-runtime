@@ -56,6 +56,15 @@ test("a Google Font is read once, then from the cache", async () => {
   assert.equal((await googleFont("DM Sans", 500, { cache, fetch: get }))?.byteLength, 3);
   assert.equal((await googleFont("DM Sans", 500, { cache, fetch: get }))?.byteLength, 3);
   assert.equal(calls, 2);
+  const foreign = /** @type {typeof fetch} */ (
+    async (url) =>
+      new Response(
+        String(url).startsWith("https://fonts.googleapis.com/")
+          ? "src: url(http://169.254.169.254/f.ttf) format('truetype');"
+          : "x",
+      )
+  );
+  assert.equal(await googleFont("Other", 500, { fetch: foreign }), null);
 });
 
 test("the card route serves the cache, renders and keeps a miss, and answers a failed render with a 503", async () => {

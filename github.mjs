@@ -64,7 +64,10 @@ export async function installationToken(options) {
   if (id === null) {
     if (!owner || !repo)
       throw new TypeError("installationToken needs installationId or owner and repo");
-    const found = await fetcher(`${GITHUB_API}/repos/${owner}/${repo}/installation`, { headers });
+    const found = await fetcher(
+      `${GITHUB_API}/repos/${repoSegment(owner)}/${repoSegment(repo)}/installation`,
+      { headers },
+    );
     if (!found.ok) {
       const detail = (await found.text()).slice(0, 300);
       throw new Error(
@@ -173,7 +176,7 @@ export const DISPATCH_PROBE_REF = "permission-probe-no-such-ref";
  */
 export async function canDispatch(call, owner, repo, workflow) {
   const resp = await call(
-    `/repos/${owner}/${repo}/actions/workflows/${encodeURIComponent(workflow)}/dispatches`,
+    `/repos/${repoSegment(owner)}/${repoSegment(repo)}/actions/workflows/${encodeURIComponent(workflow)}/dispatches`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -182,6 +185,20 @@ export async function canDispatch(call, owner, repo, workflow) {
   );
   await resp.body?.cancel();
   return { ok: resp.status === 422 || resp.status === 204, status: resp.status };
+}
+
+/** @param {string} segment */
+function isDotSegment(segment) {
+  return segment === "." || segment === "..";
+}
+
+/**
+ * An owner or repo as one API path segment: encoded, and never `.` or `..`, which a path would resolve away.
+ * @param {string} segment
+ */
+function repoSegment(segment) {
+  if (isDotSegment(segment)) throw new TypeError(`not a GitHub owner or repo name: ${segment}`);
+  return encodeURIComponent(segment);
 }
 
 /**
@@ -200,6 +217,6 @@ const PR_URL_EXACT = new RegExp(`^${PR_URL_SOURCE}(?:[/?#].*)?$`);
 export function parsePrUrl(ref) {
   if (!ref) return null;
   const match = PR_URL_EXACT.exec(ref.trim());
-  if (!match) return null;
+  if (!match || isDotSegment(match[1]) || isDotSegment(match[2])) return null;
   return { owner: match[1], repo: match[2], number: Number(match[3]) };
 }

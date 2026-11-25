@@ -218,7 +218,8 @@ export async function googleFont(
     ).then((r) => r.text());
     const url = css.match(/src:\s*url\((.+?)\)\s*format\(['"]?(?:truetype|opentype)['"]?\)/)?.[1];
     if (!url) return null;
-    const res = await get(url);
+    if (!url.startsWith("https://fonts.gstatic.com/")) return null;
+    const res = await get(url, { redirect: "manual" });
     if (!res.ok) return null;
     const bytes = await res.arrayBuffer();
     await cache?.put(

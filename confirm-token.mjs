@@ -49,7 +49,7 @@ export async function mintConfirm({
 
 /**
  * Check a token against what the perform is about to do, and spend it when `kv` is given.
- * @param {{ keys: readonly (string | null | undefined)[], token: string, expect?: Record<string, unknown>,
+ * @param {{ keys: readonly (string | null | undefined)[], token: string, expect: Record<string, unknown>,
  *   kv?: { get(key: string): Promise<string | null>, put(key: string, value: string,
  *   options?: { expirationTtl?: number }): Promise<void> }, prefix?: string, now?: number }} options
  * @returns {Promise<Redeemed>}
@@ -57,11 +57,13 @@ export async function mintConfirm({
 export async function redeemConfirm({
   keys,
   token,
-  expect = {},
+  expect,
   kv,
   prefix = "confirm-jti:",
   now = Date.now(),
 }) {
+  if (!expect || typeof expect !== "object" || Array.isArray(expect))
+    throw new TypeError("redeemConfirm needs `expect`: the claims this perform acts on");
   if (typeof token !== "string" || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token))
     return refuse(403, "the confirmation token is malformed: preview again.");
   const payload = await readSignedToken(keys, token);
