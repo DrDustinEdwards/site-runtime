@@ -44,6 +44,7 @@ export const HEALTH_SNAPSHOT_EVERY_MINUTES = 15;
  * @param {unknown} snapshot the parsed KV value, or null
  * @param {number} nowMs
  * @param {{ everyMinutes?: number }} [options]
+ * @returns {HealthTile}
  */
 export function healthTile(snapshot, nowMs, { everyMinutes = HEALTH_SNAPSHOT_EVERY_MINUTES } = {}) {
   if (!snapshot || typeof snapshot !== "object") return { state: "missing" };
@@ -116,6 +117,7 @@ export async function storeHealthSnapshot({
  * The tile for a page. A failed KV read is `unreadable` (and logged), not `missing`: the page renders whatever KV is
  * doing, but a failed read is not the same fact as no snapshot.
  * @param {{ kv: KVNamespace, now?: number, everyMinutes?: number, key?: string }} options
+ * @returns {Promise<HealthTile>}
  */
 export async function readHealthTile({
   kv,
