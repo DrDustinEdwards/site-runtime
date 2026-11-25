@@ -314,7 +314,7 @@ export function viewerOf(conn) {
 }
 
 /** @param {import("partyserver").WSMessage} message */
-export function bytesOf(message) {
+export function messageBytes(message) {
   if (typeof message === "string") return null;
   return message instanceof ArrayBuffer
     ? new Uint8Array(message)

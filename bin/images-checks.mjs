@@ -3,7 +3,7 @@
 import { parsePolicy } from "../check.mjs";
 import { AVIF_MAX_EDGE } from "../image.mjs";
 import { MAX_SIZE_URLS, corpOf, shorten } from "./images-fetch.mjs";
-import { descendants, textOf } from "./images-layout.mjs";
+import { descendants, layoutText } from "./images-layout.mjs";
 
 /** @import { El, Add, Fetched, Load } from "./images-fetch.mjs" */
 
@@ -134,7 +134,7 @@ export function auditMedia({ all, url, absolute, add }) {
       );
   }
   const transcript = all.some(
-    (e) => e.tag === "a" && /transcript/i.test(`${e.attrs.href ?? ""} ${textOf(e)}`),
+    (e) => e.tag === "a" && /transcript/i.test(`${e.attrs.href ?? ""} ${layoutText(e)}`),
   );
   for (const audio of all.filter((e) => e.tag === "audio")) {
     const { attrs } = audio;
