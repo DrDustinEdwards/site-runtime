@@ -15,7 +15,6 @@
 import { sha256 } from "./encoding.mjs";
 
 /**
- * Two equal-length byte arrays, compared in time that does not depend on where they differ.
  * @param {Uint8Array<ArrayBuffer>} a
  * @param {Uint8Array<ArrayBuffer>} b
  */

@@ -15,7 +15,6 @@ import { escapeHtml } from "./html.mjs";
 export const MAINTENANCE_RETRY_AFTER = 3600;
 
 /**
- * True when the site is in maintenance.
  * @param {{ MAINTENANCE?: unknown } | undefined} env
  * @returns {boolean}
  */

@@ -10,7 +10,6 @@
 
 import { base64url, fromBase64 } from "./encoding.mjs";
 
-/** How each algorithm's key is imported and how it signs. */
 const ALGORITHMS = {
   RS256: {
     importAs: { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },

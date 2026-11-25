@@ -104,7 +104,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS page_404_daily_day_path_referrer_uq ON page_40
 /** The most distinct rows one UTC day holds; past it a new key is folded into NOT_FOUND_OVERFLOW (OWASP ASVS 5 2.4.1). */
 export const NOT_FOUND_DAILY_ROWS = 2000;
 
-/** The path of the row that counts the 404s past the day's cap. */
 export const NOT_FOUND_OVERFLOW = "(overflow)";
 
 const UPSERT = `INSERT INTO page_404_daily (id, day, path, referrer_host, kind, hit_count)

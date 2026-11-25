@@ -27,10 +27,7 @@ test("reads the whole body when it fits, across chunks", async () => {
     await readCapped(new Request("https://example.com/", { method: "POST", body: "{}" }), 2),
     "{}",
   );
-});
-
-test("no body is the empty string, not null", async () => {
-  assert.equal(await readCapped({ body: null }, 10), "");
+  assert.equal(await readCapped({ body: null }, 10), "", "no body is the empty string, not null");
   assert.deepEqual(await readCappedBytes({ body: null }, 10), new Uint8Array(0));
 });
 

@@ -33,7 +33,6 @@ export const PROBE_METHODS = new Set([
   "notifications/cancelled", // codespell:ignore (the protocol's method name)
 ]);
 
-/** The largest body the test key's door reads. */
 const PROBE_BODY_MAX = 64 * 1024;
 
 /**

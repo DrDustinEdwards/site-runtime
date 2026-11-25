@@ -34,7 +34,7 @@ describe("checkProse", () => {
         ["word", "haunting", 11],
       ],
     );
-    // W4: Claude's lists are not another model's; what is wrong in any text still is.
+    // Claude's lists are not another model's; what is wrong in any text still is.
     const llama = checkProse(
       "Great question. A haunting one. As of my last knowledge update, it rained.",
       { model: "@cf/meta/llama-3.1-8b-instruct" },
@@ -114,7 +114,7 @@ describe("checkProse", () => {
     assert.deepEqual(checks("Best wishes, [Your Name]", { allow: ["[your name]"] }), []);
   });
 
-  test("CLEAN TWIN: links, code, an AI researcher and a person's own brackets and idioms are not leftovers", () => {
+  test("CLEAN TWIN: links, code, a person's own brackets and idioms, and the same ideas written plainly are not flagged", () => {
     assert.deepEqual(
       checks(
         "See [your name](https://example.com/me) and [link][1].\n`[Your Name]` goes here.\n```\n[Your Name]\n```\nShe works as an AI researcher.",
@@ -130,24 +130,15 @@ describe("checkProse", () => {
       "As an AI language model researcher, I study bias.",
     ];
     for (const text of human) assert.deepEqual(checks(text, { dashes: "allow" }), [], text);
-  });
-
-  test("CLEAN TWIN: the same ideas, written plainly, are not flagged", () => {
     const plain = [
       "We walked home. The town showed what it was made of.",
-      "",
       "It's not raining, so we walked. It was a house, and he meant it as a promise.",
-      "",
       "She bought eggs, flour, and a sack of rice for the week. Then she drove north.",
-      "",
       "Hi Sam, your card didn't go through on the 3rd. You can update it here. If you'd rather stop, do nothing.",
-      "",
       "That was a good question. The book stayed on my desk for a month.",
-      "",
-      "It wasn't raining.",
-      "We walked to town and back.",
-    ].join("\n");
-    assert.deepEqual(checkProse(plain), []);
+      "It wasn't raining.\nWe walked to town and back.",
+    ];
+    for (const text of plain) assert.deepEqual(checkProse(text), [], text);
   });
 });
 

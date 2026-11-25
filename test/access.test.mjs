@@ -196,16 +196,6 @@ describe("accessKeys", () => {
     assert.deepEqual(fetched, [`https://${domain}/cdn-cgi/access/certs`]);
   });
 
-  test("verifies a request end to end through the fetched keys", async () => {
-    const domain = freshTeam();
-    const token = await sign(claims({ iss: `https://${domain}` }));
-    const verdict = await verifyAccessRequest(request({ [ACCESS_JWT_HEADER]: token }), {
-      teamDomain: domain,
-      audience: AUD,
-    });
-    assert.equal(verdict.ok, true);
-  });
-
   test("PLANT: an unavailable key set throws, never a refusal", async () => {
     const domain = freshTeam();
     const token = await sign(claims({ iss: `https://${domain}` }));

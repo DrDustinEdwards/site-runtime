@@ -18,8 +18,8 @@
  *   forced. Never KV: it is eventually consistent, so two fires from two locations both read nothing and both start.
  *   `d1FireStore(db)` is that store on a D1 table (ROUTINE_FIRES_SQL), so adopting the guard is one migration and one
  *   call: `fireOnce(d1FireStore(env.DB), jobKey, config, text)`.
- * - NO CALLER-SIDE THROTTLE (R4, kept on purpose). The limits are 30 fires an hour per routine and 100 per account, and
- *   one routine and one account serve several callers (Capsid's namespaces, Carrel, germomics), so no caller's own count
+ * - NO CALLER-SIDE THROTTLE, on purpose. The limits are 30 fires an hour per routine and 100 per account, and
+ *   one routine and one account serve several callers (several sites and namespaces), so no caller's own count
  *   can know the real one: it would refuse fires Anthropic allows, or allow ones it refuses. Anthropic's count is the
  *   only true one, and its 429 is cheap, starts no session and says when (`retryAfter`); `fireOnce` frees the job key on
  *   it, so the job waits for the caller's next tick instead of being lost.
@@ -92,9 +92,8 @@ const MAX_TEXT = 65_536;
 const TIMEOUT_MS = 15_000;
 const ANSWER_MAX_CHARS = 64 * 1024;
 
-// What a session answer may name. The id's charset is wider than the documented example because a real answer failed
-// the strict one (capsid, job_a7d6f6009242).
-// Ids come as `session_...` (the documented form) and `cse_...` (what a real answer gave).
+// What a session answer may name. Ids come as `session_...` (the documented form) and `cse_...` (what a real answer
+// gave), so the charset is wider than the documented example.
 const SESSION_SEGMENT = /^(?:session|cse)_[A-Za-z0-9_-]{8,128}$/;
 const SESSION_URL =
   /^https:\/\/(?:[a-z0-9-]+\.)*claude\.ai(?:\/[A-Za-z0-9_.-]+)*\/(?:session|cse)_[A-Za-z0-9_-]{8,128}\/?$/;

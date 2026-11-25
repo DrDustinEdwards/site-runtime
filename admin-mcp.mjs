@@ -119,9 +119,9 @@ import {
 export const ADMIN_MCP_OPERATOR_ROUTE = "/api/operator";
 
 /**
- * The admin server's scheduled jobs: the daily copy of the tool-call log to R2 and the 90-day prune (L6-L7). A failed
+ * The admin server's scheduled jobs: the daily copy of the tool-call log to R2 and the 90-day prune. A failed
  * write throws, so the run shows failed, and /health's log check alerts once rows go uncopied for two days. Its result
- * is exportAuditLog's ({ exported, objects, pruned, verified }), so a run now shows whether the copy's chain verified.
+ * is exportAuditLog's ({ exported, objects, pruned, verified }), so a run shows whether the copy's chain verified.
  * @param {AdminMcpEnv} env
  * @returns {import("./cron.mjs").CronJob[]}
  */
@@ -142,7 +142,6 @@ export function adminMcpJobs(env) {
   ];
 }
 
-/** The one MCP route on every admin server. */
 export const ADMIN_MCP_ROUTE = "/mcp";
 
 /**
@@ -184,7 +183,7 @@ export function adminMcpWorker({
 
   /** @param {E} env @param {import("./mcp-server.mjs").McpCaller} caller @param {number} retryAfter @param {string} [clientId] */
   async function rateLimited(env, caller, retryAfter, clientId) {
-    // A burst is a row in the tool-call log beside the calls and sign-ins (checklist L2), naming the caller, never a credential.
+    // A burst is a row in the tool-call log beside the calls and sign-ins, naming the caller, never a credential.
     await recordAudit(env, {
       callId: crypto.randomUUID(),
       phase: "rate-limited",
@@ -234,7 +233,6 @@ export function adminMcpWorker({
     },
   };
 
-  /** One check per binding the door needs, then the server's own, then the tool-call log's (L8). */
   /** @param {E} env @returns {import("./health.mjs").HealthCheck[]} */
   function healthChecks(env) {
     /** @param {string} check @param {unknown} binding @param {(b: any) => import("./health.mjs").HealthCheck} make */
@@ -305,7 +303,6 @@ export function adminMcpWorker({
     scopes,
     about,
     admit: (env, user) => admit(/** @type {E} */ (/** @type {unknown} */ (env)), user),
-    // Every sign-in, admitted or refused, is a row in the tool-call log.
     audit: auditServer,
     // CI's deploy (devkit's worker-deploy.yml) passes DEPLOY_SHA and waits for /health to report it.
     health: (env) =>
@@ -349,11 +346,11 @@ export function adminMcpWorker({
           authorization_servers: [origin],
           resource_name: name,
         },
-        // Every scope in the protected resource metadata and the 401's challenge (checklist A1, RFC 9728); least scope
+        // Every scope in the protected resource metadata and the 401's challenge (RFC 9728); least scope
         // first is still decided at consent (the write box) and per tool (the 403 step-up).
         requiredScopes: all,
         scopesSupported: all,
-        // Rule 13. CIMD for Claude, Claude Code and ChatGPT, which send their client_id as a metadata URL and never
+        // CIMD for Claude, Claude Code and ChatGPT, which send their client_id as a metadata URL and never
         // register (needs the global_fetch_strictly_public flag). Tightened DCR beside it for Grok and Gemini: exact
         // callbacks only, rate limited before the provider sees it, and a registration grants nothing. Remove DCR when
         // they support CIMD, at the latest when the specification removes it.
@@ -412,7 +409,7 @@ export function adminMcpWorker({
       });
       if (probed) return probed;
       if (agentKeys) {
-        // Ruling 37: an agent that cannot finish OAuth has a named key (./agent-keys). Tried, never required: no
+        // An agent that cannot finish OAuth has a named key (./agent-keys). Tried, never required: no
         // AGENT_KEY_* secret, or a key matching none, is null and goes on to the provider. The principal comes from the
         // secret's name, never the request, and has its own limit, so an agent cannot rate limit the owner out.
         const principal = await agentPrincipal(
@@ -458,7 +455,6 @@ export function adminMcpWorker({
   );
 
   return {
-    // One `request` line per request (./log: path, status, ms and the deployed commit; never a query).
     fetch: withRequestLog(
       /** @param {Request} request @param {E} env @param {ExecutionContext} ctx */ (
         request,

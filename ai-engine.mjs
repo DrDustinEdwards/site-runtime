@@ -329,7 +329,6 @@ export async function runAi(job) {
     return viaApi(null);
   }
 
-  // auto
   if (!routine) {
     if (!api || capped)
       return { ok: false, engine: null, error: `${feature} has no route open.`, fellBack: null };

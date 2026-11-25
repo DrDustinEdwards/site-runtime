@@ -44,7 +44,6 @@
 export const PRIMARY_OWNER = "primary_owner";
 export const OWNER = "owner";
 export const MANAGE_MEMBERS = "manage_members";
-/** How long before an end date a lead's review opens (three weeks). */
 export const REVIEW_DAYS = 21;
 
 const DAY_MS = 86_400_000;

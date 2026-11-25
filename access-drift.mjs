@@ -1,5 +1,5 @@
 /**
- * Access drift (I2): the addresses a Cloudflare Access application lets in, read from its policies through the
+ * Access drift: the addresses a Cloudflare Access application lets in, read from its policies through the
  * Cloudflare API, against the admins the site itself holds (`ADMIN_EMAIL` and `CO_OWNER_EMAILS`), so a person removed from one and not the
  * other is found. `bin/access-drift.mjs` runs it in a scheduled CI job.
  *

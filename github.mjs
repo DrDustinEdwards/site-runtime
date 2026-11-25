@@ -96,7 +96,6 @@ export async function installationToken(options) {
 }
 
 /**
- * `path` with `per_page` and `page` added, after any query it already has.
  * @param {string} path
  * @param {number} perPage
  * @param {number} page

@@ -1,6 +1,6 @@
 {
   "baseline": {
-    "measured_at": "fc154c3",
+    "measured_at": "9309d28",
     "knip": {},
     "jscpd": {
       "clones": 0,
@@ -14,27 +14,16 @@
     },
     "legacy": {},
     "size": {
-      "anthropic.mjs": 772,
-      "audit-log.mjs": 790,
-      "doc-room/index.mjs": 531,
-      "edge-cache.mjs": 530,
-      "mcp-login.mjs": 506,
-      "mcp-server.mjs": 701,
-      "prose.mjs": 944,
-      "sign-in-account.mjs": 936,
-      "sign-in-form.mjs": 597,
-      "sign-in.mjs": 1300,
-      "sites.mjs": 783,
-      "worker.mjs": 549
+      "sites.mjs": 783
     },
     "tests": {
       "files": 81,
-      "cases": 446
+      "cases": 438
     },
     "comments": {
-      "lines": 10895,
-      "code": 34836,
-      "percentage": 23.82
+      "lines": 10840,
+      "code": 34874,
+      "percentage": 23.71
     }
   }
 }

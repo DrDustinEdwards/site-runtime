@@ -32,7 +32,6 @@ import { logEvent } from "./log.mjs";
  * @property {boolean} [refresh] True skips the lookup and always reads, then keeps the new value (a "fresh" request); default false.
  */
 
-/** KV's shortest expirationTtl, in seconds. */
 export const KV_MIN_TTL = 60;
 
 /**
@@ -50,7 +49,6 @@ export async function kvCached(kv, key, { ttl, valid = (v) => v !== null, keep, 
       const kept = await kv.get(key, "json");
       if (kept !== null && valid(kept)) return /** @type {T} */ (kept);
     } catch (error) {
-      // An unreadable entry is a miss.
       logEvent("kv_cache_read_failed", { key, error }, { level: "warn" });
     }
   }

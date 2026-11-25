@@ -17,7 +17,6 @@ import { getTableConfig } from "drizzle-orm/sqlite-core";
 const byName = (a, b) => a.name.localeCompare(b.name);
 
 /**
- * The table as SQLite holds it after `sql` runs.
  * @param {string} sql
  * @param {string} name
  * @returns {TableShape}
@@ -71,7 +70,6 @@ function sqlDefault(value) {
 }
 
 /**
- * The same, read off the Drizzle table.
  * @param {import("drizzle-orm/sqlite-core").SQLiteTable} table
  * @returns {TableShape}
  */

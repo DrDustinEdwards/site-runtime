@@ -106,7 +106,6 @@ export function mountTurnstile(el, siteKey, options = {}) {
   };
 }
 
-/** Cloudflare's server-side check of a widget token. */
 export const SITEVERIFY_URL = `${TURNSTILE_ORIGIN}/turnstile/v0/siteverify`;
 
 /** Cloudflare's own limit on a token's length (developers.cloudflare.com/turnstile/get-started/server-side-validation). */

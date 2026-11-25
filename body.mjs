@@ -4,7 +4,7 @@ import { errors, schemaIssues } from "./http-errors.mjs";
 import { errorMessage } from "./log.mjs";
 
 /**
- * A request body read to a byte ceiling, counted as it arrives (body.mjs).
+ * A request body read to a byte ceiling, counted as it arrives.
  * @typedef {object} BodySource
  * @property {ReadableStream<Uint8Array> | null} body
  */
@@ -62,7 +62,6 @@ export async function readCappedBytes(source, max) {
 }
 
 /**
- * `readCappedBytes`, decoded as UTF-8: "" for no body, null when over the ceiling.
  * @param {{ body: ReadableStream<Uint8Array> | null }} source
  * @param {number} max
  * @returns {Promise<string | null>}
@@ -94,7 +93,6 @@ export function payloadTooLarge() {
 }
 
 /**
- * The body as text. Throws the 413 Response (payloadTooLarge) when it is longer than `max`.
  * @param {Request} request
  * @param {number} max the ceiling in bytes
  * @returns {Promise<string>}
@@ -188,7 +186,6 @@ const CRLF2 = /* @__PURE__ */ new Uint8Array([13, 10, 13, 10]);
 const PART_HEADER_LIMIT = 16 * 1024;
 
 /**
- * The refusal for a multipart body that does not parse: 400, uncacheable.
  * @param {string} [message]
  * @returns {Response}
  */
@@ -217,7 +214,6 @@ function bytesIndexOf(haystack, needle) {
 }
 
 /**
- * The boundary from a multipart/form-data Content-Type, or null for any other type.
  * @param {string | null} contentType
  * @returns {string | null}
  */
