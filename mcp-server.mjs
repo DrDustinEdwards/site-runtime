@@ -12,16 +12,17 @@ import {
   scriptHash,
 } from "./csp.mjs";
 import { receiveCspReport } from "./csp-report.mjs";
-import { isProbeKey, PROBE_PRINCIPAL, probeCaller } from "./agent-keys.mjs";
-import { readCappedBytes } from "./body.mjs";
 import { applyHeaderSet, buildSecurityHeaders } from "./headers.mjs";
 import { limit } from "./rate-limit/limit.mjs";
-import { canonicalJson, sha256Hex } from "./encoding.mjs";
 import { CONSENT_STYLE, isAdminUser } from "./mcp-login.mjs";
 import { OWNER_STYLE } from "./owner-page.mjs";
 import { originRefusal, originVerdict } from "./origin.mjs";
 import { securityTxtResponse } from "./security-txt.mjs";
 import { errorMessage } from "./log.mjs";
+
+export { PROBE_METHODS, probeDoor, probeRefusal } from "./mcp-probe.mjs";
+
+export { mcpCacheHints, toolListHash, toolListProblems } from "./mcp-tool-list.mjs";
 
 /**
  * @typedef {object} ApiLeg
@@ -49,10 +50,6 @@ import { errorMessage } from "./log.mjs";
 /** @typedef {{ isError?: boolean, content: Array<{ type: "text"; text: string }> }} ToolText */
 
 /** @typedef {{ src: string; mimeType?: string; sizes?: string[]; theme?: "light" | "dark" }} McpIcon An https URL or a `data:image/` URI. */
-
-/** @typedef {{ item: "T1" | "T2" | "T3" | "T4" | "T9"; tool: string; severity: "error" | "warning"; detail: string }} ToolListProblem */
-
-/** @typedef {"tools/list" | "prompts/list" | "resources/list" | "resources/templates/list" | "resources/read" | "server/discover"} CacheableMethod */
 
 // THE ERA ROUTER, and the prior-era shim. MCP 2026-07-28 removed the `initialize` handshake, sessions and the GET
 // stream. The primary handler is `legacy: "reject"` (modern-only); the clients these servers serve still open legacy, so
@@ -676,132 +673,6 @@ export function registerTools(mcp, tools, { env, server, caller, icons, config, 
   return listed;
 }
 
-// THE LIST-ONLY TEST KEY'S DOOR (./agent-keys `isProbeKey`). The key may open a connection, read the server's lists and
-// send a tools/call that the server refuses; any other method is answered here, before the SDK sees the request, as the
-// method a server does not have (404, -32601), and logged. An allowlist, so a new protocol method is refused until named.
-//
-// WHY tools/call PASSES. The protocol layer validates a request first: a Mcp-Method or Mcp-Name header that does not
-// match the body is a 400 (-32020, SEP-2243), a method the server lacks a 404 (-32601, SEP-2575). A door that refused
-// tools/call first answered those 403 and broke both MUSTs (conformance P3/P4 on 2026-11-01). Past the SDK's checks
-// `invokeTool` refuses the probe caller before `run`, with a `refused` row, so the key still runs nothing.
-
-/** The methods the list-only test key may send on to the server (tools/call is refused by `invokeTool`, see above). */
-export const PROBE_METHODS = new Set([
-  "initialize",
-  "ping",
-  "server/discover",
-  "tools/list",
-  "tools/call",
-  "resources/list",
-  "resources/templates/list",
-  "prompts/list",
-  "subscriptions/listen",
-  "notifications/initialized",
-  "notifications/cancelled", // codespell:ignore (the protocol's method name)
-]);
-
-/** The largest body the test key's door reads. */
-const PROBE_BODY_MAX = 64 * 1024;
-
-/**
- * The list-only test key's request, checked: `{ request }` to serve (its body already read), or `{ refusal }`: a 403
- * JSON-RPC error for a body over 64 KiB, and for a method `PROBE_METHODS` does not list a 404 with -32601. A refused
- * notification is a 403, as it has no id to answer. Each refused message is a `refused` row in the log, under
- * `probe:live-check`. A body that is not JSON goes on, for the SDK's parse error.
- * @param {Partial<import("./audit-log.mjs").AuditEnv>} env
- * @param {McpServerInfo} server
- * @param {Request} request
- * @returns {Promise<{ request: Request, refusal?: undefined } | { refusal: Response, request?: undefined }>}
- */
-export async function probeRefusal(env, server, request) {
-  const refusal = (
-    /** @type {unknown} */ id,
-    /** @type {number} */ status,
-    /** @type {number} */ code,
-    /** @type {string} */ message,
-  ) => ({
-    refusal: new Response(
-      JSON.stringify({ jsonrpc: "2.0", id: id ?? null, error: { code, message } }),
-      {
-        status,
-        headers: { "content-type": "application/json", "cache-control": "no-store" },
-      },
-    ),
-  });
-  if (request.method !== "POST") return { request };
-  const bytes = await readCappedBytes(request, PROBE_BODY_MAX);
-  if (bytes === null)
-    return refusal(null, 403, -32600, "Refused: the list-only test key's request is too large.");
-  const text = new TextDecoder().decode(bytes);
-  const served = new Request(request, { method: "POST", body: text });
-  /** @type {unknown} */
-  let body;
-  try {
-    body = JSON.parse(text);
-  } catch {
-    return { request: served };
-  }
-  const messages = (Array.isArray(body) ? body : [body]).filter((m) => m && typeof m === "object");
-  const refused = messages.filter(
-    (m) => !PROBE_METHODS.has(String(/** @type {{ method?: unknown }} */ (m).method ?? "")),
-  );
-  if (!refused.length) return { request: served };
-  const words = `Refused: this is the list-only test key for ${server.site}. It can list tools and never runs one.`;
-  for (const message of refused) {
-    const { method, params } =
-      /** @type {{ method?: unknown, params?: { _meta?: Record<string, unknown> } }} */ (message);
-    await recordAudit(env, {
-      callId: crypto.randomUUID(),
-      phase: "refused",
-      caller: `probe:${PROBE_PRINCIPAL}`,
-      tool: String(method ?? "no method"),
-      result: { isError: true, text: words },
-      server: { name: server.name, version: server.version },
-      correlationId: correlationId(params?._meta),
-    });
-  }
-  const first = /** @type {{ id?: unknown }} */ (refused[0]);
-  return first.id === undefined
-    ? refusal(null, 403, -32600, words)
-    : refusal(first.id, 404, -32601, `Method not found. ${words}`);
-}
-
-/**
- * The list-only test key's whole door, for a server's `/mcp` before its OAuth provider: null when the request does not
- * carry the key. Otherwise the limiter (fails closed; a limited request is a `rate-limited` row), then `probeRefusal`,
- * then `serve(request, probeCaller())`.
- * @template {Partial<import("./audit-log.mjs").AuditEnv>} E
- * @param {Request} request
- * @param {E} env
- * @param {{ server: McpServerInfo, limiter: Parameters<typeof checkRateLimit>[0], serve: (request: Request, caller: { kind: "probe", principal: string, scopes: string[] }) => Promise<Response> }} options
- * @returns {Promise<Response | null>}
- */
-export async function probeDoor(request, env, { server, limiter, serve }) {
-  if (
-    !(await isProbeKey(
-      /** @type {Record<string, unknown>} */ (env),
-      request.headers.get("authorization"),
-    ))
-  )
-    return null;
-  const limit = await checkRateLimit(limiter, `probe:${PROBE_PRINCIPAL}`);
-  if (!limit.allowed) {
-    await recordAudit(env, {
-      callId: crypto.randomUUID(),
-      phase: "rate-limited",
-      caller: `probe:${PROBE_PRINCIPAL}`,
-      server: { name: server.name, version: server.version },
-    });
-    return refuse(
-      `Rate limited. ${server.site}'s MCP allows ${MCP_PER_MINUTE} requests a minute.`,
-      429,
-      { "retry-after": String(limit.retryAfter) },
-    );
-  }
-  const checked = await probeRefusal(env, server, request);
-  return checked.refusal ?? serve(checked.request, probeCaller());
-}
-
 // TEXT FROM OUTSIDE (S2). A tool that returns what someone outside the server wrote marks it as data in the result.
 
 /** The line a result with outside text opens with. */
@@ -827,138 +698,4 @@ export function outsideResult(label, value) {
   return typeof value === "string"
     ? { content }
     : { content, structuredContent: { notice: OUTSIDE_DATA_NOTICE, ...value } };
-}
-
-// THE TOOL LIST'S RULES (T1-T4, T9) AND ITS PIN (T12), over `tools/list` as a client receives it, shared by a server's
-// own test and the daily live check (bin/ai-audit.mjs).
-
-const TOOL_NAME = /^[A-Za-z0-9_.-]{1,128}$/;
-const HINTS = ["readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"];
-const DIALECT = "https://json-schema.org/draft/2020-12/schema";
-
-/**
- * What is wrong with a `tools/list` result's tools: T1 a bad or repeated name, no title or description; T2 an annotation
- * hint not set as a boolean; T3 no `outputSchema` of type object; T4 an `inputSchema` that is not an object, a `$schema`
- * other than 2020-12, an object without `additionalProperties: false`, a non-local `$ref`, and (a warning) a string with
- * no `pattern`, `enum`, `const` or `format`; T9 no icon, or one whose `src` is neither https nor a `data:image/`.
- * @param {ReadonlyArray<object>} tools
- * @returns {ToolListProblem[]}
- */
-export function toolListProblems(tools) {
-  /** @type {ToolListProblem[]} */
-  const out = [];
-  const seen = new Set();
-  for (const listed of tools) {
-    const tool = /** @type {Record<string, any>} */ (listed);
-    const name = String(tool?.name ?? "");
-    const add = (
-      /** @type {ToolListProblem["item"]} */ item,
-      /** @type {string} */ detail,
-      severity = /** @type {"error" | "warning"} */ ("error"),
-    ) => out.push({ item, tool: name, severity, detail });
-    if (!TOOL_NAME.test(name))
-      add("T1", `the name ${JSON.stringify(name)} is not [A-Za-z0-9_.-]{1,128}`);
-    if (seen.has(name)) add("T1", "the name is listed twice");
-    seen.add(name);
-    if (!String(tool.title ?? tool.annotations?.title ?? "").trim()) add("T1", "has no title");
-    if (!String(tool.description ?? "").trim()) add("T1", "has no description");
-    const unset = HINTS.filter((hint) => typeof tool.annotations?.[hint] !== "boolean");
-    if (unset.length) add("T2", `does not set ${unset.join(", ")}`);
-    if (tool.outputSchema?.type !== "object") add("T3", "has no outputSchema of type object");
-    const input = tool.inputSchema;
-    if (input?.type !== "object") add("T4", "its inputSchema is not of type object");
-    else {
-      if (input.$schema !== undefined && input.$schema !== DIALECT)
-        add("T4", `its inputSchema declares ${input.$schema}, not JSON Schema 2020-12`);
-      schemaProblems(input, "inputSchema", add);
-    }
-    const icons = Array.isArray(tool.icons) ? tool.icons : [];
-    if (icons.length === 0) add("T9", "has no icon");
-    for (const icon of icons)
-      if (!/^(?:https:\/\/|data:image\/)/.test(String(icon?.src ?? "")))
-        add(
-          "T9",
-          `its icon ${JSON.stringify(String(icon?.src ?? "")).slice(0, 80)} is neither https nor a data:image URI`,
-        );
-  }
-  return out;
-}
-
-/**
- * T4 at every depth of a schema.
- * @param {any} schema
- * @param {string} at
- * @param {(item: ToolListProblem["item"], detail: string, severity?: "error" | "warning") => void} add
- */
-function schemaProblems(schema, at, add) {
-  if (!schema || typeof schema !== "object") return;
-  if (typeof schema.$ref === "string" && !schema.$ref.startsWith("#"))
-    add("T4", `${at} has a $ref that is not local: ${schema.$ref.slice(0, 80)}`);
-  const types = [schema.type].flat();
-  if ((types.includes("object") || schema.properties) && schema.additionalProperties !== false)
-    add("T4", `${at} does not set additionalProperties: false`);
-  if (
-    types.includes("string") &&
-    schema.pattern === undefined &&
-    schema.enum === undefined &&
-    schema.const === undefined &&
-    schema.format === undefined
-  ) {
-    add("T4", `${at} is a string with no pattern, enum, const or format`, "warning");
-  }
-  for (const [key, child] of Object.entries(schema.properties ?? {}))
-    schemaProblems(child, `${at}.${key}`, add);
-  for (const key of ["items", "additionalItems", "not"])
-    if (schema[key] && typeof schema[key] === "object") schemaProblems(schema[key], `${at}[]`, add);
-  for (const key of ["anyOf", "oneOf", "allOf", "prefixItems"])
-    for (const [i, child] of (Array.isArray(schema[key]) ? schema[key] : []).entries())
-      schemaProblems(child, `${at}.${key}[${i}]`, add);
-  for (const key of ["$defs", "definitions"])
-    for (const [name, child] of Object.entries(schema[key] ?? {}))
-      schemaProblems(child, `${at}.${key}.${name}`, add);
-}
-
-/**
- * The SHA-256 of a tool list (T12, the tool-poisoning guard): every tool as `tools/list` sends it, `_meta` left out,
- * sorted by name, as canonical JSON. Pin it in the server's tests so any change to a name, description, schema or
- * annotation fails CI until reviewed; give the daily check the same pin (`--tools-hash`).
- * @param {ReadonlyArray<Record<string, unknown>>} tools
- * @returns {Promise<string>}
- */
-export async function toolListHash(tools) {
-  const plain = tools
-    .map(({ _meta, ...tool }) => tool)
-    .sort((a, b) =>
-      String(a.name) < String(b.name) ? -1 : String(a.name) > String(b.name) ? 1 : 0,
-    );
-  return sha256Hex(canonicalJson(plain));
-}
-
-// LIST CACHE HINTS (MCP 2026-07-28): the SDK's `cacheHints` option; without it results go out as `ttlMs: 0`, private.
-
-const CACHEABLE = /** @type {const} */ ([
-  "tools/list",
-  "prompts/list",
-  "resources/list",
-  "resources/templates/list",
-  "resources/read",
-  "server/discover",
-]);
-
-/**
- * The `cacheHints` option: every cacheable result lives `ttlMs`, private unless named in `shared` (the same for every
- * caller). Private is the default because a list filtered by the grant served from a shared cache is one person's list
- * shown to another.
- * @param {{ ttlMs?: number, shared?: ReadonlyArray<typeof CACHEABLE[number]> }} [options]
- * @returns {Record<CacheableMethod, { ttlMs: number; cacheScope: "public" | "private" }>}
- */
-export function mcpCacheHints({ ttlMs = 60_000, shared = [] } = {}) {
-  return /** @type {Record<CacheableMethod, { ttlMs: number; cacheScope: "public" | "private" }>} */ (
-    Object.fromEntries(
-      CACHEABLE.map((method) => [
-        method,
-        { ttlMs, cacheScope: shared.includes(method) ? "public" : "private" },
-      ]),
-    )
-  );
 }

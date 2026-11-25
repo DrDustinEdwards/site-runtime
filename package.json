@@ -39,6 +39,8 @@
     "mcp-login.mjs",
     "audit-log.mjs",
     "mcp-server.mjs",
+    "mcp-probe.mjs",
+    "mcp-tool-list.mjs",
     "admin-mcp.mjs",
     "agent-keys.mjs",
     "owner-page.mjs",
