@@ -17,7 +17,6 @@
 
 import { SECRET_SHAPES } from "./redact.mjs";
 
-/** An email address inside any text. */
 export const EMAIL_PATTERN = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 /** Stripe secret, restricted and webhook-signing keys (redact.mjs SECRET_SHAPES.stripeKey). */
 export const STRIPE_KEY_PATTERN = SECRET_SHAPES.stripeKey;
@@ -285,7 +284,6 @@ export function databaseDownStatus(request, status, headers) {
   return 503;
 }
 
-/** serverErrorHandler with the preview link's token cut. */
 export const handleServerError = /* @__PURE__ */ serverErrorHandler();
 
 /**

@@ -1,7 +1,6 @@
 /**
  * The per-request Cloudflare bindings and the render's Content-Security-Policy nonce, on React Router's context, once.
- * Seven sites each declared `cloudflareContext`, `getEnv` and a nonce context of their own, under two names for the
- * nonce. The Worker sets them before the render (`context.set(cloudflareContext, { env, ctx })`); loaders, actions and
+ * The Worker sets them before the render (`context.set(cloudflareContext, { env, ctx })`); loaders, actions and
  * middleware read the bindings through getEnv, so they never become a free-floating global and never reach the client.
  *
  * The one module here that needs `react-router` (a site that imports it has it; it is not declared as a dependency, as

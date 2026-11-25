@@ -154,7 +154,6 @@ function refused(code, error) {
 }
 
 /**
- * Send one mail through the binding.
  * @param {EmailBinding | null | undefined} binding
  * @param {Mail} mail
  * @param {{ secrets?: readonly (string | null | undefined)[] }} [options]

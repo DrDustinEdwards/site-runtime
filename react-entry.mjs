@@ -86,5 +86,4 @@ export function reactEntry({ nonce: readNonce = getNonce } = {}) {
   };
 }
 
-/** The entry with the standard nonce. */
 export default reactEntry();

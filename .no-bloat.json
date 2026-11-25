@@ -1,6 +1,6 @@
 {
   "baseline": {
-    "measured_at": "336d375",
+    "measured_at": "7cac77b",
     "knip": {},
     "jscpd": {
       "clones": 0,
@@ -14,28 +14,21 @@
     },
     "legacy": {},
     "size": {
-      "anthropic.mjs": 772,
-      "audit-log.mjs": 790,
       "bin/ai-audit.mjs": 974,
       "bin/images.mjs": 1395,
       "bin/site-runtime-security.mjs": 514,
       "check.mjs": 856,
-      "doc-room/index.mjs": 531,
-      "edge-cache.mjs": 530,
       "image.mjs": 917,
-      "mcp-server.mjs": 701,
-      "prose.mjs": 944,
-      "sites.mjs": 783,
-      "worker.mjs": 549
+      "sites.mjs": 783
     },
     "tests": {
       "files": 81,
-      "cases": 449
+      "cases": 444
     },
     "comments": {
-      "lines": 10903,
-      "code": 34768,
-      "percentage": 23.87
+      "lines": 10852,
+      "code": 34720,
+      "percentage": 23.81
     }
   }
 }

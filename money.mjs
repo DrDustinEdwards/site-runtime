@@ -4,8 +4,8 @@
  * Amounts are stored as integers in a small unit and only turned into a currency string for display. The unit is the
  * currency's minor unit by default, the one Stripe sends (https://docs.stripe.com/currencies, "Specify amounts in API
  * requests"), and that is not always a hundredth: for Stripe's zero-decimal currencies the amount is the whole unit
- * (5000 JPY is 5,000 yen) and for its three-decimal ones it is a thousandth. Dividing everything by 100 showed a
- * 5,000 yen dispute as 50 yen in Recova; `currencyExponent` is the one table that decides it.
+ * (5000 JPY is 5,000 yen) and for its three-decimal ones it is a thousandth. `currencyExponent` is the one table that
+ * decides it.
  *
  * A site that stores some other unit says so with `scale`, the power of ten between its stored integer and the whole
  * unit: 3 for mills (Carrel's X budget), 6 for micros (Carrel's API cap), 0 for a whole-unit number.
