@@ -24,7 +24,7 @@ const DAY_MS = 86_400_000;
  * @param {number | null} cacheMin
  * @returns {ModelEntry}
  */
-export const active = (notBefore, cacheMin) =>
+const active = (notBefore, cacheMin) =>
   Object.freeze({ state: "active", deprecated: null, retires: null, notBefore, cacheMin });
 
 /** @type {Readonly<Record<string, ModelEntry>>} */
