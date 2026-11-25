@@ -6,6 +6,11 @@
       "description": "@sentry/cloudflare 11 adds about 20 KiB to a Worker (and over 240 KiB where the bundler keeps @sentry/conventions whole), pushing Foxhound, Foxing and julieedwards.info over their size budgets (0.182.0).",
       "matchPackageNames": ["@sentry/cloudflare"],
       "allowedVersions": "<11"
+    },
+    {
+      "description": "@takumi-rs/wasm 2.22 grows the Wasm binary by 219 KB (4.34 to 4.56 MB), which pushed Foxhound, Foxing and julieedwards.info over their Worker size budgets (0.182.0). Hold both Takumi packages at 2.20.0 until a release that is smaller.",
+      "matchPackageNames": ["@takumi-rs/wasm", "takumi-js"],
+      "allowedVersions": "<=2.20.0"
     }
   ]
 }
