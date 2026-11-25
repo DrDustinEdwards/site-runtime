@@ -148,18 +148,6 @@ export function accessToken(request, { cookie = false } = {}) {
 }
 
 /**
- * One Access application's verdict on a token: the claims, or the reason it is refused (`verifyJwt`'s reasons:
- * malformed, algorithm, unknown-key, signature, issuer, audience, expired, not-yet-valid).
- * @param {string} token
- * @param {KeySource} keys
- * @param {{ issuer: string, audience: string, now?: number }} expect `now` in epoch milliseconds
- * @returns {Promise<import("./access-login.mjs").JwtVerdict>}
- */
-export function verifyAccessToken(token, keys, expect) {
-  return verifyJwt(token, keys, expect);
-}
-
-/**
  * One Access application's verdict on a request. `not-configured` when the team domain or the audience is missing,
  * `no-token` when the request carries none, a token reason when it fails; otherwise the token's claims, which the
  * caller reads for `email` (a person) or `common_name` (a service token). Throws when the keys cannot be fetched.
