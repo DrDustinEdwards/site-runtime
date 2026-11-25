@@ -3,6 +3,7 @@
  * /media address gets, and the raster tests. Nothing here imports the route or the page half.
  */
 
+/** @import { AddressOptions } from "./image.mjs" */
 import { mediaType } from "./http.mjs";
 
 /** @import { R2ObjectLike } from "./image.mjs" */
@@ -142,7 +143,7 @@ export function mediaKey(path, within = "") {
  * site's own `origins`, query and fragment cut, segments percent-decoded, a size's format suffix cut as the route cuts
  * it, `keyPrefix` put back, and the key checked by `mediaKey`. The inverse of the address a page writes.
  * @param {string} address
- * @param {{ origins?: string[], prefix?: string, keyPrefix?: string, within?: string }} [options]
+ * @param {AddressOptions} [options]
  */
 export function keyOfAddress(
   address,
@@ -167,7 +168,8 @@ export function keyOfAddress(
  * order first named. Over-detection only keeps a file from being deleted; a key with a space or `)` is found only when
  * the address is encoded.
  * @param {string | null | undefined} text
- * @param {{ origins?: string[], prefix?: string, keyPrefix?: string, within?: string }} [options]
+ * @param {AddressOptions} [options]
+ * @returns {Set<string>}
  */
 export function keysAtAddresses(text, options = {}) {
   const keys = new Set();

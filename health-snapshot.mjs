@@ -79,6 +79,7 @@ export function healthTile(snapshot, nowMs, { everyMinutes = HEALTH_SNAPSHOT_EVE
  * answer, so a refusal or an error page is never stored as a verdict.
  * @param {unknown} body the parsed /health body
  * @param {string} readAt an ISO time
+ * @returns {HealthSnapshot | null}
  */
 export function snapshotFromBody(body, readAt) {
   const checks = healthChecks(body);

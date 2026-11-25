@@ -81,6 +81,7 @@ export const PASSKEY_OVERRIDES = /* @__PURE__ */ Object.freeze({
  * `cross-origin`, so a site marks those responses and not every response. The check accepts `cross-origin` only on
  * these kinds.
  * @param {string | null | undefined} contentType the response's Content-Type
+ * @returns {"cross-origin" | "same-origin"}
  */
 export function corpFor(contentType) {
   return /^\s*(image\/|font\/|text\/css|(text|application)\/javascript|application\/(rss|atom)\+xml|application\/feed\+json)/i.test(
@@ -100,6 +101,7 @@ export function corpFor(contentType) {
  * The header overrides a registry entry declares: PASSKEY_OVERRIDES when it opts into passkey, then its own. A
  * Permissions-Policy of its own must still allow the passkey, or the opt-in would be a word with no effect.
  * @param {import("./sites.mjs").ServedSiteEntry} entry
+ * @returns {Record<string, HeaderOverride>}
  */
 export function entryOverrides({ id, headers = {}, optIns = {} }) {
   const merged = { ...(optIns.passkey?.value ? PASSKEY_OVERRIDES : {}), ...headers };

@@ -57,6 +57,7 @@ export function parseAdminList(text) {
 /**
  * Who an Access application lets in, by the application's name.
  * @param {{ accountId: string, appName: string, token: string, fetch?: typeof fetch }} options
+ * @returns {Promise<Allowed>}
  */
 export async function accessAllowed({ accountId, appName, token, fetch: get = globalThis.fetch }) {
   /** @param {string} path @returns {Promise<{ result: any, result_info?: { page?: number, total_pages?: number } }>} */
@@ -185,6 +186,7 @@ function describe(rule) {
  * Access, and Access's open rules. No drift when all three are empty.
  * @param {Allowed} allowed
  * @param {string[]} admins
+ * @returns {Drift}
  */
 export function accessDrift(allowed, admins) {
   const app = new Set(admins.map(normal));
