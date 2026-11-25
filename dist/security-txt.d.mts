@@ -1,0 +1,37 @@
+/**
+ * @typedef {{ origin: string, contact?: string, expires?: Date | string, policy?: string, languages?: string }} SecurityTxt
+ */
+/**
+ * The file's text: Contact, Expires, Policy when given, Preferred-Languages and Canonical (the site's own URL for it,
+ * so a copy found elsewhere is known to be one). `contact` is an email address or a URL; it and `expires` default to
+ * the network's (SECURITY_CONTACT, SECURITY_TXT_EXPIRES).
+ * @param {SecurityTxt} fields
+ */
+export function securityTxt({ origin, contact, expires, policy, languages, }: SecurityTxt): string;
+/**
+ * The file as a response: `text/plain; charset=utf-8`, as RFC 9116 section 3 requires, cached for an hour. `headers`
+ * adds to those or replaces the caching; a Content-Type in it is refused, since the check (checkSecurityTxt, ./check)
+ * fails any other.
+ * @param {SecurityTxt} fields
+ * @param {HeadersInit} [headers]
+ */
+export function securityTxtResponse(fields: SecurityTxt, headers?: HeadersInit): Response;
+/**
+ * /.well-known/security.txt (RFC 9116), once, for every site: where to report a vulnerability, before a finder decides
+ * a public post is the only channel.
+ *
+ * `expires` is required, as the RFC requires the field. A fixed date is the safer choice: a file that renews itself on
+ * every request keeps vouching for a contact nobody has checked. A site that does pass a computed date should keep it
+ * under a year out, as the RFC recommends.
+ */
+/** Where every network site's vulnerability reports go, unless a site names its own. */
+export const SECURITY_CONTACT: "security@dustinedwards.info";
+/** The date the network's contact is next confirmed by; moved forward, by hand, when it is confirmed again. */
+export const SECURITY_TXT_EXPIRES: "2027-09-28T00:00:00Z";
+export type SecurityTxt = {
+    origin: string;
+    contact?: string;
+    expires?: Date | string;
+    policy?: string;
+    languages?: string;
+};

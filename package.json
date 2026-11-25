@@ -610,7 +610,6 @@
     }
   },
   "scripts": {
-    "prepare": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p . && tsc -p tsconfig.browser.json",
     "test": "node --test \"test/*.test.mjs\"",
     "bloat": "devkit-no-bloat",
