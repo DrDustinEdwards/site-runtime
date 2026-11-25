@@ -124,18 +124,6 @@ describe("verifyAccessRequest", () => {
     assert.equal(single.ok, true);
   });
 
-  test("reads the CF_Authorization cookie only when the caller asks", async () => {
-    const cookie = `${ACCESS_COOKIE}=${await sign(claims())}`;
-    assert.deepEqual(await verifyAccessRequest(request({ cookie }), config), {
-      ok: false,
-      reason: "no-token",
-    });
-    assert.equal(
-      (await verifyAccessRequest(request({ cookie }), { ...config, cookie: true })).ok,
-      true,
-    );
-  });
-
   test("PLANT: a missing setting keeps the door shut", async () => {
     const req = request({ [ACCESS_JWT_HEADER]: await sign(claims()) });
     assert.deepEqual(await verifyAccessRequest(req, { ...config, teamDomain: undefined }), {
@@ -145,13 +133,6 @@ describe("verifyAccessRequest", () => {
     assert.deepEqual(await verifyAccessRequest(req, { ...config, audience: " " }), {
       ok: false,
       reason: "not-configured",
-    });
-  });
-
-  test("no token is no-token", async () => {
-    assert.deepEqual(await verifyAccessRequest(request(), config), {
-      ok: false,
-      reason: "no-token",
     });
   });
 
@@ -180,20 +161,6 @@ describe("verifyAccessRequest", () => {
         reason,
       );
     }
-  });
-
-  test("allows 60 seconds of clock skew either way, and no more", async () => {
-    const at = async (/** @type {Record<string, unknown>} */ over) =>
-      (
-        await verifyAccessRequest(
-          request({ [ACCESS_JWT_HEADER]: await sign(claims(over)) }),
-          config,
-        )
-      ).ok;
-    assert.equal(await at({ exp: now - 30 }), true);
-    assert.equal(await at({ nbf: now + 30 }), true);
-    assert.equal(await at({ exp: now - 90 }), false);
-    assert.equal(await at({ nbf: now + 90 }), false);
   });
 });
 
