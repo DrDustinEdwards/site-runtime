@@ -108,14 +108,11 @@ test("withRequestLog names the route and a refused input also writes input_valid
     ],
   );
 
-  // A route 404 (RR's no-route-match) is not logged; any other error is one scrubbed server_error line.
   lines.length = 0;
   const request = new Request("https://example.com/blog/robots.txt?token=abc");
   handleServerError({ status: 404, error: new Error("No route matches URL") }, { request });
-  // A POST to a route with no action is RR's 405: the client's fault, as a scanner's POST /index.php is.
   handleServerError({ status: 405, error: new Error("You made a POST request") }, { request });
   assert.equal(lines.length, 0);
-  // React Router's refusal of a cross-origin action is the check working: one warn line, not a server_error.
   handleServerError(
     new Error(
       "The `request.url` origin does not match `origin` header from a forwarded action request. Aborting the action.",
@@ -133,7 +130,6 @@ test("withRequestLog names the route and a refused input also writes input_valid
     [{ event: "server_error", path: "/blog/robots.txt", error: "Error: boom" }],
   );
 
-  // An answer whose route failed because D1 was down answers 503 with Retry-After; any other failure keeps its status.
   const headers = new Headers();
   assert.equal(databaseDownStatus(request, 500, headers), 500);
   const importing = new Request("https://example.com/teaching");
@@ -147,7 +143,6 @@ test("withRequestLog names the route and a refused input also writes input_valid
   assert.equal(headers.get("Retry-After"), "60");
   assert.equal(headers.get("Cache-Control"), "no-store");
 
-  // R2's transient 10001 is a warning line, not an error, and the answer is a 503 too.
   const media = new Request("https://example.com/media/x.jpg");
   lines.length = 0;
   const warned = /** @type {any} */ (console.warn).mock.callCount();

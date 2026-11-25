@@ -103,7 +103,7 @@ test("PLANT DNS rebinding: a foreign Origin or another Host is refused before th
   );
 });
 
-test("PLANT 12.2 and 12.1: another resource's token and another person's grant reach nothing", async () => {
+test("PLANT: another resource's token and another person's grant reach nothing", async () => {
   const { served, call } = setup();
   token = { ...ADMIN, auth: { ...ADMIN.auth, audience: "https://other.example.com/mcp" } };
   assert.equal((await call("/mcp")).status, 401);
@@ -131,7 +131,6 @@ test("the administrator is served with the grant's scopes, admit is asked again 
   assert.equal(served[0].caller.kind, "admin");
   assert.deepEqual(served[0].caller.scopes, [SCOPES.read]);
   assert.equal(served[0].caller.auth.token, "t");
-  // Over the limit, or with no limiter bound (it fails closed): 429 and a rate-limited row naming the caller.
   delete env.MCP_RATE_LIMIT;
   assert.equal((await call("/mcp")).status, 429);
   assert.equal(rows.at(-1)?.phase, "rate-limited");
@@ -191,7 +190,6 @@ test("not configured is not open: no PUBLIC_ORIGIN serves nothing, /health fails
   delete env.PUBLIC_ORIGIN;
   assert.equal((await call("/mcp")).status, 503);
   env.PUBLIC_ORIGIN = ORIGIN;
-  // Every server asks the site over its binding (sample-reach): a 404 is up, a 5xx warns.
   const up = await (await call("/health", { method: "GET" })).json();
   assert.equal(
     up.checks.find((/** @type {{ name: string }} */ c) => c.name === "sample-reach")?.status,
@@ -208,7 +206,6 @@ test("not configured is not open: no PUBLIC_ORIGIN serves nothing, /health fails
     down.checks.find((/** @type {{ name: string }} */ c) => c.name === "sample-reach")?.status,
     "warn",
   );
-  // A reserved name the site answers without its API, and its redirect is not followed.
   assert.deepEqual(
     asked.map((r) => [r.url, r.redirect]),
     [["https://sample.invalid/", "manual"]],

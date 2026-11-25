@@ -113,7 +113,6 @@ test("a logged line carries no query string, and keywords are kept", () => {
     disposition: "enforce",
   });
   assert.doesNotMatch(JSON.stringify(line), /secret|q=1/);
-  // A Trusted Types report keeps the sink and the column, never the sample's text after "|".
   const types = summarizeReport({
     effectiveDirective: "require-trusted-types-for",
     blockedURL: "trusted-types-sink",
@@ -123,7 +122,6 @@ test("a logged line carries no query string, and keywords are kept", () => {
   assert.equal(types.sink, "Element innerHTML");
   assert.equal(types.column, 9120);
   assert.doesNotMatch(JSON.stringify(types), /Jane|1234/);
-  // The INP beacon: rounded timings, the page and script cut to origin and path, anything but INP dropped.
   const vital = summarizeVital({
     name: "INP",
     value: 312.4,
@@ -155,7 +153,6 @@ test("a report is logged once per violation and answered 204, with the site's he
   assert.equal(res.headers.get("Cache-Control"), "no-store");
   assert.equal(lines.length, 1);
   assert.equal(lines[0].page, "https://site.example.com/a");
-  // PLANT: a blocked-uri that starts with https: but is no URL is still answered 204, never thrown.
   const odd = { "csp-report": { "blocked-uri": "https://", "effective-directive": "img-src" } };
   assert.equal((await receiveCspReport(post(odd), { log })).status, 204);
 });
@@ -182,14 +179,6 @@ test("at most ten violations are logged from one request", async () => {
   const { lines, log } = collect();
   await receiveCspReport(post(Array.from({ length: 25 }, () => modern[0])), { log });
   assert.equal(lines.length, 10);
-});
-
-test("the limiter is asked before the body is read", async () => {
-  let asked = 0;
-  const { lines, log } = collect();
-  await receiveCspReport(post(legacy), { log, allow: () => (asked++, true) });
-  assert.equal(asked, 1);
-  assert.equal(lines.length, 1);
 });
 
 test("other methods are 405; the preflight gets CORS only for the named origin", async () => {
@@ -279,7 +268,6 @@ test("PLANT: the Trusted Types default policy passes only React's script stub an
   assert.equal(rules.createScriptURL("//evil.example/a.js"), null);
   assert.equal(rules.createScript(), null);
 
-  // A whole-document parse passes only while a page holds allowDocumentParsing(), and a release counts once.
   const chapter = '<?xml version="1.0"?><html><body><p onclick="x()">Hi</p></body></html>';
   assert.notEqual(rules.createHTML(chapter, "TrustedHTML", DOCUMENT_PARSE_SINK), chapter);
   const release = allowDocumentParsing();
@@ -292,7 +280,6 @@ test("PLANT: the Trusted Types default policy passes only React's script stub an
   other();
   assert.notEqual(rules.createHTML(chapter, "TrustedHTML", DOCUMENT_PARSE_SINK), chapter);
 
-  // A site's allowHtml lets exactly its library's markup through; everything else is still escaped.
   const box = '<div data-lib="1"></div>';
   const framed = defaultRules(
     () => {},

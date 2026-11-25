@@ -45,7 +45,6 @@ function page(/** @type {import("../sites.mjs").SiteEntry} */ entry) {
 }
 
 test("every entry builds, and a page built from its entry passes the check graded by the same entry", () => {
-  // The doors are graded through withMcpHeaders (mcp-server.test.mjs); a static site through the set its _headers is written from.
   for (const entry of SITES.filter((s) => !s.id.endsWith("-mcp"))) {
     const headers = entry.assets?.policy
       ? new Headers({ ...staticHeaders(entry).set, "Content-Type": "text/html; charset=utf-8" })
@@ -109,7 +108,6 @@ test("sites-values.mjs and sites-deviations.mjs are written from sites.mjs, and 
     assert.deepEqual(staticHeaders(worker).file, staticHeaders(entry).file, entry.id);
     for (const id of Object.keys(entry.deviations ?? {}))
       assert.deepEqual(declined(worker, id), declined(entry, id), `${entry.id} ${id}`);
-    // A Worker's own CI check passes the entry it imported; its deviations are still graded as declared.
     if (!entry.assets?.policy && !entry.id.endsWith("-mcp")) {
       const headers = page(worker);
       assert.deepEqual(

@@ -2,11 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { redact, redactText } from "../redact.mjs";
 
-// Secret redaction for the log text ci_status returns (src/redact.ts). One test per
-// pattern, and the innocent text that must come through unchanged.
-//
-// Every secret-shaped fixture is assembled at run time from fragments, so this public
-// repo holds no string a secret scanner would read as a credential. They are fake.
+// One test per secret pattern, and the innocent text that must come through unchanged.
+// Every secret-shaped fixture is fake and assembled at run time from fragments, so this public repo holds no string
+// a secret scanner would read as a credential.
 
 const GH_CLASSIC = (prefix) => `gh${prefix}_` + "Ab1Cd2Ef3Gh4Ij5Kl6Mn7Op8Qr9St0Uv1Wx2";
 const GH_FINE = "github" + "_pat_" + "11ABCDEFG0" + "a".repeat(20) + "_" + "B".repeat(30);
@@ -31,7 +29,6 @@ test("GitHub tokens of every prefix are redacted", () => {
   const fine = redactText(`GH_PAT ${GH_FINE}`);
   assert.equal(fine.includes("github_pat_"), false, fine);
   assert.match(fine, /\[REDACTED:github-token\]/);
-  // Inside a clone URL's userinfo, too.
   assert.doesNotMatch(
     redactText(`https://x-access-token:${GH_CLASSIC("s")}@github.com/o/r.git`),
     /ghs_/,
@@ -72,10 +69,8 @@ test("a private key block is redacted whole, and an unterminated one to the end"
   ].join("\n");
   const out = redactText(`before\n${block}\nafter`);
   assert.equal(out, "before\n[REDACTED:private-key]\nafter");
-  // A log cut mid-key: nothing after BEGIN survives.
   const cut = redactText(`before\n${PEM_BEGIN}\nMIIEowIBAAKCAQEAfakefakefake\nc2VjcmV0`);
   assert.equal(cut, "before\n[REDACTED:private-key]");
-  // Timestamped CI lines, as a key echoed by a step arrives.
   const stamped = redactText(
     `2026-09-06T00:58:40.0Z ${PEM_BEGIN}\n2026-09-06T00:58:40.1Z MIIEfake\n2026-09-06T00:58:40.2Z ${PEM_END}\n2026-09-06T00:58:41.0Z next`,
   );

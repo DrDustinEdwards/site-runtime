@@ -60,7 +60,7 @@ test("a policy returned as a string goes on as it is, with no Report-Only compan
   assert.equal(out.headers.get("Content-Security-Policy-Report-Only"), null);
 });
 
-test("an immutable response comes back with the headers, noindex marks private paths, env and a report origin reach the policy and a route cannot loosen framing", () => {
+test("an immutable response comes back with the headers, and noindex marks private paths", () => {
   const { withSecurityHeaders } = make({ noindex: (path) => path.startsWith("/admin") });
   const out = withSecurityHeaders(
     Response.redirect("https://site.example.com/", 302),
@@ -86,7 +86,6 @@ test("renew: a stored page gets a fresh nonce per reader and its policy is built
     assert.ok(nonce);
     assert.ok(policy.includes("report-uri"), "the policy is built again, not just renewed");
     assert.equal(await out.text(), `<script nonce="${nonce}"></script>`);
-    // A fresh render carries this request's own nonce: applying the headers again leaves it alone.
     const { withSecurityHeaders: again, nonceFor } = make({ renew: true });
     const request = req();
     const own = nonceFor(request);

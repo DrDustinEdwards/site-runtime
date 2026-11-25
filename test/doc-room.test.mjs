@@ -88,7 +88,6 @@ test("PLANT: a suggester changes only their own suggestions, never the text, the
     ),
     false,
   );
-  // Another's suggestion reworded at the same length (they would accept words they never wrote).
   assert.equal(
     suggestOnly(
       model,
@@ -99,7 +98,6 @@ test("PLANT: a suggester changes only their own suggestions, never the text, the
     false,
   );
   assert.equal(suggestOnly(model, room, new Uint8Array([1, 2, 3]), 7), false);
-  // Nothing tried reached the room.
   assert.deepEqual(room.getMap("text").toJSON(), { p1: "It was a dark night." });
   assert.deepEqual(Object.keys(room.getMap("suggest").toJSON()), ["9:1"]);
 });
