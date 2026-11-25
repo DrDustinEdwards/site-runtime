@@ -37,7 +37,6 @@ export function parseSqlTime(value) {
 }
 
 /**
- * A Date from epoch milliseconds, keeping null as null.
  * @param {number | null | undefined} ms
  * @returns {Date | null}
  */
@@ -46,7 +45,6 @@ export function toDate(ms) {
 }
 
 /**
- * Epoch milliseconds of a Date, keeping null as null.
  * @param {Date | null | undefined} date
  * @returns {number | null}
  */

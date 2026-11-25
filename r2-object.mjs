@@ -96,7 +96,6 @@ export function attachmentResponse(
 }
 
 /**
- * The headers every answer for the object carries.
  * @param {{ writeHttpMetadata(headers: Headers): void, httpEtag: string }} object
  * @param {R2FileOptions} options
  */
@@ -116,7 +115,6 @@ function fileHeaders(object, { cacheControl, contentType, disposition, filename,
 }
 
 /**
- * Whether an If-None-Match value names this ETag (a list, weak or strong, or `*`).
  * @param {string | null} header
  * @param {string} etag
  */

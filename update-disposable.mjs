@@ -20,7 +20,7 @@ import { join } from "node:path";
 const SOURCE =
   "https://raw.githubusercontent.com/disposable-email-domains/disposable-email-domains/main/disposable_email_blocklist.conf";
 const REPO = "https://github.com/disposable-email-domains/disposable-email-domains";
-/** Throwaway domains Foxhound blocked before the shared list (app/lib/auth/disposable-emails.ts) that the source lacks. */
+/** Throwaway domains a site blocked before the shared list that the source lacks. */
 const NETWORK_EXTRA = ["burnermail.io", "tempmail.com"];
 
 const res = await fetch(SOURCE, { headers: { "user-agent": "site-runtime disposable update" } });

@@ -24,7 +24,6 @@ import { KV_MIN_TTL } from "./kv-cache.mjs";
 export const CONFIRM_TTL_SECONDS = 600;
 
 /**
- * Mint a token for exactly these claims.
  * @param {{ keys: readonly (string | null | undefined)[], claims: Record<string, unknown>, ttlSeconds?: number,
  *   now?: number }} options hex keys, newest first (./signed-token)
  * @returns {Promise<{ token: string, expiresAt: string }>}
