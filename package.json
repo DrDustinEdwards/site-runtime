@@ -80,6 +80,7 @@
     "compare.mjs",
     "money.mjs",
     "anthropic.mjs",
+    "anthropic-models.mjs",
     "anthropic-stream.mjs",
     "ai-engine.mjs",
     "routine.mjs",
