@@ -1,5 +1,13 @@
 # @dustinedwards/site-runtime
 
+## 0.182.3
+
+### Patch Changes
+
+- Declared return types are back where 0.182.0 let them become inferred: `defineImages` returns `Images<U>` again (so `attributes().sources` keeps `media?`), `healthTile` and `readHealthTile` return `HealthTile`, and `accessAllowed`, `accessDrift`, `corpFor`, `entryOverrides`, `healthChecks`, `healthOf`, `parseHealth`, `keysAtAddresses`, `pageSecurity`, `snapshotFromBody` and `drawShareCard` have their `@returns`. `AddressOptions` is exported from `./image` again, and `redeemConfirm`'s `expect` is optional again.
+- `SecurityHistoryEntry` has its fields again (`kind`, `via`, `at`, `device`, `location`); 0.182.1 and 0.182.2 emitted it as an empty `object`.
+- `@takumi-rs/wasm` and `takumi-js` are back at 2.20.0: 2.22 makes the Wasm binary 219 KB larger, which put Foxhound, Foxing and julieedwards.info over their Worker size budgets. Renovate holds them there.
+
 ## 0.182.2
 
 ### Patch Changes
