@@ -1,6 +1,6 @@
 {
   "baseline": {
-    "measured_at": "4996637",
+    "measured_at": "556e5f9",
     "knip": {},
     "jscpd": {
       "clones": 0,
@@ -14,7 +14,7 @@
     },
     "legacy": {},
     "size": {
-      "anthropic.mjs": 926,
+      "anthropic.mjs": 772,
       "audit-log.mjs": 790,
       "bin/ai-audit.mjs": 975,
       "bin/images.mjs": 1395,
@@ -24,7 +24,7 @@
       "edge-cache.mjs": 530,
       "image.mjs": 917,
       "mcp-login.mjs": 506,
-      "mcp-server.mjs": 964,
+      "mcp-server.mjs": 701,
       "prose.mjs": 944,
       "sign-in-account.mjs": 936,
       "sign-in-form.mjs": 597,
@@ -37,8 +37,8 @@
       "cases": 462
     },
     "comments": {
-      "lines": 10910,
-      "code": 34757,
+      "lines": 10914,
+      "code": 34764,
       "percentage": 23.89
     }
   }
