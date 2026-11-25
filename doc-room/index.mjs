@@ -26,7 +26,7 @@ import {
   ROLE_RECHECK_MS,
   suggestOnly,
   viewerOf,
-  bytesOf,
+  messageBytes,
   withinLimit,
 } from "./core.mjs";
 
@@ -367,7 +367,7 @@ export class DocRoom extends YServer {
   async #receive(conn, message) {
     const viewer = await this.#recheck(conn);
     if (!viewer) return;
-    const bytes = bytesOf(message);
+    const bytes = messageBytes(message);
     // Not close code 1009: a closed provider reconnects and resends the same change, so refuse and reload.
     if (!withinLimit(bytes?.byteLength ?? /** @type {string} */ (message).length, viewer.access)) {
       this.#send(conn, {

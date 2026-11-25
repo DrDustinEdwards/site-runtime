@@ -63,8 +63,8 @@ export function descendants(el) {
 }
 
 /** @param {El} el @returns {string} */
-export function textOf(el) {
-  return el.children.map((c) => (typeof c === "string" ? c : textOf(c))).join(" ");
+export function layoutText(el) {
+  return el.children.map((c) => (typeof c === "string" ? c : layoutText(c))).join(" ");
 }
 
 /** The nearest ancestor of `el` with one of these tags. @param {El} el @param {string[]} tags */
