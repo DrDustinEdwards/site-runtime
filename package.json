@@ -93,6 +93,7 @@
     "not-found.mjs",
     "render-html.mjs",
     "cron.mjs",
+    "cron-status.mjs",
     "signed-in-crawl.mjs",
     "bin",
     "README.md",
