@@ -10,7 +10,6 @@
  * numbers, owner, MakerNote, from EXIF in JPEG APP1, PNG eXIf, WebP EXIF or an AVIF Exif item, or from XMP); null for
  * anything else or too few bytes.
  * @param {Uint8Array} bytes
- * @returns {ImageFile | null}
  */
 export function readImage(bytes) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -137,7 +136,6 @@ const PRIVATE_TAGS = /** @type {Record<number, string>} */ ({
  * What private metadata a TIFF block (EXIF) holds: a GPS IFD with entries, a camera serial number, and the Exif sub-IFD's
  * private tags.
  * @param {Uint8Array} tiff
- * @returns {string[]}
  */
 function privateExif(tiff) {
   const view = new DataView(tiff.buffer, tiff.byteOffset, tiff.byteLength);

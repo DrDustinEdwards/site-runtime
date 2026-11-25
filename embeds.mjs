@@ -1,8 +1,8 @@
 // @ts-check
 /**
  * The players a post may embed, as the security side sees them: the origins a page's Content-Security-Policy lets it
- * frame (`frame-src`) and the features its Permissions-Policy hands those frames. The services are Dustin's list
- * (2026-10-31): YouTube, TikTok, Spotify, SoundCloud, Apple Podcasts, Amazon Music, Google Maps, X, Bluesky and
+ * frame (`frame-src`) and the features its Permissions-Policy hands those frames. The services are Dustin's list:
+ * YouTube, TikTok, Spotify, SoundCloud, Apple Podcasts, Amazon Music, Google Maps, X, Bluesky and
  * Instagram. Prelum's `::embed` (@drdustinedwards/site-helpers/render/embeds) turns an author's link into one of these
  * players and its test holds that every player it can build is on this list, so a service is added here first.
  *
@@ -42,11 +42,10 @@ export const EMBED_FEATURES = /* @__PURE__ */ Object.freeze([
  * whatever the policy said of it before (OSHP denies all four). Other features are kept as they were.
  *
  * The header is the second lock behind `frame-src`: a frame's own `allow` attribute can only pick from it, so no
- * origin outside the players can be handed these features. Amazon Music is `music.amazon.com` only (Dustin,
- * 2026-11-01: he will not embed from another country), which keeps this to ten origins and under Cloudflare's
+ * origin outside the players can be handed these features. Amazon Music is `music.amazon.com` only (Dustin will not
+ * embed from another country), which keeps this to ten origins and under Cloudflare's
  * 2,000-character `_headers` limit per line.
  * @param {string} permissions a Permissions-Policy value
- * @returns {string}
  */
 export function permissionsAllowingEmbeds(permissions) {
   const allowList = `(self ${EMBED_FRAME_SOURCES.map((o) => JSON.stringify(o)).join(" ")})`;

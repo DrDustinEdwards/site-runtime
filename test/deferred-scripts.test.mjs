@@ -4,8 +4,7 @@ import { test } from "node:test";
 import { bootJson } from "../deferred-scripts.mjs";
 
 // The boot a deferred page holds must be what React Router 8.5's <Scripts> would have run, and must not end its
-// <script> element early. Checked end to end in Playwright's Chromium with Trusted Types enforced on germomics
-// (2026-11-11): a press of play on a deferred page hydrates it, plays, and reports no violation.
+// <script> element early.
 test("the boot holds React Router's context, each match's modules and the preloads, as inert JSON", () => {
   const manifest = {
     url: "/assets/manifest-1.js",

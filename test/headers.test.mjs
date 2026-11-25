@@ -76,7 +76,7 @@ test("an override replaces a value, adds a header, or with null removes one", ()
   );
 });
 
-test("an override with no reason, or one under 12 characters, is refused", () => {
+test("an override with no reason, one under 12 characters or an empty value is refused", () => {
   const attempt = (/** @type {any} */ reason) => () =>
     buildSecurityHeaders({ overrides: { "X-Frame-Options": { value: "sameorigin", reason } } });
   for (const reason of [undefined, null, 42, "", "because", "too short!!", "   short    "]) {
@@ -88,9 +88,7 @@ test("an override with no reason, or one under 12 characters, is refused", () =>
   }
   assert.doesNotThrow(attempt("exactly 12 c"));
   assert.doesNotThrow(attempt("  exactly 12 c  "));
-});
-
-test("an empty or blank value is refused: null is the way to send none", () => {
+  // An empty value is refused too: null is the way to send none.
   for (const value of ["", "   "]) {
     assert.throws(
       () => buildSecurityHeaders({ overrides: { "X-Frame-Options": { value, reason: REASON } } }),
@@ -99,7 +97,7 @@ test("an empty or blank value is refused: null is the way to send none", () => {
   }
 });
 
-test("applyHeaderSet stamps the standard set by default and overwrites what a route set", () => {
+test("applyHeaderSet stamps the standard set over what a route set, or fills only the gaps with overwrite false", () => {
   const headers = new Headers({ "X-Frame-Options": "allowall", "Content-Type": "text/html" });
   applyHeaderSet(headers);
   for (const [name, value] of Object.entries(STANDARD_SECURITY_HEADERS))
@@ -109,13 +107,11 @@ test("applyHeaderSet stamps the standard set by default and overwrites what a ro
     "text/html; charset=utf-8",
     "a bare text type names its charset",
   );
-});
-
-test("applyHeaderSet with overwrite false keeps a route's value and fills the rest", () => {
-  const headers = new Headers({ "X-Frame-Options": "sameorigin" });
-  applyHeaderSet(headers, STANDARD_SECURITY_HEADERS, { overwrite: false });
-  assert.equal(headers.get("X-Frame-Options"), "sameorigin");
-  assert.equal(headers.get("X-Content-Type-Options"), "nosniff");
+  // With overwrite false a route's own value stays and the rest is filled.
+  const kept = new Headers({ "X-Frame-Options": "sameorigin" });
+  applyHeaderSet(kept, STANDARD_SECURITY_HEADERS, { overwrite: false });
+  assert.equal(kept.get("X-Frame-Options"), "sameorigin");
+  assert.equal(kept.get("X-Content-Type-Options"), "nosniff");
 });
 
 test("applyHeaderSet applies the set it is given, such as a site's built set or the logout set", () => {

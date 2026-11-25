@@ -6,51 +6,18 @@
  * carries the checklist item it proves (`id`: T2, H1, C4 and so on), and a `warn` result fails nothing.
  */
 
-import {
-  CLOUDFLARE_WEB_ANALYTICS,
-  CSP_REPORT_GROUP,
-  CSP_REPORT_PATH,
-  broadSource,
-} from "./csp.mjs";
-import { allowlistBypass } from "./csp-bypasses.mjs";
-import { EMBED_FRAME_SOURCES } from "./embeds.mjs";
+import { checkPolicy } from "./check-policy.mjs";
+import { parsePolicy, registryEntry, resultRecorder } from "./check-core.mjs";
 import { STANDARD_SECURITY_HEADERS, buildSecurityHeaders, corpFor } from "./headers.mjs";
 import { OWASP_REMOVE } from "./owasp-headers.mjs";
-import { FAMILY_DEVIATIONS, SITE_DEVIATIONS } from "./sites-deviations.mjs";
-import { SITES, siteEntry } from "./sites-values.mjs";
 
-/** @import { Deviation, ServedSiteEntry } from "./sites.mjs" */
+export { declined, parsePolicy } from "./check-core.mjs";
+export { checkSecurityTxt } from "./check-security-txt.mjs";
 
-/**
- * A served entry with its deviations' reasons, as the check reads it (sites-deviations.mjs).
- * @typedef {ServedSiteEntry & {
- * deviations?: Readonly<Record<string, Deviation>>;
- * }} CheckedSiteEntry
- */
-
-/**
- * The entry a check grades against: by id, or the registry's own entry with the deviations it leaves out; any
- * other object as it is.
- * @param {string | CheckedSiteEntry | undefined} site
- * @returns {CheckedSiteEntry | undefined}
- */
-function registryEntry(site) {
-  const values = typeof site === "string" ? siteEntry(site) : SITES.find((s) => s === site);
-  if (!values) return typeof site === "object" ? site : undefined;
-  const deviations = /** @type {Record<string, import("./sites.mjs").SiteEntry["deviations"]>} */ (
-    SITE_DEVIATIONS
-  )[values.id];
-  return deviations ? { ...values, deviations } : values;
-}
-
-/**
- * @typedef {{ id: string, name: string, pass: boolean, detail: string, warn?: boolean, notice?: boolean }} CheckResult
- *   `warn`: advice, or an item the site declared a deviation for; `notice`: an item no family site can meet
- *   (FAMILY_DEVIATIONS). Neither fails anything.
- */
+/** @typedef {import("./check-core.mjs").CheckResult} CheckResult */
+/** @typedef {import("./check-core.mjs").CheckedSiteEntry} CheckedSiteEntry */
 
 const ONE_YEAR = 31536000;
-const DAY = 86_400_000;
 /** The checklist item each header of the set proves. */
 const ITEM = /** @type {Record<string, string>} */ ({
   "Strict-Transport-Security": "T2",
@@ -79,59 +46,6 @@ const DOCUMENT_ONLY = new Set([
 const DEPRECATED = ["X-XSS-Protection", "Expect-CT", "Feature-Policy"];
 /** A cookie that holds a sign-in or a secret, which script must never read. */
 const SESSION_COOKIE = /sess|auth|token|sid|login|csrf|state/i;
-/** The fetch directives, each graded for broad sources (C5). */
-const FETCH_DIRECTIVES = [
-  "default-src",
-  "script-src",
-  "script-src-elem",
-  "script-src-attr",
-  "style-src",
-  "style-src-elem",
-  "style-src-attr",
-  "img-src",
-  "font-src",
-  "connect-src",
-  "media-src",
-  "object-src",
-  "frame-src",
-  "child-src",
-  "worker-src",
-  "manifest-src",
-  "fenced-frame-src",
-];
-
-/**
- * A failed result an entry or the family declined, as the reason, or "". Only declinable results are looked up:
- * K1's cookie prefix, S2, C3, C7, C9, I3, and the family's (FAMILY_DEVIATIONS).
- * @param {CheckedSiteEntry | undefined} entry
- * @param {string} id
- * @param {string} [name] the cookie or thing the result is about, which a deviation's `value` must list when it has one
- * @returns {{ reason: string, family: boolean } | undefined}
- */
-export function declined(entry, id, name) {
-  const family = /** @type {Record<string, string>} */ (FAMILY_DEVIATIONS)[id];
-  if (family) return { reason: family, family: true };
-  const own = registryEntry(entry)?.deviations?.[id];
-  if (own && (!own.value || (name !== undefined && own.value.includes(name))))
-    return { reason: own.reason, family: false };
-  return undefined;
-}
-
-/**
- * @param {string} policy
- * @returns {Map<string, string[]>} directive name to its sources, lower-cased names
- */
-export function parsePolicy(policy) {
-  /** @type {Map<string, string[]>} */
-  const out = new Map();
-  for (const part of policy.split(";")) {
-    const [name, ...sources] = part.trim().split(/\s+/);
-    if (!name) continue;
-    // The first occurrence wins, as browsers apply it.
-    if (!out.has(name.toLowerCase())) out.set(name.toLowerCase(), sources);
-  }
-  return out;
-}
 
 /**
  * The features a Permissions-Policy denies outright (`feature=()`).
@@ -183,42 +97,8 @@ function deniedFeatures(value) {
  */
 
 /**
- * The `result` function a check records its findings with. A failure that `declinable` names (the cookie or thing a
- * declared deviation may cover, or true for the item as a whole) and the entry declares becomes a warning, or a notice
- * for a family deviation; `showDetail` keeps the finding after the reason.
- * @param {CheckResult[]} results
- * @param {ReturnType<typeof registryEntry>} entry
- * @param {boolean} showDetail
- */
-function resultRecorder(results, entry, showDetail) {
-  return (
-    /** @type {string} */ id,
-    /** @type {string} */ name,
-    /** @type {boolean} */ pass,
-    /** @type {string} */ detail,
-    warn = false,
-    /** @type {string | boolean} */ declinable = false,
-  ) => {
-    const deviation =
-      !pass && declinable
-        ? declined(entry, id, typeof declinable === "string" ? declinable : undefined)
-        : undefined;
-    if (deviation)
-      results.push({
-        id,
-        name,
-        pass,
-        detail: `declared deviation: ${deviation.reason}${showDetail ? ` (${detail})` : ""}`,
-        ...(deviation.family ? { notice: true } : { warn: true }),
-      });
-    else results.push({ id, name, pass, detail, ...(warn ? { warn } : {}) });
-  };
-}
-
-/**
  * @param {Headers} headers a real response's headers
  * @param {CheckOptions} [options]
- * @returns {CheckResult[]}
  */
 export function checkSecurityHeaders(headers, options = {}) {
   const entry = registryEntry(options.site);
@@ -445,412 +325,23 @@ export function checkSecurityHeaders(headers, options = {}) {
   }
 
   if (!csp) return results;
-
-  const enforced = headers.get("Content-Security-Policy");
-  const reportOnly = headers.get("Content-Security-Policy-Report-Only");
-  result(
-    "C1",
-    "the Content-Security-Policy is enforced, not only reported",
-    Boolean(enforced),
-    enforced
-      ? ""
-      : reportOnly
-        ? "only a Report-Only policy is sent, which blocks nothing"
-        : "ABSENT",
-  );
-  if (!enforced) return results;
-
-  // Headers joins a repeated header with ", ", and no source holds a comma, so a comma means two policies, which a
-  // browser enforces together (the stricter wins on every directive).
-  result(
-    "C13",
-    "one enforced policy, sent once",
-    !enforced.includes(","),
-    "two policies were sent (they arrive joined by a comma); send one",
-  );
-  const names = enforced
-    .split(";")
-    .map((part) => part.trim().split(/\s+/)[0]?.toLowerCase() ?? "")
-    .filter(Boolean);
-  const repeated = names.filter((n, i) => names.indexOf(n) !== i);
-  result(
-    "C13",
-    "no directive is written twice",
-    repeated.length === 0,
-    `${[...new Set(repeated)].join(", ")} repeated: a browser applies the first and ignores the rest`,
-  );
-  const policy = parsePolicy(enforced);
-  const scripts = policy.get("script-src") ?? policy.get("default-src");
-  result(
-    "C4",
-    "the policy governs scripts (script-src or default-src)",
-    Boolean(scripts),
-    "neither directive is present, so any script runs",
-  );
-  // script-src-elem, script-src-attr and worker-src override script-src, so each one present is held to the same rules.
-  const scriptDirectives = /** @type {Array<[string, string[]]>} */ ([
-    ["scripts", scripts ?? []],
-    ...["script-src-elem", "script-src-attr", "worker-src"].flatMap((d) =>
-      policy.has(d) ? [[d, policy.get(d) ?? []]] : [],
-    ),
-  ]);
-  for (const [label, sources] of scripts ? scriptDirectives : scriptDirectives.slice(1)) {
-    const keywords = sources.map((s) => s.toLowerCase());
-    const noun = label === "scripts" ? "script" : label;
-    const inlineDeclared = label === "scripts" && inlineScripts === "unsafe-inline";
-    result(
-      "C4",
-      `${label}: no 'unsafe-inline'${inlineDeclared ? " (declared: inlineScripts)" : ""}`,
-      inlineDeclared || !keywords.includes("'unsafe-inline'"),
-      `${noun} sources: ${sources.join(" ")}`,
-    );
-    result(
-      "C4",
-      `${label}: no 'unsafe-eval'`,
-      !keywords.includes("'unsafe-eval'"),
-      `${noun} sources: ${sources.join(" ")}`,
-    );
-    // A JSONP or AngularJS host runs script only where scripts or workers load, so only these are held to it.
-    const bypasses = sources.flatMap((s) => {
-      const bypass = allowlistBypass(s);
-      return bypass ? [`${s} (${bypass})`] : [];
-    });
-    result(
-      "C5",
-      `${label}: no host known to serve JSONP, AngularJS or Flash (csp-evaluator)`,
-      bypasses.length === 0,
-      `allows ${bypasses.join(", ")}`,
-    );
-  }
-  for (const directive of FETCH_DIRECTIVES) {
-    const sources = policy.get(directive);
-    if (!sources) continue;
-    const rule =
-      directive === "default-src" && !policy.has("script-src") ? "script-src" : directive;
-    const broad = sources.flatMap((s) => {
-      const why = broadSource(s, rule);
-      return why ? [`${s} (${why})`] : [];
-    });
-    result(
-      "C5",
-      `${directive}: no wildcard or bare scheme source`,
-      broad.length === 0,
-      `allows ${broad.join(", ")}`,
-    );
-  }
-  // 'unsafe-inline' beside a nonce or hash is ignored by browsers, so only an effective one counts. Style attributes
-  // (style-src-attr) run no code.
-  for (const directive of ["style-src", "style-src-elem"]) {
-    const sources = (
-      policy.get(directive) ??
-      (directive === "style-src" ? policy.get("default-src") : undefined) ??
-      []
-    ).map((s) => s.toLowerCase());
-    if (
-      !sources.includes("'unsafe-inline'") ||
-      sources.some((s) => /^'(nonce|sha(256|384|512))-/.test(s))
-    )
-      continue;
-    result(
-      "C11",
-      `${directive}: no 'unsafe-inline'${inlineStyles ? " (declared: inlineStyles)" : ""}`,
-      inlineStyles,
-      `style sources: ${sources.join(" ")}`,
-    );
-  }
-  // C3: a strict script policy, 'strict-dynamic' beside a nonce or hash, or no script at all ('none').
-  const scriptList = scripts ?? [];
-  const noScript = scriptList.length === 1 && scriptList[0] === "'none'";
-  if (strictDynamic || entry)
-    result(
-      "C3",
-      `script-src is strict: 'strict-dynamic' beside a nonce or hash, or 'none'${strictDynamic ? " (declared: strictDynamic)" : ""}`,
-      noScript ||
-        (scriptList.includes("'strict-dynamic'") &&
-          scriptList.some((s) => /^'(nonce|sha(256|384|512))-/.test(s))),
-      `script sources: ${scriptList.join(" ")}`,
-      false,
-      !strictDynamic,
-    );
-  const staged = parsePolicy(reportOnly ?? "");
-  const stagedLabel = (/** @type {unknown} */ declaredAs) =>
-    declaredAs === "report-only" ? "the Report-Only policy" : "the policy";
-  const fallback = (denyUnlisted === "report-only" ? staged : policy).get("default-src");
-  if (denyUnlisted || entry)
-    result(
-      "C9",
-      `${stagedLabel(denyUnlisted)}: default-src is 'none'${denyUnlisted ? " (declared: denyUnlisted)" : ""}`,
-      fallback?.length === 1 && fallback[0] === "'none'",
-      `got ${fallback ? fallback.join(" ") : "ABSENT"}`,
-      false,
-      !denyUnlisted,
-    );
-  const types = (trustedTypes === "report-only" ? staged : policy).get("require-trusted-types-for");
-  if (trustedTypes || entry)
-    result(
-      "C7",
-      `${stagedLabel(trustedTypes)} requires Trusted Types for scripts${trustedTypes ? " (declared: trustedTypes)" : ""}`,
-      (types ?? []).includes("'script'"),
-      `require-trusted-types-for is ${types?.join(" ") ?? "ABSENT"}`,
-      false,
-      !trustedTypes,
-    );
-  // A site that embeds post players (./embeds) lets every one of them into its frames, or a reader's click loads nothing.
-  if (optIn("embeds")) {
-    const frames = (
-      policy.get("frame-src") ??
-      policy.get("child-src") ??
-      policy.get("default-src") ??
-      []
-    ).map((s) => s.toLowerCase());
-    const shut = EMBED_FRAME_SOURCES.filter((o) => !frames.includes(o));
-    result(
-      "C16",
-      "frame-src lets in every post player (declared: embeds)",
-      shut.length === 0,
-      `refuses ${shut.join(" ")} (EMBED_FRAME_SOURCES, ./embeds)`,
-    );
-  }
-  const objects = policy.get("object-src") ?? policy.get("default-src");
-  result(
-    "C2",
-    "object-src is 'none'",
-    objects?.length === 1 && objects[0] === "'none'",
-    `got ${objects ? objects.join(" ") : "ABSENT"}`,
-  );
-  // A declared opt-in allows 'self' (a site may use it on some pages only); a site entry that does not declare it allows 'none' alone.
-  const one = (/** @type {boolean | undefined} */ self) =>
-    self === false ? ["'none'"] : ["'none'", "'self'"];
-  const base = policy.get("base-uri");
-  const bases = one(baseUriSelf);
-  result(
-    "C2",
-    `base-uri is ${bases.join(" or ")}`,
-    base?.length === 1 && bases.includes(base[0] ?? ""),
-    `got ${base ? base.join(" ") : "ABSENT (it does not fall back to default-src)"}`,
-  );
-  const ancestors = policy.get("frame-ancestors");
-  const framers = one(framedBySameOrigin);
-  result(
-    "H3",
-    `frame-ancestors is ${framers.join(" or ")}`,
-    ancestors?.length === 1 && framers.includes(ancestors[0] ?? ""),
-    `got ${ancestors ? ancestors.join(" ") : "ABSENT (it does not fall back to default-src)"}`,
-  );
-  // form-action may be absent: an OAuth consent page leaves it out (browsers apply it to every redirect hop, the last
-  // being the client's redirect_uri). Present, it must keep forms on this origin beside the declared formTargets.
-  const forms = policy.get("form-action");
-  const declaredForms = formTargets.length > 0;
-  result(
-    "C8",
-    `form-action, when set, is 'self' or 'none'${declaredForms ? " (and the declared formTargets)" : ""}`,
-    !forms ||
-      (forms.length === 1 && (forms[0] === "'self'" || forms[0] === "'none'")) ||
-      (forms[0] === "'self'" &&
-        forms.length > 1 &&
-        forms.slice(1).every((target) => formTargets.includes(target))),
-    `got ${forms ? forms.join(" ") : "ABSENT"}`,
-  );
-  if (cloudflareWebAnalytics === "manual") {
-    const { script, connect: reports } = CLOUDFLARE_WEB_ANALYTICS.manual;
-    const missingScript = script.filter((source) => !(scripts ?? []).includes(source));
-    const connect = policy.get("connect-src") ?? policy.get("default-src") ?? [];
-    const missingConnect = reports.filter((source) => !connect.includes(source));
-    result(
-      "C15",
-      "the policy lets the manual Cloudflare Web Analytics beacon run: its script file",
-      missingScript.length === 0,
-      `script-src lacks ${missingScript.join(" and ")}`,
-    );
-    result(
-      "C15",
-      "the policy lets the manual beacon report: connect-src includes cloudflareinsights.com",
-      missingConnect.length === 0,
-      `connect-src is ${connect.join(" ") || "ABSENT"}, lacking ${missingConnect.join(" and ")}`,
-    );
-  } else if (cloudflareWebAnalytics) {
-    const missingScript = CLOUDFLARE_WEB_ANALYTICS.script.filter(
-      (source) => !(scripts ?? []).includes(source),
-    );
-    const connect = policy.get("connect-src") ?? policy.get("default-src") ?? [];
-    result(
-      "C15",
-      "the policy lets the Cloudflare Web Analytics beacon run: its script path prefix",
-      missingScript.length === 0,
-      `script-src lacks ${missingScript.join(" and ")}: the edge injects /beacon.min.js/v..., which the bare file URL does not match`,
-    );
-    result(
-      "C15",
-      "the policy lets the beacon report: connect-src includes the site itself",
-      connect.includes("'self'"),
-      `connect-src is ${connect.join(" ") || "ABSENT"}`,
-    );
-  }
-  const sinks = ["report-uri", "report-to"].filter((d) => !policy.has(d));
-  result(
-    "C14",
-    "violations are reported to both sinks (report-uri and report-to)",
-    sinks.length === 0,
-    `no ${sinks.join(" and ")}: ${sinks.length === 2 ? "a blocked script is never heard about" : "the browsers that read only the other one report nowhere"}`,
-  );
-  const reportUri = policy.get("report-uri")?.[0];
-  const group = policy.get("report-to")?.[0];
-  if (entry && reportUri) {
-    const path = URL.parse(reportUri, "https://site.invalid")?.pathname;
-    result(
-      "C14",
-      `report-uri is the family's ${CSP_REPORT_PATH}`,
-      path === CSP_REPORT_PATH,
-      `got ${reportUri} (CSP_REPORT_PATH, ./csp)`,
-    );
-  }
-  if (entry && group)
-    result(
-      "C14",
-      `report-to names the family's group ${CSP_REPORT_GROUP}`,
-      group === CSP_REPORT_GROUP,
-      `got ${group} (CSP_REPORT_GROUP, ./csp)`,
-    );
-  // Every group a header reports to must be one Reporting-Endpoints defines, or its reports go nowhere.
-  const endpoints = headers.get("Reporting-Endpoints") ?? "";
-  const groups = new Set([
-    ...(group ? [group] : []),
-    ...["Cross-Origin-Embedder-Policy", "Cross-Origin-Embedder-Policy-Report-Only"].flatMap(
-      (n) => /report-to="([^"]+)"/.exec(headers.get(n) ?? "")?.[1] ?? [],
-    ),
-    ...["Integrity-Policy", "Integrity-Policy-Report-Only"].flatMap(
-      (n) =>
-        /endpoints=\(([^)]*)\)/
-          .exec(headers.get(n) ?? "")?.[1]
-          ?.trim()
-          .split(/\s+/)
-          .filter(Boolean) ?? [],
-    ),
-  ]);
-  for (const name of groups) {
-    const url =
-      new RegExp(
-        `(?:^|,)\\s*${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*=\\s*"([^"]*)"`,
-      ).exec(endpoints)?.[1] ?? "";
-    result(
-      "M1",
-      `Reporting-Endpoints names the report group ${name} with an https URL`,
-      /^https:\/\//i.test(url) ||
-        /^http:\/\/(127(\.\d{1,3}){3}|\[::1\]|(.+\.)?localhost)(:\d+)?\//i.test(url),
-      endpoints
-        ? `got ${JSON.stringify(endpoints)}`
-        : "Reporting-Endpoints is ABSENT, so its reports go nowhere",
-    );
-  }
+  checkPolicy(headers, result, entry, {
+    inlineScripts,
+    inlineStyles,
+    strictDynamic,
+    trustedTypes,
+    denyUnlisted,
+    cloudflareWebAnalytics,
+    framedBySameOrigin,
+    baseUriSelf,
+    formTargets,
+    embeds: optIn("embeds"),
+  });
   return results;
 }
 
 /**
  * The failed results, warnings and notices left out.
  * @param {CheckResult[]} results
- * @returns {CheckResult[]}
  */
 export const failures = (results) => results.filter((r) => !r.pass && !r.warn && !r.notice);
-
-/**
- * /.well-known/security.txt graded against RFC 9116: served 200 as `text/plain; charset=utf-8` (D1), one Contact and
- * exactly one Expires under a year out (D2), a warning 30 days before it (D4), and a Canonical naming the URL it is
- * served from or the site's own (D3). A signed file must carry its whole signature block; an unsigned one is the
- * family's deviation (FAMILY_DEVIATIONS.D3).
- * @param {{ url: string, origin?: string, status: number, headers: Headers, body: string, now?: number }} response
- *   `url` where it was fetched; `origin` the site's own, when it is served from elsewhere
- * @param {{ site?: string | CheckedSiteEntry }} [options]
- * @returns {CheckResult[]}
- */
-export function checkSecurityTxt(
-  { url, origin, status, headers, body, now = Date.now() },
-  { site } = {},
-) {
-  const entry = registryEntry(site);
-  /** @type {CheckResult[]} */
-  const results = [];
-  const result = resultRecorder(results, entry, false);
-  result("D1", "security.txt is served", status === 200, `answers ${status}`);
-  if (status !== 200) return results;
-  const type = headers.get("Content-Type") ?? "";
-  result(
-    "D1",
-    "security.txt is text/plain; charset=utf-8",
-    /^text\/plain\s*;\s*charset=utf-8$/i.test(type.trim()),
-    `Content-Type is ${JSON.stringify(type)} (securityTxtResponse, ./security-txt)`,
-  );
-  const signed = /^-----BEGIN PGP SIGNED MESSAGE-----\r?\n/.test(body);
-  if (signed) {
-    result(
-      "D3",
-      "the OpenPGP signature is whole",
-      /\n-----BEGIN PGP SIGNATURE-----\r?\n[\s\S]+\n-----END PGP SIGNATURE-----\s*$/.test(body),
-      "the signed message has no complete signature block",
-    );
-  } else {
-    result(
-      "D3",
-      "security.txt is OpenPGP-signed",
-      false,
-      "a cleartext signature lets a finder trust the contact without trusting the host",
-      false,
-      true,
-    );
-  }
-  const text = signed
-    ? (body
-        .split(/\n-----BEGIN PGP SIGNATURE-----/)[0]
-        ?.replace(/^[\s\S]*?\r?\n\r?\n/, "")
-        .replace(/^- /gm, "") ?? "")
-    : body;
-  const fields = (/** @type {string} */ name) =>
-    [...text.matchAll(new RegExp(`^${name}:\\s*(.+)$`, "gim"))].map((m) => (m[1] ?? "").trim());
-  result(
-    "D2",
-    "security.txt has a Contact",
-    fields("Contact").length > 0,
-    "no Contact: a finder has nowhere to write",
-  );
-  const expires = fields("Expires");
-  const left = (Date.parse(expires[0] ?? "") - now) / DAY;
-  result(
-    "D2",
-    "security.txt has exactly one Expires",
-    expires.length === 1,
-    `has ${expires.length} Expires fields`,
-  );
-  if (expires.length === 1) {
-    result(
-      "D2",
-      "Expires is within the next year",
-      left > 0 && left < 365,
-      `Expires ${expires[0]}`,
-    );
-    if (left > 0 && left < 365)
-      result(
-        "D4",
-        "Expires is more than 30 days out",
-        left >= 30,
-        `Expires ${expires[0]}, in ${Math.floor(left)} days`,
-        true,
-      );
-  }
-  const canonical = fields("Canonical");
-  const want = [url, ...(origin ? [new URL("/.well-known/security.txt", origin).href] : [])];
-  if (canonical.length === 0)
-    result(
-      "D3",
-      "security.txt has a Canonical",
-      false,
-      "no Canonical: a copy found elsewhere cannot be told from the real one",
-      true,
-    );
-  else
-    result(
-      "D3",
-      "Canonical names the URL it is served from",
-      canonical.some((c) => want.includes(c)),
-      `Canonical ${canonical.join(", ")}`,
-    );
-  return results;
-}

@@ -1,7 +1,3 @@
-// The access drift check against a fake Cloudflare API: an Allow policy's direct addresses, an Access group (with its
-// own exclude) and an email list are read, an excluded address is left out, a domain rule and a Bypass policy count as
-// open, and the token goes only in the Authorization header. The site's own list reaches the job hashed, and only
-// through Access with a service token.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 

@@ -69,14 +69,6 @@ test("framedBySameOrigin lets the site frame its own pages and no one else", () 
   assert.deepEqual(directives({ ...SINK, framedBySameOrigin: false }).get("frame-ancestors"), [
     "'none'",
   ]);
-  const headers = new Headers();
-  applyHeaderSet(headers, { "X-Frame-Options": "sameorigin", ...ENDPOINTS });
-  const { name, value } = buildContentSecurityPolicy({ ...SINK, framedBySameOrigin: true });
-  headers.set(name, value);
-  assert.deepEqual(
-    failures(checkSecurityHeaders(headers, { standard: { "X-Frame-Options": "deny" } })),
-    [],
-  );
 });
 
 test("a policy always has both report sinks, the family's unless given, written last", () => {

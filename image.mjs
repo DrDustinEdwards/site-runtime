@@ -42,22 +42,46 @@
  *   SOFTWARE.
  */
 
-import { applyHeaderSet, corpFor, UPLOAD_HEADERS } from "./headers.mjs";
-import { mediaType, textResponse } from "./http.mjs";
-import { errorMessage } from "./log.mjs";
+import { applyHeaderSet, UPLOAD_HEADERS } from "./headers.mjs";
+import { textResponse } from "./http.mjs";
+import {
+  IMAGE_FORMATS,
+  IMAGE_QUALITY,
+  RATIO,
+  cropHeight,
+  focusOf,
+  imageVersion,
+  isRasterPath,
+  mediaKey,
+  originalKey,
+  versionedCache,
+} from "./image-core.mjs";
+import { respondImage } from "./image-respond.mjs";
 import { retryR2Read } from "./r2-object.mjs";
 
-/** @typedef {"constrained" | "fixed" | "full-width"} ImageLayout */
-/** @typedef {"avif" | "webp"} ImageFormat */
+export {
+  FOCUS_METADATA,
+  IMAGE_FORMATS,
+  IMAGE_QUALITY,
+  IMMUTABLE_CACHE,
+  RASTER_PATH,
+  RASTER_TYPES,
+  assetsObject,
+  focalPosition,
+  focusOf,
+  imageVersion,
+  keyOfAddress,
+  keysAtAddresses,
+  mediaKey,
+  originalKey,
+  versionedCache,
+} from "./image-core.mjs";
+export { editImage } from "./image-edit.mjs";
+export { imagePreload, pictureHtml, pictureProps } from "./image-markup.mjs";
 
-/**
- * Where a site's addresses for stored files live: its own origins, the route's prefix, keyPrefix and within.
- * @typedef {object} AddressOptions
- * @property {string[]} [origins] The site's own origins ("https://example.com"); an absolute address on any other host names no file.
- * @property {string} [prefix] The route's path prefix. Default "/media/".
- * @property {string} [keyPrefix] Put in front of the path to make the stored key, as the route's `keyPrefix`.
- * @property {string} [within] The prefix every stored key has, as the route's `within`.
- */
+/** @import { ImagesLike, R2ObjectLike } from "./image-core.mjs" */
+
+/** @typedef {"avif" | "webp"} ImageFormat */
 
 /**
  * An image for a share tag or structured data: its URL, size and served type.
@@ -79,21 +103,11 @@ import { retryR2Read } from "./r2-object.mjs";
  * @property {string | undefined} background The CSS background shown while it loads (placeholder over color, at the focal point); JPEG, WebP and AVIF only.
  */
 
-/**
- * @typedef {object} PictureProps
- * @property {Array<{ type: string; srcSet: string; sizes: string | undefined; media: string | undefined; }>} sources One `<source>` each; empty when the page writes the `<img>` alone.
- * @property {{ src: string; srcSet: string | undefined; sizes: string | undefined; width: number | undefined; height: number | undefined; alt: string; className: string | undefined; loading: "eager" | "lazy"; fetchPriority: "high" | undefined; decoding: "async"; style: { background?: string; objectPosition?: string } | undefined; }} img
- */
-
-/** @typedef {"image/jpeg" | "image/png" | "image/webp" | "image/avif"} EditFormat */
 /** Astro's "limited" screen widths; a site's closed set starts here. */
 export const SCREEN_WIDTHS = [640, 750, 828, 1080, 1280, 1668, 2048, 2560];
 
 /** The longest side Cloudflare Images encodes as AVIF (its documented limit); a larger size is offered as WebP. */
 export const AVIF_MAX_EDGE = 1200;
-
-/** The formats the route writes, in the order a `<picture>` offers them: the first a browser takes wins. */
-export const IMAGE_FORMATS = /** @type {const} */ ({ avif: "image/avif", webp: "image/webp" });
 
 /** The extension a size URL ends in, for each format the route writes; `jpg` is the share crop's (`shareImages`). */
 const FORMAT_EXTENSIONS = /** @type {const} */ ({ avif: "avif", webp: "webp", jpeg: "jpg" });
@@ -102,196 +116,15 @@ const FORMAT_EXTENSIONS = /** @type {const} */ ({ avif: "avif", webp: "webp", jp
 export const SHARE_IMAGE = /** @type {const} */ ({ width: 1200, ratio: "40x21", format: "jpeg" });
 export const ARTICLE_IMAGE_RATIOS = /** @type {const} */ (["16x9", "4x3", "1x1"]);
 
-/** Cloudflare's documented default; omitting it makes the binding write lossless WebP. */
-export const IMAGE_QUALITY = 85;
-
-/** The R2 custom-metadata field that holds a file's focal point, as "XxY" with X and Y from 0 to 1. */
-export const FOCUS_METADATA = "focus";
-
-const FOCUS = /^(0(?:\.\d{1,3})?|1(?:\.0{1,3})?)x(0(?:\.\d{1,3})?|1(?:\.0{1,3})?)$/;
-const RATIO = /^([1-9]\d{0,1})x([1-9]\d{0,1})$/;
-const VERSION = /^[A-Za-z0-9_-]{1,40}$/;
 const PLACEHOLDER = /^data:image\/(png|jpeg|gif|webp|avif);base64,[A-Za-z0-9+/]+={0,2}$/;
 const COLOR = /^#[0-9a-f]{6}$/i;
-
-/**
- * A file's version as a size URL writes it (`v=`), or null: the first 12 characters of a hex hash (site-api's sha256),
- * or a time (a Date, epoch milliseconds or an ISO string, such as the row's updated time) in base 36.
- * @param {unknown} value
- * @returns {string | null}
- */
-export function imageVersion(value) {
-  if (typeof value === "string" && /^[0-9a-f]{12,}$/i.test(value))
-    return value.slice(0, 12).toLowerCase();
-  const time =
-    value instanceof Date
-      ? value.getTime()
-      : typeof value === "number"
-        ? value
-        : typeof value === "string"
-          ? Date.parse(value)
-          : NaN;
-  return Number.isFinite(time) && time > 0 ? Math.trunc(time).toString(36) : null;
-}
-
-/**
- * The stored key a size URL names: `photo.jpg` for `photo.jpg.webp?w=640`. A request with no `w`, or a key whose suffix
- * does not follow a raster extension (a URL from before suffixes, `photo.webp?w=640`), is the key as it is.
- * @param {string} key the path the route matched, such as React Router's `params["*"]`
- * @param {Request | URL | string} request
- * @returns {string}
- */
-export function originalKey(key, request) {
-  const url = new URL(
-    typeof request === "string" ? request : request instanceof URL ? request.href : request.url,
-  );
-  return url.searchParams.has("w") ? (suffixed(key)?.stored ?? key) : key;
-}
-
-/**
- * The format a path's last extension names, and the path without it, when what is left still ends in a raster
- * extension; else null.
- * @param {string} path
- */
-function suffixed(path) {
-  const m = /\.(avif|webp|jpg)$/i.exec(path);
-  if (!m) return null;
-  const stored = path.slice(0, m.index);
-  if (!isRasterPath(stored)) return null;
-  const ext = m[1].toLowerCase();
-  return { stored, format: ext === "jpg" ? "jpeg" : ext };
-}
-
-/**
- * A focal point as the URL and the binding write it, or null when `value` is not one.
- * @param {unknown} value
- * @returns {string | null}
- */
-export function focusOf(value) {
-  if (typeof value !== "string") return null;
-  const m = FOCUS.exec(value.trim());
-  return m ? `${Number(m[1])}x${Number(m[2])}` : null;
-}
-
-/**
- * A focal point as CSS `object-position` ("37.5% 60%"), each axis rounded to a tenth of a percent; undefined when
- * `value` is not a focal point.
- * @param {unknown} value
- * @returns {string | undefined}
- */
-export function focalPosition(value) {
-  const point = focusOf(value);
-  if (!point) return undefined;
-  return point
-    .split("x")
-    .map((n) => `${Math.round(Number(n) * 1000) / 10}%`)
-    .join(" ");
-}
-
-/** The cache a stored file gets when its address carries the file's version. */
-export const IMMUTABLE_CACHE = "public, max-age=31536000, immutable";
-
-/**
- * The cache policy for a /media address: a page's addresses carry the file's version (`v`), so one with it is cached
- * for good; without it (an address a person copied), `plain`, so a replaced file shows through within it.
- * @param {{ plain?: string }} [options] `plain` defaults to a day
- * @returns {(file: { url: URL }) => string}
- */
-export function versionedCache({ plain = "public, max-age=86400" } = {}) {
-  return ({ url }) => (url.searchParams.has("v") ? IMMUTABLE_CACHE : plain);
-}
-
-/**
- * A file the Worker's static assets hold (public/), in the shape `respond` and `serve` read from R2, or null. The ASSETS
- * binding matches the pathname alone, so the host is a placeholder.
- * @param {{ fetch(request: Request): Promise<Response> }} assets the ASSETS binding
- * @param {string} key the file's path under public/
- * @returns {Promise<R2ObjectLike | null>}
- */
-export async function assetsObject(assets, key) {
-  const response = await assets.fetch(new Request(`https://assets.local/${key}`));
-  if (!response.ok || !response.body) return null;
-  const contentType = response.headers.get("content-type") ?? "application/octet-stream";
-  return {
-    body: response.body,
-    httpEtag: response.headers.get("etag") ?? `"${key}"`,
-    httpMetadata: { contentType },
-    writeHttpMetadata: (headers) => headers.set("content-type", contentType),
-  };
-}
-
-const KEY_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._ ()+,=@~-]*$/;
-
-/**
- * A stored key from a /media path, or null: every segment non-empty, never "." or "..", starting with a letter or digit
- * with no backslash, percent sign or control character, and the key under `within` when given.
- * @param {string} path the path after the route's prefix
- * @param {string} [within] the prefix every served key has ("uploads/"), "" for any
- * @returns {string | null}
- */
-export function mediaKey(path, within = "") {
-  const key = path.replace(/^\/+/, "");
-  if (!key || !key.startsWith(within)) return null;
-  return key.split("/").every((part) => KEY_SEGMENT.test(part) && part !== "." && part !== "..")
-    ? key
-    : null;
-}
-
-/**
- * The stored key an image address names, or null: `<prefix><path>` (default "/media/"), optionally after one of the
- * site's own `origins`, query and fragment cut, segments percent-decoded, a size's format suffix cut as the route cuts
- * it, `keyPrefix` put back, and the key checked by `mediaKey`. The inverse of the address a page writes.
- * @param {string} address
- * @param {{ origins?: string[], prefix?: string, keyPrefix?: string, within?: string }} [options]
- * @returns {string | null}
- */
-export function keyOfAddress(
-  address,
-  { origins = [], prefix = "/media/", keyPrefix = "", within = "" } = {},
-) {
-  let path = address.trim();
-  const origin = origins.find((o) => path.startsWith(`${o.replace(/\/+$/, "")}/`));
-  if (origin) path = path.slice(origin.replace(/\/+$/, "").length);
-  if (!path.startsWith(prefix)) return null;
-  const [rest = "", query = ""] = path.slice(prefix.length).split("#")[0].split("?");
-  // A size's address (`photo.jpg.webp?w=640`) names the original, as the route reads it (originalKey).
-  const sized = new URLSearchParams(query).has("w") ? (suffixed(rest)?.stored ?? rest) : rest;
-  try {
-    return mediaKey(keyPrefix + sized.split("/").map(decodeURIComponent).join("/"), within);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Every stored key a text names by address (markdown, HTML, srcset or JSON), trailing sentence punctuation cut, in the
- * order first named. Over-detection only keeps a file from being deleted; a key with a space or `)` is found only when
- * the address is encoded.
- * @param {string | null | undefined} text
- * @param {{ origins?: string[], prefix?: string, keyPrefix?: string, within?: string }} [options]
- * @returns {Set<string>}
- */
-export function keysAtAddresses(text, options = {}) {
-  const keys = new Set();
-  if (!text) return keys;
-  const escape = (/** @type {string} */ s) => s.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
-  const origins = (options.origins ?? []).map((o) => escape(o.replace(/\/+$/, ""))).join("|");
-  const address = new RegExp(
-    `(?:^|[\\s"'\`(\\[=,>])((?:${origins ? `(?:${origins})` : ""})?${escape(options.prefix ?? "/media/")}[^\\s"'\`<>()\\[\\]\\\\]+)`,
-    "g",
-  );
-  for (const m of text.matchAll(address)) {
-    const key = keyOfAddress((m[1] ?? "").replace(/[.,;:!]+$/, ""), options);
-    if (key) keys.add(key);
-  }
-  return keys;
-}
+const GIF_PATH = /\.gif(?:$|[?#])/i;
+const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
 
 /**
  * The widths an image is offered at, by Astro's rules (full-width: every screen width; fixed: 1x and 2x; constrained:
  * 1x, 2x and every screen width up to 2x), never wider than the original.
  * @param {{ layout: "constrained" | "fixed" | "full-width", width?: number, originalWidth?: number, breakpoints?: number[] }} options
- * @returns {number[]}
  */
 export function imageWidths({ layout, width, originalWidth, breakpoints = SCREEN_WIDTHS }) {
   const smallerThanOriginal = (/** @type {number} */ w) => !originalWidth || w <= originalWidth;
@@ -310,7 +143,6 @@ export function imageWidths({ layout, width, originalWidth, breakpoints = SCREEN
 
 /** The `sizes` attribute for a layout, in CSS pixels.
  * @param {{ layout: "constrained" | "fixed" | "full-width", width?: number }} options
- * @returns {string | undefined}
  */
 export function imageSizes({ layout, width }) {
   if (layout === "full-width") return "100vw";
@@ -346,7 +178,6 @@ export function imageSizes({ layout, width }) {
 
  * @template {string} U
  * @param {{ uses: Record<U, ImageUse & { ratio?: string }>, breakpoints?: number[], quality?: number, shareImages?: boolean }} config
- * @returns {Images<U>}
  */
 export function defineImages({
   uses,
@@ -513,124 +344,9 @@ export function defineImages({
    * The route: the original for a bare request, or one transformed size for `?w=`. It never writes to the bucket.
    * @param {Request} request
    * @param {{ object: R2ObjectLike | null, images?: ImagesLike, cache?: Cache, cacheControl?: string, reread?: () => Promise<R2ObjectLike | null> }} options
-   * @returns {Promise<Response>}
    */
-  async function respond(
-    request,
-    { object, images, cache, cacheControl = "public, max-age=31536000, immutable", reread },
-  ) {
-    const query = new URL(request.url).searchParams;
-    const requested = query.get("w");
-    if (requested === null) return original(request, object, cacheControl);
-
-    const width = Number(requested);
-    const suffix = suffixed(new URL(request.url).pathname);
-    const named = query.get("f");
-    if (suffix && named !== null && named !== suffix.format)
-      return new Response("Unsupported format", { status: 400 });
-    const format = suffix?.format ?? named ?? "webp";
-    const version = query.get("v");
-    const ratio = query.get("r");
-    const fp = query.get("fp");
-    const still = query.get("still");
-    if (!widths.has(width)) return new Response("Unsupported width", { status: 400 });
-    if (!formats.has(format)) return new Response("Unsupported format", { status: 400 });
-    if (version !== null && !VERSION.test(version))
-      return new Response("Unsupported version", { status: 400 });
-    if (ratio !== null && !ratios.has(ratio))
-      return new Response("Unsupported crop", { status: 400 });
-    if (fp !== null && (ratio === null || focusOf(fp) !== fp))
-      return new Response("Unsupported focal point", { status: 400 });
-    if (still !== null && still !== "1") return new Response("Unsupported still", { status: 400 });
-    if (!object) return new Response("Not found", { status: 404 });
-    // The focal point in the URL must be the file's own, or any caller could mint crops.
-    const stored = focusOf(object.customMetadata?.[FOCUS_METADATA]);
-    if (fp !== null && fp !== stored) return new Response("Stale focal point", { status: 400 });
-    // A still is a second billed transform, so only a GIF has one.
-    if (still !== null && mediaType(object.httpMetadata?.contentType) !== "image/gif")
-      return new Response("Unsupported still", { status: 400 });
-    if (!isRasterType(object.httpMetadata?.contentType))
-      return original(request, object, cacheControl);
-
-    // TRAP: the edge cache is keyed by URL alone and has no purge, so every input to the body goes into the key: the
-    // encoder's quality and the original's etag (a file replaced under the same key is a new key for every size). The
-    // page's `v` is left out, or any caller could mint a transform per value. The format goes in as `f`, so a URL from
-    // before suffixes and its suffixed twin are one entry.
-    const keyUrl = new URL(request.url);
-    keyUrl.searchParams.delete("v");
-    if (suffix) {
-      keyUrl.pathname = suffix.stored;
-      if (format !== "webp") keyUrl.searchParams.set("f", format);
-    }
-    keyUrl.searchParams.set("__q", String(quality));
-    keyUrl.searchParams.set("__v", object.httpEtag);
-    // The Cache-Control goes in too: a size stored under one policy must not answer under another.
-    keyUrl.searchParams.set("__cc", cacheControl);
-    const cacheKey = new Request(keyUrl.toString(), { method: "GET" });
-    const hit = cache ? await cache.match(cacheKey) : undefined;
-    // A cached Response has immutable headers.
-    if (hit) return new Response(hit.body, hit);
-
-    if (!images) {
-      // The binding is in an untracked wrangler.jsonc, so a checkout can lack it; a header says so.
-      const headers = objectHeaders(object, cacheControl);
-      headers.set("x-image", "unavailable-no-images-binding");
-      return new Response(object.body, { headers });
-    }
-
-    const transform = ratio
-      ? { width, height: cropHeight(width, ratio), fit: "cover", gravity: fp ?? "auto" }
-      : { width, fit: "scale-down" };
-    let response;
-    try {
-      const output = { format: `image/${format}`, quality, ...(still ? { anim: false } : {}) };
-      const result = await images.input(object.body).transform(transform).output(output);
-      response = result.response();
-    } catch (error) {
-      console.error(
-        JSON.stringify({
-          alert: "image-transform-failed",
-          url: request.url,
-          detail: errorMessage(error),
-        }),
-      );
-      // The body is spent, so the original is read again, short-lived.
-      const again = reread ? await reread() : null;
-      if (!again)
-        return new Response("Image unavailable", { status: 503, headers: { "retry-after": "60" } });
-      const headers = objectHeaders(again, "public, max-age=300");
-      headers.set("x-image", "original-fallback");
-      return new Response(again.body, { headers });
-    }
-    const headers = new Headers(response.headers);
-    for (const [name, value] of Object.entries(UPLOAD_HEADERS)) headers.set(name, value);
-    headers.set("cross-origin-resource-policy", "cross-origin");
-    // Over the AVIF limit the binding writes WebP: answer with the WebP's own URL, permanent and cached.
-    if (format === "avif" && mediaType(headers.get("content-type")) === IMAGE_FORMATS.webp) {
-      await response.body?.cancel();
-      const twin = new URL(request.url);
-      if (suffix) twin.pathname = twin.pathname.replace(/\.avif$/i, ".webp");
-      else twin.searchParams.delete("f");
-      const moved = new Response(null, {
-        status: 301,
-        headers: {
-          location: `${twin.pathname}${twin.search}`,
-          "cache-control": cacheControl,
-          "cross-origin-resource-policy": "cross-origin",
-          "x-image": `w=${width} avif-over-limit webp`,
-        },
-      });
-      if (cache) await cache.put(cacheKey, moved.clone());
-      return moved;
-    }
-    headers.set("cache-control", cacheControl);
-    headers.set(
-      "x-image",
-      `w=${width}${ratio ? ` r=${ratio}` : ""}${still ? " still" : ""} ${format}`,
-    );
-    const out = new Response(response.body, { headers });
-    if (cache) await cache.put(cacheKey, out.clone());
-    return out;
+  function respond(request, options) {
+    return respondImage({ widths, ratios, formats, quality }, request, options);
   }
 
   /**
@@ -638,7 +354,6 @@ export function defineImages({
    * and every answer, refusals too, under UPLOAD_HEADERS so no file runs script.
    * @param {Request} request
    * @param {{ read: (key: string) => Promise<R2ObjectLike | null>, images?: ImagesLike, cache?: Cache, prefix?: string, keyPrefix?: string, within?: string, cacheControl?: string | ((file: { request: Request, url: URL, key: string, object: R2ObjectLike }) => string | undefined | Promise<string | undefined>) }} options
-   * @returns {Promise<Response>}
    */
   async function serve(
     request,
@@ -698,169 +413,10 @@ export function defineImages({
 }
 
 /**
- * What a `<picture>` for `attributes()` holds, as plain objects with JSX's prop names: `sources` for the `<source>`
- * elements and `img` for the `<img>` (alone when there are no sources). `alt` is required ("" for none). Lazy by
- * default; the page's first large image passes `priority`. `focus` sets the `<img>`'s `objectPosition`.
- * @param {ImageAttributes} attrs
- * @param {{ alt: string, priority?: boolean, className?: string, focus?: unknown }} options
- */
-export function pictureProps(attrs, { alt, priority = false, className, focus }) {
-  const objectPosition = focalPosition(focus);
-  const style =
-    attrs.background || objectPosition
-      ? {
-          ...(attrs.background ? { background: attrs.background } : {}),
-          ...(objectPosition ? { objectPosition } : {}),
-        }
-      : undefined;
-  return {
-    sources: attrs.sources.map((s) => ({
-      type: s.type,
-      srcSet: s.srcset,
-      sizes: attrs.sizes,
-      media: s.media,
-    })),
-    img: {
-      src: attrs.src,
-      srcSet: attrs.srcset,
-      sizes: attrs.sizes,
-      width: attrs.width,
-      height: attrs.height,
-      alt,
-      className,
-      loading: priority ? /** @type {const} */ ("eager") : /** @type {const} */ ("lazy"),
-      fetchPriority: priority ? /** @type {const} */ ("high") : undefined,
-      decoding: /** @type {const} */ ("async"),
-      style,
-    },
-  };
-}
-
-/**
- * The preload for a page's LCP image (`./preload`): the first unconditional `<source>` (typed), else the `<img>`'s.
- * @param {ImageAttributes} attrs
- */
-export function imagePreload(attrs) {
-  const source = attrs.sources.find((s) => !s.media);
-  const srcset = source?.srcset ?? attrs.srcset;
-  return {
-    href: attrs.src,
-    as: /** @type {const} */ ("image"),
-    ...(source ? { type: source.type } : {}),
-    ...(srcset ? { imageSrcSet: srcset, ...(attrs.sizes ? { imageSizes: attrs.sizes } : {}) } : {}),
-    fetchPriority: /** @type {const} */ ("high"),
-  };
-}
-
-/** The HTML attribute for each JSX prop `pictureProps` names differently. */
-const HTML_NAMES = /** @type {Record<string, string>} */ ({
-  srcSet: "srcset",
-  className: "class",
-  fetchPriority: "fetchpriority",
-});
-
-/**
- * `<picture>` markup for `attributes()`: `pictureProps` written out as a string.
- * @param {ImageAttributes} attrs
- * @param {{ alt: string, priority?: boolean, className?: string }} options
- * @param {(value: string) => string} escape the site's HTML attribute escape (`escapeHtml` from ./html)
- */
-export function pictureHtml(attrs, options, escape) {
-  const { sources, img } = pictureProps(attrs, options);
-  const tag = (/** @type {string} */ name, /** @type {Record<string, unknown>} */ props) =>
-    `<${name}${Object.entries(props)
-      .filter(([, value]) => value !== undefined && value !== null)
-      .map(
-        ([prop, value]) =>
-          ` ${HTML_NAMES[prop] ?? prop}="${escape(prop === "style" ? styleText(/** @type {{ background?: string, objectPosition?: string }} */ (value)) : String(value))}"`,
-      )
-      .join("")}>`;
-  if (sources.length === 0) return tag("img", img);
-  return `<picture>${sources.map((s) => tag("source", s)).join("")}${tag("img", img)}</picture>`;
-}
-
-/** @param {{ background?: string, objectPosition?: string }} style */
-function styleText({ background, objectPosition }) {
-  return [
-    ...(background ? [`background:${background}`] : []),
-    ...(objectPosition ? [`object-position:${objectPosition}`] : []),
-  ].join(";");
-}
-
-const EDIT_FORMATS = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
-
-/**
- * One picture edited through the Images binding: turned, mirrored or shrunk, and encoded as `format`. For a site's own
- * writes, not for serving sizes (`respond` does that, from a closed set). Each call is a billed transform.
- * Cloudflare applies `flip` before `rotate`, and turns clockwise. `maxEdge` fits the picture inside a square of that
- * side and never enlarges it. A format alone re-encodes. Options outside these throw before the binding is called.
- * @param {ImagesLike} images the Images binding
- * @param {ReadableStream | ArrayBuffer | ArrayBufferView} input the picture's bytes
- * @param {{ rotate?: 90 | 180 | 270, flip?: "h" | "v" | "hv", maxEdge?: number, format: "image/jpeg" | "image/png" | "image/webp" | "image/avif", quality?: number }} options
- * @returns {Promise<Response>} the binding's response: the new bytes, with their content type
- */
-export async function editImage(
-  images,
-  input,
-  { rotate, flip, maxEdge, format, quality = IMAGE_QUALITY },
-) {
-  if (rotate !== undefined && rotate !== 90 && rotate !== 180 && rotate !== 270)
-    throw new Error(`editImage: rotate is 90, 180 or 270, not ${rotate}.`);
-  if (flip !== undefined && flip !== "h" && flip !== "v" && flip !== "hv")
-    throw new Error(`editImage: flip is "h", "v" or "hv", not ${flip}.`);
-  if (maxEdge !== undefined && !(Number.isInteger(maxEdge) && maxEdge > 0))
-    throw new Error(`editImage: maxEdge is a whole-pixel length, not ${maxEdge}.`);
-  if (!EDIT_FORMATS.has(format))
-    throw new Error(`editImage: format is one of ${[...EDIT_FORMATS].join(", ")}, not ${format}.`);
-  if (!(Number.isInteger(quality) && quality >= 1 && quality <= 100))
-    throw new Error(`editImage: quality is 1 to 100, not ${quality}.`);
-  /** @type {Record<string, unknown>} */
-  const transform = {};
-  if (flip) transform.flip = flip;
-  if (rotate) transform.rotate = rotate;
-  if (maxEdge) Object.assign(transform, { width: maxEdge, height: maxEdge, fit: "scale-down" });
-  // A Response reads a view as exactly its own bytes, not the larger allocation it sits in.
-  const stream =
-    input instanceof ReadableStream
-      ? input
-      : /** @type {ReadableStream} */ (new Response(/** @type {BodyInit} */ (input)).body);
-  const source = images.input(stream);
-  const result = await (
-    Object.keys(transform).length ? source.transform(transform) : source
-  ).output({ format, quality });
-  return result.response();
-}
-
-/**
- * @typedef {{ body: ReadableStream, httpEtag: string, httpMetadata?: { contentType?: string }, customMetadata?: Record<string, string>, writeHttpMetadata(headers: Headers): void }} R2ObjectLike
- * @typedef {{ output(options: { format: string, quality?: number, anim?: boolean }): Promise<{ response(): Response }> }} ImagesOutput
- * @typedef {{ input(stream: ReadableStream): ImagesOutput & { transform(options: object): ImagesOutput } }} ImagesLike
- */
-
-/** The raster image types, and the paths that name one (a query or fragment may follow the extension). */
-export const RASTER_TYPES = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-  "image/avif",
-  "image/gif",
-]);
-export const RASTER_PATH = /\.(png|jpe?g|webp|avif|gif)(?:$|[?#])/i;
-const GIF_PATH = /\.gif(?:$|[?#])/i;
-const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
-
-/** @param {number} width @param {string} ratio */
-function cropHeight(width, ratio) {
-  const [, w, h] = /** @type {RegExpExecArray} */ (RATIO.exec(ratio));
-  return Math.round((width * Number(h)) / Number(w));
-}
-
-/**
  * The CSS background an image shows while it loads: its stored placeholder over its main color, at its focal point.
  * Only for a JPEG, WebP or AVIF (a PNG or GIF is often clear, so the placeholder would show through). Values outside
  * site-api's contract (MediaPlaceholder, MediaColor) are dropped, so nothing else reaches the style.
  * @param {StoredImage} image
- * @returns {string | undefined}
  */
 function placeholderBackground({ src, placeholder, color, focus }) {
   if (!/\.(jpe?g|webp|avif)(?:$|[?#])/i.test(src)) return undefined;
@@ -875,43 +431,4 @@ function placeholderBackground({ src, placeholder, color, focus }) {
     .split("x")
     .map((n) => `${Math.round(Number(n) * 100)}%`);
   return `${fill ? `${fill} ` : ""}url("${picture}") ${x} ${y}/cover no-repeat`;
-}
-
-/** @param {string} path */
-function isRasterPath(path) {
-  return RASTER_PATH.test(path);
-}
-
-/** @param {string | null | undefined} type */
-function isRasterType(type) {
-  return RASTER_TYPES.has(mediaType(type));
-}
-
-/**
- * @param {R2ObjectLike} object
- * @param {string} cacheControl
- */
-function objectHeaders(object, cacheControl) {
-  const headers = new Headers();
-  object.writeHttpMetadata(headers);
-  headers.set("etag", object.httpEtag);
-  headers.set("cache-control", cacheControl);
-  for (const [name, value] of Object.entries(UPLOAD_HEADERS)) headers.set(name, value);
-  headers.set("cross-origin-resource-policy", corpFor(headers.get("content-type")));
-  // An inline SVG is script running as the site; keyed on the stored type, so a file renamed to .png is caught.
-  if ((headers.get("content-type") ?? "").toLowerCase().startsWith("image/svg+xml"))
-    headers.set("content-disposition", "attachment");
-  return headers;
-}
-
-/**
- * @param {Request} request
- * @param {R2ObjectLike | null} object
- * @param {string} cacheControl
- */
-function original(request, object, cacheControl) {
-  if (!object) return new Response("Not found", { status: 404 });
-  if (request.headers.get("if-none-match") === object.httpEtag)
-    return new Response(null, { status: 304, headers: { etag: object.httpEtag } });
-  return new Response(object.body, { headers: objectHeaders(object, cacheControl) });
 }

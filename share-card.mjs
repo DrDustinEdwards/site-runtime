@@ -51,7 +51,6 @@ export const SHARE_CARD_HEADERS = Object.freeze({ "Cross-Origin-Resource-Policy"
  * `value` as card text: `<` and `>` become ‹ and ›, so no text can open a tag, and everything else stays as is (an
  * entity would show literally; see the header).
  * @param {unknown} value
- * @returns {string}
  */
 export function cardText(value) {
   return String(value).replace(/</g, "\u2039").replace(/>/g, "\u203a");
@@ -76,7 +75,6 @@ const DANGLING_PUNCTUATION = new RegExp("[,;:.\\u2014\\u2013-]+$");
  * running off the card is worse.
  * @param {string | null | undefined} value
  * @param {number} max
- * @returns {string}
  */
 export function clampTitle(value, max = CARD_TITLE_MAX) {
   const text = (value ?? "").trim();
@@ -92,7 +90,6 @@ export function clampTitle(value, max = CARD_TITLE_MAX) {
  * disagree.
  * @param {string} title the title as drawn, already through clampTitle
  * @param {ReadonlyArray<{ maxChars: number, fontSize: number }>} [sizes]
- * @returns {number}
  */
 export function titleFontSize(title, sizes = CARD_TITLE_SIZES) {
   const length = (title ?? "").length;
@@ -109,7 +106,6 @@ export function titleFontSize(title, sizes = CARD_TITLE_SIZES) {
  * Pass what is drawn (the clamped title and description, the formatted date), and bump `version` on any change of the
  * template: an immutable cache ignores a restyled PNG under an unchanged key forever.
  * @param {{ slug: string, parts?: Array<string | null | undefined>, version?: number, prefix?: string }} card
- * @returns {string}
  */
 export function cardKey({ slug, parts = [], version = 1, prefix = "og/" }) {
   return `${prefix}${slug}-${fnv1a32(`${version}\n${slug}\n${parts.map((p) => p ?? "").join("\n")}`)}.png`;
@@ -130,7 +126,6 @@ export function cardKey({ slug, parts = [], version = 1, prefix = "og/" }) {
  *   fontFamily?: string,
  *   titleSizes?: ReadonlyArray<{ maxChars: number, fontSize: number }>,
  * }} card `mark` is html the caller wrote, never from a visitor; `fontFamily` must be a font passed to the renderer
- * @returns {string}
  */
 export function cardLayout({
   brand,
@@ -174,7 +169,6 @@ export function cardLayout({
  * @param {(html: string, options: { width: number, height: number, fonts: unknown[] }) => Promise<Uint8Array | ArrayBuffer>} draw
  * @param {string} html
  * @param {{ fonts: unknown[], width?: number, height?: number, headers?: Record<string, string> }} options
- * @returns {Promise<Response | null>}
  */
 export async function renderShareCard(
   draw,
@@ -206,7 +200,6 @@ export async function renderShareCard(
  * @param {string} family
  * @param {number} weight
  * @param {{ cache?: Cache, cacheOrigin?: string, fetch?: typeof fetch }} [options]
- * @returns {Promise<ArrayBuffer | null>}
  */
 export async function googleFont(
   family,
@@ -254,7 +247,6 @@ export async function googleFont(
  *   height?: number,
  *   headers?: Record<string, string>,
  * }} options
- * @returns {Promise<Response>}
  */
 export async function shareCardResponse(
   draw,

@@ -14,7 +14,6 @@ import wasm from "@takumi-rs/wasm/takumi_wasm_bg.wasm";
  * `html` drawn at `width` by `height` with `fonts` (`{ name, data, weight, style }`), as PNG bytes.
  * @param {string} html
  * @param {{ width: number, height: number, fonts: unknown[] }} options
- * @returns {Promise<Uint8Array>}
  */
 export async function drawShareCard(html, { width, height, fonts }) {
   return render(html, { width, height, fonts: /** @type {any} */ (fonts), module: wasm });

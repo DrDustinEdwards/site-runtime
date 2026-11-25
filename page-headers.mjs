@@ -84,7 +84,6 @@ const isHtml = (headers) => (headers.get("Content-Type") ?? "").toLowerCase().in
 /**
  * @template [Env=unknown]
  * @param {PageSecurityOptions<Env>} options
- * @returns {PageSecurity<Env>}
  */
 export function pageSecurity({
   set,

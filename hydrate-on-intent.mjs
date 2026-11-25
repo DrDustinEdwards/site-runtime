@@ -35,12 +35,10 @@ export const STREAM_BUFFER_SCRIPT = `window.${STREAM_BUFFER}={chunks:[],closed:f
 // React Router's sessionStorage key for its saved scroll positions (ScrollRestoration).
 const SCROLL_POSITIONS = "react-router-scroll-positions";
 
-/** True on a page whose React waits for intent. */
 export function isDeferred() {
   return document.getElementById(HOLDER_ID) !== null;
 }
 
-/** True once the app is live on this page. */
 export function isHydrated() {
   return document.documentElement.hasAttribute(HYDRATED_ATTRIBUTE);
 }
@@ -115,7 +113,6 @@ let failed = false;
  * that failed to load failed, and the loader-data stream cannot be started twice, so a boot is never retried (the
  * presses fall back to the page's own behavior instead, as hydrateOnIntent does). On a page that hydrates on load it
  * does nothing.
- * @returns {Promise<void>}
  */
 export function hydrateNow() {
   if (running) return running;

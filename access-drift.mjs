@@ -39,7 +39,6 @@ const normal = (email) => email.trim().toLowerCase();
  * The site's admin list from a roster (`ADMIN_EMAIL`, `CO_OWNER_EMAILS`) or a file (one address per line or comma-separated,
  * `#` starts a comment), lower-cased, blanks dropped.
  * @param {string} text
- * @returns {string[]}
  */
 export function parseAdminList(text) {
   return [
@@ -58,7 +57,6 @@ export function parseAdminList(text) {
 /**
  * Who an Access application lets in, by the application's name.
  * @param {{ accountId: string, appName: string, token: string, fetch?: typeof fetch }} options
- * @returns {Promise<Allowed>}
  */
 export async function accessAllowed({ accountId, appName, token, fetch: get = globalThis.fetch }) {
   /** @param {string} path @returns {Promise<{ result: any, result_info?: { page?: number, total_pages?: number } }>} */
@@ -187,7 +185,6 @@ function describe(rule) {
  * Access, and Access's open rules. No drift when all three are empty.
  * @param {Allowed} allowed
  * @param {string[]} admins
- * @returns {Drift}
  */
 export function accessDrift(allowed, admins) {
   const app = new Set(admins.map(normal));
@@ -215,7 +212,6 @@ export async function adminHash(salt, email) {
  * @param {Request} request
  * @param {{ ACCESS_TEAM_DOMAIN?: string, ACCESS_AUD?: string }} env
  * @param {{ admins: readonly string[], clientId?: string, keys?: import("./access-login.mjs").KeySource, now?: number }} options
- * @returns {Promise<Response>}
  */
 export async function adminListResponse(request, env, { admins, clientId, keys, now }) {
   const headers = { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" };

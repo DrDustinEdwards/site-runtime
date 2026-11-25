@@ -52,46 +52,21 @@
  * clean, 1 on any error, 2 when the origin does not answer at all, so an outage never reads as findings or as a pass.
  */
 
-import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
-import { createServer } from "node:http";
-import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { parseArgs, stripVTControlCharacters } from "node:util";
+import { parseArgs } from "node:util";
 
+import { auditAuthServer } from "./ai-audit-door.mjs";
 import {
-  DEPRECATIONS_URL,
-  MODEL_IDS,
-  deprecationProblems,
-  parseDeprecations,
-} from "../anthropic.mjs";
-import { MCP_PER_MINUTE, toolListHash, toolListProblems } from "../mcp-server.mjs";
-import { checkProse } from "../prose.mjs";
+  SERVER_SCENARIOS,
+  grantProxy,
+  judgeConformance,
+  runMcpConformance,
+} from "./ai-audit-conformance.mjs";
+import { auditModels, auditProse } from "./ai-audit-prose.mjs";
+import { auditTools, burst, declaredCapabilities } from "./ai-audit-tools.mjs";
+import { DISCOVER, MCP_HEADERS, TIMEOUT_MS, VERSION, jsonOf } from "./ai-audit-wire.mjs";
 import { errorMessage } from "../log.mjs";
 
-const TIMEOUT_MS = 10_000;
-const VERSION = "2026-07-28";
-const DISCOVER = JSON.stringify({
-  jsonrpc: "2.0",
-  id: 1,
-  method: "server/discover",
-  params: {
-    _meta: {
-      "io.modelcontextprotocol/protocolVersion": VERSION,
-      "io.modelcontextprotocol/clientCapabilities": {},
-    },
-  },
-});
-const MCP_HEADERS = {
-  "content-type": "application/json",
-  accept: "application/json, text/event-stream",
-  "mcp-protocol-version": VERSION,
-  "mcp-method": "server/discover",
-};
-// The suite, pinned exactly (devkit-conformance's version), and the scenarios a production server can pass as it is.
-const CONFORMANCE = "@modelcontextprotocol/conformance@0.2.0-alpha.10";
-const SERVER_SCENARIOS = ["server-stateless", "http-header-validation", "caching"];
 const WINDOW_MS = 61_000;
 
 const { values } = parseArgs({
@@ -145,6 +120,8 @@ const report = (
   /** @type {string} */ detail,
 ) => findings.push({ severity, item, url, detail });
 
+const ctx = { get, report };
+
 /**
  * One request, never followed, with the 10 s timeout; an URL on --origin goes to --from when given. Returns the URL
  * actually requested (the proof) and the response, or the reason there was none.
@@ -173,18 +150,6 @@ async function get(url, init = {}) {
     return { url: requested, res: null, why };
   }
 }
-
-/** The body as a JSON object, or null when it is not one. */
-async function jsonOf(/** @type {Response} */ res) {
-  try {
-    const body = await res.json();
-    return body && typeof body === "object" && !Array.isArray(body) ? body : null;
-  } catch {
-    return null;
-  }
-}
-
-// Which kind of origin, and whether it answers at all.
 
 const prmProbes = await Promise.all(
   ["/.well-known/oauth-protected-resource/mcp", "/.well-known/oauth-protected-resource"].map(
@@ -248,8 +213,8 @@ for (const event of ["unhandledRejection", "uncaughtException"]) {
 }
 try {
   if (prms.length > 0) await auditMcp();
-  if (values.prose?.length) await auditProse(values.prose);
-  if (values.models) await auditModels();
+  if (values.prose?.length) await auditProse(ctx, origin, values.prose, values["prose-model"]);
+  if (values.models) await auditModels(ctx);
 } catch (error) {
   stopped(error);
 }
@@ -272,10 +237,7 @@ function finish() {
   process.exit(errors > 0 ? 1 : unmeasured > 0 ? 3 : 0);
 }
 
-// An MCP server.
-
 async function auditMcp() {
-  // A1, on each metadata document served.
   for (const { url, prm } of prms) {
     if (typeof prm.resource !== "string" || !prm.resource)
       report("error", "A1", url, "has no resource");
@@ -358,73 +320,7 @@ async function auditMcp() {
     report("error", "P5", stream.url, `GET answered ${stream.res.status}, not 405`);
   await stream.res?.body?.cancel();
 
-  // A4: the authorization server's metadata (RFC 8414 path insertion for an issuer with a path).
-  const issuer = String(
-    Array.isArray(prm.authorization_servers) && prm.authorization_servers[0]
-      ? prm.authorization_servers[0]
-      : origin,
-  );
-  /** @type {Record<string, any> | null} */
-  let as = null;
-  let asUrl = "";
-  try {
-    const parsed = new URL(issuer);
-    const path = parsed.pathname.replace(/\/$/, "");
-    asUrl = `${parsed.origin}/.well-known/oauth-authorization-server${path}`;
-  } catch {
-    report("error", "A4", prms[0].url, `authorization server ${issuer} is not a URL`);
-  }
-  if (asUrl) {
-    const meta = await get(asUrl, { headers: { accept: "application/json" } });
-    asUrl = meta.url;
-    if (!meta.res) report("error", "A4", meta.url, meta.why);
-    else if (!meta.res.ok) report("error", "A4", meta.url, `answered ${meta.res.status}`);
-    else if (!(as = await jsonOf(meta.res)))
-      report("error", "A4", meta.url, "is not a JSON object");
-  }
-  if (as) {
-    if (as.issuer !== issuer)
-      report("error", "A4", asUrl, `issuer ${JSON.stringify(as.issuer)} is not exactly ${issuer}`);
-    const methods = Array.isArray(as.code_challenge_methods_supported)
-      ? as.code_challenge_methods_supported
-      : [];
-    if (!methods.includes("S256"))
-      report("error", "A4", asUrl, "code_challenge_methods_supported does not list S256");
-    if (methods.includes("plain"))
-      report("error", "A4", asUrl, "code_challenge_methods_supported lists plain");
-    if (as.client_id_metadata_document_supported !== true)
-      report("error", "A4", asUrl, "client_id_metadata_document_supported is not true");
-    if (as.authorization_response_iss_parameter_supported !== true)
-      report("error", "A4", asUrl, "authorization_response_iss_parameter_supported is not true");
-  }
-
-  // A8: whatever /authorize answers to garbage, it is never stored.
-  const authorize = new URL(
-    typeof as?.authorization_endpoint === "string"
-      ? as.authorization_endpoint
-      : `${origin}/authorize`,
-  );
-  for (const [k, v] of Object.entries({
-    response_type: "code",
-    client_id: "https://evil.example/client.json",
-    redirect_uri: "https://evil.example/cb",
-    state: "x",
-    code_challenge: "x",
-    code_challenge_method: "S256",
-  })) {
-    authorize.searchParams.set(k, v);
-  }
-  const consent = await get(authorize.href, { headers: { accept: "text/html" } });
-  if (!consent.res) report("error", "A8", consent.url, consent.why);
-  else if (!/no-store/i.test(consent.res.headers.get("cache-control") ?? "")) {
-    report(
-      "error",
-      "A8",
-      consent.url,
-      `${consent.res.status} with Cache-Control ${JSON.stringify(consent.res.headers.get("cache-control") ?? "(none)")}, not no-store`,
-    );
-  }
-  await consent.res?.body?.cancel();
+  const { issuer, asUrl } = await auditAuthServer(ctx, origin, prms[0]);
 
   // S8, and L8: the tool-call log's own check on /health.
   const health = await get(`${origin}/health`, {
@@ -456,6 +352,8 @@ async function auditMcp() {
   if (!values["no-conformance"]) {
     const scenario = "authorization-server-metadata-endpoint";
     judgeConformance(
+      ctx,
+      baselines,
       scenario,
       asUrl || issuer,
       await runMcpConformance([
@@ -481,14 +379,19 @@ async function auditMcp() {
     return;
   }
   const keyed = values["grant-path"] ? `${origin}${values["grant-path"]}` : endpoint;
-  await auditTools(keyed, grant);
+  await auditTools(ctx, keyed, grant, values["tools-hash"]);
   if (!values["no-conformance"]) {
-    const capabilities = await declaredCapabilities(keyed, grant);
-    const proxy = await grantProxy(keyed, grant);
+    const capabilities = await declaredCapabilities(ctx, keyed, grant);
+    const proxy = await grantProxy(
+      from && keyed.startsWith(origin) ? from + keyed.slice(origin.length) : keyed,
+      grant,
+    );
     try {
       for (const scenario of SERVER_SCENARIOS) {
         await sleep(WINDOW_MS);
         judgeConformance(
+          ctx,
+          baselines,
           scenario,
           keyed,
           await runMcpConformance(
@@ -502,473 +405,5 @@ async function auditMcp() {
     }
   }
   await sleep(WINDOW_MS);
-  await burst(keyed, grant);
-}
-
-// With the test grant.
-
-/** A modern-era request's body: the method, its params, and the per-request envelope. */
-function envelope(
-  /** @type {string} */ method,
-  /** @type {Record<string, unknown>} */ params = {},
-) {
-  const meta = {
-    "io.modelcontextprotocol/protocolVersion": VERSION,
-    "io.modelcontextprotocol/clientInfo": { name: "site-runtime-ai-audit", version: "1" },
-    "io.modelcontextprotocol/clientCapabilities": {},
-  };
-  return JSON.stringify({ jsonrpc: "2.0", id: 1, method, params: { ...params, _meta: meta } });
-}
-
-/** The JSON-RPC message of an answer sent as JSON or as one server-sent event. */
-async function rpcOf(/** @type {Response} */ res) {
-  const text = await res.text().catch(() => "");
-  if (!/event-stream/i.test(res.headers.get("content-type") ?? "")) {
-    try {
-      return JSON.parse(text);
-    } catch {
-      return null;
-    }
-  }
-  for (const line of text.split(/\r?\n/)) {
-    if (!line.startsWith("data:")) continue;
-    try {
-      const message = JSON.parse(line.slice(5).trim());
-      if (message && ("result" in message || "error" in message)) return message;
-    } catch {}
-  }
-  return null;
-}
-
-/** Every page of tools/list as the grant sees it, or the reason there is none. */
-async function listTools(/** @type {string} */ endpoint, /** @type {string} */ grant) {
-  /** @type {Record<string, any>[]} */
-  const tools = [];
-  let cursor;
-  for (let page = 0; page < 20; page++) {
-    const r = await get(endpoint, {
-      method: "POST",
-      headers: { ...MCP_HEADERS, "mcp-method": "tools/list", authorization: `Bearer ${grant}` },
-      body: envelope("tools/list", cursor ? { cursor } : {}),
-    });
-    if (!r.res) return { url: r.url, tools: null, why: r.why };
-    const rpc = r.res.ok ? await rpcOf(r.res) : (await r.res.body?.cancel().catch(() => {}), null);
-    if (!Array.isArray(rpc?.result?.tools)) {
-      return {
-        url: r.url,
-        tools: null,
-        why: r.res.ok
-          ? `tools/list answered no tools${rpc?.error ? ` (${rpc.error.code})` : ""}`
-          : `the test grant was answered ${r.res.status}`,
-      };
-    }
-    tools.push(...rpc.result.tools);
-    cursor =
-      typeof rpc.result.nextCursor === "string" && rpc.result.nextCursor
-        ? rpc.result.nextCursor
-        : undefined;
-    if (!cursor) return { url: r.url, tools, why: "" };
-  }
-  return { url: endpoint, tools: null, why: "tools/list still had a next page after 20" };
-}
-
-/** The capabilities the server declares in server/discover to the grant, or null when it does not say. */
-async function declaredCapabilities(/** @type {string} */ endpoint, /** @type {string} */ grant) {
-  const r = await get(endpoint, {
-    method: "POST",
-    headers: { ...MCP_HEADERS, authorization: `Bearer ${grant}` },
-    body: envelope("server/discover"),
-  });
-  if (!r.res?.ok) return (await r.res?.body?.cancel().catch(() => {}), null);
-  const capabilities = (await rpcOf(r.res))?.result?.capabilities;
-  return capabilities && typeof capabilities === "object" ? capabilities : null;
-}
-
-async function auditTools(/** @type {string} */ endpoint, /** @type {string} */ grant) {
-  const first = await listTools(endpoint, grant);
-  if (!first.tools) return report("error", "T1", first.url, first.why);
-  for (const p of toolListProblems(first.tools))
-    report(p.severity, p.item, first.url, `${p.tool}: ${p.detail}`);
-
-  const second = await listTools(endpoint, grant);
-  const names = (/** @type {Record<string, any>[] | null} */ list) =>
-    (list ?? []).map((t) => String(t.name)).join(",");
-  if (names(second.tools) !== names(first.tools))
-    report(
-      "error",
-      "T7",
-      first.url,
-      "two tools/list calls in a row listed different tools or a different order",
-    );
-  const writes = first.tools.filter((t) => t.annotations?.readOnlyHint !== true).map((t) => t.name);
-  if (writes.length)
-    report(
-      "error",
-      "T7",
-      first.url,
-      `the read-only test grant lists tools that are not read-only: ${writes.slice(0, 10).join(", ")}`,
-    );
-
-  const hash = await toolListHash(first.tools);
-  const pinned = values["tools-hash"]?.trim().toLowerCase();
-  if (!pinned)
-    report(
-      "warning",
-      "T12",
-      first.url,
-      `no --tools-hash pinned; the test grant's list hashes to ${hash}`,
-    );
-  else if (pinned !== hash)
-    report(
-      "error",
-      "T12",
-      first.url,
-      `the tool list changed: it hashes to ${hash}, not the pinned ${pinned}; review the change, then pin the new hash`,
-    );
-}
-
-/** S1: a concurrent burst over the limit, as the test grant, gets at least one 429. */
-async function burst(/** @type {string} */ endpoint, /** @type {string} */ grant) {
-  const count = MCP_PER_MINUTE + 5;
-  const answers = await Promise.all(
-    Array.from({ length: count }, () =>
-      get(endpoint, {
-        method: "POST",
-        headers: { ...MCP_HEADERS, "mcp-method": "tools/list", authorization: `Bearer ${grant}` },
-        body: envelope("tools/list"),
-      }),
-    ),
-  );
-  const statuses = answers.map((a) => a.res?.status ?? 0);
-  await Promise.allSettled(answers.map(async (a) => a.res?.body?.cancel()));
-  const limited = answers.filter((a) => a.res?.status === 429);
-  if (limited.length === 0)
-    report(
-      "error",
-      "S1",
-      endpoint,
-      `${count} concurrent requests by one caller, none refused (statuses ${[...new Set(statuses)].join(", ")})`,
-    );
-  else if (!limited.every((a) => a.res?.headers.has("retry-after")))
-    report("warning", "S1", endpoint, "a 429 without Retry-After");
-}
-
-/**
- * A local proxy that adds the grant to each request and sends it on to `endpoint`, so the suite (which takes no header)
- * tests the real server and never sees the grant. A localhost Origin the suite sends is dropped, since it names the
- * proxy, not a browser page.
- */
-async function grantProxy(/** @type {string} */ endpoint, /** @type {string} */ grant) {
-  const target =
-    from && endpoint.startsWith(origin) ? from + endpoint.slice(origin.length) : endpoint;
-  /** @param {import("node:http").IncomingMessage} req @param {import("node:http").ServerResponse} res */
-  const proxy = async (req, res) => {
-    const headers = new Headers();
-    for (const [name, value] of Object.entries(req.headers)) {
-      if (
-        ["host", "connection", "content-length", "authorization", "accept-encoding"].includes(
-          name,
-        ) ||
-        value === undefined
-      )
-        continue;
-      if (
-        name === "origin" &&
-        /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(String(value))
-      )
-        continue;
-      headers.set(name, Array.isArray(value) ? value.join(", ") : value);
-    }
-    headers.set("authorization", `Bearer ${grant}`);
-    // Streamed, never buffered: a subscriptions/listen answer is an event stream that stays open, so reading it whole
-    // held back its first frame (the acknowledgment) until the timeout, and the suite failed SEP-2575's ack and
-    // subscription-id checks on every server. The upstream request ends when the suite closes its side.
-    const upstream = new AbortController();
-    res.on("close", () => upstream.abort());
-    try {
-      // Read inside the try, so a request stream that fails is a 502 too, not an unhandled rejection.
-      /** @type {Buffer[]} */
-      const chunks = [];
-      for await (const chunk of req) chunks.push(chunk);
-      const answer = await fetch(target, {
-        method: req.method,
-        headers,
-        body: chunks.length ? Buffer.concat(chunks) : undefined,
-        redirect: "manual",
-        signal: AbortSignal.any([upstream.signal, AbortSignal.timeout(TIMEOUT_MS)]),
-      });
-      /** @type {Record<string, string>} */
-      const out = {};
-      answer.headers.forEach((value, name) => {
-        if (
-          !["content-encoding", "content-length", "transfer-encoding", "connection"].includes(name)
-        )
-          out[name] = value;
-      });
-      res.writeHead(answer.status, out);
-      if (!answer.body) return void res.end();
-      for await (const chunk of answer.body) res.write(chunk);
-      res.end();
-    } catch {
-      if (res.headersSent) res.destroy();
-      else res.writeHead(502).end();
-    }
-  };
-  // proxy catches every failure itself, so the promise it returns never rejects.
-  const server = createServer((req, res) => void proxy(req, res));
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(undefined)));
-  const address = /** @type {import("node:net").AddressInfo} */ (server.address());
-  return { url: `http://127.0.0.1:${address.port}/mcp`, close: () => server.close() };
-}
-
-/** What npx may see: its paths, proxy and Node settings, never a job's secrets (its install scripts run with them). */
-const NPX_ENV =
-  /^(PATH|HOME|USERPROFILE|TMP|TEMP|TMPDIR|SystemRoot|APPDATA|LOCALAPPDATA|ComSpec|PATHEXT|CI|NODE_.*|npm_config_.*|SSL_CERT_.*|(HTTPS?|NO|ALL)_PROXY)$/i;
-
-/**
- * Runs the pinned MCP conformance suite through npx, without the grant in its environment, and reads its checks: the
- * count over the checks that apply, the failing ids, and the ones left out, or why there is none. Two kinds of failure
- * say nothing about the server and are left out (a warning names them): one the suite marks untestable (it needs its
- * own diagnostic tools, which a production server does not ship), and a caching check on a list the server answers
- * -32601 for when its server/discover declares no such capability (SEP-2549; a client must not use an undeclared one).
- * @param {string[]} args
- * @param {Record<string, unknown> | null} [capabilities] the server's declared capabilities, when known
- */
-function runMcpConformance(args, capabilities = null) {
-  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => NPX_ENV.test(k)));
-  // Read from the checks.json under --output-dir, never stdout: the CLI exits before a pipe drains, so a large
-  // tools/list (printed twice by http-header-validation) cut the JSON short ("could not run", Capsid run 55).
-  const dir = mkdtempSync(join(tmpdir(), "mcp-conformance-"));
-  return new Promise((resolve) => {
-    let out = "";
-    const child = spawn("npx", ["-y", CONFORMANCE, ...args, "--output-dir", dir], {
-      env,
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout: 300_000,
-      shell: process.platform === "win32",
-    });
-    child.stdout.on("data", (d) => (out += d));
-    child.stderr.on("data", (d) => (out += d));
-    child.on("error", (error) =>
-      resolve({
-        count: null,
-        failed: [],
-        skipped: [],
-        why: `npx could not start (${error.message})`,
-      }),
-    );
-    child.on("close", () => {
-      const why =
-        stripVTControlCharacters(out).trim().split("\n").at(-1)?.slice(0, 200) || "no output";
-      resolve(readChecks(savedChecks(dir), why, capabilities));
-      rmSync(dir, { recursive: true, force: true });
-    });
-  });
-}
-
-/** The checks.json the suite saved for its one scenario (in a timestamped folder under the output dir), or null. */
-function savedChecks(/** @type {string} */ dir) {
-  try {
-    const file = readdirSync(dir, { recursive: true, encoding: "utf8" }).find(
-      (f) => basename(f) === "checks.json",
-    );
-    return file ? JSON.parse(readFileSync(join(dir, file), "utf8")) : null;
-  } catch {
-    return null;
-  }
-}
-
-/** The suite's saved checks as a count over the checks that apply, or why there are none. */
-function readChecks(
-  /** @type {any} */ checks,
-  /** @type {string} */ why,
-  /** @type {Record<string, unknown> | null} */ capabilities,
-) {
-  if (!Array.isArray(checks)) return { count: null, failed: [], skipped: [], why };
-  const lists = {
-    "prompts-list": "prompts",
-    "resources-list": "resources",
-    "resources-templates-list": "resources",
-  };
-  const notApplicable = (/** @type {any} */ c) => {
-    if (c.details?.untestable === true) return true;
-    const list =
-      /^sep-2549-(prompts-list|resources-list|resources-templates-list)-caching-hints$/.exec(
-        String(c.id),
-      )?.[1];
-    // The list-only test key may not read a resource (PROBE_METHODS), so its 404 is the door's answer, not a missing hint.
-    if (c.id === "sep-2549-resources-read-caching-hints" && c.details?.error?.code === -32601)
-      return true;
-    return Boolean(
-      list &&
-      c.details?.error?.code === -32601 &&
-      capabilities &&
-      !(/** @type {Record<string, string>} */ (lists)[list] in capabilities),
-    );
-  };
-  const judged = checks.filter((c) => c?.status === "SUCCESS" || c?.status === "FAILURE");
-  const skipped = [
-    ...new Set(
-      judged.filter((c) => c.status === "FAILURE" && notApplicable(c)).map((c) => String(c.id)),
-    ),
-  ];
-  const applies = judged.filter((c) => !(c.status === "FAILURE" && notApplicable(c)));
-  const failed = [
-    ...new Set(applies.filter((c) => c.status === "FAILURE").map((c) => String(c.id))),
-  ];
-  return {
-    count: { passed: applies.filter((c) => c.status === "SUCCESS").length, total: applies.length },
-    failed: failed.slice(0, 5),
-    skipped,
-    why: "",
-  };
-}
-
-/** One scenario's count against its baseline, devkit-conformance's way. */
-function judgeConformance(
-  /** @type {string} */ scenario,
-  /** @type {string} */ url,
-  /** @type {any} */ run,
-) {
-  const item =
-    { "server-stateless": "P3", "http-header-validation": "P4", caching: "P7" }[scenario] ?? "A4";
-  if (!run.count)
-    return report("unmeasured", item, url, `conformance ${scenario} could not run: ${run.why}`);
-  if (run.skipped.length)
-    report(
-      "warning",
-      item,
-      url,
-      `conformance ${scenario}: ${run.skipped.length} check(s) do not apply here and were left out (${run.skipped.join(", ")})`,
-    );
-  const { passed, total } = run.count;
-  const failing = run.failed.length ? ` (failing: ${run.failed.join(", ")})` : "";
-  const want = baselines.get(scenario);
-  if (!want) {
-    if (passed < total)
-      report("error", item, url, `conformance ${scenario} passed ${passed}/${total}${failing}`);
-  } else if (total !== want.total)
-    report(
-      "warning",
-      item,
-      url,
-      `conformance ${scenario} now has ${total} checks, baseline ${want.total}; re-baseline`,
-    );
-  else if (passed < want.passed)
-    report(
-      "error",
-      item,
-      url,
-      `conformance ${scenario} passed ${passed}/${total}, below its baseline ${want.passed}${failing}`,
-    );
-  else if (passed > want.passed)
-    report(
-      "warning",
-      item,
-      url,
-      `conformance ${scenario} passed ${passed}/${total}, above its baseline ${want.passed}; tighten it`,
-    );
-}
-
-// Any origin: public AI text, and the models.
-
-/**
- * `html` without its script, style, noscript, template and svg elements, each replaced by a space: an element with no
- * closing tag is left as it is. One search per element name finds its next closing tag, so a run of unclosed openers is
- * read once, not rescanned from each.
- * @param {string} html
- */
-function dropBlocks(html) {
-  const open = /<(script|style|noscript|template|svg)\b/gi;
-  /** @type {Map<string, number>} */
-  const closeAt = new Map();
-  let out = "";
-  let at = 0;
-  let m;
-  while ((m = open.exec(html))) {
-    const name = (m[1] ?? "").toLowerCase();
-    let close = closeAt.get(name);
-    if (close === -1) continue;
-    if (close === undefined || close < m.index) {
-      const re = new RegExp(`</${name}>`, "gi");
-      re.lastIndex = m.index;
-      close = re.exec(html)?.index ?? -1;
-      closeAt.set(name, close);
-      if (close === -1) continue;
-    }
-    out += `${html.slice(at, m.index)} `;
-    at = close + name.length + 3;
-    open.lastIndex = at;
-  }
-  return out + html.slice(at);
-}
-
-/** A page's readable text: no script, style or markup, block ends as line breaks, the common entities decoded. */
-function textOf(/** @type {string} */ html) {
-  return dropBlocks(html)
-    .replace(
-      /<\/?(?:p|div|li|h[1-6]|br|section|article|blockquote|tr|td|th|dd|dt)\b[^<>]*>/gi,
-      "\n",
-    )
-    .replace(/<[^<>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;|&apos;|&rsquo;/g, "’")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&")
-    .split("\n")
-    .map((line) => line.replace(/\s+/g, " ").trim())
-    .filter(Boolean)
-    .join("\n");
-}
-
-/** W1 and W3: each page's text through checkProse, as the model that wrote it. */
-async function auditProse(/** @type {string[]} */ paths) {
-  const model = values["prose-model"] ?? "claude";
-  for (const path of paths) {
-    const page = await get(origin + path, { headers: { accept: "text/html" } });
-    if (!page.res) {
-      report("error", "W1", page.url, page.why);
-      continue;
-    }
-    if (!page.res.ok) {
-      report("error", "W1", page.url, `answered ${page.res.status}`);
-      await page.res.body?.cancel().catch(() => {});
-      continue;
-    }
-    for (const issue of checkProse(textOf(await page.res.text()), { model, dashes: "allow" })) {
-      if (issue.severity !== "high") continue;
-      const leftover = ["leftover", "placeholder", "markup"].includes(issue.check);
-      report(
-        leftover ? "error" : "warning",
-        leftover ? "W3" : "W1",
-        page.url,
-        `${issue.message}`.slice(0, 200),
-      );
-    }
-  }
-}
-
-/** C8: MODEL_IDS against Anthropic's deprecations page. */
-async function auditModels() {
-  /** @type {string} */
-  let page = "";
-  try {
-    const res = await fetch(DEPRECATIONS_URL, {
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-      headers: { "user-agent": "site-runtime-ai-audit" },
-    });
-    page = res.ok ? await res.text() : "";
-  } catch {}
-  const table = parseDeprecations(page);
-  if (Object.keys(table).length === 0)
-    return report(
-      "unmeasured",
-      "C8",
-      DEPRECATIONS_URL,
-      "could not read the model table, so the models were not checked today",
-    );
-  for (const problem of deprecationProblems(Object.values(MODEL_IDS), table))
-    report("error", "C8", DEPRECATIONS_URL, problem);
+  await burst(ctx, keyed, grant);
 }

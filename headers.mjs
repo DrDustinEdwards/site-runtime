@@ -55,7 +55,6 @@ export const LOGOUT_HEADERS = /* @__PURE__ */ (() =>
  * OSHP's Permissions-Policy with each named feature allowed for the site's own pages, from the parsed list rather
  * than a string replace, so a change in OSHP's spelling cannot leave a feature denied without a word.
  * @param {...string} features
- * @returns {string}
  */
 export function permissionsAllowingSelf(...features) {
   const directives = (OWASP_RECOMMENDED["Permissions-Policy"] ?? "")
@@ -82,7 +81,6 @@ export const PASSKEY_OVERRIDES = /* @__PURE__ */ Object.freeze({
  * `cross-origin`, so a site marks those responses and not every response. The check accepts `cross-origin` only on
  * these kinds.
  * @param {string | null | undefined} contentType the response's Content-Type
- * @returns {"cross-origin" | "same-origin"}
  */
 export function corpFor(contentType) {
   return /^\s*(image\/|font\/|text\/css|(text|application)\/javascript|application\/(rss|atom)\+xml|application\/feed\+json)/i.test(
@@ -102,7 +100,6 @@ export function corpFor(contentType) {
  * The header overrides a registry entry declares: PASSKEY_OVERRIDES when it opts into passkey, then its own. A
  * Permissions-Policy of its own must still allow the passkey, or the opt-in would be a word with no effect.
  * @param {import("./sites.mjs").ServedSiteEntry} entry
- * @returns {Record<string, HeaderOverride>}
  */
 export function entryOverrides({ id, headers = {}, optIns = {} }) {
   const merged = { ...(optIns.passkey?.value ? PASSKEY_OVERRIDES : {}), ...headers };
@@ -136,7 +133,6 @@ export function entryOverrides({ id, headers = {}, optIns = {} }) {
  * ./csp), reporting to the same group.
  *
  * @param {{ site?: import("./sites.mjs").ServedSiteEntry, overrides?: Readonly<Record<string, HeaderOverride>>, coep?: Coep }} [options]
- * @returns {Record<string, string>}
  */
 export function buildSecurityHeaders({ site, overrides, coep } = {}) {
   if (site !== undefined && overrides !== undefined)
@@ -211,7 +207,6 @@ export function buildSecurityHeaders({ site, overrides, coep } = {}) {
  * @param {string} value
  * @param {{ maxAge?: number, sameSite?: "Lax" | "Strict", httpOnly?: boolean, path?: string }} [options]
  *   `httpOnly: false` only for a cookie script must read, which is never a session
- * @returns {string}
  */
 export function hostCookie(
   name,
@@ -245,7 +240,6 @@ const cookiePrefix = (path) => (path === "/" ? "__Host-" : "__Secure-");
  * Every cookie the request carries, as [name, value] in the order sent, both trimmed. A part with no "=" is a value with
  * an empty name (RFC 6265bis 5.6), so it never matches a name and still counts as a cookie.
  * @param {Request} request
- * @returns {[string, string][]}
  */
 export function cookiePairs(request) {
   /** @type {[string, string][]} */
@@ -265,7 +259,6 @@ export function cookiePairs(request) {
  * repeated name wins, as browsers send the most specific path first (RFC 6265 5.4). Null when there is none.
  * @param {Request} request
  * @param {string} name
- * @returns {string | null}
  */
 export function readCookie(request, name) {
   /** @type {Map<string, string>} */
@@ -301,7 +294,6 @@ export const UPLOAD_HEADERS = /* @__PURE__ */ Object.freeze({
  * @param {T} target
  * @param {Readonly<Record<string, string>>} [set]
  * @param {{ overwrite?: boolean }} [options]
- * @returns {T}
  */
 export function applyHeaderSet(target, set = STANDARD_SECURITY_HEADERS, { overwrite = true } = {}) {
   if (target instanceof Response) {
@@ -360,7 +352,6 @@ const HEADERS_LINE_LIMIT = 2000;
  * carries the whole list). A value that fits, or one with no comma to cut at, is left as it is, the latter throwing.
  * @param {string} name
  * @param {string} value
- * @returns {string[]}
  */
 function splitLongValue(name, value) {
   const room = HEADERS_LINE_LIMIT - `  ${name}: `.length;
@@ -409,7 +400,6 @@ function splitLongValue(name, value) {
  * rule, its own values winning.
  * @param {Readonly<Record<string, string>>} set
  * @param {{ paths?: Readonly<Record<string, Readonly<Record<string, string>>>>, comment?: string | readonly string[], charset?: boolean }} [options]
- * @returns {string}
  */
 export function headersFile(set, { paths = {}, comment = [], charset = false } = {}) {
   const line = (/** @type {string} */ name, /** @type {string} */ value) => {

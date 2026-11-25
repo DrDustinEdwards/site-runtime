@@ -22,7 +22,6 @@ import { acceptedEncoding } from "./http.mjs";
  * @property {boolean} [prerender] Also prerender on press. Off by default: a prerendered page runs its scripts and analytics early.
  */
 
-/** The path every site serves its rules at. */
 export const SPECULATION_RULES_PATH = "/speculation-rules.json";
 
 /** The paths no site prefetches: its signed-in areas, its APIs and anything that acts on a GET. */
@@ -139,7 +138,6 @@ export function speculationRulesResponse(options, request) {
   });
 }
 
-/** The header a page response carries so the browser reads the rules. */
 export const SPECULATION_RULES_HEADER = /** @type {const} */ ({
   name: "Speculation-Rules",
   value: `"${SPECULATION_RULES_PATH}"`,

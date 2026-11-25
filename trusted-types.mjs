@@ -47,7 +47,6 @@ function parsing() {
 /**
  * Lets the default policy pass whole-document parses (DOMParser's parseFromString) unchanged until the returned
  * function is called. Holds stack: each caller releases its own, and releasing twice does nothing.
- * @returns {() => void}
  */
 export function allowDocumentParsing() {
   const state = parsing();
