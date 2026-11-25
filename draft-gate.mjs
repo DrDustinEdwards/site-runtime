@@ -1,8 +1,7 @@
 /**
  * Who may see a draft: the one server check a page's loader makes before it renders a row that may not be public yet.
  *
- * dustinedwards.info had the same two lines in seven loaders (a missing row is a 404; a draft is a 404 unless the
- * viewer is an admin). This is that check, shared, so every site answers a draft the same way:
+ * Every site answers a draft the same way:
  *
  * - A missing row, and a draft the viewer may not see, are the same 404. A visitor cannot tell a draft from nothing.
  * - `canSeeDrafts` runs only for a draft, so a public page never verifies an Access token or reads a session.

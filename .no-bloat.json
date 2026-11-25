@@ -1,6 +1,6 @@
 {
   "baseline": {
-    "measured_at": "336d375",
+    "measured_at": "fc154c3",
     "knip": {},
     "jscpd": {
       "clones": 0,
@@ -25,7 +25,6 @@
       "image.mjs": 917,
       "mcp-login.mjs": 506,
       "mcp-server.mjs": 701,
-      "prose.mjs": 944,
       "sign-in-account.mjs": 936,
       "sign-in-form.mjs": 597,
       "sign-in.mjs": 1300,
@@ -34,12 +33,12 @@
     },
     "tests": {
       "files": 81,
-      "cases": 452
+      "cases": 448
     },
     "comments": {
-      "lines": 10907,
-      "code": 34682,
-      "percentage": 23.92
+      "lines": 10881,
+      "code": 34687,
+      "percentage": 23.88
     }
   }
 }

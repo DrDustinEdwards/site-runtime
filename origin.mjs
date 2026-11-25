@@ -4,8 +4,7 @@
  *
  * React Router checks the Origin of a document's action submission, but a resource route (a route with no default
  * export: an API endpoint, a form post answered with a redirect, an admin JSON route) never reaches that check, and a
- * Worker route outside React Router has none at all. dustinedwards.info's admin middleware and theme route found that
- * gap; this is their check, shared.
+ * Worker route outside React Router has none at all.
  *
  * - An absent Origin passes: only non-browser clients and a no-script same-site form post omit it, and a hostile page
  *   cannot make a browser leave it out. A non-browser client spends its own address's rate allowance.

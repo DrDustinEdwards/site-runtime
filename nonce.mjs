@@ -9,7 +9,6 @@ import { createContext, useContext } from "react";
 /** The nonce ./react-entry renders the page with; undefined on a page rendered without one. */
 export const NonceContext = createContext(/** @type {string | undefined} */ (undefined));
 
-/** This render's nonce, for an inline script or style a component writes. */
 export function useNonce() {
   return useContext(NonceContext);
 }
