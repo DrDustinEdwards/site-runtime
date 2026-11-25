@@ -1,5 +1,20 @@
 # @dustinedwards/site-runtime
 
+## 0.182.0
+
+### Minor Changes
+
+- `redeemConfirm` requires `expect` and throws without it, so a token no longer passes with no claims compared. `safeAdminNext` takes only a clean same-origin path that stays under the prefix (no dot segments or control characters). The GitHub API paths encode the owner and repo and refuse `.` and `..`, and `parsePrUrl` returns null for them. `postAccessSync` and the share-card font fetch do not follow redirects, and the font URL must be on fonts.gstatic.com. `pagedPdf` takes an https origin and escapes it in the base tag. The maintenance page has no default second sentence, and the consent page and the owner page lose two lines that restated their labels.
+- Sentry 11. The reports carry the same fields as before: `sendDefaultPii` is gone from the SDK, so `dataCollection` turns off user info, cookies, headers, bodies and query strings, and `traceLifecycle: "static"` keeps the transaction scrub running. The Renderer's per-request wrap goes through `withSentry`, since the SDK no longer exports `wrapRequestHandler`.
+
+### Patch Changes
+
+- Tidy-up with no change to what any export does. The model registry now lives in `anthropic-models.mjs`, the tool list's rules and cache hints in `mcp-tool-list.mjs` and the list-only key's door in `mcp-probe.mjs`; `./anthropic` and `./mcp-server` re-export every name.
+- Tidy-up with no change to what any export does. `./prose`'s voice measure now lives in its own module, `prose-voice.mjs`, which `./prose` re-exports. The registry lookups `siteEntry`, `siteForOrigin` and `siteOverrides` are gone from the unexported sites.mjs (the `./sites` export keeps them). The image audit's file reader moved to bin/image-file.mjs. History notes are cut from comments.
+- Removed four exports no consumer imports (checked in every site's source at v0.181.2): `verifyAccessToken` (./access, a one-line wrapper of `verifyJwt`), `NOT_FOUND_TABLE` (./not-found), `MODELS_CHECKED` (./anthropic) and `PRICES_CHECKED` (./ai-engine), two date stamps nothing read.
+- Tidy-up with no change to what any export does. `./cron`'s history reading (`cronFindings`, `cronCheck`, `readCronRuns`, `cronStates`) now lives in `cron-status.mjs` and the policy's delivery (`reportingEndpoints`, `buildStagedPolicy`, `integrityPolicy`, `renewNonce`) in `csp-delivery.mjs`; `./cron` and `./csp` re-export every name.
+- Rename two exports that shared a name with a different function in another package: `bytesOf` in `doc-room` is now `messageBytes`, and the image audit's `textOf` is now `layoutText`.
+
 ## 0.181.2
 
 ### Patch Changes
