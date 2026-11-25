@@ -1,6 +1,5 @@
 /**
- * HTML to PDF with Browser Rendering, the two ways the sites need it. From txasm's abstract book
- * (app/lib/book-pdf.server.ts, app/lib/paged.ts) and dustinedwards.info's CV (app/lib/cv/pdf.server.ts).
+ * HTML to PDF with Browser Rendering, the two ways the sites need it.
  *
  * - quickPdf: the REST quick action (`BROWSER.quickAction("pdf", ...)`), for a page that is ready on load (the CV).
  * - pagedPdf: a full browser through @cloudflare/puppeteer, which the site passes in as its own dependency, for a page laid out by Paged.js after load (the book): it waits for the

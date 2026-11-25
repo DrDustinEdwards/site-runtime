@@ -14,7 +14,7 @@ import {
   toHex,
 } from "../encoding.mjs";
 
-test("every length round-trips through base64url without padding, and through hex", () => {
+test("every length round-trips through base64url without padding, and through hex; malformed hex throws", () => {
   for (let n = 0; n < 8; n++) {
     const bytes = Uint8Array.from({ length: n }, (_, i) => 250 + i);
     const url = base64url(bytes);
@@ -22,6 +22,8 @@ test("every length round-trips through base64url without padding, and through he
     assert.deepEqual(fromBase64url(url), bytes);
     assert.deepEqual(fromHex(toHex(bytes)), bytes);
   }
+  assert.throws(() => fromHex("abc"));
+  assert.throws(() => fromHex("zz"));
 });
 
 test("base64 ignores the line breaks GitHub wraps it in, and strings are UTF-8", () => {
@@ -31,11 +33,6 @@ test("base64 ignores the line breaks GitHub wraps it in, and strings are UTF-8",
     ),
     "café 🦊",
   );
-});
-
-test("a malformed hex string throws instead of decoding to the wrong bytes", () => {
-  assert.throws(() => fromHex("abc"));
-  assert.throws(() => fromHex("zz"));
 });
 
 test("a page cursor reads back only in the list that issued it", () => {

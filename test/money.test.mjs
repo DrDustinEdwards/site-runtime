@@ -1,5 +1,5 @@
-// The minor unit is not always a hundredth: the cases that got it wrong before (Recova's 5,000 yen read as 50), the
-// currencies Stripe sends oddly, a code Intl refuses, and what a typed figure may be.
+// The minor unit is not always a hundredth: the currencies Stripe sends oddly, a code Intl refuses, and what a typed
+// figure may be.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
@@ -19,10 +19,7 @@ test("formatMoney: the stored unit follows the currency, and a site's own scale 
   assert.equal(formatMoney(12_340, "usd", { scale: 3 }), "$12.34"); // mills
   assert.equal(formatMoney(2_500_000, "usd", { scale: 6 }), "$2.50"); // micros
   assert.equal(formatMoneyShort(1060, "usd"), "$11");
-});
-
-test("formatMoney: a code Intl refuses still prints, never throws", () => {
-  assert.equal(formatMoney(5000, "not-a-code"), "50.00 NOT-A-CODE");
+  assert.equal(formatMoney(5000, "not-a-code"), "50.00 NOT-A-CODE"); // a code Intl refuses still prints
 });
 
 test("moneyInputValue and parseMoneyInput round-trip, and refuse what is not a plain figure", () => {

@@ -28,8 +28,6 @@ export function confirmationSatisfied(form, word) {
 }
 
 /**
- * The refusal for a destructive request that was not confirmed: a 400 that says nothing was changed.
- *
  * @returns {Response}
  */
 export function confirmationRequired() {

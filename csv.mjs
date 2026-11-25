@@ -58,7 +58,6 @@ export function csvCell(value) {
 }
 
 /**
- * One record, without its line break.
  * @param {readonly unknown[]} cells
  */
 export function csvRow(cells) {
@@ -66,7 +65,6 @@ export function csvRow(cells) {
 }
 
 /**
- * The whole file: the header, then each row, every record ending CRLF.
  * @param {readonly string[]} header
  * @param {Iterable<readonly unknown[]>} rows
  */

@@ -11,7 +11,6 @@
  */
 
 /**
- * The parts' bytes one after another, in one new array.
  * @param {readonly Uint8Array[]} parts
  * @returns {Uint8Array<ArrayBuffer>}
  */
@@ -31,7 +30,6 @@ function bytesOf(input) {
 }
 
 /**
- * Lowercase hex, two digits a byte.
  * @param {Uint8Array | ArrayBuffer | string} input
  * @returns {string}
  */
@@ -135,7 +133,6 @@ export function readPageCursor(scope, cursor) {
 }
 
 /**
- * SHA-256 as bytes.
  * @param {Uint8Array | ArrayBuffer | string} input
  * @returns {Promise<Uint8Array<ArrayBuffer>>}
  */
@@ -144,7 +141,6 @@ export async function sha256(input) {
 }
 
 /**
- * The SHA-256 digest of `input`, as lowercase hex.
  * @param {Uint8Array | ArrayBuffer | string} input
  * @returns {Promise<string>}
  */
@@ -153,7 +149,6 @@ export async function sha256Hex(input) {
 }
 
 /**
- * HMAC-SHA-256 of `payload` under the UTF-8 bytes of `secret`, as bytes.
  * @param {string} secret
  * @param {Uint8Array | ArrayBuffer | string} payload
  * @returns {Promise<Uint8Array<ArrayBuffer>>}
@@ -170,7 +165,6 @@ export async function hmacSha256(secret, payload) {
 }
 
 /**
- * HMAC-SHA-256 of `payload` under the UTF-8 bytes of `secret`, as lowercase hex.
  * @param {string} secret
  * @param {Uint8Array | ArrayBuffer | string} payload
  * @returns {Promise<string>}

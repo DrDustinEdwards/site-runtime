@@ -27,14 +27,12 @@ export function notInList(column, values) {
   return sql`${column} NOT IN (SELECT value FROM json_each(${JSON.stringify(values)}))`;
 }
 
-/** D1's ceiling on bound parameters in one statement. */
 export const D1_MAX_BOUND_PARAMS = 100;
 
 /** The longest IN list, leaving room for the statement's other parameters. */
 export const IN_LIST_CHUNK = 90;
 
 /**
- * `items` in slices of at most `size`, in order.
  * @template T
  * @param {readonly T[]} items
  * @param {number} [size]
