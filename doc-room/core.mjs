@@ -281,3 +281,42 @@ export async function applyComment(store, viewer, message, now = new Date().toIS
       return "That is not a comment message.";
   }
 }
+
+/**
+ * A comment thread brought in with a document: the words it is on (`from` to `to`, the document's
+ * positions), then its comments in order, the first the thread and the rest its replies.
+ * @typedef {object} BroughtThread
+ * @property {number} from
+ * @property {number} to
+ * @property {string} quote
+ * @property {{ personId: number; body: string; createdAt?: string }[]} comments
+ */
+
+/**
+ * @typedef {object} ReplaceInput
+ * @property {string} markdown
+ * @property {string | null} version
+ * @property {string} by
+ * @property {string | null} [expectedVersion]
+ * @property {boolean} [unsaved]
+ * @property {string} [expectedMarkdown]
+ * @property {string} [saved]
+ * @property {unknown} [doc] The editor's JSON, loaded instead of `markdown` read: a document brought in with its suggestions.
+ * @property {BroughtThread[]} [threads] Its comment threads, anchored by the model's `anchor` once the document is in.
+ */
+
+/** @typedef {import("partyserver").Connection} Connection */
+/** @typedef {{ viewer?: RoomViewer; checkedAt?: number }} ConnState */
+
+/** @param {Connection} conn */
+export function viewerOf(conn) {
+  return /** @type {ConnState | null} */ (conn.state)?.viewer ?? null;
+}
+
+/** @param {import("partyserver").WSMessage} message */
+export function bytesOf(message) {
+  if (typeof message === "string") return null;
+  return message instanceof ArrayBuffer
+    ? new Uint8Array(message)
+    : new Uint8Array(message.buffer, message.byteOffset, message.byteLength);
+}

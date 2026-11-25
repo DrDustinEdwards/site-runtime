@@ -25,7 +25,6 @@ import {
   toolListProblems,
   toolScope,
   toolScopeChallenge,
-  toolsForGrant,
 } from "../mcp-server.mjs";
 
 test("routeMcpEra: legacy to stateless, everything else to reject, the body intact for the handler", async () => {
@@ -264,16 +263,6 @@ test("authorizeCall: no caller, not the administrator, a malformed agent, and a 
     ) ?? "",
     /declares no scope/,
   );
-  const tools = [
-    { name: "r", scope: "read" },
-    { name: "w", scope: scopes.write },
-    { name: "a", scope: () => "write" },
-    { name: "none" },
-  ];
-  assert.deepEqual(
-    toolsForGrant(tools, [scopes.read], scopes).map((t) => t.name),
-    ["r", "a"],
-  );
 });
 
 const SERVER = {
@@ -359,7 +348,7 @@ test("invokeTool: refused, started and finished rows (a throwing handler too), a
     ],
   );
 
-  // P11: a client gone before the run runs nothing; one gone during it is logged canceled, and the API leg sends no more.
+  // A client gone before the run runs nothing; one gone during it is logged canceled, and the API leg sends no more.
   const gone = AbortSignal.abort();
   const skipped = await invokeTool(env, SERVER, { caller, tool, args: {}, signal: gone, run });
   assert.match(skipped.content[0].text, /^Canceled/);

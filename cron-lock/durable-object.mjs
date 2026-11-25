@@ -51,7 +51,6 @@ export class CronLock extends DurableObject {
  * @extends {DurableObject<E>}
  */
 export class CronTicker extends DurableObject {
-  /** How often the alarm fires. */
   get intervalMs() {
     return TICKER_INTERVAL_MS;
   }

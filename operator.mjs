@@ -50,11 +50,8 @@ import { limit, limitedResponse, mustStop } from "./rate-limit/limit.mjs";
  * @property {string | null} error
  */
 
-/** The shortest token the route accepts: 32 characters. */
 export const MIN_TOKEN_LENGTH = 32;
-/** The body ceiling: a tool name and small arguments. */
 export const OPERATOR_BODY_MAX = 4 * 1024;
-/** The default limit: 30 calls a minute across every caller holding the token. */
 export const OPERATOR_RULES = [{ limit: 30, windowSeconds: 60 }];
 
 /** A refusal a tool means the caller to read: its message goes back as it is, with a 400. Anything else a tool throws does not. */

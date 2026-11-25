@@ -54,7 +54,6 @@ export {
  * @property {Date} [now]
  */
 
-/** The longest error stored. */
 export const CRON_ERROR_MAX = 500;
 
 /** How long a job may run before runJobs records it failed and starts the next: five minutes. */
@@ -84,7 +83,6 @@ export const CRON_LOG_SQL = `CREATE TABLE IF NOT EXISTS cron_run_log (
 CREATE INDEX IF NOT EXISTS cron_run_log_name ON cron_run_log (name, id);
 `;
 
-/** The longest reason kept, one line. */
 const CRON_REASON_MAX = 300;
 
 /** What a job's run resolves to when its own gate skipped it: no success is recorded. */
@@ -426,7 +424,6 @@ export function runsSucceeded(call) {
   );
 }
 
-/** The 24 hours a nightly job's interval is, in minutes. */
 export const DAILY_MINUTES = 1440;
 
 /**

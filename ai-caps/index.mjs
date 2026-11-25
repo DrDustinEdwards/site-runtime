@@ -64,7 +64,6 @@ export function kvCounter(kv, prefix, cap, { window = "day", ttlSeconds } = {}) 
   const used = async (now = new Date()) => Number(await kv.get(keyAt(now))) || 0;
   return {
     used,
-    /** The cap, as the number it is now. */
     limit: async () => (typeof cap === "function" ? cap() : cap),
     /**
      * Whether the window is at or over the cap: check before the call.
