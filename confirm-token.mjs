@@ -1,8 +1,7 @@
 /**
  * The confirmation token behind every preview-then-perform step (an admin's role change, an MCP tool that overwrites,
  * a namespace delete, a Portal control): a preview mints a token bound to exactly what it showed, and the perform
- * redeems it. Four sites each built one (the 2026-11-11 shared-code audit, item 41b); this is the one, on
- * ./signed-token, so a key rotates the same way as an emailed link's.
+ * redeems it. It is built on ./signed-token, so a key rotates the same way as an emailed link's.
  *
  * - The claims are signed, not stored: any JSON object (who acts, on what, the arguments, a fingerprint of the plan).
  *   They are readable by whoever holds the token, so they carry ids and never a secret.

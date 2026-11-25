@@ -30,7 +30,7 @@
  *   worker-deploy mints it (`generated-secrets: AUDIT_SIGNING_KEY`).
  * - KEY ANCHOR. When the newest row was not signed by the current key, the log first writes a `chain-key` row signed
  *   by the new key: `{ from, fromPublicKey, to, publicKey }`, its hash covering the newest row before it; `from: null`
- *   marks the move from the unsigned rows of before 0.85. Rotating is replacing the secret (README, The tool-call log).
+ *   marks the move from the earlier unsigned rows. Rotating is replacing the secret (README, The tool-call log).
  * - VERIFY. `verifyAuditChain(rows, { keys, previous })` checks every hash, then every signature against trusted keys:
  *   given, or named by an anchor signed by a trusted key. An unsigned row passes only before a `from: null` anchor.
  * - Who can forge: nobody without the secret; code deployed to the Worker can read it, which the object-locked copies

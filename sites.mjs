@@ -128,7 +128,7 @@ export const FAMILY_DEVIATIONS = /* @__PURE__ */ Object.freeze({
   R4: "JSON routes refusing text/plain and form bodies (requireJson, ./body): the live check has no session, and every JSON route a stranger can reach answers 401 before it reads a body, so only the site's own code can show it.",
 });
 
-// Area 2 (2026-10-31): S2, C3, C7, C9, I3, staged or declined with the reason the site's code gives.
+// S2, C3, C7, C9 and I3, staged or declined with the reason the site's code gives.
 const coepCredentialless = {
   value: /** @type {const} */ ("credentialless"),
   reason:

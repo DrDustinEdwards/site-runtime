@@ -2,8 +2,7 @@
  * D1's statement limits, written once. D1 refuses a statement with more than 100 bound parameters ("too many SQL
  * variables", https://developers.cloudflare.com/d1/platform/limits/). An IN list built from data goes through inList,
  * one JSON parameter at any length; a multi-row insert is cut to fit with chunked and rowsPerInsert. LIKE patterns built from what someone typed are escaped here too, so a `%` or
- * `_` in a search box matches itself instead of everything. Each was a copy, or missing, in five sites (the
- * 2026-11-11 third audit pass).
+ * `_` in a search box matches itself instead of everything.
  */
 import { and, eq, lt, or, sql } from "drizzle-orm";
 

@@ -9,7 +9,7 @@ import {
   vapidJwt,
 } from "../web-push.mjs";
 
-// Web Push from the Worker (docs/design/design-merge-pipeline.md section 5, PR 7). The
+// Web Push from the Worker. The
 // encryption is checked against RFC 8291's worked example (Appendix A) byte for byte, and
 // against a receiver written here from the RFC for a fresh key and salt. The VAPID JWT is
 // checked by verifying its signature with the public half.

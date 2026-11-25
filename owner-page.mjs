@@ -14,7 +14,7 @@
  *
  * SESSION. A random id in an HttpOnly, Secure, SameSite=Lax `__Host-` cookie; OAUTH_KV keeps its SHA-256 for 30
  * minutes with the email and a CSRF token, and every request asks `admit` and `readsLog` again, so a removed admin is
- * out at once (the Mythos review's finding 4, 2026-11-18). Lax, not Strict, because the session starts on the redirect back from
+ * out at once. Lax, not Strict, because the session starts on the redirect back from
  * Access, a navigation from another site. Every change is a POST that carries the CSRF token and a same-origin Origin.
  *
  * REVOKE. Only a grant of the signed-in user can be revoked (the provider keys grants by user), and each revoke writes

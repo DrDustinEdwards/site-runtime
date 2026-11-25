@@ -1,6 +1,6 @@
 /**
  * Named agent keys (S6): the one module for an AI agent that cannot finish a server's OAuth sign-in (Grok Build could
- * not do CIMD, 2026-09-07; ruling 37). Carrel and dustinedwards-info's MCP each kept a copy of this; Capsid's minted
+ * not do CIMD; ruling 37). Capsid's minted
  * agents (a D1 row per key, by SHA-256 of the key) are a different model and stay Capsid's.
  *
  * - ONE SECRET PER AGENT. A Worker secret `AGENT_KEY_<NAME>` is the key of the agent `<name>` (lower-cased), so the name

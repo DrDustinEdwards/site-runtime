@@ -91,7 +91,7 @@ test("a check that hangs fails at the timeout; a warn check never makes it 503, 
     { name: "kv", status: "warn", detail: "timed out after 20 ms" },
     { name: "drift", status: "warn", detail: "2 posts differ" },
     { name: "auth-spike", status: "warn", alert: true },
-    // An alert check that timed out measured nothing (FOXING-3: a D1 stall the db check already reported): no page.
+    // An alert check that timed out measured nothing (a D1 stall the db check already reported): no page.
     { name: "stalled-spike", status: "warn", detail: "could not run: timed out after 20 ms" },
   ]);
   // An alert stays a warning (ok, 200: no rollback) and is named for the watcher to mail on.
@@ -120,7 +120,7 @@ test("a database-down error becomes a 503 the error page reads; a wrong query st
   assert.ok(response instanceof Response);
   assert.equal(response.status, 503);
   assert.equal(response.statusText, "Database unavailable");
-  // DUSTINEDWARDS-1: a Drizzle "Failed query" whose cause is D1 refusing queries while an import holds it.
+  // A Drizzle "Failed query" whose cause is D1 refusing queries while an import holds it.
   const importing = new Error("Failed query: select 1", {
     cause: new Error("D1_ERROR: Currently processing a long-running import."),
   });

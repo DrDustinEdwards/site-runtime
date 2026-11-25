@@ -455,7 +455,7 @@ export function registrationRefusal(configured, clientMetadata) {
 /**
  * Counts one POST /register and answers the 429 to send, or null: five an hour from one address, counting every
  * registration, and thirty a day from everyone, counting only one `configured` would allow (registrationRefusal), so
- * junk from a few addresses cannot close registration for the day (the Mythos review's finding 6, 2026-11-18). A
+ * junk from a few addresses cannot close registration for the day. A
  * refused one is still answered 400 by the provider's callback. In KV, so a burst can pass a few over. Call it
  * before the provider sees the request.
  * @param {Request} request
