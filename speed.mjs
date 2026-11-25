@@ -104,7 +104,6 @@ const runsApp = (/** @type {string} */ html) => /__reactRouterContext|__remixCon
  * @param {{ origin: string, base: string, kind: string, first: Got[], second: Got[], conditional: Got[], files: Got[],
  *   misses: Got[], hits: Got[], withCookie: Got, missing: Got[], campaign: Got, redirects: Record<string, { url: string, status: number }[]>,
  *   earlyHints: number[] | { error: string } | null, pagespeed: Record<string, any> }} o
- * @returns {Finding[]}
  */
 export function speedFindings(o) {
   /** @type {Finding[]} */

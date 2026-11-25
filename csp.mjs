@@ -56,7 +56,6 @@ export async function scriptHash(text) {
  * integrity crossorigin>`, a modulepreload): `sha384-<base64>` of its exact bytes. A classic script needs
  * `crossorigin` too, since Integrity-Policy refuses a no-cors script request whatever its integrity.
  * @param {string | ArrayBuffer | ArrayBufferView} content
- * @returns {Promise<string>}
  */
 export async function integrityHash(content) {
   const bytes = typeof content === "string" ? new TextEncoder().encode(content) : content;
@@ -69,7 +68,6 @@ export async function integrityHash(content) {
  * exactly what the site wrote.
  *
  * @param {readonly string[]} directives
- * @returns {string}
  */
 export function buildPolicy(directives) {
   const empty = directives.filter((d) => d.trim() === "");
@@ -146,7 +144,6 @@ const SCRIPT_DIRECTIVES = new Set(["script-src", "script-src-elem", "script-src-
  * @param {string} source a source expression as a policy writes it
  * @param {string} [directive] the directive it is in (default script-src); give default-src as script-src when it
  *   governs scripts, that is when the policy has no script-src
- * @returns {string}
  */
 export function broadSource(source, directive = "script-src") {
   if (ANY_HOST.test(source)) return "any host";

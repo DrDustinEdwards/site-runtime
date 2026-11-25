@@ -15,7 +15,6 @@ import { CSP_REPORT_GROUP, buildContentSecurityPolicy, generateNonce } from "./c
  *
  * @param {string} group the name the policy's `reportTo` gives
  * @param {string | URL} url the receiver, absolute: `new URL("/csp-report", origin)`
- * @returns {string}
  */
 export function reportingEndpoints(group, url) {
   if (!/^[a-z*][a-z0-9_.*-]*$/.test(group))
@@ -87,7 +86,6 @@ const NONCE_SOURCE = /'nonce-([A-Za-z0-9+/_=-]+)'/;
  * scripts on a cached page, beside hashes, and the one to use before `inlineScripts`.
  * @param {Response} response
  * @param {string} [nonce] the new nonce (generateNonce), when the caller needs to know it
- * @returns {Response}
  */
 export function renewNonce(response, nonce = generateNonce()) {
   const headers = new Headers(response.headers);

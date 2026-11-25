@@ -54,7 +54,7 @@ test("every entry builds, and a page built from its entry passes the check grade
   }
 });
 
-test("an undeclared deviation fails: an opt-in another site declared, or a gap left out of the entry", () => {
+test("an undeclared deviation fails: an opt-in another site declared, or a gap left out of the entry; an origin is found by its alias alone", () => {
   const capsomer = new Headers({
     ...staticHeaders(capsomerEntry).set,
     "Content-Type": "text/html; charset=utf-8",
@@ -75,14 +75,11 @@ test("an undeclared deviation fails: an opt-in another site declared, or a gap l
     () => checkSecurityHeaders(new Headers(), { site: "nowhere" }),
     /not in the site registry/,
   );
+  assert.equal(values.siteForOrigin("https://txasm.org/path")?.id, "txasm");
+  assert.equal(values.siteForOrigin("https://example.com"), undefined);
   // @ts-expect-error an id is refused: the Worker imports its entry, so the registry stays out of its bundle
   assert.throws(() => buildSecurityHeaders({ site: "bsw" }), /not its id/);
   assert.throws(() => buildSecurityHeaders({ site: bsw, overrides: {} }), /not both/);
-});
-
-test("an origin is found by its alias, and by nothing else", () => {
-  assert.equal(values.siteForOrigin("https://txasm.org/path")?.id, "txasm");
-  assert.equal(values.siteForOrigin("https://example.com"), undefined);
 });
 
 test("sites-values.mjs and sites-deviations.mjs are written from sites.mjs, and every reason is written", () => {

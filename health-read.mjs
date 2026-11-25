@@ -42,7 +42,6 @@ const COUNTS = /^(\d+) of (\d+)$/;
  * whoever wants one, never a crash in the reader. A backup warning or `ok: false` under an ok status reads as degraded,
  * so a 200 that admits a problem is not counted as healthy. Extra fields are ignored.
  * @param {unknown} value the parsed body
- * @returns {ParsedHealth}
  */
 export function healthOf(value) {
   if (value === null || typeof value !== "object" || Array.isArray(value))
@@ -86,7 +85,6 @@ export function parseHealth(body) {
  * The names of the checks that are not passing: `status` warn or fail, or `ok === false` in the older format. A
  * check with neither is not failing (`healthChecks` is the fail-closed reading).
  * @param {unknown} checks
- * @returns {string[]}
  */
 export function failingCheckNames(checks) {
   if (!Array.isArray(checks)) return [];
@@ -106,7 +104,6 @@ export function failingCheckNames(checks) {
  * row with no status the format names is a fail. A failing check whose detail is "present of expected" (a drift check)
  * carries the two counts.
  * @param {unknown} body the parsed body
- * @returns {HealthRow[]}
  */
 export function healthChecks(body) {
   const checks = /** @type {{ checks?: unknown } | null | undefined} */ (body)?.checks;

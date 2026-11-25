@@ -51,7 +51,6 @@ const MAX_SEEN = 1000;
 /** The largest body read; the rest is never read. */
 export const MAX_REPORT_BYTES = 16_384;
 
-/** The most violations logged from one request. */
 export const MAX_REPORTS = 10;
 
 /** @param {unknown} v @returns {v is Record<string, unknown>} */
@@ -60,7 +59,6 @@ const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v)
 /**
  * A URL cut to its origin and path. A keyword such as "inline", "eval" or "data" is kept, to 64 characters.
  * @param {unknown} value
- * @returns {string | undefined}
  */
 export function trimReportUrl(value) {
   if (typeof value !== "string" || value === "") return undefined;
@@ -196,7 +194,6 @@ export function summarizeReport(body, type = "csp-violation") {
  * The origin of a blocked URL for the new-host line, or the keyword as written. A report is untrusted input: a value
  * that starts with "https:" but is no URL ("https://") must not throw out of the receiver (ASVS 16.5.4).
  * @param {string | undefined} blocked
- * @returns {string | undefined}
  */
 function blockedOrigin(blocked) {
   if (!blocked || !/^https?:/.test(blocked)) return blocked;
@@ -211,7 +208,6 @@ function blockedOrigin(blocked) {
  * The body as text, at most `max` bytes; null when it is longer or unreadable (a report that cannot be read is
  * dropped, never retried).
  * @param {Request} request @param {number} max
- * @returns {Promise<string | null>}
  */
 async function readReport(request, max) {
   try {
@@ -249,7 +245,6 @@ export function rateLimitAllow(binding) {
  * `allowOrigin`), anything else is 405.
  * @param {Request} request
  * @param {ReceiveOptions} [options]
- * @returns {Promise<Response>}
  */
 export async function receiveCspReport(
   request,

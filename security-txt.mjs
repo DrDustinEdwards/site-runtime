@@ -22,7 +22,6 @@ export const SECURITY_TXT_EXPIRES = "2027-09-28T00:00:00Z";
  * so a copy found elsewhere is known to be one). `contact` is an email address or a URL; it and `expires` default to
  * the network's (SECURITY_CONTACT, SECURITY_TXT_EXPIRES).
  * @param {SecurityTxt} fields
- * @returns {string}
  */
 export function securityTxt({
   origin,
@@ -49,7 +48,6 @@ export function securityTxt({
  * fails any other.
  * @param {SecurityTxt} fields
  * @param {HeadersInit} [headers]
- * @returns {Response}
  */
 export function securityTxtResponse(fields, headers) {
   const merged = new Headers({ "Cache-Control": "public, max-age=3600" });

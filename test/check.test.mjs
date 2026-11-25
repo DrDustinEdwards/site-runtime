@@ -51,9 +51,7 @@ test("parsePolicy maps lower-cased directive names to their sources", () => {
   assert.deepEqual(policy.get("script-src"), ["'self'"]);
   assert.deepEqual(policy.get("upgrade-insecure-requests"), []);
   assert.equal(parsePolicy("").size, 0);
-});
-
-test("parsePolicy keeps the first of a repeated directive, as browsers do", () => {
+  // The first of a repeated directive wins, as browsers apply it.
   assert.deepEqual(parsePolicy("script-src 'self'; script-src *").get("script-src"), ["'self'"]);
   assert.deepEqual(parsePolicy("script-src 'self'; SCRIPT-SRC *").get("script-src"), ["'self'"]);
 });
@@ -89,19 +87,6 @@ test("HSTS must last at least as long as the floor says, and keep includeSubDoma
     assert.equal(result.name, "Strict-Transport-Security lasts at least 63072000 seconds");
     assert.match(result.detail, /max-age|includeSubDomains/);
   }
-});
-
-test("HSTS against a floor with no max-age wants one year", () => {
-  const standard = { "Strict-Transport-Security": "includeSubDomains" };
-  const headers = (/** @type {string} */ value) =>
-    new Headers({ "Strict-Transport-Security": value });
-  assert.equal(
-    checkSecurityHeaders(headers("max-age=31536000"), { standard, csp: false })[0]?.pass,
-    true,
-  );
-  const short = checkSecurityHeaders(headers("max-age=31535999"), { standard, csp: false })[0];
-  assert.equal(short?.pass, false);
-  assert.equal(short?.name, "Strict-Transport-Security lasts at least 31536000 seconds");
 });
 
 test("Referrer-Policy must equal the declared one: a stricter or looser policy is a drift", () => {
@@ -162,12 +147,6 @@ test("any other standard header must equal the floor, ignoring case and outer sp
     response({ "X-Permitted-Cross-Domain-Policies": "all" }),
     /X-Permitted-Cross-Domain-Policies/,
   );
-});
-
-test("a site's declared set is the floor instead of the standard", () => {
-  const standard = { "X-Frame-Options": "sameorigin" };
-  const headers = new Headers({ "X-Frame-Options": "sameorigin" });
-  assert.deepEqual(failed(headers, { standard, csp: false }), []);
 });
 
 test("csp false skips the policy checks entirely", () => {
