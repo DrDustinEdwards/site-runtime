@@ -1,5 +1,11 @@
 # @dustinedwards/site-runtime
 
+## 0.182.4
+
+### Patch Changes
+
+- The tool-call log indexes its rows by call id, so the health check's orphan count no longer times out on a large log.
+
 ## 0.182.3
 
 ### Patch Changes
