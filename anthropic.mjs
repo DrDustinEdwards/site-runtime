@@ -41,7 +41,6 @@ import { modelEntry, modelStatus } from "./anthropic-models.mjs";
 export {
   DEPRECATIONS_URL,
   MODELS,
-  MODELS_CHECKED,
   MODEL_IDS,
   deprecationProblems,
   modelStatus,

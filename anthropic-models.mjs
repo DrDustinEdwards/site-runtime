@@ -43,7 +43,6 @@ export const MODELS = /* @__PURE__ */ Object.freeze({
     cacheMin: null,
   }),
 });
-export const MODELS_CHECKED = "2026-11-13";
 
 /** The model each kind of call uses (C8): a site names the role, never an id. `fast` for cheap, frequent calls, `standard` for writing a reader sees, `deep` for long reasoning. */
 export const MODEL_IDS = /* @__PURE__ */ Object.freeze({

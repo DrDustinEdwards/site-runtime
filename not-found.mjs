@@ -57,9 +57,6 @@ import { isDatabaseDown, logEvent } from "./log.mjs";
 /** The longest path stored: a crawler probing for exploits sends very long URLs, each a row of that size. */
 export const NOT_FOUND_PATH_MAX = 512;
 
-/** The table's name. */
-export const NOT_FOUND_TABLE = "page_404_daily";
-
 /** The most 404 writes one isolate has waiting at once; past it a count is dropped, not queued on the database. */
 export const NOT_FOUND_MAX_PENDING = 8;
 
