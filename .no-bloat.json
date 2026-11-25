@@ -1,6 +1,6 @@
 {
   "baseline": {
-    "measured_at": "1d6c486",
+    "measured_at": "7ed65a0",
     "knip": {},
     "jscpd": {
       "clones": 0,
@@ -27,7 +27,7 @@
       "image.mjs": 917,
       "mcp-login.mjs": 506,
       "mcp-server.mjs": 964,
-      "prose.mjs": 1234,
+      "prose.mjs": 944,
       "sign-in-account.mjs": 936,
       "sign-in-form.mjs": 597,
       "sign-in.mjs": 1300,
@@ -39,8 +39,8 @@
       "cases": 464
     },
     "comments": {
-      "lines": 10887,
-      "code": 34736,
+      "lines": 10895,
+      "code": 34759,
       "percentage": 23.86
     }
   }

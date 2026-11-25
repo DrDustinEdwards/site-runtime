@@ -83,6 +83,7 @@
     "ai-engine.mjs",
     "routine.mjs",
     "prose.mjs",
+    "prose-voice.mjs",
     "operator.mjs",
     "draft-gate.mjs",
     "origin.mjs",
