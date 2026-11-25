@@ -41,6 +41,8 @@ export class ToolCallLog {
     );
     for (const name of ADDED)
       if (!have.has(name)) this.sql.exec(`ALTER TABLE calls ADD COLUMN ${name} TEXT`);
+    // The orphan count looks each started call's finished row up by call_id; without this it scans the table per row.
+    this.sql.exec("CREATE INDEX IF NOT EXISTS calls_call_id ON calls (call_id, phase)");
     // How far the copy has got: the last copied row's seq and hash, and when; `verify` is the last copy's check.
     this.sql.exec(
       "CREATE TABLE IF NOT EXISTS export_state (id INTEGER PRIMARY KEY CHECK (id = 1), seq INTEGER NOT NULL, hash TEXT, at TEXT NOT NULL)",
