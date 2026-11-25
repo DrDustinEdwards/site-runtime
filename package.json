@@ -19,6 +19,7 @@
     "access-sync.mjs",
     "headers.mjs",
     "csp.mjs",
+    "csp-delivery.mjs",
     "csp-bypasses.mjs",
     "csp-report.mjs",
     "page-headers.mjs",
