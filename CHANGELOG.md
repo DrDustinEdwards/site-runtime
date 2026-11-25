@@ -1,5 +1,12 @@
 # @dustinedwards/site-runtime
 
+## 0.182.1
+
+### Patch Changes
+
+- The types a function returns are exported from the entry point that exports the function: `ImagesLike`, `ImagesOutput` and `R2ObjectLike` from `./image`; `CheckResult` from `./check`; `ChainKey` and `ChainCheck` from `./audit-log`; `CronRun` from `./cron`; `AcquireDecision` from `./cron-lock`; `CacheableMethod` and `ToolListProblem` from `./mcp-server`; `Hit` and `Verdict` from `./rate-limit`; `PatternRule`, `ProseIssue`, `VoiceReading`, `Profile`, `Spread` and `SlopFinding` from `./prose`; `AccountFormState` from `./sign-in-form`; `AccountPasskey`, `NoticeDetail`, `SecurityHistoryEntry`, `SessionLookup` and `AuthEvent` from `./sign-in-account`. They lived in modules the package does not export, so a project with a composite tsconfig failed to typecheck (TS2883) when it kept the result.
+- `@sentry/cloudflare` is back at 10.78.0. Version 11.16.0 (in 0.182.0) added about 20 KiB raw and 8 KiB gzip to every Worker that wraps its handler, and over 240 KiB where the bundler keeps `@sentry/conventions` whole, which put Foxhound, Foxing and julieedwards.info over their size budgets. Renovate holds it below 11.
+
 ## 0.182.0
 
 ### Minor Changes
