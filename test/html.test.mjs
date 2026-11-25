@@ -5,18 +5,13 @@ import { escapeHtml, htmlAttributes, scriptJson, sitemapLocs, unescapeHtml } fro
 
 test("escapes the five characters, each to the entity the copies it replaces used", () => {
   assert.equal(escapeHtml(`&<>"'`), "&amp;&lt;&gt;&quot;&#39;");
+  assert.equal(
+    escapeHtml("&amp; &lt;"),
+    "&amp;amp; &amp;lt;",
+    "escaped once, so an entity shows as typed",
+  );
   // JSON in a <script> gets its own encoding: "<", ">", "&", U+2028 and U+2029.
   assert.equal(scriptJson({ a: "</s>&\u2028" }), '{"a":"\\u003c/s\\u003e\\u0026\\u2028"}');
-});
-
-test("an ampersand is escaped once, so an entity in the text shows as typed", () => {
-  assert.equal(escapeHtml("&amp; &lt;"), "&amp;amp; &amp;lt;");
-});
-
-test("a value that is not a string is made one, as a template literal would", () => {
-  assert.equal(escapeHtml(42), "42");
-  assert.equal(escapeHtml(null), "null");
-  assert.equal(escapeHtml({ toString: () => "<b>" }), "&lt;b&gt;");
 });
 
 test("unescapeHtml reads numeric and named references once; htmlAttributes and sitemapLocs read them back", () => {

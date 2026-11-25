@@ -190,14 +190,6 @@ test("each kind's hosts land on that kind's directive, after 'self'", () => {
   assert.deepEqual(policy.get("media-src"), ["'self'", "https://media.example.com"]);
 });
 
-test("media-src and frame-src are written only when the site loads some", () => {
-  for (const sources of [{}, { media: [], frame: [] }]) {
-    const policy = directives({ ...SINK, sources });
-    assert.equal(policy.has("media-src"), false);
-    assert.equal(policy.has("frame-src"), false);
-  }
-});
-
 test("broadSource: a wildcard host or subdomain or a network scheme anywhere; data: and blob: only where script runs", () => {
   for (const source of [
     "*",

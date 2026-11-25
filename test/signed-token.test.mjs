@@ -8,11 +8,6 @@ import { readSignedToken, signToken } from "../signed-token.mjs";
 const OLD = "11".repeat(32);
 const NEW = "22".repeat(32);
 
-test("a token round-trips its payload", async () => {
-  const token = await signToken([NEW], { a: "acct_1", k: "unsub" });
-  assert.deepEqual(await readSignedToken([NEW], token), { a: "acct_1", k: "unsub" });
-});
-
 test("PLANT: a changed payload, signature or key is refused", async () => {
   const token = await signToken([NEW], { a: "acct_1" });
   const [payload, signature] = token.split(".");

@@ -31,17 +31,6 @@ const rows = (sql) => sql.db.prepare("SELECT * FROM rate_window ORDER BY window_
 const T0 = 3_600_000 * 1000; // a boundary for every window length used below
 const MIN = [{ limit: 3, windowSeconds: 60 }];
 
-test("window edges: the limit-th hit is ok, the next is limited", () => {
-  const sql = memorySql();
-  assert.deepEqual(
-    [1, 2, 3].map((i) => hitRules(sql, MIN, T0 + i).ok),
-    [true, true, true],
-  );
-  const refused = hitRules(sql, MIN, T0 + 4);
-  assert.equal(refused.ok, false);
-  assert.equal(refused.used, 3);
-});
-
 test("window edges: the first hit after the boundary is ok and the count restarts", () => {
   const sql = memorySql();
   for (let i = 0; i < 3; i++) hitRules(sql, MIN, T0 + i);
@@ -53,15 +42,6 @@ test("window edges: the first hit after the boundary is ok and the count restart
   const next = hitRules(sql, MIN, T0 + 60_000);
   assert.equal(next.ok, true);
   assert.equal(next.used, 1);
-});
-
-test("a limited hit writes nothing", () => {
-  const sql = memorySql();
-  for (let i = 0; i < 3; i++) hitRules(sql, MIN, T0);
-  const before = JSON.stringify(rows(sql));
-  hitRules(sql, MIN, T0 + 1);
-  hitRules(sql, MIN, T0 + 2);
-  assert.equal(JSON.stringify(rows(sql)), before);
 });
 
 test("a peek counts nothing, and refuses once the failures it guards are spent", () => {

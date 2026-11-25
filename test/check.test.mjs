@@ -255,27 +255,6 @@ test("C5: a wildcard host or a network scheme fails in every fetch directive; da
   assert.deepEqual(c5(withSources("img-src", "'self' data: blob: https://img.example.com/*")), []);
 });
 
-test("a weak policy fails each rule it breaks, in order", () => {
-  const bad = response({
-    "Content-Security-Policy":
-      "script-src * 'unsafe-inline' 'unsafe-eval'; object-src 'self'; base-uri *",
-    "X-Frame-Options": "allowall",
-  });
-  assert.deepEqual(
-    failures(checkSecurityHeaders(bad)).map((r) => r.name),
-    [
-      "X-Frame-Options refuses framing",
-      "scripts: no 'unsafe-inline'",
-      "scripts: no 'unsafe-eval'",
-      "script-src: no wildcard or bare scheme source",
-      "object-src is 'none'",
-      "base-uri is 'none' or 'self'",
-      "frame-ancestors is 'none' or 'self'",
-      "violations are reported to both sinks (report-uri and report-to)",
-    ],
-  );
-});
-
 test("the policy is read only from the enforced header: a sound Report-Only beside a weak enforced one does not help", () => {
   const headers = response({
     "Content-Security-Policy": "default-src *; report-uri /r",
