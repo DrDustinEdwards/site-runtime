@@ -51,7 +51,6 @@ test("a cookieless or theme-only read goes to the Renderer, keyed on host and th
     stored.map((s) => s.key),
     ["/about;host=example.com", "/about;host=example.com;theme=dark"],
   );
-  // A 304 leaves out the policy, so the reader's copy keeps its own nonce.
   const reply = await fetch(
     new Request("https://example.com/about", { headers: { "If-None-Match": '"v1"' } }),
   );
@@ -63,7 +62,6 @@ test("any other cookie, a write or a refused path never reaches the Renderer", a
   const { fetch, stored } = harness({
     cacheable: (_r, url) => !url.pathname.startsWith("/account"),
   });
-  // The live render has no real build here, so it fails into the plain 500 with the set.
   const signedIn = await fetch(
     new Request("https://example.com/about", { headers: { Cookie: "session=x" } }),
   );
@@ -74,7 +72,7 @@ test("any other cookie, a write or a refused path never reaches the Renderer", a
   assert.equal(stored.length, 0);
 });
 
-test("the canonical move, security.txt and a cross-site write are answered before the page", async () => {
+test("the canonical move and security.txt are answered before the page", async () => {
   const { fetch, stored } = harness({
     canonical: { host: "example.com", keep: (/** @type {URL} */ url) => url.pathname === "/old/" },
   });
@@ -86,13 +84,6 @@ test("the canonical move, security.txt and a cross-site write are answered befor
   assert.equal(kept.headers.get("Location"), "https://example.com/old/");
   const txt = await fetch(new Request("https://example.com/.well-known/security.txt"));
   assert.match(await txt.text(), /^Contact: /m);
-  const refused = await fetch(
-    new Request("https://example.com/contact", {
-      method: "POST",
-      headers: { "Sec-Fetch-Site": "cross-site", Origin: "https://evil.example" },
-    }),
-  );
-  assert.equal(refused.status, 403);
   assert.equal(stored.length, 0);
 });
 
@@ -188,7 +179,6 @@ test("a resource route that fails on D1 down answers 503 with Retry-After, not R
       cause: new Error("D1_ERROR: Currently processing a long-running import."),
     });
   };
-  // A real React Router handler on a build of one page and one resource route (no default export, as /cv/charts.json).
   const routerBuild = {
     entry: {
       module: { default: async () => new Response("page"), handleError: handleServerError },

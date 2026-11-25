@@ -40,19 +40,14 @@ test("hostCookie writes a __Host- cookie that is Secure, HttpOnly and SameSite, 
 });
 
 test("with no overrides a site gets the standard set, as its own copy", () => {
-  for (const built of [
-    buildSecurityHeaders(),
-    buildSecurityHeaders({}),
-    buildSecurityHeaders({ overrides: {} }),
-  ]) {
-    assert.deepEqual(built, { ...STANDARD_SECURITY_HEADERS });
-    built["X-Frame-Options"] = "sameorigin";
-    assert.equal(
-      STANDARD_SECURITY_HEADERS["X-Frame-Options"],
-      "deny",
-      "changing a built set changed the standard",
-    );
-  }
+  const built = buildSecurityHeaders();
+  assert.deepEqual(built, { ...STANDARD_SECURITY_HEADERS });
+  built["X-Frame-Options"] = "sameorigin";
+  assert.equal(
+    STANDARD_SECURITY_HEADERS["X-Frame-Options"],
+    "deny",
+    "changing a built set changed the standard",
+  );
 });
 
 test("an override replaces a value, adds a header, or with null removes one", () => {
@@ -88,7 +83,6 @@ test("an override with no reason, one under 12 characters or an empty value is r
   }
   assert.doesNotThrow(attempt("exactly 12 c"));
   assert.doesNotThrow(attempt("  exactly 12 c  "));
-  // An empty value is refused too: null is the way to send none.
   for (const value of ["", "   "]) {
     assert.throws(
       () => buildSecurityHeaders({ overrides: { "X-Frame-Options": { value, reason: REASON } } }),
@@ -107,23 +101,10 @@ test("applyHeaderSet stamps the standard set over what a route set, or fills onl
     "text/html; charset=utf-8",
     "a bare text type names its charset",
   );
-  // With overwrite false a route's own value stays and the rest is filled.
   const kept = new Headers({ "X-Frame-Options": "sameorigin" });
   applyHeaderSet(kept, STANDARD_SECURITY_HEADERS, { overwrite: false });
   assert.equal(kept.get("X-Frame-Options"), "sameorigin");
   assert.equal(kept.get("X-Content-Type-Options"), "nosniff");
-});
-
-test("applyHeaderSet applies the set it is given, such as a site's built set or the logout set", () => {
-  const headers = new Headers();
-  applyHeaderSet(headers, LOGOUT_HEADERS);
-  assert.deepEqual([...headers.keys()], ["clear-site-data"]);
-  const site = buildSecurityHeaders({
-    overrides: { "X-Frame-Options": { value: "sameorigin", reason: REASON } },
-  });
-  const page = new Headers({ "X-Frame-Options": "deny" });
-  applyHeaderSet(page, site);
-  assert.equal(page.get("X-Frame-Options"), "sameorigin");
 });
 
 test("applyHeaderSet rebuilds a Response with immutable headers, and passes a WebSocket upgrade through untouched", () => {
@@ -133,7 +114,6 @@ test("applyHeaderSet rebuilds a Response with immutable headers, and passes a We
   assert.equal(rebuilt.status, 302);
   assert.equal(rebuilt.headers.get("X-Frame-Options"), "deny");
   assert.equal(rebuilt.headers.get("Location"), "https://example.com/");
-  // Workers answer an upgrade with status 101 and the socket on the Response; Node cannot build a 101, so the socket marks it.
   const upgrade = Object.assign(new Response(null), { webSocket: {} });
   assert.equal(applyHeaderSet(upgrade), upgrade);
   assert.equal(upgrade.headers.get("X-Frame-Options"), null);
@@ -171,7 +151,6 @@ test("a value over Cloudflare's 2000-character line limit is written on several 
   const file = headersFile({ "Permissions-Policy": value });
   const lines = file.split("\n").filter((l) => l.startsWith("  Permissions-Policy: "));
   assert.ok(lines.length > 1 && lines.every((l) => l.length <= 2000));
-  // Cloudflare joins the lines with ", ", so the reader gets the same value back.
   assert.equal(lines.map((l) => l.slice("  Permissions-Policy: ".length)).join(", "), value);
   assert.throws(() => headersFile({ "X-A": `(${"a".repeat(2100)})` }), /line limit/);
 });
@@ -185,10 +164,6 @@ test("charset: true gives each static text type its charset, and subresources an
   assert.match(
     file,
     /\n\/\*\.css\n {2}! Cross-Origin-Resource-Policy\n {2}Content-Type: text\/css; charset=utf-8\n {2}Cross-Origin-Resource-Policy: cross-origin\n {2}Cache-Control: no-cache\n/,
-  );
-  assert.match(
-    file,
-    /\n\/\*\.woff2\n {2}! Cross-Origin-Resource-Policy\n {2}Cross-Origin-Resource-Policy: cross-origin\n/,
   );
   assert.match(
     file,

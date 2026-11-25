@@ -111,7 +111,6 @@ test("PLANT: every active model has a price, found with or without its snapshot 
   assert.equal(priceOf("claude-haiku-4-5"), PRICES["claude-haiku-4-5-20251001"]);
   assert.equal(priceOf("claude-sonnet-5-20260101"), PRICES["claude-sonnet-5"]);
   assert.equal(priceOf("claude-unknown-1"), null);
-  // 1,000 input and 100 cached reads on Sonnet 5: 1000 x $2 + 100 x $0.20 per million = 2,020 micro-dollars.
   assert.equal(
     costMicros("claude-sonnet-5", { input: 1000, output: 0, cacheRead: 100, cacheWrite: 0 }),
     2020,
@@ -163,6 +162,5 @@ test("PLANT: one-hour cache writes and Haiku 5.5 prompts over 100,000 tokens pay
   const one = { output: 0, cacheRead: 0, cacheWrite: 0 };
   assert.equal(costMicros("claude-haiku-5-5", { ...one, input: 100_000 }), 10_000);
   assert.equal(costMicros("claude-haiku-5-5", { ...one, input: 100_002 }), 50_001);
-  // Sonnet 5 one-hour writes at 2x input ($4), not the five-minute $2.50.
   assert.equal(costMicros("claude-sonnet-5", { ...one, input: 0, cacheWrite1h: 1_000 }), 4_000);
 });

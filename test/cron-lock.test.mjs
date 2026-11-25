@@ -31,7 +31,7 @@ function lockStub() {
 test("an overrunning run's late release does not free the next run's lease", async () => {
   const { lock } = lockStub();
   const a = await lock.acquire(16 * MINUTE);
-  lock.at(16 * MINUTE); // A's lease has lapsed, so B gets in: a dead run never wedges the job.
+  lock.at(16 * MINUTE);
   assert.ok(await lock.acquire(16 * MINUTE));
   lock.at(17 * MINUTE);
   await lock.release(/** @type {string} */ (a));

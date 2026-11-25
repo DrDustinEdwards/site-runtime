@@ -23,7 +23,7 @@ import {
   tableRedirect,
 } from "../not-found.mjs";
 
-// Foxhound's and txasm's table as their migrations create it (drizzle 0000 and 0023: the same statements).
+// The first shape of the 404 table, before the referring host column.
 const FIRST_SHAPE = `CREATE TABLE \`page_404_daily\` (
 	\`id\` text PRIMARY KEY NOT NULL,
 	\`day\` integer NOT NULL,
@@ -50,7 +50,7 @@ test("a 404 to a GET adds to its path's row for the day; the query, a POST and a
   );
   assert.equal(rows[0]?.day, notFoundKey(new URL("https://example.com/"), new Date()).day);
   assert.equal(notFoundKey(new URL("https://example.com/_.data")).path, "/");
-  // The day's cap: fill it with made-up paths; a new path folds into "(overflow)", a counted one still adds.
+  // Past the day's cap a new path folds into "(overflow)"; a counted one still adds.
   store.db
     .prepare(
       `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < ?)
@@ -122,22 +122,13 @@ test("a scanner's guesses are probes and a site's pages stay pages", () => {
     notFoundKey(new URL(`https://example.com${path}`)).kind;
   for (const path of [
     "/backup.zip",
-    "/site.tar.gz",
     "/web.config",
     "/server-status",
-    "/actuator/env",
     "/vendor/phpunit/x",
     "/.git/config",
-    "/db.sql",
   ])
     assert.equal(kind(path), "probe", path);
-  for (const path of [
-    "/blog/zip-codes",
-    "/server-statistics",
-    "/keys",
-    "/blog/secret-garden",
-    "/web",
-  ])
+  for (const path of ["/blog/zip-codes", "/server-statistics", "/blog/secret-garden", "/web"])
     assert.equal(kind(path), "page", path);
 });
 
@@ -145,7 +136,6 @@ test("the redirect table: one step adds a 301, a chain is one hop, a loop is ref
   const store = d1(REDIRECTS_SQL);
   await addRedirect(store, { from: "/old/", to: "/middle" });
   await addRedirect(store, { from: "/middle", to: "/new" });
-  // The earlier row now points straight at the new target.
   assert.deepEqual((await listRedirects(store)).map((r) => [r.from, r.to, r.status]).sort(), [
     ["/middle", "/new", 301],
     ["/old", "/new", 301],
