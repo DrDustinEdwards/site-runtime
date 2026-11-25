@@ -45,6 +45,8 @@ jobs:
           fi
       - name: Typecheck the modules and bins against their declarations
         run: npm run typecheck
+      - name: Declarations a project with a composite tsconfig can keep
+        run: npx devkit-declarations
       - name: Lint
         run: npm run lint
       - name: Format check
