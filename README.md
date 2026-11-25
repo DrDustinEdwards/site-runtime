@@ -13,7 +13,7 @@ resource routes (`./origin`), the trailing-slash redirect, the gone list and the
 One dependency, Google's `web-vitals` (pinned, no dependencies of its own), which only `./vitals-client` imports, so a Worker bundle never carries it (`./sign-in` uses the site's own `better-auth` and
 `@better-auth/passkey`, 1.7.17 or later (the security fixes of 2026-11-03 and 04), which a site that imports it installs itself; they are not declared as peers,
 because npm checks an optional peer's version even in a site that never imports `./sign-in`), plain ES modules with JSDoc types, Web Crypto only: it runs unchanged in a Worker and in Node 24. Installed by
-tag (merging a version bump to `main` is the release, made on its own with `npx changeset version` (`.changeset/README.md`): `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#v0.92.0"`. `npm test` runs every test in `test/`. `npm run typecheck` checks the modules and bins (strict, `checkJs`, Workers and Node
+tag (merging a version bump to `main` is the release, made on its own with `npx changeset version` (`.changeset/README.md`): `.github/workflows/release.yml` tags it and starts the consumer bumps): `"@dustinedwards/site-runtime": "github:DrDustinEdwards/site-runtime#<newest tag>"`. `npm test` runs every test in `test/`. `npm run typecheck` checks the modules and bins (strict, `checkJs`, Workers and Node
 types; `tsconfig.json`) and the browser modules, `./turnstile`, `./sign-in-client`, `./vitals-client`, `./trusted-types`, `./page-client`, `./hydrate-on-intent` and `./deferred-scripts` (DOM types; `tsconfig.browser.json`), against
 their JSDoc, the one type source: the release builds `dist/*.d.mts` from it (`npm run prepare`, `tsconfig.build.json`) and tags a commit that holds them; `better-auth`, `@better-auth/passkey` and `@cloudflare/workers-oauth-provider` are dev
 dependencies only so it can read their types. `test/` is not checked yet. `npm run lint` is Oxlint with the network's shared
@@ -2571,6 +2571,13 @@ T2, H1, C4 ...); a `warn` result fails nothing, and `failures` leaves it out.
 `checkSecurityTxt({ url, origin, status, headers, body })` grades `/.well-known/security.txt` the same way (D1-D4).
 
 `style-src-attr 'unsafe-inline'` is allowed: several sites emit inline style attributes, and styles cannot run code.
+
+## The speed check
+
+`npx site-runtime-speed --origin https://example.com [--from <host>] [--max-pages 40] [--kind site]` fetches a sample of
+the sitemap's pages and checks caching, compression, redirects and Server-Timing, and reads PageSpeed Insights for the
+home page. `PSI_API_KEY`, when set, is the PageSpeed Insights key; without one Google's shared quota may refuse. The
+header of `bin/speed.mjs` lists the items and the exit codes.
 
 ## The live check
 

@@ -33,7 +33,7 @@ export function maintenanceOn(env) {
 export function maintenanceResponse({
   siteName = "This site",
   retryAfter = MAINTENANCE_RETRY_AFTER,
-  text = "It will be back soon.",
+  text = "",
 } = {}) {
   const name = escapeHtml(siteName);
   const body = `<!doctype html>
@@ -48,8 +48,7 @@ export function maintenanceResponse({
 <body>
 <main id="main">
 <h1>Down for maintenance</h1>
-<p>${escapeHtml(text)}</p>
-</main>
+${text ? `<p>${escapeHtml(text)}</p>\n` : ""}</main>
 </body>
 </html>
 `;

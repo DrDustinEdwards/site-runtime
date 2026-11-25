@@ -207,7 +207,7 @@ ${target.local ? `<div class="cap-alert" data-tone="warn" role="alert"><span cla
 <form method="post" class="cap-consent-form">
   <input type="hidden" name="handle" value="${escape(handle)}">
   <div class="cap-consent-box"><label class="cap-check"><input type="checkbox" name="allow_write" value="1"${wantsWrite(request.scope) ? " checked" : ""}>
-  <span><strong>Allow changes</strong><span class="cap-consent-line">Without this, ${label} can only read.</span><span class="cap-consent-line cap-consent-mono">${escape(scopes.write)}</span></span></label></div>
+  <span><strong>Allow changes</strong><span class="cap-consent-line cap-consent-mono">${escape(scopes.write)}</span></span></label></div>
   <div class="cap-consent-actions">
   <button class="cap-btn" data-variant="primary" data-size="lg" name="decision" value="approve">Continue to sign in</button>
   <button class="cap-btn" data-size="lg" name="decision" value="deny">Deny</button>

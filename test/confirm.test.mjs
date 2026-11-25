@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { mintConfirm, redeemConfirm } from "../confirm-token.mjs";
 import { confirmationRequired, confirmationSatisfied } from "../confirm.mjs";
 
 const form = (fields) => new Map(Object.entries(fields));
@@ -19,4 +20,11 @@ test("a destructive request needs confirmed=1, and the typed word in any case wh
   const res = confirmationRequired();
   assert.equal(res.status, 400);
   assert.match(await res.text(), /Nothing was changed/);
+});
+
+test("a perform must name the claims it acts on", async () => {
+  const keys = ["a".repeat(64)];
+  const { token } = await mintConfirm({ keys, claims: { actor: "a@example.com" } });
+  await assert.rejects(redeemConfirm({ keys, token }), TypeError);
+  assert.equal((await redeemConfirm({ keys, token, expect: { actor: "a@example.com" } })).ok, true);
 });

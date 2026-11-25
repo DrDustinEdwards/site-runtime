@@ -7,6 +7,7 @@
  * Either one checks that what came back is a PDF, so a 200 that is not one never replaces one that is.
  */
 
+import { escapeHtml } from "./html.mjs";
 import { withTimeout } from "./time.mjs";
 
 /** The attribute Paged.js's `after` hook sets on <html> when it has laid out every page. */
@@ -106,6 +107,17 @@ export async function quickPdf(
 }
 
 /**
+ * The base href for a site's origin: parsed, https only, and escaped, so no origin can break out of the attribute.
+ * @param {string} origin
+ */
+function baseHref(origin) {
+  const url = new URL(origin);
+  if (url.protocol !== "https:")
+    throw new TypeError(`pagedPdf origin must be https, got ${origin}`);
+  return escapeHtml(`${url.origin}/`);
+}
+
+/**
  * A PDF of a Paged.js page through a full browser. `origin` becomes the page's <base>, since the page has no address
  * of its own and names its scripts and fonts by path. Waits for the network, the fonts and Paged.js's completion mark,
  * then prints with the page's own @page size; the whole render is bounded by `timeoutMs`.
@@ -130,7 +142,7 @@ export async function pagedPdf(
 ) {
   const browser = await puppeteer.launch(/** @type {never} */ (browserBinding));
   try {
-    const based = html.replace(/<head>/i, `<head>\n<base href="${origin}/" />`);
+    const based = html.replace(/<head>/i, `<head>\n<base href="${baseHref(origin)}" />`);
     const render = async () => {
       const page = await browser.newPage();
       await page.setContent(based, { waitUntil: "networkidle0", timeout: loadTimeoutMs });

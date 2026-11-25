@@ -74,6 +74,7 @@ export async function postAccessSync({
       method: "POST",
       headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
       body: JSON.stringify({ namespace, members: lower, removed: gone }),
+      redirect: "manual",
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) return { ok: false, refusal: await refusalOf(response) };

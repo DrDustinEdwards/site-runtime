@@ -255,7 +255,7 @@ ${
   log === null
     ? "<p>No tool-call log.</p>"
     : log === "owner"
-      ? "<p>The tool-call log holds everyone's calls, so only the server's owner reads it.</p>"
+      ? "<p>Owner only.</p>"
       : rows.length
         ? `<div class="scroll"><table><thead><tr><th>Time (UTC)</th><th>Event</th><th>Caller</th><th>Tool</th><th>Result</th></tr></thead><tbody>
 ${logRows}

@@ -20,6 +20,7 @@ import {
   adminRoster,
   isAdminEmail,
   isMainAdmin,
+  safeAdminNext,
   verifyAccessRequest,
 } from "../access.mjs";
 import { KEYS_MAX_AGE_MS } from "../access-login.mjs";
@@ -404,4 +405,10 @@ test("PLANT: a background request is timed but does not keep the admin awake; a 
     secret,
   });
   assert.ok(/** @type {{ cookie: string }} */ (lab).cookie.startsWith("__Host-lab-seen="));
+});
+
+test("safeAdminNext lands only on a clean path under the prefix", () => {
+  assert.equal(safeAdminNext("/admin/posts?x=1"), "/admin/posts?x=1");
+  for (const bad of ["/admin/../evil", "/admin/\t/x", "//evil.example", "/admin/access", "/other"])
+    assert.equal(safeAdminNext(bad), "/admin", bad);
 });
