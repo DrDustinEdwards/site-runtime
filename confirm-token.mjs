@@ -49,7 +49,7 @@ export async function mintConfirm({
 
 /**
  * Check a token against what the perform is about to do, and spend it when `kv` is given.
- * @param {{ keys: readonly (string | null | undefined)[], token: string, expect: Record<string, unknown>,
+ * @param {{ keys: readonly (string | null | undefined)[], token: string, expect?: Record<string, unknown>,
  *   kv?: { get(key: string): Promise<string | null>, put(key: string, value: string,
  *   options?: { expirationTtl?: number }): Promise<void> }, prefix?: string, now?: number }} options
  * @returns {Promise<Redeemed>}

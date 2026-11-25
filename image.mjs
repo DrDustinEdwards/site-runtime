@@ -88,6 +88,15 @@ export { imagePreload, pictureHtml, pictureProps } from "./image-markup.mjs";
 /** @typedef {"avif" | "webp"} ImageFormat */
 
 /**
+ * Where a site's addresses for stored files live: its own origins, the route's prefix, keyPrefix and within.
+ * @typedef {object} AddressOptions
+ * @property {string[]} [origins] The site's own origins ("https://example.com"); an absolute address on any other host names no file.
+ * @property {string} [prefix] The route's path prefix. Default "/media/".
+ * @property {string} [keyPrefix] Put in front of the path to make the stored key, as the route's `keyPrefix`.
+ * @property {string} [within] The prefix every stored key has, as the route's `within`.
+ */
+
+/**
  * An image for a share tag or structured data: its URL, size and served type.
  * @typedef {object} SizedImageUrl
  * @property {string} url
@@ -179,9 +188,9 @@ export function imageSizes({ layout, width }) {
  * `uses` names each way the site shows images (`{ content: { layout: "constrained", width: 704 } }`); the closed width
  * set is every width any use can ask for. A use's `ratio` is a crop around the file's focal point. `shareImages: true`
  * adds the share crop and the Article set.
-
  * @template {string} U
  * @param {{ uses: Record<U, ImageUse & { ratio?: string }>, breakpoints?: number[], quality?: number, shareImages?: boolean }} config
+ * @returns {Images<U>}
  */
 export function defineImages({
   uses,

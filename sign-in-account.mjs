@@ -51,6 +51,11 @@ export {
 /** @typedef {import("./sign-in-audit.mjs").D1Like} D1Like */
 /**
  * @typedef {object} SecurityHistoryEntry
+ * @property {| "sign-in" | "passkey-added" | "passkey-removed" | "sign-in-linked" | "sign-in-unlinked" | "email-changed" | "recovery"} kind
+ * @property {string | null} via The way in for a sign-in ("link", "code", "passkey", "google", "apple"), the provider for a link or unlink.
+ * @property {Date} at
+ * @property {string | null} device
+ * @property {string | null} location
  */
 /**
  * @typedef {{
