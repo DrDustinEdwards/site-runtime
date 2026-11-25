@@ -256,7 +256,7 @@ test("PLANT: the copy lands in R2 checked and checks on its own; only copied row
   assert.equal(first.pruned, 3);
   assert.deepEqual(
     db
-      .prepare("SELECT seq FROM calls")
+      .prepare("SELECT seq FROM calls ORDER BY seq")
       .all()
       .map((r) => r.seq),
     [3, 5],
@@ -340,4 +340,17 @@ test("PLANT: a row written before client_name and one that names its client veri
   assert.equal((await verifyAuditChain(all(db), { keys: [key.publicKey] })).reason, "hash");
   db.exec("UPDATE calls SET client_name = NULL WHERE seq = 3");
   assert.equal((await verifyAuditChain(all(db), { keys: [key.publicKey] })).reason, "hash");
+});
+
+test("the orphan count looks each started call's finished row up by index, not by scan", () => {
+  const { db, state } = storage();
+  new ToolCallLog(state, { AUDIT_SIGNING_KEY: KEY_A });
+  const plan = db
+    .prepare(
+      "EXPLAIN QUERY PLAN SELECT 1 FROM calls f WHERE f.call_id = ? AND f.phase = 'finished'",
+    )
+    .all("c1")
+    .map((row) => String(row.detail))
+    .join(" ");
+  assert.match(plan, /USING (COVERING )?INDEX/);
 });
