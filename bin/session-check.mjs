@@ -2,7 +2,7 @@
 // site-runtime-session-check: every server-side Better Auth session read goes through `sessionLookup` (./sign-in).
 // Given the request, Better Auth 1.7 answers `auth.api.getSession` with a Response unless the call says
 // `asResponse: false`, and a Response has no `user`, so a call written by hand can read every signed-in person as signed
-// out (Foxing #169, txasm). `sessionLookup(request)` always says it, and passes the request on a GET for sessionDetails.
+// out `sessionLookup(request)` always says it, and passes the request on a GET for sessionDetails.
 //
 //   site-runtime-session-check [dir ...]        default: app
 //

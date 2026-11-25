@@ -65,7 +65,7 @@ function partialRouteIds(router) {
 }
 
 /**
- * The boot JSON's text: what React Router's `<Scripts>` would have run, as data. Exported for the test.
+ * The boot JSON's text: what React Router's `<Scripts>` would have run, as data.
  * @param {{
  *   manifest: any,
  *   serverHandoffString?: string,

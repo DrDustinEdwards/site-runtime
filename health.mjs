@@ -456,7 +456,7 @@ function bindingCheck(name, present) {
   };
 }
 
-// isDatabaseDown lives in ./log (cron reads it too, and ./cron cannot import this module); exported here as before.
+// isDatabaseDown lives in ./log (cron reads it too, and ./cron cannot import this module).
 export { isDatabaseDown };
 
 /** The statusText Capsomer's ErrorPage reads to say the database is down. */

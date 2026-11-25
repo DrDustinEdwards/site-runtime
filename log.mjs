@@ -127,7 +127,7 @@ function scrubValue(key, value, options, depth) {
  * D1's messages for a database that is down or reset for a moment, as Cloudflare's D1 docs list them ("Error list",
  * "Retry a query"), with the Workers runtime's lost connection, and the refusal D1 answers while an import holds the
  * database ("long-running import.": wrangler d1 execute --remote --file and the import API),
- * and the three messages seen in production on 2026-11-20 that the docs do not list: the account-wide back-off
+ * and the three messages seen in production that the docs do not list: the account-wide back-off
  * ("too much load DBs"), a storage event ("D1_ERROR: internal error...",
  * Cloudflare's 7500) and a Durable Object that restarted under a call. A wrong query (no such table, a constraint) is not one.
  */

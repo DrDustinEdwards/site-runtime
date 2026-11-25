@@ -1,6 +1,6 @@
 {
   "baseline": {
-    "measured_at": "8d1731b",
+    "measured_at": "336d375",
     "knip": {},
     "jscpd": {
       "clones": 0,
@@ -16,7 +16,7 @@
     "size": {
       "anthropic.mjs": 772,
       "audit-log.mjs": 790,
-      "bin/ai-audit.mjs": 975,
+      "bin/ai-audit.mjs": 974,
       "bin/images.mjs": 1395,
       "bin/site-runtime-security.mjs": 514,
       "check.mjs": 856,
@@ -37,9 +37,9 @@
       "cases": 452
     },
     "comments": {
-      "lines": 10914,
+      "lines": 10907,
       "code": 34682,
-      "percentage": 23.94
+      "percentage": 23.92
     }
   }
 }

@@ -1,6 +1,6 @@
 /**
  * Access sync: a site (or Carrel) asks Capsid to make its Cloudflare Access group hold exactly its list of people. Capsid
- * is the only holder of the Cloudflare token (Dustin's ruling of 2026-10-09), so an app posts the whole list to Capsid's
+ * is the only holder of the Cloudflare token, so an app posts the whole list to Capsid's
  * `POST /ops/access-sync` with its own agent key. Capsid writes the group it pinned for the namespace (never one the
  * request names), frees the Zero Trust seats of the people in `removed`, and audits the call. The whole list is sent each
  * time, so a missed sync is mended by the next.

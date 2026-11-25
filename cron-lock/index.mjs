@@ -1,7 +1,6 @@
 /**
  * A scheduled job under a lease (./cron-lock), and the five-minute ticker that runs sub-hourly jobs from a Durable
- * Object alarm (Cloudflare stopped firing Foxhound's "*\/5" trigger from 2026-10-23 while it still listed it). From
- * Foxhound (workers/cron-lock.ts, app/lib/cron/lock-state.ts, ticker.ts).
+ * Object alarm (Cloudflare can stop firing a "*\/5" trigger while it still lists it).
  *
  * The Worker exports `CronLock` (./cron-lock/durable-object) and binds it; `withLease` takes the job's lease, runs it,
  * and releases only its own token. A held lease resolves to CRON_SKIPPED, so runJobs logs it skipped and records no

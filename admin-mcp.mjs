@@ -212,7 +212,7 @@ export function adminMcpWorker({
         /** @type {ExecutionContext & { props?: Record<string, unknown>, auth?: AdminMcpAuth }} */ (
           ctx
         );
-      // RFC 8707, rule 12.2: a token not issued for this server is refused, even if a provider set up for another resource handed one over.
+      // RFC 8707: a token not issued for this server is refused, even if a provider set up for another resource handed one over.
       const wrongAudience = audienceRefusal(auth, `${adminMcpOrigin(env)}${ADMIN_MCP_ROUTE}`, [
         scopes.read,
       ]);
@@ -342,7 +342,7 @@ export function adminMcpWorker({
         defaultHandler: /** @type {ExportedHandler<E>} */ (/** @type {unknown} */ (defaultHandler)),
         authorizeEndpoint: "/authorize",
         tokenEndpoint: "/token",
-        // AUDIENCE BINDING (rule 12.2, RFC 8707): every grant and token is pinned to exactly this server's /mcp. Nothing is
+        // AUDIENCE BINDING (RFC 8707): every grant and token is pinned to exactly this server's /mcp. Nothing is
         // passed through: the API leg uses the server's own bearer, never the client's token.
         resourceMetadata: {
           resource: `${origin}${ADMIN_MCP_ROUTE}`,
@@ -400,7 +400,7 @@ export function adminMcpWorker({
       // Before the token is read, so a page on another origin learns nothing from a 401 (DNS rebinding).
       const foreign = mcpOriginRefusal(request, ADMIN_MCP_ORIGINS);
       if (foreign) return foreign;
-      // A rebound name pointing here is refused too (area 11, P10). On Workers the URL's host is the Host the client sent.
+      // A rebound name pointing here is refused too. On Workers the URL's host is the Host the client sent.
       if (url.hostname !== new URL(origin).hostname)
         return refuse("Forbidden. This is not a host this server answers on.", 403);
       // THE LIST-ONLY TEST KEY: MCP_PROBE_KEY lets the daily live check connect and list tools, and

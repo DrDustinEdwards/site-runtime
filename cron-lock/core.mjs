@@ -1,6 +1,6 @@
 /**
  * The cron lock's decisions as pure functions over its stored record, so the fence is a tested property and the
- * Durable Object (durable-object.mjs) is only a storage shell. From Foxhound (app/lib/cron/lock-state.ts).
+ * Durable Object (durable-object.mjs) is only a storage shell.
  *
  * A LEASE, NOT A FLAG: a lock whose expiry has passed is free, so a run that died without releasing frees its job
  * instead of wedging it. FENCED: acquiring mints a token and only that token releases, so an overrunning run's late

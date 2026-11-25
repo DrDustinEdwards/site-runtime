@@ -15,7 +15,7 @@ import { MCP_PER_MINUTE, checkRateLimit, refuse } from "./mcp-server.mjs";
 //
 // WHY tools/call PASSES. The protocol layer validates a request first: a Mcp-Method or Mcp-Name header that does not
 // match the body is a 400 (-32020, SEP-2243), a method the server lacks a 404 (-32601, SEP-2575). A door that refused
-// tools/call first answered those 403 and broke both MUSTs (conformance P3/P4 on 2026-11-01). Past the SDK's checks
+// tools/call first answered those 403 and broke both MUSTs. Past the SDK's checks
 // `invokeTool` refuses the probe caller before `run`, with a `refused` row, so the key still runs nothing.
 
 /** The methods the list-only test key may send on to the server (tools/call is refused by `invokeTool`, see above). */

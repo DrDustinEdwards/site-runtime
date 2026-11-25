@@ -4,7 +4,7 @@
  * Capsomer's sign-in screen (`capsomer/react/sign-in`) is the page these answer.
  *
  * - THROUGH THE HANDLER, NEVER auth.api: only Better Auth's HTTP handler runs its rate limiter and the captcha plugin's
- *   Turnstile check, so a form that called auth.api skipped both (Grok audit 2026-10-21, TX-4). Each request is a POST
+ *   Turnstile check, so a form that called auth.api skipped both. Each request is a POST
  *   to the site's own handler with the origin Better Auth checks, the client address its limiter counts and the user
  *   agent, and nothing else of the browser's.
  * - THE SAME ANSWER FOR EVERY ADDRESS: a link request says "sent" whether or not the address has an account; the only

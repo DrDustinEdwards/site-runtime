@@ -1,7 +1,7 @@
 /**
  * A Google service account's access token: its JSON key file checked, a signed RS256 assertion exchanged at Google's
  * token endpoint (RFC 7523, Google's "OAuth 2.0 for server to server applications"), and the hour's token kept per
- * isolate. Capsid's Search Console reader and Carrel's Drive index each had their own, one of them on `jose`.
+ * isolate.
  */
 
 import { timedFetch } from "./http.mjs";

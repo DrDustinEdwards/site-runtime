@@ -18,7 +18,7 @@
  *   (`not_found_count_failed`), since a count that stops in silence leaves the table empty with nobody told; at
  *   level warn when the database is down for a moment (isDatabaseDown), error otherwise.
  * - A count is best effort and a scanner can send hundreds of 404s a second, each a write queued on the one database
- *   that also serves the site (Foxhound, 2026-11-20: 500 "D1 DB is overloaded" in two seconds from one scanner). An
+ *   that also serves the site. An
  *   isolate holds at most NOT_FOUND_MAX_PENDING writes at once; a 404 past it is not counted.
  */
 

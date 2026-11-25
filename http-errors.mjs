@@ -1,7 +1,6 @@
 /**
  * The one error answer every site's JSON API gives: RFC 9457 problem details (`application/problem+json`), with the
- * machine-readable `code` as an extension member. site-api already answers this way; Foxing's `{ error: { code,
- * message } }` envelope moves onto it (the 2026-11-11 shared-code audit, item 41a; Dustin approved RFC 9457).
+ * machine-readable `code` as an extension member. site-api answers this way too.
  *
  * A body looks like `{ type, title, status, detail, code, ...extensions }`. `type` is "about:blank" unless the site
  * passes a `typeBase` (a page that explains each code, the code appended), and then `title` is the HTTP status phrase,

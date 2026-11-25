@@ -194,7 +194,7 @@ export class ApiLegError extends Error {
  * One request over the API leg, to `SITE_ORIGIN + path` through the `binding` named in `leg`, with the bearer from the
  * `token` var (refused under 32 characters) unless `anonymous`. Returns the status, whether it was 2xx, and the JSON body
  * (null when empty). Throws ApiLegError when unconfigured, unreachable or not JSON, and (`canceled`) when `signal`, the
- * tool call's (P11), aborted: a client that closed the stream gets no further request sent for it.
+ * tool call's, aborted: a client that closed the stream gets no further request sent for it.
  *
  * @param {object} env
  * @param {{ binding: string, token: string, api: string, userAgent: string, require?: string[] }} leg
@@ -347,7 +347,7 @@ export function unauthorized({ resource, scope, error, description }) {
 }
 
 /**
- * The token must have been issued for this server (RFC 8707, rule 12.2). Re-checks the provider against the resource the
+ * The token must have been issued for this server (RFC 8707). Re-checks the provider against the resource the
  * server expects, so a provider set up for a second resource can never hand this one its token. Null when the audience
  * is `resource`, else the 401.
  * @param {{ audience?: unknown } | undefined} auth the provider's `ctx.auth`
@@ -385,7 +385,7 @@ export function mcpOriginRefusal(request, allowed = [], headers) {
   return originRefusal(headers);
 }
 
-// LEAST SCOPE FIRST, AND THE PER-CALL OWNERSHIP CHECK (ruling mcp-2026-10-10, rules 12.1 and 12.3). Read is what every
+// LEAST SCOPE FIRST, AND THE PER-CALL OWNERSHIP CHECK. Read is what every
 // connection gets; write is ticked on the consent page (or named for an agent in AGENT_WRITE). Every id a tool takes
 // names a record only the site's administrator owns, so the caller must be that administrator on every call.
 
@@ -517,13 +517,13 @@ export function toolScopeChallenge(env, server, tool) {
   };
 }
 
-// THE ONE DOOR TO A TOOL HANDLER (rule 12.4). In order: prove the caller owns what the tool names and holds its scope
+// THE ONE DOOR TO A TOOL HANDLER In order: prove the caller owns what the tool names and holds its scope
 // (a refusal is logged), write the `started` row (refusing if the log cannot be written, so no call runs unlogged), run
 // the tool, write the `finished` row (also when the tool throws). Rows never carry a credential.
 
 /**
  * One tool call through the scope check and the log. `run` is the server's own handler; `meta` is the request's `_meta`,
- * whose traceparent becomes the rows' correlation id. `signal` is the request's abort signal (P11): a call whose client
+ * whose traceparent becomes the rows' correlation id. `signal` is the request's abort signal: a call whose client
  * is gone before it starts does not run, `run` is handed the signal, and a call that ran on after the client left is
  * logged `canceled`.
  * @template {{ isError?: boolean, content: Array<{ type: "text", text: string }> }} O
@@ -608,7 +608,7 @@ export async function invokeTool(env, server, { caller, tool, args, meta, signal
 }
 
 /**
- * Registers a server's tools on the SDK's McpServer the one way (T7, T9, P11): only the tools the caller's grant can
+ * Registers a server's tools on the SDK's McpServer the one way: only the tools the caller's grant can
  * call (`toolsForGrant`), each with `icons` unless it has its own, the step-up challenge, and `invokeTool` with the
  * request's `_meta` and abort signal. `config(tool)` is what `registerTool` gets (default `tool.config`); `run(tool,
  * args, signal)` runs it (default `tool.handler(env, args, signal)`). Returns the tools listed.
