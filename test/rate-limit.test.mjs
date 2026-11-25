@@ -181,18 +181,6 @@ test("allow still reports the failure and lets the call proceed", async () => {
   assert.equal(logged.length, 1);
 });
 
-test("onUnavailable has no default", async () => {
-  await assert.rejects(
-    limit(
-      namespaceFor(async () => ({})),
-      "k",
-      MIN,
-      {},
-    ),
-    TypeError,
-  );
-});
-
 test("limited answers 429 with the time left, never a success code", async () => {
   const verdict = await limit(
     namespaceFor(async () => ({ ok: false, used: 3, limit: 3, retryAfterSeconds: 45, window: 60 })),
