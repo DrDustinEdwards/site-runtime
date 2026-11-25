@@ -105,9 +105,7 @@ export async function agentCaller(env, authorization, scopes) {
     : null;
 }
 
-/** The Worker secret holding a server's list-only test key. */
 export const PROBE_KEY_SECRET = "MCP_PROBE_KEY";
-/** The name the list-only test key is logged under. */
 export const PROBE_PRINCIPAL = "live-check";
 
 /**

@@ -40,7 +40,6 @@ ON CONFLICT (key, kind, day) DO NOTHING`;
 const RELEASE = "DELETE FROM alerts_sent WHERE key = ?1 AND kind = ?2 AND day = ?3";
 const PRUNE = "DELETE FROM alerts_sent WHERE day < ?1";
 
-/** How many days of alerts are kept. */
 const KEEP_DAYS = 30;
 
 /**

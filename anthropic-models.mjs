@@ -44,7 +44,7 @@ export const MODELS = /* @__PURE__ */ Object.freeze({
   }),
 });
 
-/** The model each kind of call uses (C8): a site names the role, never an id. `fast` for cheap, frequent calls, `standard` for writing a reader sees, `deep` for long reasoning. */
+/** The model each kind of call uses: a site names the role, never an id. `fast` for cheap, frequent calls, `standard` for writing a reader sees, `deep` for long reasoning. */
 export const MODEL_IDS = /* @__PURE__ */ Object.freeze({
   fast: "claude-haiku-5-5",
   standard: "claude-sonnet-5-5",
