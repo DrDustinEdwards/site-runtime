@@ -1,7 +1,6 @@
 /**
  * The one React Router server entry every site's app/entry.server.tsx re-exports, so each page is rendered the same
- * way on every site: nine sites each had their own copy, some streaming, some waiting for the whole page, some logging
- * a render error and some not.
+ * way on every site.
  *
  * What it does, following React Router's own entry and React's guidance for crawlers:
  * - A HEAD request gets the status and headers with no render (the body would be thrown away).

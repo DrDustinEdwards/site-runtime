@@ -105,7 +105,7 @@ export function escapedReport(sink, page, caller) {
 }
 
 /**
- * The rules of the default policy. Exported for the test; a page uses `installTrustedTypes`.
+ * The rules of the default policy. A page uses `installTrustedTypes`.
  * @param {(sink: string) => void} report called with the sink when HTML is escaped
  * @param {string} origin the page's origin
  * @param {(html: string, sink: string) => boolean} [allowHtml] the exact strings a library writes that a site lets pass

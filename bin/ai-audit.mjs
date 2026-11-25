@@ -228,8 +228,7 @@ if (values.kind === "worker" && prms.length === 0 && findings.length === 0)
 const commandValue = (/** @type {string} */ text) =>
   text.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
 
-// A check that throws must not take the findings with it: before this, a crash printed nothing, so the board read
-// "fail, 0 errors" with no cause (capsid-mcp, 2026-11-01). The stop is an error finding of its own, after the others.
+// A check that throws must not take the findings with it, or the board reads "fail, 0 errors" with no cause. The stop is an error finding of its own, after the others.
 const stopped = (/** @type {unknown} */ error) => {
   report(
     "unmeasured",

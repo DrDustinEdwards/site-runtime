@@ -1,8 +1,7 @@
 /**
  * The one GitHub REST client piece every repo shares: the request headers, a GitHub App installation token (narrowed to
  * the repos and permissions asked for), paged lists read to the end, a JSON read that names the refusal, the
- * workflow-dispatch permission probe and the pull request URL parser. Capsid's repo access and Carrel's writing
- * repository each had their own copies.
+ * workflow-dispatch permission probe and the pull request URL parser.
  *
  * A caller supplies `call(path, init)`: a fetch of `https://api.github.com${path}` that adds its own token, timeout and
  * caching. The helpers that take one never see a credential.

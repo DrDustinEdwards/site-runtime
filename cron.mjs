@@ -13,7 +13,7 @@
  * - A failed write to `cron_runs` is logged (`cron_run_write_failed`) and the job still runs.
  * - After the last job, if any failed, `runJobs` throws one Error naming them, so Cloudflare marks the invocation failed.
  * - RUN NOW: runJobNow runs one job by name through the same path, and runJobTool serves it as the operator tool
- *   `run_job`, so a job is never run by hand through a second copy of its work (Dustin 2026-11-07). A job marked
+ *   `run_job`, so a job is never run by hand through a second copy of its work. A job marked
  *   `backup` is one Capsid Admin's back up now runs.
  * - HISTORY (opt in, `runJobs(db, jobs, { history })`): each run that came to something is also appended to
  *   `cron_run_log` (CRON_LOG_SQL), the newest few kept per job. A job may resolve `{ outcome: "ok" | "refused" |

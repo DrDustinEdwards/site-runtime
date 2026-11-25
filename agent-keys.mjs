@@ -1,6 +1,6 @@
 /**
- * Named agent keys (S6): the one module for an AI agent that cannot finish a server's OAuth sign-in (Grok Build could
- * not do CIMD; ruling 37). Capsid's minted
+ * Named agent keys: the one module for an AI agent that cannot finish a server's OAuth sign-in (Grok Build could
+ * not do CIMD). Capsid's minted
  * agents (a D1 row per key, by SHA-256 of the key) are a different model and stay Capsid's.
  *
  * - ONE SECRET PER AGENT. A Worker secret `AGENT_KEY_<NAME>` is the key of the agent `<name>` (lower-cased), so the name
@@ -16,9 +16,8 @@
  *   lists it. What an agent may then do is the server's (./mcp-server `authorizeCall`, Carrel's people table).
  * - THE LIST-ONLY TEST KEY. A server too sensitive for an agent key (an admin server, a money app) can still let the
  *   daily live check in: the Worker secret `MCP_PROBE_KEY` is a key that connects and lists tools and runs none
- *   (Dustin 2026-11-01, "do the best practice": RFC 9700 2.3, a token's privileges "restricted to the minimum
- *   required"). Its caller holds no scope, `authorizeCall` refuses its every call, and the door refuses any method
- *   but a handshake or a list before the SDK runs (./mcp-server `probeRefusal`).
+ *   (RFC 9700 2.3: a token's privileges are "restricted to the minimum required"). Its caller holds no scope,
+ *   `authorizeCall` refuses its every call, and the door refuses any method but a handshake or a list before the SDK runs (./mcp-server `probeRefusal`).
  */
 
 import { safeEqual } from "./compare.mjs";

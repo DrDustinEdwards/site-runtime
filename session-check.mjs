@@ -1,6 +1,6 @@
 // The check behind site-runtime-session-check (bin/session-check.mjs): every server-side Better Auth session read goes
 // through `sessionLookup` (./sign-in), since a hand-written `auth.api.getSession({ headers, request })` gets a Response
-// with no `user` and reads every signed-in person as signed out (Foxing #169, txasm).
+// with no `user` and reads every signed-in person as signed out.
 
 import { readdirSync } from "node:fs";
 import { join } from "node:path";

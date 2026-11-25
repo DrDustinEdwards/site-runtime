@@ -1,6 +1,6 @@
 /**
- * Byte encodings, once, for every repo: hex, base64, base64url and a SHA-256 hex digest. Each site had its own copy, a
- * few on `jose` or Buffer (which a Worker has only with nodejs_compat). Web APIs only.
+ * Byte encodings, once, for every repo: hex, base64, base64url and a SHA-256 hex digest. Web APIs only: no `jose`, and no Buffer (which a Worker
+ * has only with nodejs_compat).
  *
  * Every encoder takes bytes (a Uint8Array or ArrayBuffer) or a string, which is encoded as UTF-8 first.
  */

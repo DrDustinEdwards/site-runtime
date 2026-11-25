@@ -1,6 +1,6 @@
 /**
- * The MCP servers' tool-call log: an append-only log of every tool call, with the caller, the arguments and the result
- * (ruling mcp-2026-10-10, rule 12.4), and of the door's own events: a sign-in, a scope challenge, a rate-limited request.
+ * The MCP servers' tool-call log: an append-only log of every tool call, with the caller, the arguments and the result,
+ * and of the door's own events: a sign-in, a scope challenge, a rate-limited request.
  *
  * A Durable Object with synchronous SQLite, one instance for the Worker, reached only from the Worker's own code. It
  * has no UPDATE; its one DELETE is retention (L7), and it removes only rows already copied out (L6) and past retention.

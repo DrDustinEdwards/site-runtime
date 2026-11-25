@@ -156,7 +156,7 @@ export const AUTH_EVENTS_DEVICE_SQL = `ALTER TABLE auth_events ADD COLUMN device
 /**
  * The argument for a site's own `auth.api.getSession` with `sessionDetails`: on a GET the request too, so the place
  * follows the person. Always `asResponse: false`: given a request, Better Auth 1.7.25 answers with a Response, which
- * has no `user`: every page reads the person as signed out (Foxing #169).
+ * has no `user`: every page reads the person as signed out.
  * @param {Request} request
  * @returns {SessionLookup}
  */

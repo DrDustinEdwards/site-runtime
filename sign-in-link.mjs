@@ -29,8 +29,7 @@ export const EMAIL_CONFIRM_PATH = "/email/confirm";
 /**
  * How long a sign-in link and its code work: 10 minutes, NIST SP 800-63B-4's limit for an out-of-band sign-in ("the
  * authentication SHALL be considered invalid unless completed within 10 minutes", pages.nist.gov/800-63-4, read
- * 2026-10-31). Better Auth's default is 5, which ran out while a person found the mail and came back (Foxhound's live
- * test, 2026-10-29).
+ * 2026-10-31). Better Auth's default is 5, which ran out while a person found the mail and came back.
  */
 export const SIGN_IN_EXPIRES_IN_SECONDS = 10 * 60;
 
