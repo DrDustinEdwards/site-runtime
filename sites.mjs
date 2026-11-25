@@ -39,7 +39,7 @@
  */
 
 import { CSP_REPORT_GROUP, CSP_REPORT_PATH, buildPolicy } from "./csp.mjs";
-import { PASSKEY_OVERRIDES, corpFor, entryOverrides, permissionsAllowingSelf } from "./headers.mjs";
+import { PASSKEY_OVERRIDES, corpFor, permissionsAllowingSelf } from "./headers.mjs";
 
 /**
  * `T` with every `reason` key removed, at any depth.
@@ -781,33 +781,3 @@ export const SITES = /* @__PURE__ */ Object.freeze([
   capsomer,
   prelum,
 ]);
-
-/**
- * The entry for an id; unknown ids throw, so a typo never grades a site against the bare standard.
- * @param {string} id
- * @returns {SiteEntry}
- */
-export function siteEntry(id) {
-  const entry = SITES.find((s) => s.id === id);
-  if (!entry) throw new Error(`${JSON.stringify(id)} is not in the site registry (sites.mjs)`);
-  return entry;
-}
-
-/**
- * The entry whose origin or alias is `origin`, or undefined.
- * @param {string} origin
- * @returns {SiteEntry | undefined}
- */
-export function siteForOrigin(origin) {
-  const bare = new URL(origin).origin;
-  return SITES.find((s) => s.origin === bare || (s.aliases ?? []).includes(bare));
-}
-
-/**
- * The header overrides an entry declares (entryOverrides, ./headers), by id.
- * @param {string} id
- * @returns {Record<string, HeaderOverride>}
- */
-export function siteOverrides(id) {
-  return entryOverrides(siteEntry(id));
-}

@@ -11,6 +11,7 @@ import {
   pictureProps,
 } from "../image.mjs";
 import { preloads } from "../preload.mjs";
+import { mapCache } from "./map-cache.mjs";
 
 const images = defineImages({
   uses: {
@@ -255,13 +256,7 @@ test("a site that keeps its old widths as breakpoints still serves its cached li
 });
 
 test("a file replaced under the same key never answers a size cached from the old bytes", async () => {
-  const stored = new Map();
-  const cache = /** @type {Cache} */ (
-    /** @type {unknown} */ ({
-      match: async (/** @type {Request} */ k) => stored.get(k.url)?.clone(),
-      put: async (/** @type {Request} */ k, /** @type {Response} */ r) => void stored.set(k.url, r),
-    })
-  );
+  const cache = mapCache();
   const at = () => new Request("https://example.com/media/a.jpg?w=640");
   const seen = [];
   await images.respond(at(), { object: object(), images: binding(seen), cache });
@@ -333,13 +328,7 @@ test("an edit shrinks inside a square, reads a view's own bytes, re-encodes on a
 });
 
 test("a replaced file is a new URL, an old URL still answers, and the version mints no transform", async () => {
-  const stored = new Map();
-  const cache = /** @type {Cache} */ (
-    /** @type {unknown} */ ({
-      match: async (/** @type {Request} */ k) => stored.get(k.url)?.clone(),
-      put: async (/** @type {Request} */ k, /** @type {Response} */ r) => void stored.set(k.url, r),
-    })
-  );
+  const cache = mapCache();
   const photo = {
     src: "/media/a.jpg",
     width: 1200,
@@ -494,13 +483,7 @@ test("over Cloudflare's 1,200 px AVIF limit the AVIF source names the WebP, and 
 });
 
 test("a size cached under one Cache-Control never answers under another (the site may pick it per request)", async () => {
-  const store = new Map();
-  const cache = /** @type {Cache} */ (
-    /** @type {unknown} */ ({
-      match: async (/** @type {Request} */ k) => store.get(k.url)?.clone(),
-      put: async (/** @type {Request} */ k, /** @type {Response} */ r) => void store.set(k.url, r),
-    })
-  );
+  const cache = mapCache();
   const at = () => new Request("https://example.com/media/a.jpg.webp?v=abc123&w=640");
   await images.respond(at(), {
     object: object(),

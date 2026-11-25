@@ -1,7 +1,7 @@
 // The tricky parts of sign-in's account security: reading a user agent, which event a Better Auth request was, a
 // notice that fails to send, the security history and spike counts, and the fresh sign-in a site's own route asks for. The hooks themselves ran against Better Auth 1.7.12 in the PR's end-to-end check.
 import assert from "node:assert/strict";
-import { DatabaseSync } from "node:sqlite";
+import { d1 } from "./sqlite-d1.mjs";
 import { test } from "node:test";
 
 import { betterAuth } from "better-auth";
@@ -228,21 +228,6 @@ test("revokeSessionById ends only the asker's own session, and the rows carry no
   assert.deepEqual(revoked, ["tok-b"]);
 });
 
-/** A D1-shaped wrapper over node:sqlite, with the event table. */
-function d1() {
-  const db = new DatabaseSync(":memory:");
-  db.exec(AUTH_EVENTS_SQL);
-  return {
-    db,
-    prepare: (/** @type {string} */ sql) => ({
-      bind: (/** @type {any[]} */ ...v) => ({
-        run: async () => db.prepare(sql).run(...v),
-        all: async () => ({ results: db.prepare(sql).all(...v) }),
-      }),
-    }),
-  };
-}
-
 /** Runs `fn` with console.error silenced (the log lines are tested elsewhere). @param {() => Promise<void>} fn */
 async function quietly(fn) {
   const original = console.error;
@@ -260,7 +245,7 @@ const WINDOWS =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
 
 test("a person's history holds their sign-ins and changes with device, never another's or a failure; a new device is told", async () => {
-  const db = d1();
+  const db = d1(AUTH_EVENTS_SQL);
   await quietly(async () => {
     await logAuthEvent(
       { event: "authn_login_success", fields: { via: "link", user_id: "u1" } },
@@ -307,7 +292,7 @@ test("a person's history holds their sign-ins and changes with device, never ano
 });
 
 test("the spike check warns when failed sign-ins or sign-in mails in its window pass their ceiling", async () => {
-  const db = d1();
+  const db = d1(AUTH_EVENTS_SQL);
   const now = Date.UTC(2026, 9, 31, 12);
   const insert = db.db.prepare("INSERT INTO auth_events (at, event) VALUES (?, ?)");
   for (let i = 0; i < 4; i++) insert.run(now - 60_000, "authn_login_fail");
@@ -389,7 +374,7 @@ test("a session's last use is written at most every five minutes, at once for a 
     (/** @type {any} */ error) => error.body?.code === "SESSION_IDLE",
   );
 
-  const db = d1();
+  const db = d1(AUTH_EVENTS_SQL);
   db.db.exec(AUTH_EVENTS_DEVICE_SQL);
   await logAuthEvent(
     { event: "authn_login_success", fields: { via: "passkey", user_id: "u1" } },
@@ -436,7 +421,7 @@ test("requireFreshSession passes a sign-in under 10 minutes old and refuses an o
 });
 
 test("the passkey list says when each passkey last signed in, and a Not now holds the offer back for 30 days", async () => {
-  const db = d1();
+  const db = d1(AUTH_EVENTS_SQL);
   const day = 24 * 60 * 60 * 1000;
   await quietly(async () => {
     await logAuthEvent(
@@ -528,7 +513,7 @@ test("a site's session read carries the request on a GET only, and always asks f
 });
 
 test("pruneExpiredAuth drops old rate-limit rows, and runs on a site without the table", async () => {
-  const db = d1();
+  const db = d1(AUTH_EVENTS_SQL);
   const now = 10 * 24 * 60 * 60 * 1000;
   db.db.exec(
     "CREATE TABLE session (expires_at INTEGER); CREATE TABLE verification (expires_at INTEGER); CREATE TABLE rate_limit (key TEXT, last_request INTEGER)",

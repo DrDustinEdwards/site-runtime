@@ -3,13 +3,7 @@ import { test } from "node:test";
 import { checkSecurityHeaders, declined, failures } from "../check.mjs";
 import { buildContentSecurityPolicy, buildStagedPolicy, generateNonce } from "../csp.mjs";
 import { buildSecurityHeaders } from "../headers.mjs";
-import {
-  SITES,
-  bsw,
-  capsomer as capsomerEntry,
-  dustinedwardsInfo,
-  siteForOrigin,
-} from "../sites.mjs";
+import { SITES, bsw, capsomer as capsomerEntry, dustinedwardsInfo } from "../sites.mjs";
 import { staticHeaders } from "../static-site.mjs";
 import { sitesDeviationsSource, sitesValuesSource } from "../update-sites-values.mjs";
 import { readFileSync } from "node:fs";
@@ -87,8 +81,8 @@ test("an undeclared deviation fails: an opt-in another site declared, or a gap l
 });
 
 test("an origin is found by its alias, and by nothing else", () => {
-  assert.equal(siteForOrigin("https://txasm.org/path")?.id, "txasm");
-  assert.equal(siteForOrigin("https://example.com"), undefined);
+  assert.equal(values.siteForOrigin("https://txasm.org/path")?.id, "txasm");
+  assert.equal(values.siteForOrigin("https://example.com"), undefined);
 });
 
 test("sites-values.mjs and sites-deviations.mjs are written from sites.mjs, and every reason is written", () => {

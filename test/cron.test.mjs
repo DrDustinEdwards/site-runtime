@@ -1,6 +1,6 @@
 // The job runner and its /health check against cron_runs in an in-memory SQLite.
 import assert from "node:assert/strict";
-import { DatabaseSync } from "node:sqlite";
+import { d1 } from "./sqlite-d1.mjs";
 import { test } from "node:test";
 
 import {
@@ -15,23 +15,8 @@ import {
   runsSucceeded,
 } from "../cron.mjs";
 
-/** A D1-shaped wrapper over node:sqlite. */
-function d1() {
-  const db = new DatabaseSync(":memory:");
-  db.exec(CRON_SQL);
-  return {
-    db,
-    prepare: (/** @type {string} */ sql) => ({
-      bind: (/** @type {any[]} */ ...v) => ({
-        run: async () => db.prepare(sql).run(...v),
-        all: async () => ({ results: db.prepare(sql).all(...v) }),
-      }),
-    }),
-  };
-}
-
 test("a failed job does not stop the next, the run throws naming it, and the check sees failed and stale jobs", async () => {
-  const store = d1();
+  const store = d1(CRON_SQL);
   const t0 = Date.UTC(2026, 9, 30);
   const ran = [];
   const jobs = [
@@ -60,7 +45,7 @@ test("a failed job does not stop the next, the run throws naming it, and the che
 });
 
 test("with history a job learns its run's start, the key of its cron_run_log row with its reason", async () => {
-  const store = d1();
+  const store = d1(CRON_SQL);
   store.db.exec(CRON_LOG_SQL);
   const t0 = Date.UTC(2026, 10, 12);
   let clock = t0;
@@ -82,7 +67,7 @@ test("with history a job learns its run's start, the key of its cron_run_log row
 });
 
 test("a hung job times out as failed and the next still runs; a daily job warns past about 26 hours; a job that never ran warns", async () => {
-  const store = d1();
+  const store = d1(CRON_SQL);
   const t0 = Date.UTC(2026, 9, 30);
   const ran = [];
   /** @type {AbortSignal | undefined} */
@@ -122,7 +107,7 @@ test("a hung job times out as failed and the next still runs; a daily job warns 
 });
 
 test("a job held on timeout is recorded failed and waited for before the next starts; a skip records no success", async () => {
-  const store = d1();
+  const store = d1(CRON_SQL);
   const t0 = Date.UTC(2026, 9, 30);
   const order = [];
   const jobs = [
@@ -149,7 +134,7 @@ test("a job held on timeout is recorded failed and waited for before the next st
 });
 
 test("run_job runs a job by name into cron_runs with its result, a failure as an outcome, and the backup jobs together", async () => {
-  const store = d1();
+  const store = d1(CRON_SQL);
   const jobs = [
     { name: "copy", everyMinutes: 1440, run: async () => ({ verified: { ok: true } }) },
     { name: "dump", everyMinutes: 1440, backup: true, run: async () => {} },
@@ -191,7 +176,7 @@ test("a refused run is not a success", () => {
 });
 
 test("a job that failed because D1 was down is recorded failed but does not fail the invocation", async () => {
-  const store = d1();
+  const store = d1(CRON_SQL);
   const t0 = Date.UTC(2026, 10, 20);
   const down = new Error(
     "D1_ERROR: Your account is generating too much load on D1 DBs. Please back off.",
@@ -215,8 +200,12 @@ test("a job whose error wraps a D1 outage as its cause does not fail the invocat
     cause: new Error("D1_ERROR: internal error; reference = abc"),
   });
   await assert.doesNotReject(
-    runJobs(d1(), [{ name: "sweep", everyMinutes: 1, run: () => Promise.reject(wrapped) }], {
-      now: () => Date.UTC(2026, 10, 24),
-    }),
+    runJobs(
+      d1(CRON_SQL),
+      [{ name: "sweep", everyMinutes: 1, run: () => Promise.reject(wrapped) }],
+      {
+        now: () => Date.UTC(2026, 10, 24),
+      },
+    ),
   );
 });
