@@ -967,7 +967,7 @@ return securityTxtResponse({ origin: "https://example.com" });
 Preferred-Languages (`en` unless given) and Canonical. `securityTxtResponse(fields, headers)` serves it as text/plain,
 cached for an hour, always as `text/plain; charset=utf-8` (it refuses a Content-Type in `headers`); `headers` adds to or
 replaces the rest. `contact` and `expires` default to the network's (`SECURITY_CONTACT`, `SECURITY_TXT_EXPIRES`), so
-every site lists the same address and moves the date in one place; a site passes its own only when it has one. Prefer a
+every site lists the same address and moves the date in one place; a site passes its own only when it has one (`siteWorker` takes it as `securityContact` in `defineSite`; a site outside the network sets it). Prefer a
 fixed date with a test that fails a month before it lapses, the prompt to confirm the address still works.
 
 ## Byte encodings

@@ -132,6 +132,7 @@ export { SECURITY_TXT_PATH };
  * @property {(response: Response, request: Request, nonce?: string, env?: E) => Response} withSecurityHeaders The site's security set: pageSecurity's withSecurityHeaders.
  * @property {| false | { host?: string; except?: string[]; before?: ( request: Request, env: E, ) => Response | null | undefined | Promise<Response | null | undefined>; keep?: (url: URL) => boolean; }} [canonical] canonicalRedirect's options (`host`, `except`), plus `before`, a site's own earlier move, and `keep`, a test for an address whose slash stays; false for none.
  * @property {(request: Request, env: E) => Promise<Response | null> | Response | null} [files] Prelum's standardFiles handler (robots.txt, ai.txt, site.webmanifest, IndexNow key, ownership files).
+ * @property {string} [securityContact] The Contact in /.well-known/security.txt: an address or a URL; default the network's (SECURITY_CONTACT). A site that is not part of the network names its own.
  * @property {string[]} [speculationExclude] Paths the hover prefetch never fetches, beyond NEVER_PREFETCH.
  * @property {(env: E, ctx: ExecutionContext) => Record<string, OperatorTool>} [operator] The operator API's tools, served at /api/operator behind OPERATOR_TOKEN and RATE_LIMITER.
  * @property {GatewayStep<E>[]} [steps] The site's own steps, in order, after the cross-site check and before the page.
@@ -215,7 +216,12 @@ export function siteWorker(site, handlers = /** @type {H} */ ({})) {
     if (maintenanceOn(/** @type {any} */ (env)) && url.pathname !== "/health")
       return secure(maintenanceResponse({ siteName }), request, undefined, env);
     if (url.pathname === SECURITY_TXT_PATH)
-      return secure(securityTxtResponse({ origin: url.origin }), request, undefined, env);
+      return secure(
+        securityTxtResponse({ origin: url.origin, contact: options.securityContact }),
+        request,
+        undefined,
+        env,
+      );
 
     const file = await options.files?.(request, env);
     if (file) {
