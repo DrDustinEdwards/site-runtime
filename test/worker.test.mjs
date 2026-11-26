@@ -87,6 +87,14 @@ test("the canonical move and security.txt are answered before the page", async (
   assert.equal(stored.length, 0);
 });
 
+test("security.txt names the site's own contact when it sets one, the network's otherwise", async () => {
+  const url = "https://example.com/.well-known/security.txt";
+  const own = await harness({ securityContact: "support@example.com" }).fetch(new Request(url));
+  assert.match(await own.text(), /^Contact: mailto:support@example\.com$/m);
+  const network = await harness({}).fetch(new Request(url));
+  assert.match(await network.text(), /^Contact: mailto:security@dustinedwards\.info$/m);
+});
+
 test("a cross-site write is refused before a site step sees it; a bearer caller with no Origin passes", async () => {
   /** @type {string[]} */
   const reached = [];
