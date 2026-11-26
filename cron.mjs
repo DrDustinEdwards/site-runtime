@@ -16,7 +16,7 @@
  *   `run_job`, so a job is never run by hand through a second copy of its work. A job marked
  *   `backup` is one Capsid Admin's back up now runs.
  * - HISTORY (opt in, `runJobs(db, jobs, { history })`): each run that came to something is also appended to
- *   `cron_run_log` (CRON_LOG_SQL), the newest few kept per job. A job may resolve `{ outcome: "ok" | "refused" |
+ *   `cron_run_log` (CRON_LOG_SQL), the newest few kept per job (trimmed about hourly for a job that runs more often). A job may resolve `{ outcome: "ok" | "refused" |
  *   "skipped", reason }`: `ok` records the reason, `refused` records a failure without throwing, `skipped` records
  *   nothing. readCronRuns reads the runs back and cronStates decides each job's flag (failing, quiet, never).
  * - EVENT JOBS: `everyMinutes: null` is a job whose runs come and go with the work. It has no stale window, so it
@@ -128,6 +128,18 @@ function verdictOf(value) {
 }
 
 /**
+ * Whether this run also trims its job's history. The trim reads every row the job has kept, so a job that runs more
+ * than once an hour trims on the one run that starts in the first `every` minutes of the hour (about once an hour,
+ * the table holding a few rows over `keep` meanwhile); an hourly or rarer job, and an event job, trims on every run.
+ * @param {number} startedAt epoch ms
+ * @param {number} every minutes, 0 for an event job
+ */
+function trimDue(startedAt, every) {
+  if (every === 0 || every >= 60) return true;
+  return Math.floor(startedAt / 60_000) % 60 < every;
+}
+
+/**
  * @param {boolean | CronHistory | undefined} history
  * @returns {{ keep: number, retentionDays: number } | null}
  */
@@ -207,6 +219,7 @@ async function runOne(
   const log = async (at, outcome, reason) => {
     if (!history) return;
     await write(LOGGED, name, started, at, outcome, reason);
+    if (!trimDue(started, every)) return;
     await write(PRUNED, name, at - history.retentionDays * 86_400_000, history.keep);
   };
   const limit = own ?? timeoutMs;

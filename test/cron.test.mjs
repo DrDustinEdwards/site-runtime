@@ -200,3 +200,25 @@ test("a job that failed because D1 was down, or whose error wraps that as its ca
     /too much load/,
   );
 });
+
+test("history trims a frequent job about once an hour, not after every run, and keeps the table bounded", async () => {
+  const store = d1(CRON_SQL);
+  store.db.exec(CRON_LOG_SQL);
+  /** @type {string[]} */
+  const prunes = [];
+  const counting = {
+    prepare: (/** @type {string} */ sql) => {
+      if (sql.startsWith("DELETE FROM cron_run_log")) prunes.push(sql);
+      return store.prepare(sql);
+    },
+  };
+  const t0 = Date.UTC(2026, 10, 12);
+  const job = { name: "tick", everyMinutes: 5, run: async () => {} };
+  for (let i = 0; i < 288; i++)
+    await runJobs(counting, [job], { now: () => t0 + i * 5 * 60_000, history: { keep: 10 } });
+  assert.ok(prunes.length <= 24, `${prunes.length} trims in a day`);
+  assert.ok(prunes.length >= 23, `${prunes.length} trims in a day`);
+  const [{ n }] = store.db.prepare("SELECT COUNT(*) AS n FROM cron_run_log").all();
+  assert.ok(n <= 10 + 12, `${n} rows kept`);
+  assert.equal((await readCronRuns(store, ["tick"])).get("tick")?.length, 5);
+});
