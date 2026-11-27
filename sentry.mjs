@@ -24,10 +24,55 @@ import { reportErrorLines, scrubFields, scrubText, scrubUrl } from "./log.mjs";
 // An error line's report: the thrown Error with its stack, else the event's name, tagged with the event and carrying
 // the line's scrubbed fields. Outside a wrapped handler, or with no SENTRY_DSN, there is no client and nothing is sent.
 reportErrorLines((event, error, extra) => {
-  const context = { tags: { event }, extra };
+  const repeats = repeatedReports(reportKey(event, error, extra));
+  if (repeats === null) return;
+  const context = {
+    tags: { event },
+    extra: repeats ? { ...extra, repeats_dropped: repeats } : extra,
+  };
   if (error instanceof Error) captureException(error, context);
   else captureMessage(event, { level: "error", ...context });
 });
+
+/** How long one report stays the only one of its kind in an isolate: a failure that repeats every tick is one report an hour. */
+export const REPORT_REPEAT_MS = 60 * 60 * 1000;
+const REPORT_KEYS_MAX = 100;
+/** @type {Map<string, { at: number, dropped: number }>} */
+const lastReport = new Map();
+
+/**
+ * The same error line, sent again and again (a cron failing every five minutes, a scanner's thousand requests hitting
+ * one broken query), is one Sentry error each time, and Sentry counts every one against the monthly quota, an ignored
+ * issue's included (docs.sentry.io/pricing/quotas, "What Counts Toward Your Quota"). So an isolate reports a kind once
+ * per REPORT_REPEAT_MS; the next one that gets through says how many were left out.
+ * @param {string} key
+ * @param {number} [now]
+ * @returns {number | null} null to drop this report, else the number of repeats dropped since the last one sent
+ */
+export function repeatedReports(key, now = Date.now()) {
+  const last = lastReport.get(key);
+  if (last && now - last.at < REPORT_REPEAT_MS) {
+    last.dropped++;
+    return null;
+  }
+  if (lastReport.size >= REPORT_KEYS_MAX)
+    lastReport.delete(/** @type {string} */ (lastReport.keys().next().value));
+  lastReport.set(key, { at: now, dropped: 0 });
+  return last?.dropped ?? 0;
+}
+
+/**
+ * What makes two error lines the same kind: the event name and the first line of the error's message, or of the
+ * line's own `message` field, with digits cut so a changing id or count is still the same failure.
+ * @param {string} event
+ * @param {unknown} error
+ * @param {Record<string, unknown>} extra
+ * @returns {string}
+ */
+function reportKey(event, error, extra) {
+  const text = error instanceof Error ? error.message : String(extra.message ?? extra.error ?? "");
+  return `${event}\n${text.split("\n")[0].replace(/\d+/g, "#").slice(0, 200)}`;
+}
 
 /**
  * @param {import("./log.mjs").ScrubOptions} scrub
