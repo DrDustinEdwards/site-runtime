@@ -85,3 +85,14 @@ test("an error line and a throw are reported, with nothing personal in them", as
 test("with no SENTRY_DSN nothing leaves the Worker", async () => {
   assert.equal(await sentBy({}, failing), "");
 });
+
+test("the same error line sent again and again is one report an hour, with the count after it", async () => {
+  const { repeatedReports, REPORT_REPEAT_MS } = await import("../sentry.mjs");
+  const key = "flood\nsame failure";
+  const t = 1_000_000;
+  assert.equal(repeatedReports(key, t), 0);
+  for (let i = 1; i <= 50; i++) assert.equal(repeatedReports(key, t + i), null);
+  assert.equal(repeatedReports("flood\nanother failure", t + 60), 0);
+  assert.equal(repeatedReports(key, t + REPORT_REPEAT_MS), 50);
+  assert.equal(repeatedReports(key, t + REPORT_REPEAT_MS + 1), null);
+});
